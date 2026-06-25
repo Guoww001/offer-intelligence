@@ -7,7 +7,6 @@ import gzip
 import json
 import mimetypes
 import os
-import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,8 +15,8 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 
-ROOT = Path(__file__).resolve().parents[1]
-STATIC_DIR = ROOT / "outputs" / "offer_chatbot"
+ROOT = Path(__file__).resolve().parent
+STATIC_DIR = ROOT / "public"
 DATA_FILE = STATIC_DIR / "chatbot_data.js"
 LEVANTA_BASE = "https://app.levanta.io/api/creator/v1"
 DEFAULT_MONTHS = [
@@ -119,34 +118,23 @@ def payment_status(raw_status, expected, paid, available_date):
 
 def levanta_get(path, params, api_key):
     url = f"{LEVANTA_BASE}{path}?{urlencode(params)}"
-    curl_config = "\n".join(
-        [
-            f'url = "{url}"',
-            f'header = "Authorization: Bearer {api_key}"',
-            'header = "Accept: application/json"',
-            'user-agent = "YeahPromos-Offer-Intelligence/1.0"',
-            "silent",
-            "show-error",
-            "fail",
-            "connect-timeout = 20",
-            "max-time = 60",
-            "retry = 2",
-            "retry-delay = 1",
-        ]
-    )
     last_error = ""
     for attempt in range(3):
-        result = subprocess.run(
-            ["curl", "--config", "-"],
-            input=curl_config,
-            text=True,
-            capture_output=True,
-            timeout=75,
-            check=False,
+        request = Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+                "User-Agent": "YeahPromos-Offer-Intelligence/1.0",
+            },
         )
-        if result.returncode == 0:
-            return json.loads(result.stdout)
-        last_error = (result.stderr or result.stdout or f"curl exited {result.returncode}").strip()
+        try:
+            with urlopen(request, timeout=60) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError:
+            raise
+        except (URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
+            last_error = str(error)
         if attempt < 2:
             time.sleep(1 + attempt)
     raise URLError(last_error[:500])
