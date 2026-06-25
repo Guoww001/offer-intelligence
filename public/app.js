@@ -5,8 +5,10 @@
   const PAYMENT_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const ACTIVE_PAYMENT_MONTHS = ["March", "April", "May", "June"];
   const MAX_RECOMMENDATION_EXPORT = 1000;
+  const AUTO_PAYMENT_SYNC_KEY = "offerPaymentLastAutoSync";
+  const AUTO_PAYMENT_SYNC_INTERVAL_MS = 60 * 60 * 1000;
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
-  let paymentRecords = (data.paymentRecords || []).map(normalizePaymentRecord);
+  let paymentRecords = withPendingPaymentPlaceholders((data.paymentRecords || []).map(normalizePaymentRecord));
   const paymentRecordsByMerchant = new Map();
   rebuildPaymentIndex();
 
@@ -559,6 +561,79 @@
     return normalized;
   }
 
+  function offerForPaymentMerchant(record) {
+    const merchantId = String(record.merchantId || "").trim();
+    if (merchantId) {
+      const byId = offers.find((offer) => String(offer.merchantId || "").trim() === merchantId);
+      if (byId) return byId;
+    }
+    const merchantName = normalize(record.merchantName || record.brand);
+    if (!merchantName) return null;
+    return offers.find((offer) => {
+      const brand = normalize(offer.brand);
+      return brand && (brand === merchantName || brand.includes(merchantName) || merchantName.includes(brand));
+    });
+  }
+
+  function paymentMerchantKey(record) {
+    return String(record.merchantId || normalize(record.merchantName || record.brand)).trim();
+  }
+
+  function createPendingPaymentRecord(source, month) {
+    const monthIndex = PAYMENT_MONTHS.indexOf(month);
+    const reportYear = Number(source.reportYear || 2026);
+    const offer = offerForPaymentMerchant(source) || {};
+    const merchantId = String(source.merchantId || offer.merchantId || "").trim();
+    const merchantName = String(source.merchantName || source.brand || offer.brand || merchantId || "Unknown merchant").trim();
+    const record = {
+      id: `${merchantId || normalize(merchantName)}::${reportYear}-${String(monthIndex + 1).padStart(2, "0")}::pending-placeholder`,
+      merchantId,
+      merchantName,
+      network: "Levanta",
+      tier: source.tier || offer.tier || "Unknown",
+      category: source.category || offer.category || offer.levantaCategory || "Uncategorized",
+      reportMonth: month,
+      reportYear,
+      reportMonthKey: `${reportYear}-${String(monthIndex + 1).padStart(2, "0")}`,
+      revenueMade: 0,
+      commissionMade: 0,
+      expectedPaymentAmount: 0,
+      paidAmount: 0,
+      remainingAmount: 0,
+      paymentCycle: source.paymentCycle || offer.paymentCycle || "",
+      rawStatus: "pending",
+      lastCheckedDate: isoDate(PAYMENT_TODAY),
+      currency: source.currency || "USD",
+      isPlaceholder: true,
+      notes: "No Levanta invoice row found yet; marked pending until the month becomes payable or Levanta returns a final status."
+    };
+    record.paymentAvailabilityDate = calculatePaymentAvailabilityDate(record);
+    record.paymentStatus = "Pending";
+    return normalizePaymentRecord(record);
+  }
+
+  function withPendingPaymentPlaceholders(records) {
+    const normalized = records.map(normalizePaymentRecord);
+    const existingKeys = new Set(normalized.map((record) => `${paymentMerchantKey(record)}::${record.reportMonthKey}`));
+    const merchants = Array.from(new Map(normalized
+      .filter((record) => paymentMerchantKey(record))
+      .map((record) => [paymentMerchantKey(record), record])).values());
+    const additions = [];
+
+    merchants.forEach((merchant) => {
+      ACTIVE_PAYMENT_MONTHS.forEach((month) => {
+        const monthIndex = PAYMENT_MONTHS.indexOf(month);
+        if (monthIndex < 0) return;
+        const key = `${paymentMerchantKey(merchant)}::2026-${String(monthIndex + 1).padStart(2, "0")}`;
+        if (existingKeys.has(key)) return;
+        additions.push(createPendingPaymentRecord(merchant, month));
+        existingKeys.add(key);
+      });
+    });
+
+    return normalized.concat(additions);
+  }
+
   function rebuildPaymentIndex() {
     paymentRecordsByMerchant.clear();
     paymentRecords.forEach((record) => {
@@ -658,10 +733,11 @@
       if (!response.ok) throw new Error(`Levanta API sync returned ${response.status}`);
       const payload = await response.json();
       if (!payload.records || !payload.records.length) throw new Error("Levanta API returned no payment records");
-      paymentRecords = payload.records.map(normalizePaymentRecord);
+      paymentRecords = withPendingPaymentPlaceholders(payload.records.map(normalizePaymentRecord));
       rebuildPaymentIndex();
       state.paymentSource = "Levanta API";
       state.livePaymentsLoaded = true;
+      if (options.auto) localStorage.setItem(AUTO_PAYMENT_SYNC_KEY, localDateKey(new Date()));
       refreshPaymentFilterOptions();
       syncPaymentControls();
       setPaymentStamp("live", String(payload.checkedAt || "").slice(0, 10) || isoDate(PAYMENT_TODAY));
@@ -683,6 +759,12 @@
       }
       state.livePaymentsLoading = false;
     }
+  }
+
+  function maybeAutoSyncLevantaPayments() {
+    const today = localDateKey(new Date());
+    if (!today || localStorage.getItem(AUTO_PAYMENT_SYNC_KEY) === today || state.livePaymentsLoading) return;
+    refreshLevantaPayments({ silent: true, auto: true });
   }
 
   function paymentRecordsForOffer(offer) {
@@ -2443,6 +2525,8 @@
     renderAll();
     renderPaymentsPage();
     rerenderForLanguage();
+    maybeAutoSyncLevantaPayments();
+    window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
   }
 
   init();

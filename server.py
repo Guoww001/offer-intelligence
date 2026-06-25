@@ -116,6 +116,66 @@ def payment_status(raw_status, expected, paid, available_date):
     return "Unknown"
 
 
+def payment_merchant_key(record):
+    return str(record.get("merchantId") or normalize(record.get("merchantName") or record.get("brand"))).strip()
+
+
+def pending_placeholder_record(source, month_name, zero_based_month, year):
+    merchant_id = str(source.get("merchantId") or "").strip()
+    merchant_name = str(source.get("merchantName") or source.get("brand") or merchant_id or "Unknown merchant").strip()
+    offer = OFFERS_BY_ID.get(merchant_id) or OFFERS_BY_BRAND.get(normalize(merchant_name)) or {}
+    payment_cycle = source.get("paymentCycle") or offer.get("paymentCycle") or ""
+    month_key = f"{year}-{zero_based_month + 1:02d}"
+    return {
+        "id": f"{merchant_id or normalize(merchant_name)}::{month_key}::pending-placeholder",
+        "merchantId": merchant_id,
+        "merchantName": merchant_name,
+        "network": "Levanta",
+        "tier": source.get("tier") or offer.get("tier") or "Unknown",
+        "category": source.get("category") or offer.get("category") or offer.get("levantaCategory") or "Uncategorized",
+        "reportMonth": month_name,
+        "reportYear": year,
+        "reportMonthKey": month_key,
+        "revenueMade": 0,
+        "commissionMade": 0,
+        "expectedPaymentAmount": 0,
+        "paidAmount": 0,
+        "remainingAmount": 0,
+        "paymentCycle": payment_cycle,
+        "paymentAvailabilityDate": availability_date(year, zero_based_month, payment_cycle),
+        "paymentStatus": "Pending",
+        "rawStatus": "pending",
+        "lastCheckedDate": dt.date.today().isoformat(),
+        "currency": source.get("currency") or "USD",
+        "isPlaceholder": True,
+        "notes": "No Levanta invoice row found yet; marked pending until the month becomes payable or Levanta returns a final status.",
+    }
+
+
+def with_pending_placeholders(records, months):
+    existing = {
+        f"{payment_merchant_key(record)}::{record.get('reportMonthKey')}"
+        for record in records
+        if payment_merchant_key(record)
+    }
+    merchants = {}
+    for record in records:
+        key = payment_merchant_key(record)
+        if key and key not in merchants:
+            merchants[key] = record
+
+    additions = []
+    for merchant_key, merchant in merchants.items():
+        for month_name, zero_based_month, year in months:
+            month_key = f"{year}-{zero_based_month + 1:02d}"
+            key = f"{merchant_key}::{month_key}"
+            if key in existing:
+                continue
+            additions.append(pending_placeholder_record(merchant, month_name, zero_based_month, year))
+            existing.add(key)
+    return records + additions
+
+
 def levanta_get(path, params, api_key):
     url = f"{LEVANTA_BASE}{path}?{urlencode(params)}"
     last_error = ""
@@ -273,9 +333,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, {"ok": False, "source": "fallback", "error": "LEVANTA_API_KEY is not configured"})
             return
         query = parse_qs(parsed.query)
+        months = months_from_query(query)
         records = []
         try:
-            for month_name, zero_based_month, year in months_from_query(query):
+            for month_name, zero_based_month, year in months:
                 for item in fetch_invoice_items(zero_based_month, year, api_key):
                     records.append(normalize_invoice_item(item, month_name, zero_based_month, year))
         except HTTPError as error:
@@ -285,6 +346,8 @@ class Handler(BaseHTTPRequestHandler):
         except (URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
             self.send_json(502, {"ok": False, "source": "levanta-api", "error": str(error)})
             return
+
+        records = with_pending_placeholders(records, months)
 
         self.send_json(
             200,
