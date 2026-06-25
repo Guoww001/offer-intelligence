@@ -79,6 +79,22 @@ button {
   display: none !important;
 }
 
+.language-toggle {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  padding: 0 10px;
+}
+
+.language-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 .page-nav {
   display: flex;
   flex-direction: column;

@@ -51,7 +51,8 @@
     livePaymentsLoaded: false,
     livePaymentsLoading: false,
     recommendationDownloads: {},
-    downloadSequence: 0
+    downloadSequence: 0,
+    language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en"
   };
 
   const els = {
@@ -118,16 +119,17 @@
     paymentSearch: document.getElementById("paymentSearch"),
     paymentUnpaidOnly: document.getElementById("paymentUnpaidOnly"),
     paymentPendingOnly: document.getElementById("paymentPendingOnly"),
-    paymentOverdueOnly: document.getElementById("paymentOverdueOnly")
+    paymentOverdueOnly: document.getElementById("paymentOverdueOnly"),
+    languageToggle: document.getElementById("languageToggle")
   };
 
   const quickPrompts = [
-    "Aiper",
-    "Recommend 5 beauty offers",
-    "Tier 2",
-    "Which offers are unpaid?",
-    "April unpaid payments",
-    "Find ASIN B0D2HKCMBP"
+    { key: "quick.aiper", prompt: "Aiper" },
+    { key: "quick.beauty", prompt: "Recommend 5 beauty offers" },
+    { key: "quick.tier2", prompt: "Tier 2" },
+    { key: "quick.unpaid", prompt: "Which offers are unpaid?" },
+    { key: "quick.april", prompt: "April unpaid payments" },
+    { key: "quick.asin", prompt: "Find ASIN B0D2HKCMBP" }
   ];
 
   const categoryAliases = {
@@ -141,6 +143,250 @@
     automotive: ["automotive", "car", "vehicle"],
     tools: ["tools", "home improvement"]
   };
+
+  const translations = {
+    zh: {
+      "brand.subtitle": "亚马逊分层分析",
+      "nav.dashboard": "仪表盘",
+      "nav.payments": "付款",
+      "nav.reports": "报表",
+      "nav.targets": "目标",
+      "sidebar.status": "数据状态",
+      "source.backendEpc": "后台 EPC",
+      "source.payments": "3-6月付款",
+      "source.sheets": "分层逻辑已加载",
+      "dashboard.title": "推荐聊天机器人",
+      "filters.dashboard": "仪表盘筛选",
+      "filter.minEpc": "最低 EPC",
+      "filter.minAov": "最低 AOV",
+      "filter.minConversion": "最低转化率",
+      "filter.minRevenue": "最低收入",
+      "filter.unpaidOnly": "仅未付款",
+      "filter.pendingOnly": "仅待处理",
+      "filter.overdueOnly": "仅到期/逾期",
+      "action.reset": "重置",
+      "action.send": "发送",
+      "chat.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer...",
+      "table.offers": "Offer 列表",
+      "payments.title": "付款",
+      "payments.sync": "同步 Levanta",
+      "payments.syncing": "同步中...",
+      "payments.records": "付款记录",
+      "payments.search": "商家搜索",
+      "payments.searchPlaceholder": "商家名称或 ID",
+      "tier.searchPlaceholder": "商家、ID、原因、推荐",
+      "tier.networkAgency": "网络 / Agency",
+      "label.Brand": "品牌",
+      "label.Merchant": "商家",
+      "label.Merchant ID": "商家 ID",
+      "label.Tier": "分层",
+      "label.Network": "网络",
+      "label.Category": "品类",
+      "label.Month": "月份",
+      "label.Status": "状态",
+      "label.Search": "搜索",
+      "label.Country": "国家",
+      "label.Orders": "订单",
+      "label.Payment": "付款",
+      "label.Highlight": "重点",
+      "label.Revenue": "收入",
+      "label.Commission": "佣金",
+      "label.Action": "动作",
+      "label.Cycle": "周期",
+      "label.Available": "可检查日期",
+      "label.Last Checked": "上次检查",
+      "label.Notes": "备注",
+      "label.Records": "记录",
+      "label.Merchants": "商家数",
+      "label.Columns": "列数",
+      "label.Offers": "Offer 数",
+      "label.Commission EPC": "佣金 EPC",
+      "label.AOV": "AOV",
+      "label.CVR": "CVR",
+      "label.Revenue made": "产生收入",
+      "label.Commission made": "产生佣金",
+      "label.Unpaid risk": "付款风险",
+      "label.Unpaid merchants": "未付款商家",
+      "label.Pending merchants": "待处理商家",
+      "label.Overdue rows": "到期/逾期记录",
+      "label.Offers in category": "该品类 Offer",
+      "label.Average AOV": "平均 AOV",
+      "label.Blended EPC": "综合 EPC",
+      "label.Average CVR": "平均 CVR",
+      "label.Best by EPC": "EPC 最佳",
+      "label.Best by CVR": "CVR 最佳",
+      "label.Best by revenue": "收入最佳",
+      "label.Best by commission": "佣金最佳",
+      "label.Payment risk": "付款风险",
+      "label.Caution watch": "注意观察",
+      "label.Rows": "行数",
+      "label.Brand Count": "品牌数",
+      "label.Total Clicks": "总点击",
+      "label.Order Count": "订单数",
+      "label.New Tier Entries": "新进分层",
+      "label.Tier Exits": "退出分层",
+      "label.Target": "目标",
+      "option.All tiers": "全部分层",
+      "option.All networks": "全部网络",
+      "option.All categories": "全部品类",
+      "option.All months": "全部月份",
+      "option.All statuses": "全部状态",
+      "option.All countries": "全部国家",
+      "option.Paid": "已付款",
+      "option.Unpaid": "未付款",
+      "option.Pending": "待处理",
+      "option.Partial": "部分付款",
+      "option.Unknown": "未知",
+      "option.March": "三月",
+      "option.April": "四月",
+      "option.May": "五月",
+      "option.June": "六月",
+      "quick.aiper": "Aiper",
+      "quick.beauty": "推荐 5 个美妆 offer",
+      "quick.tier2": "Tier 2",
+      "quick.unpaid": "哪些 offer 未付款？",
+      "quick.april": "四月未付款",
+      "quick.asin": "查找 ASIN B0D2HKCMBP",
+      "context.defaultTitle": "上下文概览",
+      "context.defaultSubtitle": "整体 offer 快照",
+      "context.recommendationTitle": "推荐概览",
+      "context.merchantTitle": "商家数据",
+      "context.asinTitle": "ASIN 数据",
+      "context.categoryTitle": "品类概览",
+      "context.tierTitle": "分层概览",
+      "context.paymentTitle": "付款概览",
+      "context.generalFiltered": "当前筛选视图",
+      "context.basedOn": "基于：",
+      "context.noMatches": "没有找到匹配记录。",
+      "payment.followup": "需要跟进的商家",
+      "payment.none": "无",
+      "payment.checkable": "可检查",
+      "payment.pending": "未到检查时间",
+      "payment.summary": "付款概览",
+      "payment.recordsAcross": "条记录，覆盖",
+      "payment.merchants": "个商家",
+      "payment.unpaid": "未付款",
+      "payment.pendingCount": "待处理",
+      "payment.overdue": "到期/逾期",
+      "payment.cycle": "付款周期",
+      "payment.notAvailable": "当前数据不可用",
+      "payment.tableCount": "条付款记录匹配",
+      "table.offerCount": "个 offer 匹配",
+      "dataset.loaded": "个 offers 已加载 / 生成于",
+      "payments.stampSaved": "条已保存 Levanta 付款记录 / 可按周期检查 / 检查日期",
+      "payments.stampLive": "条 Levanta 实时付款记录 / 检查日期",
+      "payments.stampUnavailable": "条已保存 Levanta 付款记录 / 实时 API 不可用 / 检查日期",
+      "sheet.targets": "月度目标",
+      "sheet.noTargets": "当前表格导出中没有目标行",
+      "sheet.noTargetMatch": "当前筛选没有匹配的目标数据。",
+      "sheet.targetSummary": "目标和表现汇总",
+      "sheet.noTargetNotes": "当前选择没有文字目标备注。",
+      "sheet.targetRecords": "月度目标记录",
+      "sheet.targetRows": "条目标记录",
+      "tier.imported": "从 Google Sheets 导入",
+      "tier.notFound": "未找到 Google Sheet 标签页",
+      "tier.noMatch": "当前导出中没有找到匹配的 Sheet 标签页。",
+      "language.button.zh": "中文简体",
+      "language.button.en": "English"
+    }
+  };
+
+  function t(key, fallback = key) {
+    if (state.language !== "zh") return fallback;
+    return translations.zh[key] || fallback;
+  }
+
+  function labelText(label) {
+    return t(`label.${label}`, label);
+  }
+
+  function optionText(value) {
+    return t(`option.${value}`, value);
+  }
+
+  function statusText(value) {
+    return t(`option.${value}`, value || "Unknown");
+  }
+
+  function applyStaticLanguage() {
+    document.documentElement.lang = state.language === "zh" ? "zh-Hans" : "en";
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      if (!el.dataset.i18nFallback) el.dataset.i18nFallback = el.textContent;
+      el.textContent = t(el.dataset.i18n, el.dataset.i18nFallback);
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+      if (!el.dataset.i18nPlaceholderFallback) el.dataset.i18nPlaceholderFallback = el.getAttribute("placeholder") || "";
+      el.setAttribute("placeholder", t(el.dataset.i18nPlaceholder, el.dataset.i18nPlaceholderFallback));
+    });
+    if (els.languageToggle) {
+      els.languageToggle.textContent = state.language === "zh"
+        ? t("language.button.en", "English")
+        : t("language.button.zh", "中文简体");
+    }
+  }
+
+  function syncDashboardOptionLabels() {
+    const defaults = [
+      [els.tier, "All tiers"],
+      [els.network, "All networks"],
+      [els.category, "All categories"]
+    ];
+    defaults.forEach(([select, label]) => {
+      const option = select && select.querySelector('option[value="all"]');
+      if (option) option.textContent = optionText(label);
+    });
+  }
+
+  function updateQuickPromptLabels() {
+    Array.from(els.quickActions.querySelectorAll("[data-prompt-key]")).forEach((button) => {
+      button.textContent = t(button.dataset.promptKey, button.dataset.prompt);
+    });
+  }
+
+  function setDatasetStamp() {
+    els.stamp.textContent = `${offers.length.toLocaleString()} ${t("dataset.loaded", "offers loaded / generated")} ${data.summary.generatedAt || ""}`;
+  }
+
+  function setPaymentStamp(mode = "saved", checkedAt = isoDate(PAYMENT_TODAY)) {
+    const count = paymentRecords.length.toLocaleString();
+    if (mode === "live") {
+      els.paymentStamp.textContent = `${count} ${t("payments.stampLive", "live Levanta payment records / checked")} ${checkedAt}`;
+      return;
+    }
+    if (mode === "unavailable") {
+      els.paymentStamp.textContent = `${count} ${t("payments.stampUnavailable", "saved Levanta payment records / live API unavailable / checked")} ${checkedAt}`;
+      return;
+    }
+    els.paymentStamp.textContent = `${count} ${t("payments.stampSaved", "saved Levanta payment records / cycle-aware availability / checked")} ${checkedAt}`;
+  }
+
+  function rerenderForLanguage() {
+    applyStaticLanguage();
+    syncDashboardOptionLabels();
+    updateQuickPromptLabels();
+    refreshPaymentFilterOptions();
+    refreshTargetFilters();
+    syncControls();
+    syncPaymentControls();
+    setDatasetStamp();
+    setPaymentStamp(state.livePaymentsLoaded ? "live" : "saved");
+    if (state.page === "payments") {
+      renderPaymentsPage();
+    } else if (state.page === "sheets") {
+      renderSheetPage();
+    } else if (state.page === "tier") {
+      renderTierPage(state.selectedTierPage);
+    } else {
+      renderAll();
+      if (state.currentContext.type !== "default") renderContextPanel(state.currentContext);
+    }
+  }
+
+  function toggleLanguage() {
+    state.language = state.language === "zh" ? "en" : "zh";
+    localStorage.setItem("offerLanguage", state.language);
+    rerenderForLanguage();
+  }
 
   function number(value) {
     const n = Number(value);
@@ -405,7 +651,7 @@
     state.livePaymentsLoading = true;
     if (els.paymentSync) {
       els.paymentSync.disabled = true;
-      els.paymentSync.textContent = "Syncing...";
+      els.paymentSync.textContent = t("payments.syncing", "Syncing...");
     }
     try {
       const response = await fetch("/api/levanta/payments?start=2026-03&end=2026-06", { cache: "no-store" });
@@ -418,14 +664,14 @@
       state.livePaymentsLoaded = true;
       refreshPaymentFilterOptions();
       syncPaymentControls();
-      els.paymentStamp.textContent = `${paymentRecords.length.toLocaleString()} live Levanta payment records / checked ${String(payload.checkedAt || "").slice(0, 10) || isoDate(PAYMENT_TODAY)}`;
+      setPaymentStamp("live", String(payload.checkedAt || "").slice(0, 10) || isoDate(PAYMENT_TODAY));
       renderPaymentsPage();
       if (state.currentContext.type === "payment") {
         setContext(buildPaymentContext(getFilteredPayments().slice(0, 60), state.currentQuery || "Payment sync"));
       }
     } catch (error) {
       state.paymentSource = "saved invoice file";
-      els.paymentStamp.textContent = `${paymentRecords.length.toLocaleString()} saved Levanta payment records / live API unavailable / checked ${isoDate(PAYMENT_TODAY)}`;
+      setPaymentStamp("unavailable", isoDate(PAYMENT_TODAY));
       if (!options.silent) {
         addMessage("assistant", `I could not reach the live Levanta API from this server, so I kept the saved invoice data loaded. The server needs <strong>LEVANTA_API_KEY</strong> configured for live sync.`);
       }
@@ -433,7 +679,7 @@
     } finally {
       if (els.paymentSync) {
         els.paymentSync.disabled = false;
-        els.paymentSync.textContent = "Sync Levanta";
+        els.paymentSync.textContent = t("payments.sync", "Sync Levanta");
       }
       state.livePaymentsLoading = false;
     }
@@ -587,7 +833,7 @@
     values.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value;
+      option.textContent = optionText(value);
       select.appendChild(option);
     });
   }
@@ -596,7 +842,7 @@
     select.innerHTML = "";
     const first = document.createElement("option");
     first.value = "all";
-    first.textContent = firstLabel;
+    first.textContent = optionText(firstLabel);
     select.appendChild(first);
     fillSelect(select, values);
     select.value = values.includes(selectedValue) ? selectedValue : "all";
@@ -607,7 +853,7 @@
     options.forEach((option) => {
       const el = document.createElement("option");
       el.value = option.value;
-      el.textContent = option.label;
+      el.textContent = optionText(option.label);
       select.appendChild(el);
     });
     if (options.some((option) => option.value === selectedValue)) {
@@ -871,14 +1117,14 @@
 
   function statCards(cards) {
     return `<div class="context-stats">${cards.map(([label, value]) => (
-      `<div class="context-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
+      `<div class="context-stat"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`
     )).join("")}</div>`;
   }
 
   function miniTable(rows, columns) {
-    if (!rows.length) return "<p>No matching offers found.</p>";
+    if (!rows.length) return `<p>${escapeHtml(t("context.noMatches", "No matching offers found."))}</p>`;
     return `<div class="mini-table-wrap"><table class="mini-table">
-      <thead><tr>${columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("")}</tr></thead>
+      <thead><tr>${columns.map((col) => `<th>${escapeHtml(labelText(col.label))}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((row) => `<tr>${columns.map((col) => `<td>${col.render(row)}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></div>`;
   }
@@ -985,32 +1231,30 @@
     const s = context.summary;
     const followUp = rows
       .filter((record) => record.paymentStatus === "Unpaid" || record.paymentStatus === "Partial")
-      .sort((a, b) => number(b.remainingAmount) - number(a.remainingAmount))
+      .sort((a, b) => paymentStatusRank(a.paymentStatus) - paymentStatusRank(b.paymentStatus))
       .slice(0, 8)
-      .map((record) => `${record.merchantName} ${record.reportMonth} (${shortMoney(record.remainingAmount)})`)
-      .join(", ") || "None";
+      .map((record) => `${record.merchantName} ${optionText(record.reportMonth)} (${statusText(record.paymentStatus)})`)
+      .join(", ") || t("payment.none", "None");
     const months = s.monthBreakdown.map((item) => (
-      `<p><strong>${escapeHtml(item.month)}:</strong> ${escapeHtml(item.status)} around ${escapeHtml(item.checkDate)}; unpaid ${item.unpaid}, pending ${item.pending}, paid ${item.paid}, remaining ${shortMoney(item.remaining)}</p>`
+      `<p><strong>${escapeHtml(optionText(item.month))}:</strong> ${escapeHtml(t(`payment.${item.status}`, item.status))} ${escapeHtml(item.checkDate)}; ${escapeHtml(t("payment.unpaid", "unpaid"))} ${item.unpaid}, ${escapeHtml(t("payment.pendingCount", "pending"))} ${item.pending}</p>`
     )).join("");
     return statCards([
       ["Revenue made", shortMoney(s.totalRevenueMade)],
       ["Commission made", shortMoney(s.totalCommissionMade)],
-      ["Expected payment", shortMoney(s.totalExpectedPayment)],
-      ["Paid", shortMoney(s.totalPaidAmount)],
-      ["Remaining", shortMoney(s.totalRemainingAmount)],
-      ["Unpaid merchants", String(s.unpaidMerchantCount)]
+      ["Unpaid merchants", String(s.unpaidMerchantCount)],
+      ["Pending merchants", String(s.pendingMerchantCount)],
+      ["Overdue rows", String(s.overdueCount)]
     ]) +
     `<div class="insight-list">${months}</div>` +
-    `<div class="context-note"><strong>Merchants needing follow-up:</strong> ${escapeHtml(followUp)}</div>` +
+    `<div class="context-note"><strong>${escapeHtml(t("payment.followup", "Merchants needing follow-up"))}:</strong> ${escapeHtml(followUp)}</div>` +
     miniTable(rows.slice(0, 20), [
       { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.merchantName || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
-      { label: "Month", render: (o) => escapeHtml(`${o.reportMonth} ${o.reportYear}`) },
-      { label: "Status", render: (o) => escapeHtml(o.paymentStatus || "not available") },
+      { label: "Month", render: (o) => escapeHtml(`${optionText(o.reportMonth)} ${o.reportYear}`) },
+      { label: "Status", render: (o) => escapeHtml(statusText(o.paymentStatus || "Unknown")) },
       { label: "Tier", render: (o) => escapeHtml(o.tier || "Unknown") },
       { label: "Revenue", render: (o) => shortMoney(o.revenueMade) },
-      { label: "Expected", render: (o) => shortMoney(o.expectedPaymentAmount) },
-      { label: "Paid", render: (o) => shortMoney(o.paidAmount) },
-      { label: "Remaining", render: (o) => shortMoney(o.remainingAmount) },
+      { label: "Commission made", render: (o) => shortMoney(o.commissionMade) },
+      { label: "Cycle", render: (o) => escapeHtml(o.paymentCycle ? `${o.paymentCycle} days` : "-") },
       { label: "Available", render: (o) => escapeHtml(o.paymentAvailabilityDate || "not available") }
     ]);
   }
@@ -1033,15 +1277,15 @@
   }
 
   function renderContextPanel(context) {
-    const query = state.currentQuery ? `Based on: ${state.currentQuery}` : "General filtered view";
+    const query = state.currentQuery ? `${t("context.basedOn", "Based on:")} ${state.currentQuery}` : t("context.generalFiltered", "General filtered view");
     const titles = {
-      default: ["Context Overview", "General offer snapshot"],
-      recommendation: ["Recommendation Overview", query],
-      merchant: ["Merchant Statistics", query],
-      asin: ["ASIN Statistics", query],
-      category: ["Category Overview", query],
-      tier: ["Tier Overview", query],
-      payment: ["Payment Overview", query]
+      default: [t("context.defaultTitle", "Context Overview"), t("context.defaultSubtitle", "General offer snapshot")],
+      recommendation: [t("context.recommendationTitle", "Recommendation Overview"), query],
+      merchant: [t("context.merchantTitle", "Merchant Statistics"), query],
+      asin: [t("context.asinTitle", "ASIN Statistics"), query],
+      category: [t("context.categoryTitle", "Category Overview"), query],
+      tier: [t("context.tierTitle", "Tier Overview"), query],
+      payment: [t("context.paymentTitle", "Payment Overview"), query]
     };
     const [title, subtitle] = titles[context.type] || titles.default;
     els.contextTitle.textContent = title;
@@ -1157,9 +1401,9 @@
   }
 
   function resultTable(rows, columns) {
-    if (!rows.length) return "<p>No matching offers found.</p>";
+    if (!rows.length) return `<p>${escapeHtml(t("context.noMatches", "No matching offers found."))}</p>`;
     return `<div class="result-table-wrap"><table class="result-table">
-      <thead><tr>${columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("")}</tr></thead>
+      <thead><tr>${columns.map((col) => `<th>${escapeHtml(labelText(col.label))}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((row) => `<tr>${columns.map((col) => `<td>${col.render(row)}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></div>`;
   }
@@ -1179,13 +1423,11 @@
   const paymentColumns = [
     { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.merchantName || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
     { label: "Tier", render: (o) => escapeHtml(o.tier || "Unknown") },
-    { label: "Month", render: (o) => escapeHtml(`${o.reportMonth} ${o.reportYear}`) },
-    { label: "Status", render: (o) => escapeHtml(o.paymentStatus || "not available") },
+    { label: "Month", render: (o) => escapeHtml(`${optionText(o.reportMonth)} ${o.reportYear}`) },
+    { label: "Status", render: (o) => escapeHtml(statusText(o.paymentStatus || "Unknown")) },
     { label: "Revenue made", render: (o) => shortMoney(o.revenueMade) },
     { label: "Commission made", render: (o) => shortMoney(o.commissionMade) },
-    { label: "Expected", render: (o) => shortMoney(o.expectedPaymentAmount) },
-    { label: "Paid", render: (o) => shortMoney(o.paidAmount) },
-    { label: "Remaining", render: (o) => shortMoney(o.remainingAmount) },
+    { label: "Cycle", render: (o) => escapeHtml(o.paymentCycle ? `${o.paymentCycle} days` : "-") },
     { label: "Available", render: (o) => escapeHtml(o.paymentAvailabilityDate || "not available") },
     { label: "Notes", render: (o) => escapeHtml(o.notes || "not available") }
   ];
@@ -1297,8 +1539,8 @@
       const s = updatePaymentSummary(rows);
       const cycle = rows.find((record) => record.paymentCycle);
       const title = `${merchant.brand}${month ? ` - ${month}` : ""}`;
-      const cycleText = cycle ? `${cycle.paymentCycle} days` : "not available in current data";
-      return `<p><strong>${escapeHtml(title)}</strong> payment summary: expected ${shortMoney(s.totalExpectedPayment)}, paid ${shortMoney(s.totalPaidAmount)}, remaining ${shortMoney(s.totalRemainingAmount)}, payment cycle ${escapeHtml(cycleText)}.</p>` +
+      const cycleText = cycle ? `${cycle.paymentCycle} days` : t("payment.notAvailable", "not available in current data");
+      return `<p><strong>${escapeHtml(title)}</strong> ${escapeHtml(t("payment.summary", "payment summary"))}: ${s.recordCount.toLocaleString()} ${escapeHtml(t("payment.recordsAcross", "records across"))} ${s.merchantCount.toLocaleString()} ${escapeHtml(t("payment.merchants", "merchants"))}; ${escapeHtml(t("payment.unpaid", "unpaid"))} ${s.unpaidMerchantCount.toLocaleString()}, ${escapeHtml(t("payment.pendingCount", "pending"))} ${s.pendingMerchantCount.toLocaleString()}, ${escapeHtml(t("payment.overdue", "overdue"))} ${s.overdueCount.toLocaleString()}. ${escapeHtml(t("payment.cycle", "payment cycle"))}: ${escapeHtml(cycleText)}.</p>` +
         resultTable(rows, paymentColumns);
     }
 
@@ -1314,7 +1556,7 @@
     setContext(buildPaymentContext(rows, prompt));
     const s = updatePaymentSummary(rows);
     const label = month ? `${month} payment records` : "Payment records";
-    return `<p><strong>${escapeHtml(label)}:</strong> expected ${shortMoney(s.totalExpectedPayment)}, paid ${shortMoney(s.totalPaidAmount)}, remaining ${shortMoney(s.totalRemainingAmount)} across ${s.merchantCount.toLocaleString()} merchants.</p>` +
+    return `<p><strong>${escapeHtml(state.language === "zh" ? `${optionText(month || "") || t("payments.records", "Payment records")}` : label)}:</strong> ${s.recordCount.toLocaleString()} ${escapeHtml(t("payment.recordsAcross", "records across"))} ${s.merchantCount.toLocaleString()} ${escapeHtml(t("payment.merchants", "merchants"))}; ${escapeHtml(t("payment.unpaid", "unpaid"))} ${s.unpaidMerchantCount.toLocaleString()}, ${escapeHtml(t("payment.pendingCount", "pending"))} ${s.pendingMerchantCount.toLocaleString()}, ${escapeHtml(t("payment.overdue", "overdue"))} ${s.overdueCount.toLocaleString()}.</p>` +
       resultTable(rows, paymentColumns);
   }
 
@@ -1439,11 +1681,11 @@
       ["CVR", shortPct(s.avgCvr)],
       ["Unpaid risk", s.paymentRiskCount.toLocaleString()]
     ];
-    els.metrics.innerHTML = cards.map(([label, value]) => `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join("");
+    els.metrics.innerHTML = cards.map(([label, value]) => `<div class="metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   }
 
   function renderTable(rows) {
-    els.tableCount.textContent = `${rows.length.toLocaleString()} matching offers`;
+    els.tableCount.textContent = `${rows.length.toLocaleString()} ${t("table.offerCount", "matching offers")}`;
     els.table.innerHTML = rows.slice(0, 80).map((offer) => {
       const paidClass = hasPaymentRisk(offer) ? "unpaid" : hasPaidSignal(offer) ? "paid" : "neutral";
       return `<tr>
@@ -1794,31 +2036,25 @@
       ["Merchants", s.merchantCount.toLocaleString()],
       ["Revenue made", shortMoney(s.totalRevenueMade)],
       ["Commission made", shortMoney(s.totalCommissionMade)],
-      ["Expected", shortMoney(s.totalExpectedPayment)],
-      ["Paid", shortMoney(s.totalPaidAmount)],
-      ["Remaining", shortMoney(s.totalRemainingAmount)],
       ["Unpaid merchants", s.unpaidMerchantCount.toLocaleString()],
       ["Pending merchants", s.pendingMerchantCount.toLocaleString()],
       ["Overdue rows", s.overdueCount.toLocaleString()]
     ];
-    els.paymentSummary.innerHTML = cards.map(([label, value]) => `<div class="metric payment-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+    els.paymentSummary.innerHTML = cards.map(([label, value]) => `<div class="metric payment-metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   }
 
   function renderPaymentRows(rows) {
-    els.paymentTableCount.textContent = `${rows.length.toLocaleString()} matching payment records`;
+    els.paymentTableCount.textContent = `${rows.length.toLocaleString()} ${t("payment.tableCount", "matching payment records")}`;
     els.paymentRows.innerHTML = rows.map((record) => (
       `<tr data-merchant-id="${escapeHtml(record.merchantId || record.merchantName)}">
         <td>${escapeHtml(record.merchantId || "")}</td>
         <td><strong>${escapeHtml(record.merchantName || "")}</strong><p>${escapeHtml(record.category || "Uncategorized")}</p></td>
         <td>${escapeHtml(record.network || "")}</td>
         <td><span class="badge tier">${escapeHtml(record.tier || "Unknown")}</span></td>
-        <td>${escapeHtml(`${record.reportMonth} ${record.reportYear}`)}</td>
-        <td><span class="badge ${paymentStatusClass(record.paymentStatus)}">${escapeHtml(record.paymentStatus || "Unknown")}</span></td>
+        <td>${escapeHtml(`${optionText(record.reportMonth)} ${record.reportYear}`)}</td>
+        <td><span class="badge ${paymentStatusClass(record.paymentStatus)}">${escapeHtml(statusText(record.paymentStatus || "Unknown"))}</span></td>
         <td>${shortMoney(record.revenueMade)}</td>
         <td>${shortMoney(record.commissionMade)}</td>
-        <td>${shortMoney(record.expectedPaymentAmount)}</td>
-        <td>${shortMoney(record.paidAmount)}</td>
-        <td>${shortMoney(record.remainingAmount)}</td>
         <td>${escapeHtml(record.paymentCycle ? `${record.paymentCycle} days` : "-")}</td>
         <td>${escapeHtml(record.paymentAvailabilityDate || "-")}</td>
         <td>${escapeHtml(record.lastCheckedDate || "-")}</td>
@@ -1906,7 +2142,7 @@
           { label: "Columns", value: String((sheet.headers || []).length) }
         ];
     els.tierPageSummary.innerHTML = cards.map((card) => (
-      `<div class="metric"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong></div>`
+      `<div class="metric"><span>${escapeHtml(labelText(card.label))}</span><strong>${escapeHtml(card.value)}</strong></div>`
     )).join("");
   }
 
@@ -1925,10 +2161,10 @@
     const headers = sheet.headers || [];
     const rows = customRows || sheet.rows || [];
     const grid = sheet.grid || [];
-    titleEl.textContent = `${sheet.name} Sheet Records`;
+    titleEl.textContent = `${sheet.name} ${t("sheet.targetRecords", "Sheet Records")}`;
     if (headers.length) {
       countEl.textContent = `${rows.length.toLocaleString()} rows / ${headers.length.toLocaleString()} columns`;
-      headEl.innerHTML = `<tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>`;
+      headEl.innerHTML = `<tr>${headers.map((header) => `<th>${escapeHtml(labelText(header))}</th>`).join("")}</tr>`;
       rowsEl.innerHTML = rows.map((row) => (
         `<tr>${headers.map((header) => `<td>${escapeHtml(row[header] ?? "")}</td>`).join("")}</tr>`
       )).join("");
@@ -1981,10 +2217,10 @@
   function renderTierPage(tierName) {
     const sheet = sheetByName(tierName);
     els.tierPageTitle.textContent = tierName;
-    els.tierPageSubtitle.textContent = sheet ? `${sheet.title} / imported from Google Sheets` : "Google Sheet tab not found";
+    els.tierPageSubtitle.textContent = sheet ? `${sheet.title} / ${t("tier.imported", "imported from Google Sheets")}` : t("tier.notFound", "Google Sheet tab not found");
     if (!sheet) {
       els.tierPageSummary.innerHTML = "";
-      els.tierPageNotes.innerHTML = "<p>No matching sheet tab was found in the current export.</p>";
+      els.tierPageNotes.innerHTML = `<p>${escapeHtml(t("tier.noMatch", "No matching sheet tab was found in the current export."))}</p>`;
       els.tierSheetHead.innerHTML = "";
       els.tierSheetRows.innerHTML = "";
       els.tierTableCount.textContent = "";
@@ -2063,7 +2299,7 @@
       { label: "Revenue", value: shortMoney(totals.revenue) }
     ];
     els.sheetPageSummary.innerHTML = cards.map((card) => (
-      `<div class="metric"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong></div>`
+      `<div class="metric"><span>${escapeHtml(labelText(card.label))}</span><strong>${escapeHtml(card.value)}</strong></div>`
     )).join("");
   }
 
@@ -2071,26 +2307,26 @@
     refreshTargetFilters();
     const rows = filteredTargetRecords();
     if (!rows.length) {
-      els.sheetPageTitle.textContent = "Monthly Targets";
-      els.sheetPageSubtitle.textContent = "No target rows found in the current sheet export";
+      els.sheetPageTitle.textContent = t("sheet.targets", "Monthly Targets");
+      els.sheetPageSubtitle.textContent = t("sheet.noTargets", "No target rows found in the current sheet export");
       els.sheetPageSummary.innerHTML = "";
-      els.sheetPageNotes.innerHTML = "<p>No target data matched the selected filters.</p>";
+      els.sheetPageNotes.innerHTML = `<p>${escapeHtml(t("sheet.noTargetMatch", "No target data matched the selected filters."))}</p>`;
       els.sheetGridHead.innerHTML = "";
       els.sheetGridRows.innerHTML = "";
       els.sheetTableCount.textContent = "";
       return;
     }
-    els.sheetPageTitle.textContent = "Monthly Targets";
-    els.sheetPageSubtitle.textContent = `${state.targetFilters.month === "all" ? "All months" : state.targetFilters.month} / target and performance summary`;
+    els.sheetPageTitle.textContent = t("sheet.targets", "Monthly Targets");
+    els.sheetPageSubtitle.textContent = `${state.targetFilters.month === "all" ? optionText("All months") : state.targetFilters.month} / ${t("sheet.targetSummary", "target and performance summary")}`;
     renderSheetSummary(rows);
     const targetRows = rows.filter((record) => String(record.Target || "").trim());
     els.sheetPageNotes.innerHTML = targetRows.length
       ? `<div class="target-list">${targetRows.map((record) => `<span><strong>${escapeHtml(record.Tier)}</strong>${escapeHtml(record.Target)}</span>`).join("")}</div>`
-      : "<p>No written target notes for this selection.</p>";
+      : `<p>${escapeHtml(t("sheet.noTargetNotes", "No written target notes for this selection."))}</p>`;
     const headers = ["Month", "Tier", "Brand Count", "Total Clicks", "Order Count", "Revenue", "Avg Conversion", "New Tier Entries", "Tier Exits", "Target"];
-    els.sheetTableTitle.textContent = "Monthly Target Records";
-    els.sheetTableCount.textContent = `${rows.length.toLocaleString()} target rows`;
-    els.sheetGridHead.innerHTML = `<tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>`;
+    els.sheetTableTitle.textContent = t("sheet.targetRecords", "Monthly Target Records");
+    els.sheetTableCount.textContent = `${rows.length.toLocaleString()} ${t("sheet.targetRows", "target rows")}`;
+    els.sheetGridHead.innerHTML = `<tr>${headers.map((header) => `<th>${escapeHtml(labelText(header))}</th>`).join("")}</tr>`;
     els.sheetGridRows.innerHTML = rows.map((row) => (
       `<tr>${headers.map((header) => `<td>${escapeHtml(row[header] || "")}</td>`).join("")}</tr>`
     )).join("");
@@ -2124,12 +2360,14 @@
     fillSelect(els.category, uniqueValues("category"));
     refreshPaymentFilterOptions();
     refreshTargetFilters();
-    els.stamp.textContent = `${offers.length.toLocaleString()} offers loaded / generated ${data.summary.generatedAt || ""}`;
-    els.paymentStamp.textContent = `${paymentRecords.length.toLocaleString()} saved Levanta payment records / cycle-aware availability / checked ${isoDate(PAYMENT_TODAY)}`;
-    quickPrompts.forEach((prompt) => {
+    setDatasetStamp();
+    setPaymentStamp("saved", isoDate(PAYMENT_TODAY));
+    quickPrompts.forEach(({ key, prompt }) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = prompt;
+      button.dataset.promptKey = key;
+      button.dataset.prompt = prompt;
+      button.textContent = t(key, prompt);
       button.addEventListener("click", () => applyPrompt(prompt));
       els.quickActions.appendChild(button);
     });
@@ -2175,6 +2413,7 @@
     els.paymentPendingOnly.addEventListener("change", () => { state.payments.pendingOnly = els.paymentPendingOnly.checked; renderPaymentsPage(); });
     els.paymentOverdueOnly.addEventListener("change", () => { state.payments.overdueOnly = els.paymentOverdueOnly.checked; renderPaymentsPage(); });
     els.paymentSync.addEventListener("click", () => refreshLevantaPayments());
+    els.languageToggle.addEventListener("click", toggleLanguage);
     els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredCsv);
     document.querySelectorAll(".sort-button").forEach((button) => {
@@ -2203,6 +2442,7 @@
     syncPaymentControls();
     renderAll();
     renderPaymentsPage();
+    rerenderForLanguage();
   }
 
   init();
