@@ -13,6 +13,7 @@ Internal YeahPromos Amazon offer intelligence dashboard for offer ranking, categ
 - Google Sheet and Feishu category intelligence for main-category and subcategory search.
 - Recommendation chatbot with English and Chinese prompt support.
 - Tier 2 publisher recommendation rules in `public/tier2_recommendation_rules.js`.
+- Tier sheet category-wise reporting and multi-sheet XLSX exports.
 - Levanta payment API helpers in `server.py` and `api/levanta/payments.py`.
 - Data rebuild and regression scripts in `scripts/`.
 - GitHub Actions CI in `.github/workflows/ci.yml`.
@@ -35,6 +36,16 @@ sheetCategory -> mainCategory -> feishuMainCategory -> non-Feishu category -> re
 ```
 
 Feishu main category, subcategory, and category path values remain searchable metadata, so prompts can still match subcategory phrases such as `robot vacuum`, but main-category grouping is driven by the Google Sheet category first.
+
+### Tier Pages and XLSX Exports
+
+Each tier page (`Tier 1`, `Tier 2`, `Tier 3`, `Tier 4`, and `BLACK TIER`) renders a category-wise report above the sheet table. The category report uses the current tier filters and groups rows by displayed category.
+
+- The on-page category report shows merchants, revenue, orders, conversion, EPC, and the top merchant per category.
+- Category groups are calculated from the filtered tier rows, so search, network/agency, country, EPC, and revenue filters update the category report.
+- Tier XLSX downloads include the selected tier sheet plus a `Category Summary` sheet.
+- Tier XLSX downloads also include an `Offer List` sheet with `Merchant ID`, `Merchant Name`, `Category`, and `Avg Commission Rate`.
+- `Avg Commission Rate` is rounded up to a whole percentage for export.
 
 ### Chatbot Intent Flow
 
@@ -73,6 +84,14 @@ Payment records come from Levanta invoice data and should be attributed to Levan
 - If Levanta provides a brand UUID, the dashboard keeps it as `levantaBrandId` while displaying the matched internal Levanta merchant ID.
 - Direct offers with the same brand name do not inherit Levanta payment status or sales.
 - RENPHO Group payment rows map to Levanta MID `362938`; RENPHO Wellness payment rows map to Levanta MID `363199`.
+
+### Payment Report Display and Export
+
+The payment page focuses on payment follow-up fields only. The payment table and downloadable payment XLSX do not include the old Notes column.
+
+- Payment table columns show merchant ID, merchant name/category, network, tier, month, status, revenue made, commission made, payment cycle, expected payment date, and last checked date.
+- Payment XLSX columns match the follow-up workflow: merchant, tier, network, category, month/status, revenue/commission, paid/remaining amount, payment cycle days, expected payment date, and last checked.
+- Notes are still allowed inside source records for internal calculation or status text, but they are not rendered as a payment-section column or exported payment column.
 
 ### Dashboard Offer List
 
