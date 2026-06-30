@@ -540,10 +540,12 @@
     if (!item) return "Uncategorized";
     const sheetCategory = cleanCategoryValue(item.sheetCategory);
     if (sheetCategory) return sheetCategory;
-    const category = cleanCategoryValue(item.category);
-    if (category && item.categorySource !== "Feishu") return category;
     const mainCategory = cleanCategoryValue(item.mainCategory);
     if (mainCategory) return mainCategory;
+    const feishuMainCategory = cleanCategoryValue(item.feishuMainCategory);
+    if (feishuMainCategory) return feishuMainCategory;
+    const category = cleanCategoryValue(item.category);
+    if (category && item.categorySource !== "Feishu") return category;
     if (category) return category;
     return cleanCategoryValue(item.levantaCategory) || "Uncategorized";
   }
@@ -1384,6 +1386,31 @@
       .filter((offer) => number(offer.conversionRate) >= minCvr)
       .filter((offer) => !state.notPaidOnly || hasPaymentRisk(offer))
       .sort((a, b) => (number(b[state.sort]) - number(a[state.sort])) * (state.descending ? 1 : -1));
+  }
+
+  function compareDashboardCategoryGroups(a, b) {
+    if (a.category === "Uncategorized" && b.category !== "Uncategorized") return 1;
+    if (b.category === "Uncategorized" && a.category !== "Uncategorized") return -1;
+    return number(b.summary.totalRevenue) - number(a.summary.totalRevenue) ||
+      number(b.summary.totalOrders) - number(a.summary.totalOrders) ||
+      number(b.summary.totalOffers) - number(a.summary.totalOffers) ||
+      String(a.category || "").localeCompare(String(b.category || ""), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function dashboardCategoryGroups(rows) {
+    const groups = new Map();
+    rows.forEach((offer) => {
+      const category = displayCategory(offer) || "Uncategorized";
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(offer);
+    });
+    return Array.from(groups.entries())
+      .map(([category, groupRows]) => ({
+        category,
+        rows: groupRows,
+        summary: aggregateRows(groupRows)
+      }))
+      .sort(compareDashboardCategoryGroups);
   }
 
   function fuzzyScore(query, offer) {
@@ -3019,11 +3046,35 @@
     els.metrics.innerHTML = cards.map(([label, value]) => `<div class="metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   }
 
-  function renderTable(rows) {
-    els.tableCount.textContent = `${rows.length.toLocaleString()} ${t("table.offerCount", "matching offers")}`;
-    els.table.innerHTML = rows.slice(0, 80).map((offer) => {
-      const paidClass = hasPaymentRisk(offer) ? "unpaid" : hasPaidSignal(offer) ? "paid" : "neutral";
-      return `<tr>
+  function dashboardOfferPreviewLimit() {
+    return state.category === "all" ? 5 : 80;
+  }
+
+  function dashboardCategoryHeaderRow(group, previewCount) {
+    const summary = group.summary;
+    const remaining = Math.max(0, group.rows.length - previewCount);
+    const remainingText = remaining ? ` · ${remaining.toLocaleString()} more` : "";
+    return `<tr class="category-group-row">
+      <td colspan="9">
+        <div class="category-group-summary">
+          <div>
+            <strong>${escapeHtml(group.category)}</strong>
+            <span>${group.rows.length.toLocaleString()} offers${escapeHtml(remainingText)}</span>
+          </div>
+          <dl>
+            <div><dt>CVR</dt><dd>${shortPct(summary.avgCvr)}</dd></div>
+            <div><dt>AOV</dt><dd>${shortMoney(summary.avgAov)}</dd></div>
+            <div><dt>Revenue</dt><dd>${shortMoney(summary.totalRevenue)}</dd></div>
+            <div><dt>Orders</dt><dd>${number(summary.totalOrders).toLocaleString()}</dd></div>
+          </dl>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function dashboardOfferRow(offer) {
+    const paidClass = hasPaymentRisk(offer) ? "unpaid" : hasPaidSignal(offer) ? "paid" : "neutral";
+    return `<tr>
         <td><strong>${escapeHtml(offer.brand || "")}</strong><p>${escapeHtml(offer.merchantId || "")}</p><p>${escapeHtml(displayCategory(offer))}</p></td>
         <td><span class="badge tier">${escapeHtml(tierGroup(offer))}</span></td>
         <td>${escapeHtml(offer.network || "")}</td>
@@ -3034,6 +3085,16 @@
         <td>${number(offer.orders).toLocaleString()}</td>
         <td><span class="badge ${paidClass}">${escapeHtml(offer.paymentStatus || "not available")}</span></td>
       </tr>`;
+  }
+
+  function renderTable(rows) {
+    const groups = dashboardCategoryGroups(rows);
+    const previewLimit = dashboardOfferPreviewLimit();
+    els.tableCount.textContent = `${rows.length.toLocaleString()} ${t("table.offerCount", "matching offers")} across ${groups.length.toLocaleString()} main categories`;
+    els.table.innerHTML = groups.map((group) => {
+      const previewRows = group.rows.slice(0, previewLimit);
+      return dashboardCategoryHeaderRow(group, previewRows.length) +
+        previewRows.map(dashboardOfferRow).join("");
     }).join("");
   }
 
@@ -4012,7 +4073,9 @@
       extractMetricFilters,
       extractMetricSortIntent,
       requestedRecommendationCount,
-      rankedRecommendations
+      rankedRecommendations,
+      displayCategory,
+      dashboardCategoryGroups
     };
   } else {
     init();

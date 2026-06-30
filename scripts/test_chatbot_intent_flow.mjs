@@ -131,4 +131,24 @@ assertEqual(rankedByCommission[0].brand, "Tier 1 larger commission", "metric sor
 assertEqual(rankedByCommission[1].brand, "Tier 1 smaller commission", "lower Tier 1 commission should stay before lower tier offers");
 assertEqual(rankedByCommission[2].brand, "Tier 2 large commission", "large lower-tier commission should not jump ahead of Tier 1");
 
+assertEqual(hooks.displayCategory({
+  brand: "Subcategory source",
+  category: "Open-Ear Headphones",
+  mainCategory: "Electronics",
+  categorySource: "Levanta"
+}), "Electronics", "dashboard display category should prefer mainCategory over subcategory-like category values");
+
+const dashboardGroups = hooks.dashboardCategoryGroups([
+  { brand: "Electronics A", category: "Open-Ear Headphones", mainCategory: "Electronics", categorySource: "Levanta", salesAmount: 300, orders: 6, clicks: 60, affCommission: 30 },
+  { brand: "Electronics B", mainCategory: "Electronics", salesAmount: 200, orders: 4, clicks: 40, affCommission: 20 },
+  { brand: "Beauty A", sheetCategory: "Beauty & Personal Care", mainCategory: "Beauty", salesAmount: 700, orders: 7, clicks: 70, affCommission: 70 },
+  { brand: "Uncategorized A", salesAmount: 1000, orders: 10, clicks: 100, affCommission: 100 }
+]);
+assertEqual(dashboardGroups[0].category, "Beauty & Personal Care", "dashboard groups should sort main categories by revenue first");
+assertEqual(dashboardGroups[1].category, "Electronics", "dashboard groups should use mainCategory for subcategory-style source rows");
+assertEqual(dashboardGroups[2].category, "Uncategorized", "uncategorized group should stay last");
+assertEqual(dashboardGroups[1].summary.totalRevenue, 500, "category revenue should aggregate salesAmount");
+assertEqual(dashboardGroups[1].summary.avgAov, 50, "category AOV should aggregate revenue divided by orders");
+assertApprox(dashboardGroups[1].summary.avgCvr, 0.1, "category CVR should aggregate orders divided by clicks");
+
 console.log("Chatbot intent flow tests passed");
