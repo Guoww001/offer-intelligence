@@ -4343,7 +4343,9 @@
 
   function storageApi() {
     try {
-      return window.localStorage || null;
+      if (window.localStorage) return window.localStorage;
+      if (typeof localStorage !== "undefined") return localStorage;
+      return null;
     } catch (error) {
       return null;
     }
