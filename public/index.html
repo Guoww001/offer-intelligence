@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Offer Intelligence Chat</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=20260701-tier-bulk-move1" />
+    <link rel="stylesheet" href="./styles.css?v=20260702-merge1" />
   </head>
   <body>
     <div class="app-shell">
@@ -48,7 +48,7 @@
           </div>
           <div class="source-row">
             <span>Levanta</span>
-            <strong data-i18n="source.payments">Mar-Jun payments</strong>
+            <strong data-i18n="source.payments">Feb-Jun payments</strong>
           </div>
           <div class="source-row">
             <span>Sheets</span>
@@ -130,7 +130,7 @@
                 <p id="contextSubtitle">Ask a question to update this panel</p>
               </div>
               <button class="icon-button" id="downloadCsv" type="button" aria-label="Download current overview as Excel">
-                XLSX
+                <span data-i18n="action.download">Download</span>
               </button>
             </div>
             <div class="recommendation-box context-panel" id="recommendationBox"></div>
@@ -179,6 +179,12 @@
               </select>
             </label>
             <label>
+              <span data-i18n="label.Region">Region</span>
+              <select id="paymentRegionFilter">
+                <option value="all">All regions</option>
+              </select>
+            </label>
+            <label>
               <span data-i18n="label.Tier">Tier</span>
               <select id="paymentTierFilter">
                 <option value="all">All tiers</option>
@@ -215,7 +221,7 @@
                   <h3 data-i18n="payments.records">Payment Records</h3>
                   <p id="paymentTableCount"></p>
                 </div>
-                <button class="icon-button table-download-button" id="downloadPaymentsXlsx" type="button" aria-label="Download payment records as Excel">XLSX</button>
+                <button class="icon-button table-download-button" id="downloadPaymentsXlsx" type="button" aria-label="Download payment records as Excel" data-i18n="action.download">Download</button>
               </div>
               <div class="table-wrap payment-table-wrap">
                 <table class="payment-table">
@@ -224,6 +230,7 @@
                       <th data-i18n="label.Merchant ID">Merchant ID</th>
                       <th data-i18n="label.Merchant">Merchant</th>
                       <th data-i18n="label.Network">Network</th>
+                      <th data-i18n="label.Region">Region</th>
                       <th data-i18n="label.Tier">Tier</th>
                       <th data-i18n="label.Month">Month</th>
                       <th data-i18n="label.Status">Status</th>
@@ -268,7 +275,7 @@
                 <h3 id="sheetTableTitle">Monthly Target Records</h3>
                 <p id="sheetTableCount"></p>
               </div>
-              <button class="icon-button table-download-button" id="downloadSheetXlsx" type="button" aria-label="Download sheet records as Excel">XLSX</button>
+              <button class="icon-button table-download-button" id="downloadSheetXlsx" type="button" aria-label="Download sheet records as Excel" data-i18n="action.download">Download</button>
             </div>
             <div class="table-wrap sheet-table-wrap">
               <table class="sheet-table">
@@ -322,11 +329,25 @@
                 <p id="tierTableCount"></p>
               </div>
               <div class="table-toolbar-actions">
-                <button class="icon-button table-move-button" id="moveTierRows" type="button" disabled>Move selected</button>
-                <button class="icon-button table-reset-moves-button hidden" id="resetTierMoves" type="button">Reset moves</button>
-                <button class="icon-button table-expand-button" id="expandTierSheet" type="button" aria-label="Expand tier records table" aria-expanded="false">Expand</button>
-                <button class="icon-button table-close-button hidden" id="closeTierSheetOverlay" type="button" aria-label="Close expanded tier records table">Close</button>
-                <button class="icon-button table-download-button" id="downloadTierXlsx" type="button" aria-label="Download tier records as Excel">XLSX</button>
+                <div class="column-picker">
+                  <button class="icon-button table-select-button" id="tierColumnToggle" type="button" aria-expanded="false" data-i18n="action.select">Select</button>
+                  <div class="column-picker-panel hidden" id="tierColumnPanel">
+                    <div class="column-picker-header">
+                      <strong data-i18n="tier.columnsTitle">Information</strong>
+                      <span data-i18n="tier.columnsHint">Select fields to show</span>
+                    </div>
+                    <div class="column-picker-actions">
+                      <button type="button" id="tierColumnCore" data-i18n="tier.coreColumns">Core</button>
+                      <button type="button" id="tierColumnAll" data-i18n="tier.allColumns">All</button>
+                    </div>
+                    <div class="column-picker-list" id="tierColumnList"></div>
+                  </div>
+                </div>
+                <button class="icon-button table-move-button" id="moveTierRows" type="button" disabled data-i18n="action.move">Move</button>
+                <button class="icon-button table-reset-moves-button hidden" id="resetTierMoves" type="button" data-i18n="action.reset">Reset</button>
+                <button class="icon-button table-expand-button" id="expandTierSheet" type="button" aria-label="Expand tier records table" aria-expanded="false" data-i18n="action.expand">Expand</button>
+                <button class="icon-button table-close-button hidden" id="closeTierSheetOverlay" type="button" aria-label="Close expanded tier records table" data-i18n="action.close">Close</button>
+                <button class="icon-button table-download-button" id="downloadTierXlsx" type="button" aria-label="Download tier records as Excel" data-i18n="action.download">Download</button>
                 <span class="tier-move-inline-status" id="tierMoveInlineStatus" aria-live="polite"></span>
               </div>
             </div>
@@ -363,6 +384,6 @@
     <script src="./chatbot_data.js?v=20260630-tier-refresh1"></script>
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
-    <script src="./app.js?v=20260701-tier-bulk-move1"></script>
+    <script src="./app.js?v=20260702-merge1"></script>
   </body>
 </html>

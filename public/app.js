@@ -4,9 +4,14 @@
   const offers = data.offers || [];
   const chatbotI18n = window.CHATBOT_I18N || {};
   const tier2Rules = window.TIER2_RECOMMENDATION_RULES || {};
+  const TIER_MOVE_OPTIONS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
+  const TIER_OVERRIDE_KEY = "offerTierOverrides";
+  const TIER_COLUMN_KEY = "offerTierVisibleColumns";
   const offersByMerchantId = new Map();
   const offerGroupsByMerchantId = new Map();
   const originalOfferTiers = [];
+  let tierOverrides = loadTierOverrides();
+  const sheetPaymentCycles = buildSheetPaymentCycleIndex();
   offers.forEach((offer, index) => {
     originalOfferTiers[index] = offer.tier || "";
     const merchantId = String(offer.merchantId || "").trim();
@@ -15,10 +20,13 @@
       if (!offerGroupsByMerchantId.has(merchantId)) offerGroupsByMerchantId.set(merchantId, []);
       offerGroupsByMerchantId.get(merchantId).push(offer);
     }
-    offer.paymentCycle = normalizePaymentCycle(offer.paymentCycle, offer.network);
+    offer.originalTier = offer.originalTier || offer.tier || "Unknown";
+    applyTierOverrideToOffer(offer);
+    offer.paymentCycle = resolveOfferPaymentCycle(offer);
+    offer.region = normalizeRegion(offer.region || offer.country || inferRegionFromText(offer.brand));
   });
   const PAYMENT_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  const ACTIVE_PAYMENT_MONTHS = ["March", "April", "May", "June"];
+  const ACTIVE_PAYMENT_MONTHS = ["February", "March", "April", "May", "June"];
   const MAX_RECOMMENDATION_EXPORT = 1000;
   const AUTO_PAYMENT_SYNC_KEY = "offerPaymentLastAutoSync";
   const AUTO_PAYMENT_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -57,6 +65,7 @@
     payments: {
       month: "all",
       network: "all",
+      region: "all",
       tier: "all",
       status: "all",
       search: "",
@@ -78,6 +87,8 @@
       minEpc: "",
       minRevenue: ""
     },
+    tierColumnPanelOpen: false,
+    tierVisibleColumns: loadTierVisibleColumns(),
     targetFilters: {
       month: "",
       tier: "all"
@@ -172,6 +183,11 @@
     tierSheetCountry: document.getElementById("tierSheetCountry"),
     tierSheetMinEpc: document.getElementById("tierSheetMinEpc"),
     tierSheetMinRevenue: document.getElementById("tierSheetMinRevenue"),
+    tierColumnToggle: document.getElementById("tierColumnToggle"),
+    tierColumnPanel: document.getElementById("tierColumnPanel"),
+    tierColumnList: document.getElementById("tierColumnList"),
+    tierColumnCore: document.getElementById("tierColumnCore"),
+    tierColumnAll: document.getElementById("tierColumnAll"),
     tierNavButtons: Array.from(document.querySelectorAll(".tier-nav-button")),
     paymentSummary: document.getElementById("paymentSummary"),
     paymentRows: document.getElementById("paymentRows"),
@@ -180,6 +196,7 @@
     paymentSync: document.getElementById("paymentSync"),
     paymentMonth: document.getElementById("paymentMonthFilter"),
     paymentNetwork: document.getElementById("paymentNetworkFilter"),
+    paymentRegion: document.getElementById("paymentRegionFilter"),
     paymentTier: document.getElementById("paymentTierFilter"),
     paymentStatus: document.getElementById("paymentStatusFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
@@ -222,7 +239,7 @@
       "nav.targets": "目标",
       "sidebar.status": "数据状态",
       "source.backendEpc": "后台 EPC",
-      "source.payments": "3-6月付款",
+      "source.payments": "2-6月付款",
       "source.sheets": "分层逻辑已加载",
       "dashboard.title": "推荐聊天机器人",
       "filters.dashboard": "仪表盘筛选",
@@ -235,6 +252,9 @@
       "filter.overdueOnly": "仅到期/逾期",
       "action.reset": "重置",
       "action.send": "发送",
+      "action.move": "移动",
+      "action.select": "选择",
+      "action.download": "下载",
       "chat.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer...",
       "table.offers": "Offer 列表",
       "payments.title": "付款",
@@ -250,6 +270,7 @@
       "label.Merchant ID": "商家 ID",
       "label.Tier": "分层",
       "label.Network": "网络",
+      "label.Region": "地区",
       "label.Category": "品类",
       "label.Month": "月份",
       "label.Status": "状态",
@@ -257,6 +278,7 @@
       "label.Country": "国家",
       "label.Orders": "订单",
       "label.Payment": "付款",
+      "label.Move": "移动",
       "label.Highlight": "重点",
       "label.Publisher Count": "Publisher 数量",
       "label.Success Rate": "成功率",
@@ -301,6 +323,7 @@
       "label.Target": "目标",
       "option.All tiers": "全部分层",
       "option.All networks": "全部网络",
+      "option.All regions": "全部地区",
       "option.All categories": "全部品类",
       "option.All months": "全部月份",
       "option.All statuses": "全部状态",
@@ -311,6 +334,9 @@
       "option.Overdue": "逾期",
       "option.Partial": "部分付款",
       "option.Unknown": "未知",
+      "move.original": "原始",
+      "move.movedFrom": "从原层级移动",
+      "option.February": "二月",
       "option.March": "三月",
       "option.April": "四月",
       "option.May": "五月",
@@ -360,6 +386,10 @@
       "tier.imported": "从 Google Sheets 导入",
       "tier.notFound": "未找到 Google Sheet 标签页",
       "tier.noMatch": "当前导出中没有找到匹配的 Sheet 标签页。",
+      "tier.columnsTitle": "信息字段",
+      "tier.columnsHint": "选择要显示的字段",
+      "tier.coreColumns": "核心",
+      "tier.allColumns": "全部",
       "language.button.zh": "中文简体",
       "language.button.en": "English"
     }
@@ -537,6 +567,109 @@
 
   function normalize(value) {
     return String(value || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+  }
+
+  function canonicalTierName(value) {
+    const text = String(value || "").trim().toLowerCase();
+    if (text === "black tier" || text === "black") return "BLACK TIER";
+    const match = text.match(/tier\s*([1-4])/);
+    return match ? `Tier ${match[1]}` : String(value || "").trim();
+  }
+
+  function offerKey(offer) {
+    return String(offer && (offer.id || `${offer.merchantId || ""}::${normalize(offer.brand)}`));
+  }
+
+  function loadTierOverrides() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(TIER_OVERRIDE_KEY) || "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveTierOverrides() {
+    localStorage.setItem(TIER_OVERRIDE_KEY, JSON.stringify(tierOverrides));
+  }
+
+  function loadTierVisibleColumns() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(TIER_COLUMN_KEY) || "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveTierVisibleColumns() {
+    localStorage.setItem(TIER_COLUMN_KEY, JSON.stringify(state.tierVisibleColumns));
+  }
+
+  function applyTierOverrideToOffer(offer) {
+    const targetTier = canonicalTierName(tierOverrides[offerKey(offer)]);
+    if (TIER_MOVE_OPTIONS.includes(targetTier)) {
+      offer.tier = targetTier;
+      offer.tierOverride = true;
+    } else {
+      offer.tier = offer.originalTier || offer.tier || "Unknown";
+      offer.tierOverride = false;
+    }
+    return offer;
+  }
+
+  function tierMoveOptionsHtml(currentTier) {
+    const current = canonicalTierName(currentTier);
+    return TIER_MOVE_OPTIONS.map((tier) => (
+      `<option value="${escapeHtml(tier)}"${tier === current ? " selected" : ""}>${escapeHtml(optionText(tier))}</option>`
+    )).join("");
+  }
+
+  function tierMoveControlHtml(offer) {
+    if (!offer) return "";
+    const key = offerKey(offer);
+    return `<div class="tier-move-control" data-offer-key="${escapeHtml(key)}">
+      <select class="tier-move-select" aria-label="Move ${escapeHtml(offer.brand || "brand")} to tier">
+        ${tierMoveOptionsHtml(offer.tier)}
+      </select>
+      <button class="tier-move-button" type="button" data-offer-key="${escapeHtml(key)}">${escapeHtml(t("action.move", "Move"))}</button>
+    </div>`;
+  }
+
+  function updatePaymentRowsForTierMove() {
+    paymentRecords = withPendingPaymentPlaceholders(paymentRecords.map(normalizePaymentRecord));
+    rebuildPaymentIndex();
+  }
+
+  function moveOfferToTier(key, targetTier) {
+    const offer = offers.find((item) => offerKey(item) === key);
+    const tier = canonicalTierName(targetTier);
+    if (!offer || !TIER_MOVE_OPTIONS.includes(tier)) return;
+    if (tier === canonicalTierName(offer.originalTier)) {
+      delete tierOverrides[key];
+    } else {
+      tierOverrides[key] = tier;
+    }
+    saveTierOverrides();
+    applyTierOverrideToOffer(offer);
+    updatePaymentRowsForTierMove();
+    refreshPaymentFilterOptions();
+    setPaymentStamp(state.livePaymentsLoaded ? "live" : "saved");
+    if (state.page === "payments") {
+      renderPaymentsPage();
+    } else if (state.page === "tier") {
+      renderTierPage(state.selectedTierPage);
+    } else {
+      renderAll();
+    }
+  }
+
+  function handleTierMoveClick(event) {
+    const button = event.target.closest(".tier-move-button");
+    if (!button) return;
+    const wrapper = button.closest(".tier-move-control");
+    const select = wrapper && wrapper.querySelector(".tier-move-select");
+    moveOfferToTier(button.dataset.offerKey, select ? select.value : "");
   }
 
   function words(value) {
@@ -718,6 +851,136 @@
     return cycle > 0 ? Math.round(cycle) : 60;
   }
 
+  function paymentCycleKeys(merchantId, merchantName) {
+    const keys = [];
+    const id = String(merchantId || "").trim();
+    const name = normalize(merchantName);
+    if (id) keys.push(`id:${id}`);
+    if (name) keys.push(`name:${name}`);
+    return keys;
+  }
+
+  function buildSheetPaymentCycleIndex() {
+    const cycles = new Map();
+    (sheetReport.sheets || []).forEach((sheet) => {
+      (sheet.rows || []).forEach((row) => {
+        const cycle = number(row["Payment Cycle"]);
+        if (cycle <= 0) return;
+        paymentCycleKeys(row["Merchant ID"] || row["Merchant Id"] || row.merchantId, row["Merchant Name"] || row.Brand || row.brand)
+          .forEach((key) => cycles.set(key, Math.round(cycle)));
+      });
+    });
+    return cycles;
+  }
+
+  function sheetPaymentCycleFor(merchantId, merchantName) {
+    for (const key of paymentCycleKeys(merchantId, merchantName)) {
+      const cycle = sheetPaymentCycles.get(key);
+      if (cycle > 0) return cycle;
+    }
+    return 0;
+  }
+
+  function explicitPaymentCycleFrom(source) {
+    if (!source) return 0;
+    const keys = [
+      "paymentCycle",
+      "payment_cycle",
+      "paymentCycleDays",
+      "payment_cycle_days",
+      "paymentTermDays",
+      "payment_terms_days",
+      "paymentTermsDays",
+      "paymentDelayDays",
+      "payoutDelayDays",
+      "netDays",
+      "net_days"
+    ];
+    for (const key of keys) {
+      const cycle = number(source[key]);
+      if (cycle > 0) return Math.round(cycle);
+    }
+    return 0;
+  }
+
+  function resolveOfferPaymentCycle(offer) {
+    const sheetCycle = sheetPaymentCycleFor(offer && offer.merchantId, offer && offer.brand);
+    if (sheetCycle > 0) return normalizePaymentCycle(sheetCycle, offer && offer.network);
+    return normalizePaymentCycle(null, offer && offer.network);
+  }
+
+  function inferRegionFromText(value) {
+    const text = String(value || "");
+    const match = text.match(/(?:^|[\s()[\]-])(US|USA|UK|GB|DE|FR|CA|AU)(?:$|[\s()[\]-])/i);
+    if (!match) return "";
+    return match[1];
+  }
+
+  function normalizeRegion(value) {
+    const text = String(value || "").trim().toUpperCase();
+    if (!text) return "";
+    if (text === "USA") return "US";
+    if (text === "GB") return "UK";
+    if (["US", "UK", "DE", "FR", "CA", "AU"].includes(text)) return text;
+    return text;
+  }
+
+  function paymentRegionFor(record, matchedOffer = {}) {
+    return normalizeRegion(
+      record.region ||
+      record.marketplace ||
+      record.marketPlace ||
+      record.market ||
+      record.country ||
+      record.countryCode ||
+      matchedOffer.region ||
+      matchedOffer.country ||
+      inferRegionFromText(record.merchantName || record.brand || matchedOffer.brand)
+    );
+  }
+
+  function bestPaymentOffer(candidates) {
+    return candidates
+      .filter(Boolean)
+      .sort((a, b) => (
+        tierPriority(a, true, true) - tierPriority(b, true, true) ||
+        number(b.salesAmount) - number(a.salesAmount) ||
+        String(a.brand || "").localeCompare(String(b.brand || ""))
+      ))[0] || null;
+  }
+
+  function isSafeBrandMatch(offerBrand, merchantName) {
+    if (!offerBrand || !merchantName) return false;
+    if (offerBrand === merchantName) return true;
+    const shorter = Math.min(offerBrand.length, merchantName.length);
+    const longer = Math.max(offerBrand.length, merchantName.length);
+    return shorter >= 5 && shorter / longer >= 0.65 && (offerBrand.includes(merchantName) || merchantName.includes(offerBrand));
+  }
+
+  function resolvePaymentCycle(record, matchedOffer, network) {
+    const sheetCycle = sheetPaymentCycleFor(
+      (record && record.merchantId) || (matchedOffer && matchedOffer.merchantId),
+      (record && (record.merchantName || record.brand)) || (matchedOffer && matchedOffer.brand)
+    );
+    if (sheetCycle > 0) return normalizePaymentCycle(sheetCycle, (matchedOffer && matchedOffer.network) || network);
+    const apiCycle = explicitPaymentCycleFrom(record);
+    if (apiCycle > 0) return normalizePaymentCycle(apiCycle, network || (matchedOffer && matchedOffer.network));
+    return normalizePaymentCycle(null, network || (matchedOffer && matchedOffer.network));
+  }
+
+  function offerForMerchant(merchantId, merchantName) {
+    const cleanId = String(merchantId || "").trim();
+    if (cleanId) {
+      const byId = bestPaymentOffer(offers.filter((offer) => String(offer.merchantId || "").trim() === cleanId));
+      if (byId) return byId;
+    }
+    const cleanName = normalize(merchantName);
+    if (!cleanName) return null;
+    const exact = bestPaymentOffer(offers.filter((offer) => normalize(offer.brand) === cleanName));
+    if (exact) return exact;
+    return bestPaymentOffer(offers.filter((offer) => isSafeBrandMatch(normalize(offer.brand), cleanName)));
+  }
+
   function paymentDueDate(record, cycleOverride) {
     const cycle = cycleOverride === undefined
       ? Math.max(60, normalizePaymentCycle(record.paymentCycle, record.network))
@@ -778,6 +1041,7 @@
       levantaBrandId,
       merchantName: String(record.merchantName || record.brand || "").trim(),
       network,
+      region: paymentRegionFor(record, matchedOffer),
       tier: paymentMetadataValue(record.tier, matchedOffer.tier, "Unknown"),
       category: paymentMetadataValue(record.category, matchedOffer.category || matchedOffer.levantaCategory, "Uncategorized"),
       categoryPath: paymentMetadataValue(record.categoryPath, matchedOffer.categoryPath, ""),
@@ -793,7 +1057,7 @@
       expectedPaymentAmount: expected,
       paidAmount: paid,
       remainingAmount: remaining,
-      paymentCycle: normalizePaymentCycle(record.paymentCycle || matchedOffer.paymentCycle, network),
+      paymentCycle: resolvePaymentCycle(record, matchedOffer, network),
       lastCheckedDate: record.lastCheckedDate || data.summary.generatedAt || "",
       notes: record.notes || ""
     };
@@ -846,11 +1110,13 @@
     const merchantId = String(source.merchantId || offer.merchantId || "").trim();
     const merchantName = String(source.merchantName || source.brand || offer.brand || merchantId || "Unknown merchant").trim();
     const network = source.network || offer.network || "Levanta";
+    const paymentCycle = resolvePaymentCycle(source, offer, network);
     const record = {
       id: `${merchantId || normalize(merchantName)}::${reportYear}-${String(monthIndex + 1).padStart(2, "0")}::pending-placeholder`,
       merchantId,
       merchantName,
       network,
+      region: paymentRegionFor(source, offer),
       tier: source.tier || offer.tier || "Unknown",
       category: source.category || offer.category || offer.levantaCategory || "Uncategorized",
       categoryPath: source.categoryPath || offer.categoryPath || "",
@@ -866,7 +1132,7 @@
       expectedPaymentAmount: 0,
       paidAmount: 0,
       remainingAmount: 0,
-      paymentCycle: normalizePaymentCycle(source.paymentCycle || offer.paymentCycle, network),
+      paymentCycle,
       rawStatus: "pending",
       lastCheckedDate: isoDate(PAYMENT_TODAY),
       currency: source.currency || "USD",
@@ -1014,7 +1280,7 @@
       els.paymentSync.textContent = t("payments.syncing", "Syncing...");
     }
     try {
-      const response = await fetch("/api/levanta/payments?start=2026-03&end=2026-06", { cache: "no-store" });
+      const response = await fetch("/api/levanta/payments?start=2026-02&end=2026-06&marketplaces=US,UK,DE,FR", { cache: "no-store" });
       if (!response.ok) throw new Error(`Levanta API sync returned ${response.status}`);
       const payload = await response.json();
       if (!payload.records || !payload.records.length) throw new Error("Levanta API returned no payment records");
@@ -2296,7 +2562,7 @@
   function buildPaymentContext(rows, prompt) {
     state.lastRows = rows;
     const summary = updatePaymentSummary(rows);
-    summary.monthBreakdown = ["March", "April", "May", "June"].map((month) => monthStatus(month, rows));
+    summary.monthBreakdown = ACTIVE_PAYMENT_MONTHS.map((month) => monthStatus(month, rows));
     return { type: "payment", items: rows, summary, filters: { prompt } };
   }
 
@@ -2603,6 +2869,20 @@
     { label: "Category", render: (o) => escapeHtml(o.category || "Uncategorized") },
     { label: "EPC", render: (o) => shortEpc(o.epc) },
     { label: "AOV", render: (o) => shortMoney(o.aov) },
+    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
+    { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
+    { label: "CVR", render: (o) => shortPct(o.conversionRate) },
+    { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
+    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
+  ];
+
+  const topMetricColumns = [
+    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
+    { label: "Tier", render: (o) => escapeHtml(tierGroup(o)) },
+    { label: "Category", render: (o) => escapeHtml(displayCategory(o)) },
+    { label: "AOV", render: (o) => shortMoney(o.aov) },
+    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
+    { label: "EPC", render: (o) => shortEpc(o.epc) },
     { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
     { label: "CVR", render: (o) => shortPct(o.conversionRate) },
     { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
@@ -2620,6 +2900,153 @@
     { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
     { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
   ];
+
+  function metricMentioned(prompt, metric) {
+    const text = String(prompt || "").toLowerCase();
+    if (metric === "aov") return /\baov\b|客单价|平均订单金额/.test(text);
+    if (metric === "epc") return /\bepc\b/.test(text);
+    if (metric === "commission") return /commission|commissions|commisison|comission|\baff\s+commission\b|affiliate\s+commission|产生佣金|佣金收入|佣金金额|佣金额|联盟佣金|佣金/.test(text);
+    return false;
+  }
+
+  function extractTopMetricRequest(prompt) {
+    const text = String(prompt || "");
+    const lower = text.toLowerCase();
+    const wantsTop = /\b(top|highest|best|largest|biggest|rank|ranking|sort|排行|排名|最高|最大|最佳|最好|前\s*\d*)\b/i.test(text) ||
+      /最高|最大|最佳|最好|排行|排名|前\s*\d*/.test(text);
+    if (!wantsTop) return null;
+
+    const hasAov = metricMentioned(prompt, "aov");
+    const hasCommission = metricMentioned(prompt, "commission");
+    const hasEpc = metricMentioned(prompt, "epc");
+    if (!hasAov && !hasCommission && !hasEpc) return null;
+
+    if (hasAov && hasCommission) {
+      return {
+        key: "aov_commission",
+        label: "AOV + Commission",
+        sortDescription: "AOV first, then commission made",
+        fields: [
+          { field: "aov", label: "AOV", type: "money" },
+          { field: "affCommission", label: "Commission made", type: "money" }
+        ]
+      };
+    }
+    if (hasCommission) {
+      return {
+        key: "commission",
+        label: "Commission",
+        sortDescription: "AOV first, then commission made",
+        fields: [
+          { field: "aov", label: "AOV", type: "money" },
+          { field: "affCommission", label: "Commission made", type: "money" }
+        ]
+      };
+    }
+    if (hasAov) {
+      return {
+        key: "aov",
+        label: "AOV",
+        sortDescription: "AOV",
+        fields: [{ field: "aov", label: "AOV", type: "money" }]
+      };
+    }
+    return {
+      key: "epc",
+      label: "EPC",
+      sortDescription: "EPC",
+      fields: [{ field: "epc", label: "EPC", type: "money" }]
+    };
+  }
+
+  function compareTopMetricRows(a, b, request) {
+    for (const metric of request.fields) {
+      const diff = number(b[metric.field]) - number(a[metric.field]);
+      if (diff) return diff;
+    }
+    return (
+      number(b.salesAmount) - number(a.salesAmount) ||
+      number(b.orders) - number(a.orders) ||
+      number(b.conversionRate) - number(a.conversionRate) ||
+      tierPriority(a, true, true) - tierPriority(b, true, true) ||
+      String(a.brand || "").localeCompare(String(b.brand || ""), undefined, { numeric: true, sensitivity: "base" })
+    );
+  }
+
+  function topMetricFilterText(context) {
+    const parts = [];
+    if (context.tier) parts.push(context.tier);
+    if (context.category) parts.push(context.category);
+    const metricText = metricFilterText(context.metricFilters);
+    if (metricText) parts.push(metricText);
+    return parts.join(", ");
+  }
+
+  function categoryForTopMetricPrompt(prompt) {
+    const phrase = cleanedCategoryPhrase(prompt)
+      .replace(/\b(?:epc|aov|commission|commissions|commisison|comission|affiliate|aff|made|amount|rate)\b/gi, " ")
+      .replace(/佣金|客单价|平均订单金额/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!phrase) return null;
+    const category = categoryForPrompt(prompt);
+    if (!category) return null;
+    if (normalize(category) === normalize(phrase) && !categoryAliases[category] && !uniqueCategoryValues().some((value) => normalize(value) === normalize(category))) return null;
+    return category;
+  }
+
+  function topMetricOfferAnswer(prompt, request) {
+    const tier = tierFromPrompt(prompt);
+    const category = categoryForTopMetricPrompt(prompt);
+    const includeBlack = /black|blocked|include black|黑名单|黑色|屏蔽|暂停/i.test(prompt);
+    const metricFilters = extractMetricFilters(prompt);
+    const requestedCount = requestedRecommendationCount(prompt, 5);
+    let rows = offers
+      .filter((offer) => !tier || offer.tier === tier)
+      .filter((offer) => !category || categoryMatches(offer, category))
+      .filter((offer) => tier || includeBlack || offer.tier !== "BLACK TIER")
+      .filter((offer) => request.fields.every((metric) => number(offer[metric.field]) > 0));
+    rows = applyMetricFilters(rows, metricFilters)
+      .sort((a, b) => compareTopMetricRows(a, b, request));
+
+    const exportRows = rows.slice(0, Math.min(requestedCount, MAX_RECOMMENDATION_EXPORT));
+    const top = exportRows.slice(0, 5);
+    setContext(buildRecommendationContext(exportRows, {
+      type: "top_metric",
+      requestedCount,
+      exportCount: exportRows.length,
+      tier,
+      category,
+      metricFilters,
+      ranking: request.label
+    }));
+    if (!top.length) return `I found no offers with usable ${escapeHtml(request.label)} data for this request.`;
+
+    const filterText = topMetricFilterText({ tier, category, metricFilters });
+    const downloadId = registerRecommendationDownload(exportRows, {
+      downloadType: "offers",
+      filePrefix: `top_${request.key}_offers`,
+      exportScope: filterText || request.key,
+      sheetName: `Top ${request.label}`.slice(0, 31),
+      prompt,
+      ranking: request.label,
+      columns: recommendationExportColumns()
+    }, requestedCount);
+    const foundText = exportRows.length < requestedCount
+      ? `I found ${exportRows.length.toLocaleString()} matching offers.`
+      : `The Excel download includes all ${exportRows.length.toLocaleString()} requested offers.`;
+    const filterNote = filterText ? ` Filter: ${escapeHtml(filterText)}.` : "";
+
+    return `<p><strong>Top ${escapeHtml(request.label)} offers:</strong> sorted by ${escapeHtml(request.sortDescription)}. Showing ${top.length.toLocaleString()} in chat. ${escapeHtml(foundText)}${filterNote}</p>` +
+      `<div class="download-card">
+        <div>
+          <strong>Full top ${escapeHtml(request.label)} file</strong>
+          <span>${exportRows.length.toLocaleString()} offers sorted by ${escapeHtml(request.sortDescription)}.</span>
+        </div>
+        <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">Download Excel</button>
+      </div>` +
+      resultTable(top, topMetricColumns);
+  }
 
   const paymentCycleOfferColumns = [
     { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
@@ -2653,7 +3080,7 @@
 
   function chatMonthText(value, language) {
     if (language !== "zh") return optionText(value);
-    const map = { March: "三月", April: "四月", May: "五月", June: "六月" };
+    const map = { February: "二月", March: "三月", April: "四月", May: "五月", June: "六月" };
     return map[value] || value || "";
   }
 
@@ -3289,7 +3716,12 @@
     const wantsRecommendation = intent === "recommendation";
     const wantsGoogle = /google|keyword|brand keyword|search/.test(lower) || /关键词|搜索|品牌词/.test(prompt);
     const metricFilters = extractMetricFilters(prompt);
+    const topMetricRequest = extractTopMetricRequest(prompt);
     const metricSort = extractMetricSortIntent(prompt);
+
+    if (topMetricRequest) {
+      return topMetricOfferAnswer(prompt, topMetricRequest);
+    }
 
     if (intent === "payment") {
       return paymentAnswer(prompt);
@@ -3435,9 +3867,10 @@
 
   function dashboardOfferRow(offer) {
     const paidClass = hasPaymentRisk(offer) ? "unpaid" : hasPaidSignal(offer) ? "paid" : "neutral";
+    const movedNote = offer.tierOverride ? `<p class="tier-override-note">${escapeHtml(t("move.movedFrom", "Moved from"))} ${escapeHtml(optionText(offer.originalTier || "Unknown"))}</p>` : "";
     return `<tr>
         <td><strong>${escapeHtml(offer.brand || "")}</strong><p>${escapeHtml(offer.merchantId || "")}</p><p>${escapeHtml(displayCategory(offer))}</p></td>
-        <td><span class="badge tier">${escapeHtml(tierGroup(offer))}</span></td>
+        <td><span class="badge tier">${escapeHtml(tierGroup(offer))}</span>${movedNote}</td>
         <td>${escapeHtml(offer.network || "")}</td>
         <td>${escapeHtml(displayCategory(offer))}</td>
         <td>${shortEpc(offer.epc)}</td>
@@ -3872,6 +4305,7 @@
       ["Merchant", (record) => record.merchantName || ""],
       ["Tier", (record) => record.tier || "Unknown"],
       ["Network", (record) => record.network || ""],
+      ["Region", (record) => record.region || ""],
       ["Category", (record) => displayCategory(record)],
       ["Main Category", (record) => record.mainCategory || ""],
       ["Subcategory", (record) => record.subCategory || ""],
@@ -4188,7 +4622,7 @@
     if (!sheet) return;
     if (sheet.headers && sheet.headers.length) {
       const rows = sortReportRows(getFilteredTierSheetRows(sheet), state.tierSheetSort, (row, key) => row[key]);
-      const headers = displayHeadersForSheet(sheet, sheet.headers);
+      const headers = visibleHeadersForSheet(sheet, displayHeadersForSheet(sheet, sheet.headers, false));
       const categoryRows = tierCategorySummaryExportRows(sheet, rows);
       const categoryHeaders = tierCategorySummaryExportHeaders();
       const offerListRows = tierOfferListExportRows(sheet, rows);
@@ -4266,10 +4700,12 @@
   function refreshPaymentFilterOptions() {
     replaceSelectOptions(els.paymentMonth, "All months", uniquePaymentValues("reportMonth"), state.payments.month);
     replaceSelectOptions(els.paymentNetwork, "All networks", uniquePaymentValues("network"), state.payments.network);
+    replaceSelectOptions(els.paymentRegion, "All regions", uniquePaymentValues("region"), state.payments.region);
     replaceSelectOptions(els.paymentTier, "All tiers", uniquePaymentValues("tier"), state.payments.tier);
     replaceSelectOptions(els.paymentStatus, "All statuses", uniquePaymentValues("paymentStatus"), state.payments.status);
     state.payments.month = els.paymentMonth.value;
     state.payments.network = els.paymentNetwork.value;
+    state.payments.region = els.paymentRegion.value;
     state.payments.tier = els.paymentTier.value;
     state.payments.status = els.paymentStatus.value;
   }
@@ -4277,6 +4713,7 @@
   function syncPaymentControls() {
     els.paymentMonth.value = state.payments.month;
     els.paymentNetwork.value = state.payments.network;
+    els.paymentRegion.value = state.payments.region;
     els.paymentTier.value = state.payments.tier;
     els.paymentStatus.value = state.payments.status;
     els.paymentSearch.value = state.payments.search;
@@ -4290,12 +4727,13 @@
     return sortPaymentRows(getPaymentRecords()
       .filter((record) => state.payments.month === "all" || record.reportMonth === state.payments.month || record.reportMonthKey === state.payments.month)
       .filter((record) => state.payments.network === "all" || record.network === state.payments.network)
+      .filter((record) => state.payments.region === "all" || record.region === state.payments.region)
       .filter((record) => state.payments.tier === "all" || record.tier === state.payments.tier)
       .filter((record) => state.payments.status === "all" || record.paymentStatus === state.payments.status)
       .filter((record) => !state.payments.unpaidOnly || record.paymentStatus === "Unpaid")
       .filter((record) => !state.payments.pendingOnly || record.paymentStatus === "Pending")
       .filter((record) => !state.payments.overdueOnly || isPaymentOverdue(record))
-      .filter((record) => !search || normalize(`${record.merchantName} ${record.merchantId}`).includes(search)));
+      .filter((record) => !search || normalize(`${record.merchantName} ${record.merchantId} ${record.region || ""}`).includes(search)));
   }
 
   function renderPaymentSummary(rows) {
@@ -4319,6 +4757,7 @@
         <td>${escapeHtml(record.merchantId || "")}</td>
         <td><strong>${escapeHtml(record.merchantName || "")}</strong><p>${escapeHtml(displayCategory(record))}</p></td>
         <td>${escapeHtml(record.network || "")}</td>
+        <td>${escapeHtml(record.region || "-")}</td>
         <td><span class="badge tier">${escapeHtml(record.tier || "Unknown")}</span></td>
         <td>${escapeHtml(`${optionText(record.reportMonth)} ${record.reportYear}`)}</td>
         <td><span class="badge ${paymentStatusClass(record.paymentStatus)}">${escapeHtml(statusText(record.paymentStatus || "Unknown"))}</span></td>
@@ -4624,7 +5063,8 @@
 
     if (els.tierMoveSelected) {
       els.tierMoveSelected.disabled = totalSelectedCount === 0;
-      els.tierMoveSelected.textContent = totalSelectedCount ? `Move ${totalSelectedCount.toLocaleString()} selected` : "Move selected";
+      els.tierMoveSelected.textContent = t("action.move", "Move");
+      els.tierMoveSelected.setAttribute("aria-label", totalSelectedCount ? `Move ${totalSelectedCount.toLocaleString()} selected merchants` : "Move selected merchants");
     }
     if (els.tierResetMoves) {
       els.tierResetMoves.classList.toggle("hidden", !hasManualTierMoves());
@@ -4648,7 +5088,8 @@
 
   function renderSheetTable(sheet, titleEl, countEl, headEl, rowsEl, customRows = null) {
     const headers = sheet.headers || [];
-    const displayHeaders = displayHeadersForSheet(sheet, headers);
+    const allDisplayHeaders = displayHeadersForSheet(sheet, headers, true);
+    const displayHeaders = visibleHeadersForSheet(sheet, allDisplayHeaders);
     const sourceRows = customRows || sheet.rows || [];
     const rows = headers.length
       ? sortReportRows(sourceRows, state.tierSheetSort, (row, key) => row[key])
@@ -4657,9 +5098,16 @@
     const selectable = isTierDataSheet(sheet);
     titleEl.textContent = `${sheet.name} ${t("sheet.targetRecords", "Sheet Records")}`;
     if (headers.length) {
+      renderTierColumnPanel(sheet, allDisplayHeaders, displayHeaders);
+      const table = headEl.closest("table");
+      if (table) {
+        table.style.minWidth = displayHeaders.length <= 8
+          ? "100%"
+          : `${Math.min(2600, Math.max(1200, displayHeaders.length * 130))}px`;
+      }
       state.visibleTierRowKeys = selectable ? rows.map(tierRowSelectionKey) : [];
       if (selectable) pruneTierSelectionToVisible();
-      countEl.textContent = `${rows.length.toLocaleString()} rows / ${displayHeaders.length.toLocaleString()} columns`;
+      countEl.textContent = `${rows.length.toLocaleString()} rows / ${displayHeaders.length.toLocaleString()} of ${allDisplayHeaders.length.toLocaleString()} columns`;
       headEl.innerHTML = `<tr>${selectable ? tierSelectionHeaderHtml() : ""}${displayHeaders.map((header) => sortableHeaderHtml(header, state.tierSheetSort, "tier")).join("")}</tr>`;
       rowsEl.innerHTML = rows.map((row) => (
         `<tr class="${escapeHtml(tierRowClass(sheet, row))}" data-tier-row-key="${escapeHtml(tierRowSelectionKey(row))}">${selectable ? tierSelectionCellHtml(row) : ""}${displayHeaders.map((header) => `<td>${sheetCellHtml(sheet, row, header)}</td>`).join("")}</tr>`
@@ -4668,8 +5116,10 @@
       return;
     }
 
+    renderTierColumnPanel(sheet, [], []);
     state.visibleTierRowKeys = [];
     state.selectedTierRowKeys.clear();
+    renderTierColumnPanel(sheet, [], []);
     const maxCols = grid.reduce((max, row) => Math.max(max, row.length), 0);
     countEl.textContent = `${grid.length.toLocaleString()} rows / ${maxCols.toLocaleString()} columns`;
     headEl.innerHTML = maxCols
@@ -4690,8 +5140,10 @@
     return "";
   }
 
-  function displayHeadersForSheet(sheet, headers) {
-    if (!sheet || sheet.name !== "Tier 1") return headers || [];
+  function displayHeadersForSheet(sheet, headers, includeMoveAction = false) {
+    if (!sheet || !(sheetReport.tierSheets || []).includes(sheet.name)) return headers || [];
+    const withAction = (list) => includeMoveAction ? [...list, "Move"] : list;
+    if (sheet.name !== "Tier 1") return withAction(headers || []);
     const desired = ["May Revenue", "June Revenue", "Completion Rate"];
     const output = [];
     (headers || []).forEach((header) => {
@@ -4703,7 +5155,125 @@
         });
       }
     });
-    return output;
+    return withAction(output);
+  }
+
+  function selectedHeadersForTierSheet(sheetName, headers) {
+    const saved = state.tierVisibleColumns[sheetName];
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((header) => headers.includes(header));
+  }
+
+  function visibleHeadersForSheet(sheet, headers) {
+    const allHeaders = headers || [];
+    if (!sheet || !(sheetReport.tierSheets || []).includes(sheet.name)) return allHeaders;
+    const selected = selectedHeadersForTierSheet(sheet.name, allHeaders);
+    return selected.length ? allHeaders.filter((header) => selected.includes(header)) : allHeaders;
+  }
+
+  function coreHeadersForSheet(sheet, headers) {
+    const preferred = ["Merchant ID", "Merchant Name", "Network", "Agency", "Backend EPC", "EPC", "Move"];
+    const selected = preferred.filter((header) => headers.includes(header));
+    return selected.length ? selected : headers.slice(0, Math.min(6, headers.length));
+  }
+
+  function setTierVisibleHeaders(sheet, headers) {
+    if (!sheet || !headers.length) return;
+    state.tierVisibleColumns[sheet.name] = headers;
+    saveTierVisibleColumns();
+    renderTierPage(state.selectedTierPage);
+  }
+
+  function resetTierVisibleHeaders(sheet) {
+    if (!sheet) return;
+    delete state.tierVisibleColumns[sheet.name];
+    saveTierVisibleColumns();
+    renderTierPage(state.selectedTierPage);
+  }
+
+  function renderTierColumnPanel(sheet, allHeaders, visibleHeaders) {
+    if (!els.tierColumnList || !els.tierColumnPanel || !els.tierColumnToggle) return;
+    if (!sheet || !allHeaders.length) {
+      els.tierColumnList.innerHTML = "";
+      els.tierColumnPanel.classList.add("hidden");
+      els.tierColumnToggle.setAttribute("aria-expanded", "false");
+      return;
+    }
+    const visible = new Set(visibleHeaders);
+    els.tierColumnList.innerHTML = allHeaders.map((header) => {
+      const id = `tier-column-${safeFilePart(sheet.name)}-${safeFilePart(header)}`;
+      return `<label class="column-check" for="${escapeHtml(id)}">
+        <input id="${escapeHtml(id)}" type="checkbox" value="${escapeHtml(header)}"${visible.has(header) ? " checked" : ""} />
+        <span>${escapeHtml(labelText(header))}</span>
+      </label>`;
+    }).join("");
+    els.tierColumnPanel.classList.toggle("hidden", !state.tierColumnPanelOpen);
+    els.tierColumnToggle.setAttribute("aria-expanded", state.tierColumnPanelOpen ? "true" : "false");
+  }
+
+  function offerForSheetRow(row) {
+    return offerForMerchant(rowValue(row, ["Merchant ID", "Merchant Id", "merchantId"]), rowValue(row, ["Merchant Name", "Brand", "brand"]));
+  }
+
+  function sheetNameMatchesTier(sheetName, tier) {
+    return canonicalTierName(sheetName) === canonicalTierName(tier);
+  }
+
+  function sheetRowKey(row) {
+    const merchantId = String(rowValue(row, ["Merchant ID", "Merchant Id", "merchantId"]) || "").trim();
+    return merchantId || normalize(rowValue(row, ["Merchant Name", "Brand", "brand"]));
+  }
+
+  function offerToTierSheetRow(offer, sheet) {
+    const row = { _tierOverrideRow: true, _offerKey: offerKey(offer) };
+    (sheet.headers || []).forEach((header) => {
+      if (header === "Original Rank") row[header] = offer.originalRank || "";
+      else if (header === "Merchant ID") row[header] = offer.merchantId || "";
+      else if (header === "Merchant Name") row[header] = offer.brand || "";
+      else if (header === "Agency" || header === "Network") row[header] = offer.network || "";
+      else if (header === "Clicks") row[header] = number(offer.clicks).toLocaleString();
+      else if (header === "Conversion") row[header] = shortPct(offer.conversionRate);
+      else if (header === "DPV") row[header] = number(offer.dpv).toLocaleString();
+      else if (header === "ATC") row[header] = number(offer.atc).toLocaleString();
+      else if (header === "Order count") row[header] = number(offer.orders).toLocaleString();
+      else if (header === "Backend EPC" || header === "EPC") row[header] = shortEpc(offer.epc);
+      else if (header === "Revenue") row[header] = shortMoney(offer.salesAmount);
+      else if (header === "May Revenue") row[header] = shortMoney(offer.mayRevenue);
+      else if (header === "June Revenue") row[header] = shortMoney(offer.juneRevenue);
+      else if (header === "Completion Rate") row[header] = shortPct(offer.completionRate);
+      else if (header === "Payment Cycle") row[header] = offer.paymentCycle ? `${offer.paymentCycle}` : "";
+      else if (header === "Asins") row[header] = offer.asinsText || (offer.topAsins || []).join(", ");
+      else if (header === "COUNTRY" || header === "Country") row[header] = offer.country || "";
+      else if (header === "Tier Reason" || header === "Reason") row[header] = `${t("move.movedFrom", "Moved from")} ${optionText(offer.originalTier || "Unknown")}`;
+      else if (header === "Recommendation") row[header] = offer.recommendation || recommendedAction(offer);
+      else row[header] = offer[header] || "";
+    });
+    return row;
+  }
+
+  function tierSheetRowsForDisplay(sheet) {
+    if (!sheet || !(sheet.headers || []).length) return sheet ? (sheet.rows || []) : [];
+    const sheetTier = canonicalTierName(sheet.name);
+    const keptRows = [];
+    const rowKeys = new Set();
+
+    (sheet.rows || []).forEach((row) => {
+      const offer = offerForSheetRow(row);
+      if (offer && !sheetNameMatchesTier(sheetTier, offer.tier)) return;
+      keptRows.push(row);
+      const key = sheetRowKey(row);
+      if (key) rowKeys.add(key);
+    });
+
+    offers
+      .filter((offer) => offer.tierOverride && sheetNameMatchesTier(sheetTier, offer.tier))
+      .forEach((offer) => {
+        const key = String(offer.merchantId || "").trim() || normalize(offer.brand);
+        if (key && rowKeys.has(key)) return;
+        keptRows.push(offerToTierSheetRow(offer, sheet));
+      });
+
+    return keptRows;
   }
 
   function tierReasonText(row) {
@@ -4734,11 +5304,15 @@
   }
 
   function tierRowClass(sheet, row) {
+    if (row && row._tierOverrideRow) return "tier-highlight-row tier-highlight-green";
     const kind = tierRowHighlightKind(sheet, row);
     return kind ? `tier-highlight-row tier-highlight-${kind}` : "";
   }
 
   function sheetCellHtml(sheet, row, header) {
+    if (header === "Move") {
+      return tierMoveControlHtml(row._offerKey ? offers.find((offer) => offerKey(offer) === row._offerKey) : offerForSheetRow(row));
+    }
     const value = formatSheetCell(header, row[header]);
     const kind = header === "Phase" ? tier2PhaseKind(sheet, row) : "";
     if (!kind || !value) return escapeHtml(value);
@@ -4929,7 +5503,7 @@
   }
 
   function refreshTierSheetFilters(sheet) {
-    const rows = sheet.rows || [];
+    const rows = tierSheetRowsForDisplay(sheet);
     const currentNetwork = state.tierSheetFilters.network;
     const currentCountry = state.tierSheetFilters.country;
     replaceSelectOptions(els.tierSheetNetwork, "All networks", sheetRowUniqueValues(rows, ["Network", "Agency"]), currentNetwork);
@@ -4945,7 +5519,7 @@
     const search = normalize(state.tierSheetFilters.search);
     const minEpc = Number(state.tierSheetFilters.minEpc || 0);
     const minRevenue = Number(state.tierSheetFilters.minRevenue || 0);
-    return (sheet.rows || [])
+    return tierSheetRowsForDisplay(sheet)
       .filter((row) => !search || normalize(Object.values(row).join(" ")).includes(search))
       .filter((row) => state.tierSheetFilters.network === "all" || String(rowValue(row, ["Network", "Agency"])) === state.tierSheetFilters.network)
       .filter((row) => state.tierSheetFilters.country === "all" || String(rowValue(row, ["COUNTRY", "Country"])) === state.tierSheetFilters.country)
@@ -5169,6 +5743,7 @@
       els.tierSheetHead.innerHTML = "";
       els.tierSheetRows.innerHTML = "";
       els.tierTableCount.textContent = "";
+      renderTierColumnPanel(null, [], []);
       state.visibleTierRowKeys = [];
       state.selectedTierRowKeys.clear();
       syncTierBulkControls();
@@ -5371,6 +5946,35 @@
     els.tierSheetCountry.addEventListener("change", () => { state.tierSheetFilters.country = els.tierSheetCountry.value; renderTierPage(state.selectedTierPage); });
     els.tierSheetMinEpc.addEventListener("input", () => { state.tierSheetFilters.minEpc = els.tierSheetMinEpc.value; renderTierPage(state.selectedTierPage); });
     els.tierSheetMinRevenue.addEventListener("input", () => { state.tierSheetFilters.minRevenue = els.tierSheetMinRevenue.value; renderTierPage(state.selectedTierPage); });
+    els.tierColumnToggle.addEventListener("click", () => {
+      state.tierColumnPanelOpen = !state.tierColumnPanelOpen;
+      renderTierPage(state.selectedTierPage);
+    });
+    els.tierColumnList.addEventListener("change", (event) => {
+      const input = event.target.closest("input[type='checkbox']");
+      const sheet = sheetByName(state.selectedTierPage);
+      if (!input || !sheet) return;
+      const allHeaders = displayHeadersForSheet(sheet, sheet.headers || [], true);
+      const selected = Array.from(els.tierColumnList.querySelectorAll("input[type='checkbox']:checked"))
+        .map((checkbox) => checkbox.value)
+        .filter((header) => allHeaders.includes(header));
+      if (!selected.length) {
+        input.checked = true;
+        return;
+      }
+      setTierVisibleHeaders(sheet, selected);
+    });
+    els.tierColumnCore.addEventListener("click", () => {
+      const sheet = sheetByName(state.selectedTierPage);
+      if (!sheet) return;
+      const allHeaders = displayHeadersForSheet(sheet, sheet.headers || [], true);
+      setTierVisibleHeaders(sheet, coreHeadersForSheet(sheet, allHeaders));
+    });
+    els.tierColumnAll.addEventListener("click", () => {
+      resetTierVisibleHeaders(sheetByName(state.selectedTierPage));
+    });
+    if (els.table) els.table.addEventListener("click", handleTierMoveClick);
+    els.tierSheetRows.addEventListener("click", handleTierMoveClick);
     els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("change", handleTierSelectionChange);
@@ -5401,6 +6005,7 @@
     });
     els.paymentMonth.addEventListener("change", () => { state.payments.month = els.paymentMonth.value; renderPaymentsPage(); });
     els.paymentNetwork.addEventListener("change", () => { state.payments.network = els.paymentNetwork.value; renderPaymentsPage(); });
+    els.paymentRegion.addEventListener("change", () => { state.payments.region = els.paymentRegion.value; renderPaymentsPage(); });
     els.paymentTier.addEventListener("change", () => { state.payments.tier = els.paymentTier.value; renderPaymentsPage(); });
     els.paymentStatus.addEventListener("change", () => { state.payments.status = els.paymentStatus.value; renderPaymentsPage(); });
     els.paymentSearch.addEventListener("input", () => { state.payments.search = els.paymentSearch.value; renderPaymentsPage(); });
