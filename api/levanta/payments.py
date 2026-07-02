@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from server import (
     fetch_invoice_items_for_marketplaces,
-    has_payable_payment_amount,
+    is_trackable_payment_record,
     marketplaces_from_query,
     months_from_query,
     normalize_invoice_item,
@@ -50,7 +50,7 @@ class handler(BaseHTTPRequestHandler):
             self.send_json(502, {"ok": False, "source": "levanta-api", "error": str(error)})
             return
 
-        records = [record for record in with_pending_placeholders(records, months) if has_payable_payment_amount(record)]
+        records = [record for record in with_pending_placeholders(records, months) if is_trackable_payment_record(record)]
 
         self.send_json(
             200,

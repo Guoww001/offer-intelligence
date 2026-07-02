@@ -49,6 +49,17 @@ def clean_text(value)
   text.empty? ? nil : text
 end
 
+def category_from_sheet_row(row)
+  category_indexes = row.headers.each_index.select do |index|
+    row.headers[index].to_s.strip.casecmp("Category").zero?
+  end
+  category_indexes.reverse_each do |index|
+    category = clean_text(row.fields[index])
+    return category if category
+  end
+  nil
+end
+
 MONTH_NUMBERS = {
   "January" => 1,
   "February" => 2,
@@ -155,9 +166,13 @@ def region_from_hash(hash, fallback_name = nil)
            clean_text(hash["marketplaceCode"]) ||
            clean_text(hash["country"]) ||
            clean_text(hash["countryCode"]) ||
-           clean_text(hash["COUNTRY"]) ||
-           infer_region_from_text(fallback_name)
+	   clean_text(hash["COUNTRY"]) ||
+	   infer_region_from_text(fallback_name)
   normalize_region(region)
+end
+
+def levanta_network?(network)
+  network.to_s.strip.downcase == "levanta"
 end
 
 def payment_month_key(year, month_name)
@@ -186,6 +201,15 @@ rescue ArgumentError
   "Unknown"
 end
 
+def trackable_payment_record?(record)
+  has_amount = %w[commissionMade expectedPaymentAmount paidAmount remainingAmount].any? { |key| num(record[key]).to_f.positive? }
+  status = record["paymentStatus"].to_s.downcase
+  raw_status = record["rawStatus"].to_s.downcase
+  merchant_key = record["merchantId"].to_s.strip
+  merchant_key = normalize_brand(record["merchantName"]) if merchant_key.empty?
+  has_amount || (!merchant_key.empty? && (record["isPlaceholder"] || status == "pending" || raw_status.include?("pending")))
+end
+
 def compact_hash(hash)
   hash.each_with_object({}) do |(key, value), compacted|
     next if value.nil?
@@ -201,6 +225,15 @@ def compact_hash(hash)
     next if key == "originalRank"
     compacted[key] = value
   end
+end
+
+def payment_offer_for_brand(offers_by_brand, brand_name)
+  candidates = offers_by_brand[normalize_brand(brand_name)].to_a
+  return nil if candidates.empty?
+
+  levanta_candidates = candidates.select { |offer| levanta_network?(offer["network"]) }
+  candidates = levanta_candidates unless levanta_candidates.empty?
+  candidates.min_by { |offer| [tier_rank(offer["tier"]), -num(offer["salesAmount"]).to_f] }
 end
 
 backend_by_mid = {}
@@ -319,31 +352,35 @@ if File.exist?(feishu_category_csv)
 end
 
 sheet_blocks_by_tier_row = {}
-block_start_rows = { "Tier 1" => 10, "Tier 2" => 13, "Tier 3" => 10 }
+block_start_rows = { "Tier 1" => 10, "Tier 2" => 13, "Tier 3" => 10, "Tier 4" => 10 }
 block_start_rows.each do |tier, header_row|
   file = File.join(sheet_block_dir, "#{tier.downcase.gsub(/\s+/, "_")}_sheet_block.tsv")
   next unless File.exist?(file)
 
   CSV.read(file, headers: true, col_sep: "\t").each_with_index do |row, index|
     row_number = header_row + 1 + index
-    sheet_blocks_by_tier_row[[tier, row_number]] = row.to_h
+    sheet_blocks_by_tier_row[[tier, row_number]] = row.to_h.merge("Sheet Category" => category_from_sheet_row(row))
   end
 end
 
 offers = CSV.read(brand_csv, headers: true).map do |row|
   mid = merchant_key(row["merchant_id"])
   backend = backend_by_mid[mid]
-  paid = not_paid_by_brand[normalize_brand(row["brand"])]
-  invoice_status = invoice_status_by_brand[normalize_brand(row["brand"])]
   lev_cat = levanta_category_by_brand[normalize_brand(row["brand"])]
   feishu_cat = feishu_category_by_mid[mid] || feishu_category_by_brand[normalize_brand(row["brand"])]
   sheet_block = sheet_blocks_by_tier_row[[row["tier"], row["row_number"].to_i]] || {}
 
   network = backend && backend["backend_network"].to_s.strip != "" ? backend["backend_network"] : row["network_or_agency"]
-  category_path = feishu_cat ? [feishu_cat["mainCategory"], feishu_cat["subCategory"]].compact.reject(&:empty?).join(" > ") : nil
-  feishu_category = feishu_cat && (clean_text(feishu_cat["subCategory"]) || clean_text(feishu_cat["mainCategory"]))
-  category = feishu_category || lev_cat&.fetch("topCategory", nil) || clean_text(sheet_block["Category"]) || row["category"].to_s.strip
+  paid = levanta_network?(network) ? not_paid_by_brand[normalize_brand(row["brand"])] : nil
+  invoice_status = levanta_network?(network) ? invoice_status_by_brand[normalize_brand(row["brand"])] : nil
+  sheet_category = clean_text(sheet_block["Sheet Category"]) || clean_text(sheet_block["Category"]) || clean_text(row["category"])
+  feishu_main_category = feishu_cat&.fetch("mainCategory", nil)
+  feishu_sub_category = feishu_cat&.fetch("subCategory", nil)
+  category = sheet_category || feishu_main_category || lev_cat&.fetch("topCategory", nil) || feishu_sub_category
   category = "Uncategorized" if category.empty?
+  main_category = category == "Uncategorized" ? nil : category
+  category_path = [main_category, feishu_sub_category].compact.reject(&:empty?).uniq.join(" > ")
+  category_path = nil if category_path.empty?
 
   clicks = num(backend && backend["backend_clicks"]) || num(row["clicks"])
   orders = num(backend && backend["backend_order_count"]) || num(row["orders"])
@@ -398,16 +435,19 @@ offers = CSV.read(brand_csv, headers: true).map do |row|
     "network" => network.to_s.strip.empty? ? "Unknown" : network,
     "region" => region,
     "category" => category,
+    "sheetCategory" => sheet_category,
     "categoryPath" => category_path,
-    "mainCategory" => feishu_cat&.fetch("mainCategory", nil),
-    "subCategory" => feishu_cat&.fetch("subCategory", nil),
+    "mainCategory" => main_category,
+    "subCategory" => feishu_sub_category,
+    "feishuMainCategory" => feishu_main_category,
+    "feishuSubCategory" => feishu_sub_category,
     "mainCategoryCn" => feishu_cat&.fetch("mainCategoryCn", nil),
     "subCategoryCn" => feishu_cat&.fetch("subCategoryCn", nil),
     "mainCategoryBsr" => feishu_cat&.fetch("mainCategoryBsr", nil),
     "subcategoryBsr" => feishu_cat&.fetch("subcategoryBsr", nil),
     "feishuCategoryMerchantName" => feishu_cat&.fetch("merchantName", nil),
     "feishuCategoryAsin" => feishu_cat&.fetch("asin", nil),
-    "categorySource" => feishu_cat ? "Feishu" : (lev_cat ? "Levanta" : "Sheet"),
+    "categorySource" => sheet_category ? "Google Sheet" : (feishu_cat ? "Feishu" : (lev_cat ? "Levanta" : "Source")),
     "levantaCategory" => lev_cat&.fetch("topCategory", nil),
     "allLevantaCategories" => lev_cat&.fetch("categories", nil),
     "clicks" => round(clicks, 0),
@@ -469,6 +509,8 @@ payment_records = invoice_rows.map do |row|
   matched_offer = offer_for_payment(row["brand_id"], brand_name, offers_by_mid, offers_by_brand, offers)
   report_month = row["invoice_month"] || row["month"]
   report_year = row["invoice_year"] || 2026
+  levanta_brand_id = row["brand_id"].to_s.strip
+  payment_merchant_id = matched_offer&.fetch("merchantId", nil) || levanta_brand_id
   sales = num(row["sales"])
   commission = num(row["total_commission"] || row["commission"])
   expected = commission
@@ -496,8 +538,9 @@ payment_records = invoice_rows.map do |row|
     end
 
   compact_hash({
-    "id" => [matched_offer&.fetch("merchantId", nil) || row["brand_id"], payment_month_key(report_year, report_month), normalize_brand(brand_name)].join("::"),
-    "merchantId" => matched_offer&.fetch("merchantId", nil) || row["brand_id"],
+    "id" => [payment_merchant_id, payment_month_key(report_year, report_month), normalize_brand(brand_name)].join("::"),
+    "merchantId" => payment_merchant_id,
+    "levantaBrandId" => levanta_brand_id,
     "merchantName" => brand_name,
     "network" => matched_offer&.fetch("network", nil) || "Levanta",
     "region" => region_from_hash(row, matched_offer&.fetch("brand", nil) || brand_name),
@@ -526,7 +569,7 @@ payment_records = invoice_rows.map do |row|
   })
 end
 payment_records = payment_records.select do |record|
-  %w[commissionMade expectedPaymentAmount paidAmount remainingAmount].any? { |key| num(record[key]).to_f.positive? }
+  trackable_payment_record?(record)
 end
 
 payment_summary = {
@@ -556,8 +599,9 @@ summary = {
   "notPaidCount" => offers.count { |offer| offer["paymentRisk"] },
   "notPaidMonths" => offers.flat_map { |offer| offer["paymentRiskMonths"] }.compact.uniq,
   "backendMatchedCount" => offers.count { |offer| backend_by_mid.key?(offer["merchantId"]) },
+  "sheetCategorizedCount" => offers.count { |offer| offer["sheetCategory"] },
   "levantaCategorizedCount" => offers.count { |offer| offer["levantaCategory"] },
-  "feishuCategorizedCount" => offers.count { |offer| offer["mainCategory"] || offer["subCategory"] },
+  "feishuCategorizedCount" => offers.count { |offer| offer["feishuMainCategory"] || offer["feishuSubCategory"] },
   "paymentSummary" => payment_summary
 }
 

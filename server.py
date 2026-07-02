@@ -329,6 +329,54 @@ def normalized_payment_cycle(value=None, network=None):
     return int(round(cycle)) if cycle > 0 else 60
 
 
+TIER_ORDER = {
+    "Tier 1": 1,
+    "Tier 2": 2,
+    "Tier 3": 3,
+    "Tier 4": 4,
+    "BLACK TIER": 9,
+}
+
+
+def offer_sort_key(offer):
+    return (
+        TIER_ORDER.get(str(offer.get("tier") or ""), 8),
+        -number(offer.get("salesAmount")),
+    )
+
+
+def offers_for_brand(merchant_name):
+    brand_key = normalize(merchant_name)
+    if not brand_key:
+        return []
+    return [
+        offer
+        for offer in STATIC_DATA.get("offers", [])
+        if normalize(offer.get("brand")) == brand_key
+    ]
+
+
+def offer_for_payment_source(merchant_id="", merchant_name="", network=None):
+    merchant_id = str(merchant_id or "").strip()
+    if merchant_id and merchant_id in OFFERS_BY_ID:
+        offer = OFFERS_BY_ID[merchant_id]
+        if normalize(network) != "levanta" or normalize(offer.get("network")) == "levanta":
+            return offer
+
+    candidates = offers_for_brand(merchant_name)
+    if normalize(network) == "levanta":
+        levanta_candidates = [
+            offer
+            for offer in candidates
+            if normalize(offer.get("network")) == "levanta"
+        ]
+        if levanta_candidates:
+            return sorted(levanta_candidates, key=offer_sort_key)[0]
+
+    brand_key = normalize(merchant_name)
+    return OFFERS_BY_BRAND.get(brand_key) or (sorted(candidates, key=offer_sort_key)[0] if candidates else {})
+
+
 def payment_status(raw_status, expected, paid, available_date, baseline_date=None):
     raw = str(raw_status or "").lower()
     today = dt.date.today()
@@ -361,16 +409,28 @@ def has_payable_payment_amount(record):
     )
 
 
+def is_trackable_payment_record(record):
+    status = str(record.get("paymentStatus") or "").strip().lower()
+    raw_status = str(record.get("rawStatus") or "").strip().lower()
+    is_pending = status == "pending" or "pending" in raw_status
+    return has_payable_payment_amount(record) or (is_pending and bool(payment_merchant_key(record)))
+
+
 def pending_placeholder_record(source, month_name, zero_based_month, year):
-    merchant_id = str(source.get("merchantId") or "").strip()
-    merchant_name = str(source.get("merchantName") or source.get("brand") or merchant_id or "Unknown merchant").strip()
-    offer = offer_for_payment(merchant_id, merchant_name)
+    source_merchant_id = str(source.get("merchantId") or "").strip()
+    merchant_name = str(source.get("merchantName") or source.get("brand") or source_merchant_id or "Unknown merchant").strip()
+    offer = offer_for_payment_source(source_merchant_id, merchant_name, source.get("network"))
+    merchant_id = str(offer.get("merchantId") or source_merchant_id).strip()
+    levanta_brand_id = str(source.get("levantaBrandId") or "").strip()
+    if not levanta_brand_id and normalize(source.get("network")) == "levanta" and source_merchant_id != merchant_id:
+        levanta_brand_id = source_merchant_id
     network = source.get("network") or offer.get("network") or "Levanta"
     payment_cycle = resolve_payment_cycle(source, offer, network)
     month_key = f"{year}-{zero_based_month + 1:02d}"
     return {
         "id": f"{merchant_id or normalize(merchant_name)}::{month_key}::pending-placeholder",
         "merchantId": merchant_id,
+        "levantaBrandId": levanta_brand_id,
         "merchantName": merchant_name,
         "network": network,
         "region": source.get("region") or region_from_item(source, source.get("marketplace"), offer),
@@ -469,6 +529,30 @@ def fetch_invoice_items(month, year, api_key, marketplace="all"):
     return items
 
 
+def invoice_item_identity(item):
+    brand = item.get("brand") if isinstance(item.get("brand"), dict) else {}
+    for key in ("id", "invoiceItemId", "invoice_item_id", "paymentId", "transactionId"):
+        value = str(item.get(key) or "").strip()
+        if value:
+            return f"id::{value}"
+    brand_id = str(brand.get("id") or item.get("brandId") or "").strip()
+    brand_name = str(brand.get("name") or item.get("brandName") or item.get("merchantName") or "").strip()
+    region = first_present_string(
+        item,
+        ("region", "marketplace", "marketPlace", "marketplaceCode", "country", "countryCode", "locale"),
+    )
+    return "::".join(
+        [
+            normalize(brand_id or brand_name),
+            normalize_region(region),
+            str(item.get("status") or ""),
+            str(item.get("currency") or ""),
+            f"{levanta_revenue_made(item):.2f}",
+            f"{levanta_commission_made(item):.2f}",
+        ]
+    )
+
+
 def marketplaces_from_query(query):
     raw = ",".join(query.get("marketplaces", []) + query.get("marketplace", []))
     if not raw:
@@ -486,12 +570,21 @@ def fetch_invoice_items_for_marketplaces(month, year, api_key, marketplaces):
 
     rows = []
     errors = []
+    seen = set()
     for marketplace in marketplaces:
         try:
-            rows.extend((item, marketplace) for item in fetch_invoice_items(month, year, api_key, marketplace))
+            for item in fetch_invoice_items(month, year, api_key, marketplace):
+                key = invoice_item_identity(item)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append((item, marketplace))
         except HTTPError as error:
-            errors.append(error)
+            errors.append((marketplace, error))
 
+    if rows and errors:
+        failed = ", ".join(marketplace for marketplace, _error in errors)
+        raise URLError(f"Levanta marketplace sync incomplete for {failed}; refusing partial payment data")
     if rows:
         return rows
 
@@ -499,7 +592,7 @@ def fetch_invoice_items_for_marketplaces(month, year, api_key, marketplaces):
         return [(item, "all") for item in fetch_invoice_items(month, year, api_key, "all")]
     except HTTPError:
         if errors:
-            raise errors[0]
+            raise errors[0][1]
         raise
 
 
@@ -527,7 +620,7 @@ def normalize_invoice_item(item, month_name, zero_based_month, year, marketplace
     brand = item.get("brand") or {}
     levanta_brand_id = str(brand.get("id") or "").strip()
     merchant_name = str(brand.get("name") or "").strip()
-    offer = offer_for_payment(levanta_brand_id, merchant_name)
+    offer = offer_for_payment_source(levanta_brand_id, merchant_name, "Levanta")
     merchant_id = str(offer.get("merchantId") or levanta_brand_id).strip()
     revenue_made = levanta_revenue_made(item)
     commission_made = levanta_commission_made(item)
@@ -647,7 +740,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(502, {"ok": False, "source": "levanta-api", "error": str(error)})
             return
 
-        records = [record for record in with_pending_placeholders(records, months) if has_payable_payment_amount(record)]
+        records = [record for record in with_pending_placeholders(records, months) if is_trackable_payment_record(record)]
 
         self.send_json(
             200,

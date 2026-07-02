@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Offer Intelligence Chat</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=20260701-tiermove1" />
+    <link rel="stylesheet" href="./styles.css?v=20260702-merge1" />
   </head>
   <body>
     <div class="app-shell">
@@ -137,38 +137,21 @@
           </section>
         </section>
 
-        <section class="table-panel dashboard-page" aria-label="Offer table">
-          <div class="table-toolbar">
+        <section class="panel table-panel dashboard-category-report dashboard-page" id="dashboardCategoryReport" aria-label="Dashboard category-wise report">
+          <div class="tier-category-header dashboard-category-report-header">
             <div>
-              <h3 data-i18n="table.offers">Offers</h3>
-              <p id="tableCount"></p>
+              <h3>Category-wise report</h3>
+              <p id="dashboardCategoryReportSubtitle"></p>
             </div>
-            <div class="sort-group">
-              <button class="sort-button active" data-sort="epc" type="button">EPC</button>
-              <button class="sort-button" data-sort="conversionRate" type="button">CVR</button>
-              <button class="sort-button" data-sort="aov" type="button">AOV</button>
-              <button class="sort-button" data-sort="salesAmount" type="button">Sales</button>
-            </div>
+            <div class="dashboard-category-tier-picker" id="dashboardCategoryTierPicker" aria-label="Category report tier selection"></div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th data-i18n="label.Brand">Brand</th>
-                  <th data-i18n="label.Tier">Tier</th>
-                  <th data-i18n="label.Network">Network</th>
-                  <th data-i18n="label.Category">Category</th>
-                  <th>EPC</th>
-                  <th>AOV</th>
-                  <th>CVR</th>
-                  <th data-i18n="label.Orders">Orders</th>
-                  <th data-i18n="label.Payment">Payment</th>
-                  <th data-i18n="label.Move">Move</th>
-                </tr>
-              </thead>
-              <tbody id="offerRows"></tbody>
-            </table>
+          <div class="dashboard-category-controls" aria-label="Category report controls">
+            <label>
+              <span>Category</span>
+              <input id="dashboardCategorySearch" type="search" placeholder="Search category or merchant" />
+            </label>
           </div>
+          <div id="dashboardCategoryReportBody"></div>
         </section>
 
         <section class="payments-page hidden" id="paymentsPage" aria-label="Payments">
@@ -256,7 +239,6 @@
                       <th data-i18n="label.Cycle">Cycle</th>
                       <th data-i18n="label.Expected Payment Date">Expected Payment Date</th>
                       <th data-i18n="label.Last Checked">Last Checked</th>
-                      <th data-i18n="label.Notes">Notes</th>
                     </tr>
                   </thead>
                   <tbody id="paymentRows"></tbody>
@@ -313,6 +295,7 @@
           </div>
           <section class="tier-summary" id="tierPageSummary"></section>
           <section class="panel sheet-notes" id="tierPageNotes"></section>
+          <section class="panel tier-category-summary" id="tierCategorySummary" aria-label="Category-wise tier report"></section>
           <section class="panel tier-sheet-filters" aria-label="Tier filters">
             <label>
               <span data-i18n="label.Search">Search</span>
@@ -339,7 +322,7 @@
               <input id="tierSheetMinRevenue" type="number" step="1" min="0" placeholder="0" />
             </label>
           </section>
-          <section class="table-panel tier-table-panel" aria-label="Tier table">
+          <section class="table-panel tier-table-panel" id="tierTablePanel" aria-label="Tier table">
             <div class="table-toolbar">
               <div>
                 <h3 id="tierTableTitle">Sheet Records</h3>
@@ -360,7 +343,12 @@
                     <div class="column-picker-list" id="tierColumnList"></div>
                   </div>
                 </div>
+                <button class="icon-button table-move-button" id="moveTierRows" type="button" disabled data-i18n="action.move">Move</button>
+                <button class="icon-button table-reset-moves-button hidden" id="resetTierMoves" type="button" data-i18n="action.reset">Reset</button>
+                <button class="icon-button table-expand-button" id="expandTierSheet" type="button" aria-label="Expand tier records table" aria-expanded="false" data-i18n="action.expand">Expand</button>
+                <button class="icon-button table-close-button hidden" id="closeTierSheetOverlay" type="button" aria-label="Close expanded tier records table" data-i18n="action.close">Close</button>
                 <button class="icon-button table-download-button" id="downloadTierXlsx" type="button" aria-label="Download tier records as Excel" data-i18n="action.download">Download</button>
+                <span class="tier-move-inline-status" id="tierMoveInlineStatus" aria-live="polite"></span>
               </div>
             </div>
             <div class="table-wrap sheet-table-wrap">
@@ -373,10 +361,29 @@
         </section>
       </main>
     </div>
+    <div class="sheet-expanded-backdrop" id="sheetExpandedBackdrop" aria-hidden="true"></div>
+    <div class="tier-move-dialog hidden" id="tierMoveDialog" role="dialog" aria-modal="true" aria-labelledby="tierMoveTitle">
+      <div class="tier-move-card">
+        <div class="tier-move-header">
+          <div>
+            <h3 id="tierMoveTitle">Move selected merchants</h3>
+            <p id="tierMoveSummary"></p>
+          </div>
+          <button class="icon-button tier-move-close" id="closeTierMoveDialog" type="button" aria-label="Close tier move dialog">Close</button>
+        </div>
+        <div class="tier-move-targets" id="tierMoveTargets" aria-label="Move target tier"></div>
+        <p class="tier-move-status" id="tierMoveStatus"></p>
+        <div class="tier-move-footer">
+          <button class="secondary-button" id="cancelTierMove" type="button">Cancel</button>
+          <button class="secondary-button tier-move-confirm" id="confirmTierMove" type="button">Move merchants</button>
+        </div>
+      </div>
+    </div>
 
-    <script src="./sheet_report_data.js?v=20260624-sheet2"></script>
-    <script src="./chatbot_data.js?v=20260626-paystatus1"></script>
+    <script src="./sheet_report_data.js?v=20260630-tier-refresh1"></script>
+    <script src="./chatbot_data.js?v=20260630-tier-refresh1"></script>
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
-    <script src="./app.js?v=20260702-payments-feb-regions1"></script>
+    <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
+    <script src="./app.js?v=20260702-merge1"></script>
   </body>
 </html>

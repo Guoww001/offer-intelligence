@@ -3,12 +3,23 @@
   const sheetReport = window.SHEET_REPORT_DATA || { sheets: [], tierSheets: [] };
   const offers = data.offers || [];
   const chatbotI18n = window.CHATBOT_I18N || {};
+  const tier2Rules = window.TIER2_RECOMMENDATION_RULES || {};
   const TIER_MOVE_OPTIONS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
   const TIER_OVERRIDE_KEY = "offerTierOverrides";
   const TIER_COLUMN_KEY = "offerTierVisibleColumns";
+  const offersByMerchantId = new Map();
+  const offerGroupsByMerchantId = new Map();
+  const originalOfferTiers = [];
   let tierOverrides = loadTierOverrides();
   const sheetPaymentCycles = buildSheetPaymentCycleIndex();
-  offers.forEach((offer) => {
+  offers.forEach((offer, index) => {
+    originalOfferTiers[index] = offer.tier || "";
+    const merchantId = String(offer.merchantId || "").trim();
+    if (merchantId) {
+      if (!offersByMerchantId.has(merchantId)) offersByMerchantId.set(merchantId, offer);
+      if (!offerGroupsByMerchantId.has(merchantId)) offerGroupsByMerchantId.set(merchantId, []);
+      offerGroupsByMerchantId.get(merchantId).push(offer);
+    }
     offer.originalTier = offer.originalTier || offer.tier || "Unknown";
     applyTierOverrideToOffer(offer);
     offer.paymentCycle = resolveOfferPaymentCycle(offer);
@@ -19,7 +30,15 @@
   const MAX_RECOMMENDATION_EXPORT = 1000;
   const AUTO_PAYMENT_SYNC_KEY = "offerPaymentLastAutoSync";
   const AUTO_PAYMENT_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+  const STANDARD_CATEGORY_REPORT_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4"];
+  const CATEGORY_REPORT_TIER_OPTIONS = [...STANDARD_CATEGORY_REPORT_TIERS, "BLACK TIER"];
+  const TIER_SHEET_EXPANDABLE_TIERS = new Set(STANDARD_CATEGORY_REPORT_TIERS);
+  const TIER_SHEET_MOVE_TARGETS = CATEGORY_REPORT_TIER_OPTIONS.slice();
+  const TIER_SHEET_MOVE_STORAGE_KEY = "offerTierSheetManualMoves.v1";
+  const CATEGORY_REPORT_ADDITIVE_SORTS = new Set(["merchantCount", "revenue", "orders", "clicks"]);
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
+  const originalTierSheetRows = new Map();
+  const originalTierSheetRowIndex = new Map();
   let paymentRecords = withPendingPaymentPlaceholders((data.paymentRecords || []).map(normalizePaymentRecord));
   const paymentRecordsByMerchant = new Map();
   rebuildPaymentIndex();
@@ -35,6 +54,10 @@
     notPaidOnly: false,
     sort: "epc",
     descending: true,
+    categoryReportTiers: STANDARD_CATEGORY_REPORT_TIERS.slice(),
+    categoryReportSearch: "",
+    categoryReportSort: "revenue",
+    categoryReportDirection: "desc",
     lastOffer: null,
     lastRows: [],
     currentQuery: "",
@@ -51,6 +74,12 @@
       overdueOnly: false
     },
     selectedTierPage: "Tier 1",
+    expandedTierSheet: false,
+    selectedTierRowKeys: new Set(),
+    visibleTierRowKeys: [],
+    manualTierMoves: loadManualTierMoves(),
+    tierMoveTarget: "",
+    tierMoveStatus: "",
     tierSheetFilters: {
       search: "",
       network: "all",
@@ -75,6 +104,8 @@
     paymentSource: "saved invoice file",
     livePaymentsLoaded: false,
     livePaymentsLoading: false,
+    activeRecommendationBundle: null,
+    excludedRecommendationKeys: new Set(),
     recommendationDownloads: {},
     downloadSequence: 0,
     language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en"
@@ -93,6 +124,10 @@
     notPaidOnly: document.getElementById("notPaidOnly"),
     reset: document.getElementById("resetFilters"),
     metrics: document.getElementById("metrics"),
+    dashboardCategoryTierPicker: document.getElementById("dashboardCategoryTierPicker"),
+    dashboardCategoryReportSubtitle: document.getElementById("dashboardCategoryReportSubtitle"),
+    dashboardCategoryReportBody: document.getElementById("dashboardCategoryReportBody"),
+    dashboardCategorySearch: document.getElementById("dashboardCategorySearch"),
     table: document.getElementById("offerRows"),
     tableCount: document.getElementById("tableCount"),
     chatLog: document.getElementById("chatLog"),
@@ -124,8 +159,23 @@
     tierPageSubtitle: document.getElementById("tierPageSubtitle"),
     tierPageSummary: document.getElementById("tierPageSummary"),
     tierPageNotes: document.getElementById("tierPageNotes"),
+    tierCategorySummary: document.getElementById("tierCategorySummary"),
     tierTableTitle: document.getElementById("tierTableTitle"),
     tierTableCount: document.getElementById("tierTableCount"),
+    tierTablePanel: document.getElementById("tierTablePanel"),
+    tierExpand: document.getElementById("expandTierSheet"),
+    tierOverlayClose: document.getElementById("closeTierSheetOverlay"),
+    tierMoveSelected: document.getElementById("moveTierRows"),
+    tierResetMoves: document.getElementById("resetTierMoves"),
+    tierMoveDialog: document.getElementById("tierMoveDialog"),
+    tierMoveSummary: document.getElementById("tierMoveSummary"),
+    tierMoveTargets: document.getElementById("tierMoveTargets"),
+    tierMoveConfirm: document.getElementById("confirmTierMove"),
+    tierMoveCancel: document.getElementById("cancelTierMove"),
+    tierMoveClose: document.getElementById("closeTierMoveDialog"),
+    tierMoveStatus: document.getElementById("tierMoveStatus"),
+    tierMoveInlineStatus: document.getElementById("tierMoveInlineStatus"),
+    sheetExpandedBackdrop: document.getElementById("sheetExpandedBackdrop"),
     tierSheetHead: document.getElementById("tierSheetHead"),
     tierSheetRows: document.getElementById("tierSheetRows"),
     tierSheetSearch: document.getElementById("tierSheetSearch"),
@@ -230,6 +280,9 @@
       "label.Payment": "付款",
       "label.Move": "移动",
       "label.Highlight": "重点",
+      "label.Publisher Count": "Publisher 数量",
+      "label.Success Rate": "成功率",
+      "label.Tier 2 Optimization Idea": "Tier 2 优化建议",
       "label.Revenue": "收入",
       "label.Commission": "佣金",
       "label.Action": "动作",
@@ -660,8 +713,31 @@
     return haystack.includes(term);
   }
 
+  function cleanCategoryValue(value) {
+    const text = String(value || "").trim();
+    return text && text !== "Uncategorized" ? text : "";
+  }
+
+  function sheetMainCategory(item) {
+    if (!item) return "Uncategorized";
+    const sheetCategory = cleanCategoryValue(item.sheetCategory);
+    if (sheetCategory) return sheetCategory;
+    const mainCategory = cleanCategoryValue(item.mainCategory);
+    if (mainCategory) return mainCategory;
+    const feishuMainCategory = cleanCategoryValue(item.feishuMainCategory);
+    if (feishuMainCategory) return feishuMainCategory;
+    const category = cleanCategoryValue(item.category);
+    if (category && item.categorySource !== "Feishu") return category;
+    if (category) return category;
+    return cleanCategoryValue(item.levantaCategory) || "Uncategorized";
+  }
+
   function categoryParts(item) {
     return [
+      sheetMainCategory(item),
+      item && item.sheetCategory,
+      item && item.feishuMainCategory,
+      item && item.feishuSubCategory,
       item && item.mainCategory,
       item && item.subCategory,
       item && item.mainCategoryCn,
@@ -673,26 +749,42 @@
   }
 
   function displayCategory(item) {
-    if (!item) return "Uncategorized";
-    if (item.categoryPath) return item.categoryPath;
-    const main = String(item.mainCategory || "").trim();
-    const sub = String(item.subCategory || "").trim();
-    if (main && sub && main !== sub) return `${main} > ${sub}`;
-    if (sub) return sub;
-    if (main) return main;
-    return item.category || item.levantaCategory || "Uncategorized";
+    return sheetMainCategory(item);
   }
 
   function categorySearchText(item) {
     return categoryParts(item).concat(item && item.brand, item && item.merchantName).filter(Boolean).join(" ").toLowerCase();
   }
 
+  let mainCategoryNormsCache = null;
+
   function uniqueCategoryValues() {
     const values = new Set();
     offers.forEach((offer) => {
-      categoryParts(offer).forEach((value) => values.add(String(value).trim()));
+      const category = sheetMainCategory(offer);
+      if (category !== "Uncategorized") values.add(category);
     });
     return Array.from(values).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+  }
+
+  let allCategoryValuesCache = null;
+
+  function allCategoryValues() {
+    if (!allCategoryValuesCache) {
+      const values = new Set();
+      offers.forEach((offer) => {
+        categoryParts(offer).forEach((value) => values.add(String(value).trim()));
+      });
+      allCategoryValuesCache = Array.from(values).sort((a, b) => String(b).length - String(a).length);
+    }
+    return allCategoryValuesCache;
+  }
+
+  function hasMainCategoryValue(category) {
+    if (!mainCategoryNormsCache) {
+      mainCategoryNormsCache = new Set(uniqueCategoryValues().map((value) => normalize(value)));
+    }
+    return mainCategoryNormsCache.has(normalize(category));
   }
 
   function dateOnly(value) {
@@ -936,21 +1028,27 @@
     const expected = number(record.expectedPaymentAmount ?? commissionMade);
     const paid = number(record.paidAmount);
     const remaining = Math.max(0, number(record.remainingAmount ?? (expected - paid)));
+    const sourceMerchantId = String(record.merchantId || "").trim();
     const matchedOffer = offerForPaymentMerchant(record) || {};
     const network = record.network || matchedOffer.network || "Levanta";
+    const matchedMerchantId = String(matchedOffer.merchantId || "").trim();
+    const useMatchedLevantaId = normalize(network) === "levanta" && matchedMerchantId;
+    const merchantId = useMatchedLevantaId ? matchedMerchantId : sourceMerchantId;
+    const levantaBrandId = record.levantaBrandId || (useMatchedLevantaId && sourceMerchantId !== merchantId ? sourceMerchantId : "");
     const normalized = {
       ...record,
-      merchantId: String(record.merchantId || "").trim(),
+      merchantId,
+      levantaBrandId,
       merchantName: String(record.merchantName || record.brand || "").trim(),
       network,
       region: paymentRegionFor(record, matchedOffer),
-      tier: matchedOffer.tier || record.tier || "Unknown",
-      category: record.category || matchedOffer.category || matchedOffer.levantaCategory || "Uncategorized",
-      categoryPath: record.categoryPath || matchedOffer.categoryPath || "",
-      mainCategory: record.mainCategory || matchedOffer.mainCategory || "",
-      subCategory: record.subCategory || matchedOffer.subCategory || "",
-      mainCategoryCn: record.mainCategoryCn || matchedOffer.mainCategoryCn || "",
-      subCategoryCn: record.subCategoryCn || matchedOffer.subCategoryCn || "",
+      tier: paymentMetadataValue(record.tier, matchedOffer.tier, "Unknown"),
+      category: paymentMetadataValue(record.category, matchedOffer.category || matchedOffer.levantaCategory, "Uncategorized"),
+      categoryPath: paymentMetadataValue(record.categoryPath, matchedOffer.categoryPath, ""),
+      mainCategory: paymentMetadataValue(record.mainCategory, matchedOffer.mainCategory, ""),
+      subCategory: paymentMetadataValue(record.subCategory, matchedOffer.subCategory, ""),
+      mainCategoryCn: paymentMetadataValue(record.mainCategoryCn, matchedOffer.mainCategoryCn, ""),
+      subCategoryCn: paymentMetadataValue(record.subCategoryCn, matchedOffer.subCategoryCn, ""),
       reportMonth: record.reportMonth || monthNameFromText(record.reportMonthKey) || "Unknown",
       reportYear: Number(record.reportYear || 2026),
       reportMonthKey: record.reportMonthKey || monthKey(record),
@@ -969,8 +1067,36 @@
     return normalized;
   }
 
+  function paymentMetadataValue(recordValue, matchedValue, fallback) {
+    const text = String(recordValue || "").trim();
+    const generic = ["unknown", "uncategorized"].includes(normalize(text));
+    if (text && !generic) return recordValue;
+    return matchedValue || recordValue || fallback;
+  }
+
   function offerForPaymentMerchant(record) {
-    return offerForMerchant(record.merchantId, record.merchantName || record.brand);
+    const merchantId = String(record.merchantId || "").trim();
+    if (merchantId) {
+      const byId = offers.find((offer) => String(offer.merchantId || "").trim() === merchantId);
+      if (byId && (normalize(record.network) !== "levanta" || normalize(byId.network) === "levanta")) return byId;
+    }
+    const merchantName = normalize(record.merchantName || record.brand);
+    if (!merchantName) return null;
+    const exactMatches = offers.filter((offer) => normalize(offer.brand) === merchantName);
+    if (normalize(record.network) === "levanta") {
+      const levantaMatch = exactMatches.find((offer) => normalize(offer.network) === "levanta");
+      if (levantaMatch) return levantaMatch;
+    }
+    if (exactMatches.length) return exactMatches[0];
+    const fuzzyMatches = offers.filter((offer) => {
+      const brand = normalize(offer.brand);
+      return brand && (brand === merchantName || brand.includes(merchantName) || merchantName.includes(brand));
+    });
+    if (normalize(record.network) === "levanta") {
+      const levantaFuzzyMatch = fuzzyMatches.find((offer) => normalize(offer.network) === "levanta");
+      if (levantaFuzzyMatch) return levantaFuzzyMatch;
+    }
+    return fuzzyMatches[0] || null;
   }
 
   function paymentMerchantKey(record) {
@@ -1054,7 +1180,7 @@
   function getPaymentRecords() {
     return paymentRecords
       .map((record) => ({ ...record, paymentStatus: calculatePaymentStatus(record) }))
-      .filter(hasPayablePaymentAmount);
+      .filter(isTrackablePaymentRecord);
   }
 
   function hasPayablePaymentAmount(record) {
@@ -1064,6 +1190,13 @@
       number(record.paidAmount) > 0 ||
       number(record.remainingAmount) > 0
     );
+  }
+
+  function isTrackablePaymentRecord(record) {
+    const status = String(record.paymentStatus || "").toLowerCase();
+    const rawStatus = String(record.rawStatus || "").toLowerCase();
+    const merchantKey = paymentMerchantKey(record);
+    return hasPayablePaymentAmount(record) || Boolean(merchantKey && (record.isPlaceholder || status === "pending" || rawStatus.includes("pending")));
   }
 
   function getPaymentByMerchant(merchant) {
@@ -1191,7 +1324,7 @@
     if (byId.length) return byId;
     const brandKey = normalize(offer.brand);
     if (!brandKey) return [];
-    return paymentRecords.filter((record) => normalize(record.merchantName) === brandKey);
+    return paymentRecords.filter((record) => !String(record.merchantId || "").trim() && normalize(record.merchantName) === brandKey);
   }
 
   function hasOfferOverduePayment(offer) {
@@ -1252,11 +1385,64 @@
     return "Optimization only";
   }
 
+  function tier2PublisherStrategy(offer, language = state.language) {
+    if (!tier2Rules.strategyForOffer || offer.tier !== "Tier 2") return null;
+    return tier2Rules.strategyForOffer(offer, {
+      language,
+      tierGroup: tierGroup(offer),
+      highlightStatus: highlightStatus(offer)
+    });
+  }
+
+  function tier2PublisherCountText(offer, language = state.language) {
+    const strategy = tier2PublisherStrategy(offer, language);
+    if (!strategy) return "";
+    return strategy.publisherCountText || "";
+  }
+
+  function tier2PublisherSuccessText(offer, language = state.language) {
+    const strategy = tier2PublisherStrategy(offer, language);
+    if (!strategy) return "";
+    return strategy.successRateText || "";
+  }
+
+  function tier2OptimizationIdea(offer, language = state.language) {
+    const strategy = tier2PublisherStrategy(offer, language);
+    return strategy ? strategy.idea : "";
+  }
+
+  function tier2RecommendationDetailsHtml(offer, language) {
+    const strategy = tier2PublisherStrategy(offer, language);
+    if (!strategy) return "";
+    const copy = chatCopy(language);
+    const publisherLabel = language === "zh" ? chatLabelText("Publisher Count", language) : "Publisher count";
+    const successLabel = language === "zh" ? chatLabelText("Success Rate", language) : "Success rate";
+    const ideaLabel = language === "zh" ? (copy.tier2OptimizationIdea || chatLabelText("Tier 2 Optimization Idea", language)) : "Tier 2 optimization idea";
+    return [
+      `<li><strong>${escapeHtml(publisherLabel)}:</strong> ${escapeHtml(strategy.publisherCountText || (language === "zh" ? copy.notAvailable : "not available"))}</li>`,
+      `<li><strong>${escapeHtml(successLabel)}:</strong> ${escapeHtml(strategy.successRateText || (language === "zh" ? copy.notAvailable : "not available"))}</li>`,
+      `<li><strong>${escapeHtml(ideaLabel)}:</strong> ${escapeHtml(strategy.idea)}</li>`
+    ].join("");
+  }
+
+  function tier2FieldRows(offer, language = state.language) {
+    const strategy = tier2PublisherStrategy(offer, language);
+    if (!strategy) return [];
+    const notAvailable = language === "zh" ? chatCopy(language).notAvailable : "not available in current data";
+    return [
+      ["Publisher Count", strategy.publisherCountText || notAvailable],
+      ["Success Rate", strategy.successRateText || notAvailable],
+      ["Tier 2 Optimization Idea", strategy.idea]
+    ];
+  }
+
   function recommendedAction(offer, language = state.language) {
     const group = tierGroup(offer);
+    const publisherStrategy = tier2PublisherStrategy(offer, language);
     if (language === "zh") {
       if (hasPaymentRisk(offer)) return "放量前先跟进付款风险";
       if (group === "Tier 1") return "战略性推进";
+      if (publisherStrategy) return publisherStrategy.action;
       if (group === "Core Tier 2") {
         const map = {
           "Green active opportunity": "绿色主动机会",
@@ -1273,6 +1459,7 @@
     }
     if (hasPaymentRisk(offer)) return "Follow up payment before scaling";
     if (group === "Tier 1") return "Push strategically";
+    if (publisherStrategy) return publisherStrategy.action;
     if (group === "Core Tier 2") return highlightStatus(offer);
     if (group === "Tier 2 Watch") return "Selected publisher test only";
     if (group === "Tier 3") return "Controlled development push";
@@ -1283,9 +1470,11 @@
 
   function caution(offer, language = state.language) {
     const group = tierGroup(offer);
+    const publisherStrategy = tier2PublisherStrategy(offer, language);
     if (language === "zh") {
       if (group === "Black Tier") return "Black Tier，不建议推进。";
       if (hasPaymentRisk(offer)) return `付款风险：${paymentRiskTextForOffer(offer)}。`;
+      if (publisherStrategy) return publisherStrategy.caution;
       if (group === "Tier 4") return "仅在角度明确时复测。";
       if (group === "Tier 2 Watch") return "放量前需要继续观察。";
       if (number(offer.conversionRate) < 0.01) return "CVR 低于 1%，建议使用高意图流量。";
@@ -1293,6 +1482,7 @@
     }
     if (group === "Black Tier") return "Black tier; do not push.";
     if (hasPaymentRisk(offer)) return `Payment risk: ${paymentRiskTextForOffer(offer)}.`;
+    if (publisherStrategy) return publisherStrategy.caution;
     if (group === "Tier 4") return "Retest only with a clear angle.";
     if (group === "Tier 2 Watch") return "Needs monitoring before broader scale.";
     if (number(offer.conversionRate) < 0.01) return "CVR is below 1%; use high-intent traffic.";
@@ -1544,6 +1734,31 @@
       .sort((a, b) => (number(b[state.sort]) - number(a[state.sort])) * (state.descending ? 1 : -1));
   }
 
+  function compareDashboardCategoryGroups(a, b) {
+    if (a.category === "Uncategorized" && b.category !== "Uncategorized") return 1;
+    if (b.category === "Uncategorized" && a.category !== "Uncategorized") return -1;
+    return number(b.summary.totalRevenue) - number(a.summary.totalRevenue) ||
+      number(b.summary.totalOrders) - number(a.summary.totalOrders) ||
+      number(b.summary.totalOffers) - number(a.summary.totalOffers) ||
+      String(a.category || "").localeCompare(String(b.category || ""), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function dashboardCategoryGroups(rows) {
+    const groups = new Map();
+    rows.forEach((offer) => {
+      const category = displayCategory(offer) || "Uncategorized";
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(offer);
+    });
+    return Array.from(groups.entries())
+      .map(([category, groupRows]) => ({
+        category,
+        rows: groupRows,
+        summary: aggregateRows(groupRows)
+      }))
+      .sort(compareDashboardCategoryGroups);
+  }
+
   function fuzzyScore(query, offer) {
     const q = normalize(query);
     const brand = normalize(offer.brand);
@@ -1652,8 +1867,10 @@
     return [
       "greater\\s+than",
       "more\\s+than",
+      "higher\\s+than",
       "at\\s+least",
       "less\\s+than",
+      "lower\\s+than",
       "at\\s+most",
       "不低于",
       "不少于",
@@ -1745,6 +1962,7 @@
 
   function normalizeComparisonOperator(operator) {
     const text = String(operator || "").toLowerCase();
+    if (/lower\s+than/.test(text)) return "<";
     if (/below|under|less|at most|maximum|max|<=|<|低于|少于|小于|以下|以内|不超过|最多|最高|小于等于/.test(text)) {
       return text.includes("=") || /at most|maximum|max|不超过|最多|最高|小于等于|以内/.test(text) ? "<=" : "<";
     }
@@ -1753,22 +1971,22 @@
 
   function normalizeCycleComparisonOperator(operator) {
     const text = String(operator || "").toLowerCase();
-    if (/before|below|under|less|shorter|<|within|up to|at most|maximum|max|低于|少于|小于|短于|早于|以内|以下|不超过|最多|小于等于/.test(text)) {
-      return text.includes("=") || /within|up to|at most|maximum|max|以内|不超过|最多|小于等于|以下/.test(text) ? "<=" : "<";
+    if (/before|below|under|less|shorter|<|within|up to|at most|maximum|max|低于|少于|小于|短于|早于|以内|以下|不超过|最多|至多|小于等于|少于等于|低于等于/.test(text)) {
+      return text.includes("=") || /within|up to|at most|maximum|max|以内|不超过|最多|至多|小于等于|少于等于|低于等于/.test(text) ? "<=" : "<";
     }
-    return text.includes("=") || /at least|minimum|min|不低于|不少于|大于等于|至少|以上/.test(text) ? ">=" : ">";
+    return text.includes("=") || /at least|minimum|min|不低于|不少于|大于等于|至少/.test(text) ? ">=" : ">";
   }
 
   function paymentCycleFilterPattern() {
-    return new RegExp(`(?:payment\\s+)?cycle|付款周期|支付周期|结算周期|周期`, "i");
+    return new RegExp(`(?:payment|pay)\\s+cycle|付款周期|支付周期|结算周期|回款周期|周期`, "i");
   }
 
   function paymentCycleLeadingFilterPattern() {
-    return new RegExp(`((?:(?:payment\\s+)?cycle)|付款周期|支付周期|结算周期|周期)\\s*(?:is|are|with|of|为|是|在|有|:|：)?\\s*(before|below|under|less\\s+than|shorter\\s+than|within|up\\s+to|at\\s+most|maximum|max|<=|<|above|over|greater\\s+than|more\\s+than|at\\s+least|minimum|min|>=|>|低于|少于|小于|短于|早于|以内|以下|不超过|最多|小于等于|高于|超过|大于|至少|以上|不低于|不少于|大于等于)\\s*(${numberTokenPattern()})\\s*(?:days?|d|天|日)?`, "i");
+    return new RegExp(`((?:(?:payment|pay)\\s+cycle)|付款周期|支付周期|结算周期|回款周期|周期)\\s*(?:is|are|with|of|为|是|在|有|:|：)?\\s*(before|below|under|less\\s+than|shorter\\s+than|within|up\\s+to|at\\s+most|maximum|max|<=|<|above|over|greater\\s+than|more\\s+than|at\\s+least|minimum|min|>=|>|低于|少于|小于|短于|早于|以内|以下|不超过|最多|至多|小于等于|少于等于|低于等于|高于|超过|大于|至少|以上|不低于|不少于|大于等于)\\s*(${numberTokenPattern()})\\s*(?:days?|d|天|日)?`, "i");
   }
 
   function paymentCycleTrailingFilterPattern() {
-    return new RegExp(`((?:(?:payment\\s+)?cycle)|付款周期|支付周期|结算周期|周期)\\s*(?:is|are|with|of|为|是|在|有|:|：)?\\s*(${numberTokenPattern()})\\s*(?:days?|d|天|日)?\\s*(before|below|under|less\\s+than|shorter\\s+than|within|up\\s+to|at\\s+most|maximum|max|<=|<|above|over|greater\\s+than|more\\s+than|at\\s+least|minimum|min|>=|>|低于|少于|小于|短于|早于|以内|以下|不超过|最多|小于等于|高于|超过|大于|至少|以上|不低于|不少于|大于等于)`, "i");
+    return new RegExp(`((?:(?:payment|pay)\\s+cycle)|付款周期|支付周期|结算周期|回款周期|周期)\\s*(?:is|are|with|of|为|是|在|有|:|：)?\\s*(${numberTokenPattern()})\\s*(?:days?|d|天|日)?\\s*(before|below|under|less\\s+than|shorter\\s+than|within|up\\s+to|at\\s+most|maximum|max|<=|<|above|over|greater\\s+than|more\\s+than|at\\s+least|minimum|min|>=|>|低于|少于|小于|短于|早于|以内|以下|不超过|最多|至多|小于等于|少于等于|低于等于|高于|超过|大于|至少|以上|不低于|不少于|大于等于)`, "i");
   }
 
   function extractPaymentCycleFilter(prompt) {
@@ -1797,8 +2015,17 @@
     return true;
   }
 
-  function paymentCycleFilterText(filter) {
+  function paymentCycleFilterText(filter, language = "en") {
     if (!filter) return "";
+    if (language === "zh") {
+      const operatorText = {
+        "<": "少于",
+        "<=": "不超过",
+        ">": "超过",
+        ">=": "至少"
+      }[filter.operator] || filter.operator;
+      return `付款周期${operatorText}${Number(filter.threshold).toLocaleString()}天`;
+    }
     return `Payment cycle ${filter.operator} ${Number(filter.threshold).toLocaleString()} days`;
   }
 
@@ -1887,8 +2114,89 @@
     return filters && filters.length ? filters.map(metricThresholdText).join(", ") : "";
   }
 
+  function metricSortTermPattern() {
+    return [
+      "highest",
+      "lowest",
+      "top",
+      "best",
+      "maximum",
+      "minimum",
+      "max",
+      "min",
+      "most",
+      "least",
+      "largest",
+      "biggest",
+      "smallest",
+      "desc(?:ending)?",
+      "asc(?:ending)?"
+    ].join("|");
+  }
+
+  function metricSortLeadingPattern() {
+    return new RegExp(`\\b(${metricSortTermPattern()})\\s+(?:by\\s+|for\\s+|of\\s+)?(${metricTermPattern()})`, "gi");
+  }
+
+  function metricSortTrailingPattern() {
+    return new RegExp(`(${metricTermPattern()})\\s+(?:is\\s+|are\\s+)?(${metricSortTermPattern()})\\b`, "gi");
+  }
+
+  function metricSortByPattern() {
+    return new RegExp(`\\b(?:sort(?:ed)?\\s+by|order(?:ed)?\\s+by|rank(?:ed)?\\s+by|based\\s+on|by)\\s+(${metricTermPattern()})(?:\\s+(${metricSortTermPattern()}))?`, "gi");
+  }
+
+  function metricSortPatterns() {
+    return [metricSortLeadingPattern(), metricSortTrailingPattern(), metricSortByPattern()];
+  }
+
+  function normalizeMetricSortDirection(term) {
+    const text = String(term || "").toLowerCase();
+    if (/lowest|minimum|\bmin\b|least|smallest|asc/.test(text)) return "asc";
+    return "desc";
+  }
+
+  function normalizeMetricSortName(metric) {
+    const normalized = normalizeMetricName(metric);
+    const text = String(metric || "").toLowerCase().replace(/\s+/g, " ");
+    if (text.includes("commission") && !/(rate|percentage|percent)/.test(text)) {
+      return { field: "affCommission", label: "Commission made", type: "money" };
+    }
+    return normalized;
+  }
+
+  function extractMetricSortIntent(prompt) {
+    const text = String(prompt || "");
+    const matches = [];
+    let match;
+    const leading = metricSortLeadingPattern();
+    while ((match = leading.exec(text))) {
+      matches.push({ term: match[1], metric: match[2], index: match.index, raw: match[0].trim() });
+    }
+    const trailing = metricSortTrailingPattern();
+    while ((match = trailing.exec(text))) {
+      matches.push({ term: match[2], metric: match[1], index: match.index, raw: match[0].trim() });
+    }
+    const byPattern = metricSortByPattern();
+    while ((match = byPattern.exec(text))) {
+      matches.push({ term: match[2] || "highest", metric: match[1], index: match.index, raw: match[0].trim() });
+    }
+    if (!matches.length) return null;
+    const best = matches.sort((a, b) => a.index - b.index)[0];
+    const metric = normalizeMetricSortName(best.metric);
+    return {
+      ...metric,
+      direction: normalizeMetricSortDirection(best.term),
+      raw: best.raw
+    };
+  }
+
+  function stripMetricSortPhrases(text) {
+    return metricSortPatterns().reduce((output, pattern) => output.replace(pattern, " "), String(text || ""));
+  }
+
   function cleanedCategoryPhrase(text) {
-    return String(text || "")
+    return stripMetricSortPhrases(text)
       .replace(metricRangeFilterPattern(), " ")
       .replace(metricFilterPattern(), " ")
       .replace(metricTrailingComparisonPattern(), " ")
@@ -1902,6 +2210,11 @@
       .trim();
   }
 
+  function hasCategoryIntentText(text) {
+    return /\b(?:category|categories|subcategory|subcategories|main\s+category|category-wise|categorywise)\b/i.test(String(text || "")) ||
+      /品类|类别|类目|主品类|主类目|子品类|子类目|分类/.test(String(text || ""));
+  }
+
   function categoryScore(query, category) {
     const queryTokens = meaningfulTokens(query);
     if (!queryTokens.length) return 0;
@@ -1912,7 +2225,11 @@
     if (categoryNorm === queryNorm) score += 110;
     else if (categoryNorm.includes(queryNorm) || queryNorm.includes(categoryNorm)) score += 55;
     const matched = queryTokens.filter((queryToken) => (
-      categoryTokens.some((categoryToken) => categoryToken === queryToken || categoryToken.includes(queryToken) || queryToken.includes(categoryToken))
+      categoryTokens.some((categoryToken) => {
+        if (categoryToken === queryToken) return true;
+        if (categoryToken.length <= 3 || queryToken.length <= 3) return false;
+        return categoryToken.includes(queryToken) || queryToken.includes(categoryToken);
+      })
     )).length;
     score += (matched / queryTokens.length) * 70;
     score += categoryTokens.length ? (matched / categoryTokens.length) * 20 : 0;
@@ -1920,12 +2237,39 @@
   }
 
   function categoryForPrompt(text) {
-    const zhCategory = chatbotI18n.categoryForPrompt && chatbotI18n.categoryForPrompt(text, uniqueValues("category"));
+    const knownCategories = allCategoryValues();
+    const zhCategory = /[\u4e00-\u9fff]/.test(String(text || "")) && chatbotI18n.categoryForPrompt && chatbotI18n.categoryForPrompt(text, knownCategories);
     if (zhCategory) return zhCategory;
-    const lower = text.toLowerCase();
-    const categories = uniqueCategoryValues().filter((cat) => cat !== "Uncategorized");
+    const lower = String(text || "").toLowerCase();
     const phrase = cleanedCategoryPhrase(text);
     const phraseTokens = meaningfulTokens(phrase);
+    const mainCategories = uniqueCategoryValues()
+      .filter((cat) => cat !== "Uncategorized")
+      .sort((a, b) => String(b).length - String(a).length);
+    const directMain = mainCategories.find((category) => {
+      const categoryLower = String(category || "").toLowerCase();
+      return categoryLower && (lower.includes(categoryLower) || String(phrase || "").toLowerCase().includes(categoryLower));
+    });
+    if (directMain) return directMain;
+    if (phrase) {
+      const bestMain = mainCategories
+        .map((category) => ({ category, score: categoryScore(phrase, category) }))
+        .sort((a, b) => b.score - a.score)[0];
+      const mainThreshold = hasCategoryIntentText(text) ? 52 : 68;
+      if (bestMain && bestMain.score >= mainThreshold) return bestMain.category;
+    }
+    const direct = knownCategories.find((category) => {
+      const categoryLower = String(category || "").toLowerCase();
+      return categoryLower && categoryLower !== "uncategorized" && (lower.includes(categoryLower) || String(phrase || "").toLowerCase().includes(categoryLower));
+    });
+    if (direct) return direct;
+    if (phrase) {
+      const best = knownCategories
+        .map((category) => ({ category, score: categoryScore(phrase, category) }))
+        .sort((a, b) => b.score - a.score)[0];
+      const threshold = hasCategoryIntentText(text) ? 52 : 62;
+      if (best && best.score >= threshold) return best.category;
+    }
     for (const [canonical, aliases] of Object.entries(categoryAliases)) {
       if (aliases.some((alias) => words(alias).length > 1 && textIncludesAlias(lower, alias))) return canonical;
     }
@@ -1934,25 +2278,18 @@
         if (aliases.some((alias) => textIncludesAlias(lower, alias))) return canonical;
       }
     }
-    if (phrase) {
-      const best = categories
-        .map((category) => ({ category, score: categoryScore(phrase, category) }))
-        .sort((a, b) => b.score - a.score)[0];
-      if (best && best.score >= 58) return best.category;
-    }
     for (const [canonical, aliases] of Object.entries(categoryAliases)) {
       if (aliases.some((alias) => textIncludesAlias(lower, alias))) return canonical;
     }
-    const direct = categories.find((cat) => lower.includes(cat.toLowerCase()));
-    if (direct) return direct;
-    if (!phrase) return null;
-    if (/(?:offers?|recommendations?)\s*$/i.test(String(text || ""))) return phrase;
     return null;
   }
 
   function categoryMatches(offer, category) {
     if (!category) return true;
     const aliases = categoryAliases[category] || [category];
+    const mainCategory = sheetMainCategory(offer).toLowerCase();
+    if (aliases.some((alias) => textIncludesAlias(mainCategory, alias))) return true;
+    if (hasMainCategoryValue(category)) return false;
     const haystack = categorySearchText(offer);
     if (aliases.some((alias) => textIncludesAlias(haystack, alias))) return true;
     const queryTokens = meaningfulTokens(category);
@@ -1962,6 +2299,42 @@
       haystackTokens.some((token) => token === queryToken || token.includes(queryToken) || queryToken.includes(token))
     )).length;
     return matched >= Math.min(queryTokens.length, queryTokens.length <= 2 ? 2 : Math.ceil(queryTokens.length * 0.65));
+  }
+
+  function cleanedMerchantLookupPhrase(text) {
+    return stripMetricSortPhrases(text)
+      .replace(metricRangeFilterPattern(), " ")
+      .replace(metricFilterPattern(), " ")
+      .replace(metricTrailingComparisonPattern(), " ")
+      .replace(/\b(?:top|give|show|list|export|download|pull|find|search|recommend)\s+(?:me\s+)?(?:the\s+)?(?:top\s+)?\d{1,4}\b/gi, " ")
+      .replace(/\b\d{1,4}\s+(?:offers?|brands?|recommendations?)\b/gi, " ")
+      .replace(/\b(?:offers?|brands?|recommendations?|recommend|please|best|top|show|give|list|pull|download|export|find|search|merchant|brand|overview|info|information|about|for|the)\b/gi, " ")
+      .replace(/推荐|请|帮我|给我|显示|列出|查找|搜索|拉取|下载|导出|最好|最佳|前\s*\d*|商家|品牌|信息|概览|关于/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function merchantLookupForPrompt(text) {
+    const cleaned = cleanedMerchantLookupPhrase(text);
+    if (meaningfulTokens(cleaned).length === 0 && normalize(cleaned).length < 2) return { cleaned, matches: [] };
+    return { cleaned, matches: findMerchantMatches(cleaned) };
+  }
+
+  function hasStrongMerchantLookup(text, category = null) {
+    if (category || hasCategoryIntentText(text) || findByAsin(text) || findByMerchantId(text)) return false;
+    if (tierFromPrompt(text) || promptHasPaymentTerms(String(text || "").toLowerCase())) return false;
+    if (extractMetricFilters(text).length || extractMetricSortIntent(text)) return false;
+    const { cleaned, matches } = merchantLookupForPrompt(text);
+    const first = matches[0];
+    if (!first) return false;
+    const cleanedNorm = normalize(cleaned);
+    const brandNorm = normalize(first.offer.brand);
+    if (!cleanedNorm || !brandNorm) return false;
+    const directBrandMatch = brandNorm === cleanedNorm || brandNorm.startsWith(cleanedNorm) || brandNorm.includes(cleanedNorm) || cleanedNorm.includes(brandNorm);
+    const second = matches[1];
+    return (directBrandMatch && first.score >= 60) ||
+      first.adjusted >= 95 ||
+      (first.adjusted >= 85 && (!second || first.adjusted - second.adjusted > 12));
   }
 
   function tierFromPrompt(text) {
@@ -1982,11 +2355,13 @@
     const hasRankCommand = /\b(?:recommend|top|give|show|list|export|download|pull)\b/.test(lower) || /推荐|排行|排名|给我|显示|列出|拉取|导出|下载|筛选|前\s*\d+/.test(text);
     const endsLikeOfferRequest = /\b(?:offers?|brands?|recommendations?)\s*$/.test(lower) || /(?:offer|offers|品牌|商家|推荐)\s*$/.test(text);
     const hasMetricFilter = extractMetricFilters(text).length > 0;
-    if (!hasRankCommand && !endsLikeOfferRequest && !hasMetricFilter) return false;
+    const metricSort = extractMetricSortIntent(text);
+    if (!hasRankCommand && !endsLikeOfferRequest && !hasMetricFilter && !metricSort) return false;
     return requestedRecommendationCount(text, 0) > 0 ||
       /\b(?:offers?|brands?|recommendations?)\b/.test(lower) ||
       /offer|offers|品牌|商家|推荐/.test(text) ||
       hasMetricFilter ||
+      Boolean(metricSort) ||
       Boolean(tierFromPrompt(text)) ||
       Boolean(categoryForPrompt(text));
   }
@@ -1996,11 +2371,16 @@
     if (findByAsin(userMessage)) return "asin";
     if (findByMerchantId(userMessage)) return "merchant";
     const zhIntent = chatbotI18n.detectIntent && chatbotI18n.detectIntent(userMessage);
-    if (zhIntent) return zhIntent;
+    const category = categoryForPrompt(userMessage);
+    const metricSort = extractMetricSortIntent(userMessage);
+    if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category") return zhIntent;
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
+    if (hasStrongMerchantLookup(userMessage, category)) return "merchant";
+    if (zhIntent === "recommendation") return "recommendation";
+    if (metricSort) return "recommendation";
     if (/recommend|push|focus|best|should we/.test(lower) || /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(userMessage) || wantsRecommendationList(userMessage)) return "recommendation";
     if (tierFromPrompt(userMessage)) return "tier";
-    if (categoryForPrompt(userMessage)) return "category";
+    if (category || zhIntent === "category") return "category";
     if (contextFollowup(lower)) return "merchant";
     return "merchant";
   }
@@ -2033,6 +2413,19 @@
     score -= offer.tier === "Tier 4" ? 40 : 0;
     score -= offer.tier === "BLACK TIER" ? 100 : 0;
 
+    const publisherStrategy = tier2PublisherStrategy(offer, "en");
+    if (publisherStrategy) {
+      const publisherScoreAdjustments = {
+        green_optimize: 7,
+        green_under_sample: 5,
+        under_sample: 3,
+        maintain_optimize: 2,
+        low_success_replace: -4,
+        red_recovery: -6
+      };
+      score += publisherScoreAdjustments[publisherStrategy.code] || 0;
+    }
+
     if (context.category && categoryMatches(offer, context.category)) score += 14;
     if (context.google) {
       score += number(offer.orders) >= 50 ? 8 : -4;
@@ -2045,6 +2438,15 @@
   function compareRecommendationOffers(a, b, context = {}) {
     const includeTier4 = context.includeTier4 || false;
     const includeBlack = context.includeBlack || false;
+    const metricSort = context.metricSort;
+    if (metricSort && metricSort.field) {
+      const tierDelta = tierPriority(a, includeTier4, includeBlack) - tierPriority(b, includeTier4, includeBlack);
+      if (tierDelta) return tierDelta;
+      const metricDelta = metricSort.direction === "asc"
+        ? number(a[metricSort.field]) - number(b[metricSort.field])
+        : number(b[metricSort.field]) - number(a[metricSort.field]);
+      if (metricDelta) return metricDelta;
+    }
     return (
       number(b.salesAmount) - number(a.salesAmount) ||
       number(b.orders) - number(a.orders) ||
@@ -2086,11 +2488,19 @@
 
   function whyRecommended(offer, context = {}) {
     const language = context.language || responseLanguageFor(context.prompt || state.currentQuery);
-    if (offer.recommendation) return offer.recommendation;
+    const publisherStrategy = tier2PublisherStrategy(offer, language);
+    if (offer.recommendation) {
+      if (publisherStrategy) {
+        const prefix = language === "zh" ? "Publisher 策略" : "Publisher strategy";
+        return `${offer.recommendation} ${prefix}: ${publisherStrategy.idea}`;
+      }
+      return offer.recommendation;
+    }
     const signals = [];
     if (language === "zh") {
       if (tierGroup(offer) === "Tier 1") signals.push("优先 Tier 1 offer");
       if (tierGroup(offer) === "Core Tier 2") signals.push("Tier 2 表现较强");
+      if (publisherStrategy) signals.push(publisherStrategy.label);
       if (number(offer.orders) > 0) signals.push(`${number(offer.orders).toLocaleString()} 个订单`);
       if (number(offer.conversionRate) >= 0.01) signals.push("CVR 健康");
       if (number(offer.epc) > 0.25) signals.push("EPC 可用");
@@ -2099,6 +2509,7 @@
     }
     if (tierGroup(offer) === "Tier 1") signals.push("priority Tier 1 offer");
     if (tierGroup(offer) === "Core Tier 2") signals.push("strong Tier 2 performance");
+    if (publisherStrategy) signals.push(publisherStrategy.label);
     if (number(offer.orders) > 0) signals.push(`${number(offer.orders).toLocaleString()} orders`);
     if (number(offer.conversionRate) >= 0.01) signals.push("healthy CVR");
     if (number(offer.epc) > 0.25) signals.push("usable EPC");
@@ -2195,6 +2606,21 @@
     { label: "Action", render: (o) => escapeHtml(recommendedAction(o)) }
   ];
 
+  const tier2PublisherColumns = [
+    { label: "Publisher Count", render: (o) => escapeHtml(tier2PublisherCountText(o) || textValue(o.publisherCount)) },
+    { label: "Success Rate", render: (o) => escapeHtml(tier2PublisherSuccessText(o) || (o.successRate === undefined ? "not available" : shortPct(o.successRate))) },
+    { label: "Tier 2 Optimization Idea", render: (o) => escapeHtml(tier2OptimizationIdea(o) || "not applicable") }
+  ];
+
+  function contextColumnsFor(rows) {
+    if (!rows.some((offer) => offer.tier === "Tier 2")) return contextColumns;
+    return [
+      ...contextColumns.slice(0, 3),
+      ...tier2PublisherColumns,
+      ...contextColumns.slice(3)
+    ];
+  }
+
   function insightList(rows) {
     const bestEpc = bestBy(rows, "epc");
     const bestCvr = bestBy(rows, "conversionRate");
@@ -2235,6 +2661,7 @@
     ]) +
     scopeText +
     `<div class="context-note"><strong>Tier breakdown:</strong> ${escapeHtml(tierText)}${tier2Text ? `<br><strong>Tier 2 highlights:</strong> ${escapeHtml(tier2Text)}` : ""}</div>` +
+    miniTable(rows, contextColumnsFor(rows)) +
     insightList(rows);
   }
 
@@ -2330,7 +2757,7 @@
       ["Average CVR", shortPct(s.avgCvr)]
     ]) +
     `<div class="context-note"><strong>Best traffic angle:</strong> ${escapeHtml(top[0] ? bestAngle(top[0], { category: context.filters.category }) : "not available in current data")}</div>` +
-    miniTable(top, contextColumns.slice(0, 9)) +
+    miniTable(top, contextColumnsFor(top).slice(0, 9)) +
     insightList(top);
   }
 
@@ -2394,6 +2821,7 @@
       ["Order count", countValue(offer.orders)],
       ["Revenue", money(offer.salesAmount)],
       ["Conversion rate", pct(offer.conversionRate)],
+      ...tier2FieldRows(offer, language),
       ["Commission", money(offer.affCommission)],
       ["Commission rate", pct(offer.commissionRate)],
       ["Discount/deal info", textValue(offer.dealInfo || offer.discountInfo)],
@@ -2455,6 +2883,18 @@
     { label: "AOV", render: (o) => shortMoney(o.aov) },
     { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
     { label: "EPC", render: (o) => shortEpc(o.epc) },
+    { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
+    { label: "CVR", render: (o) => shortPct(o.conversionRate) },
+    { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
+    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
+  ];
+
+  const tier2CompactColumns = [
+    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
+    { label: "Highlight", render: (o) => escapeHtml(highlightStatus(o)) },
+    { label: "Publisher Count", render: (o) => escapeHtml(tier2PublisherCountText(o) || textValue(o.publisherCount)) },
+    { label: "Success Rate", render: (o) => escapeHtml(tier2PublisherSuccessText(o) || "not available") },
+    { label: "Tier 2 Optimization Idea", render: (o) => escapeHtml(tier2OptimizationIdea(o) || "not available") },
     { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
     { label: "CVR", render: (o) => shortPct(o.conversionRate) },
     { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
@@ -2761,6 +3201,267 @@
     return fallback;
   }
 
+  function recommendationPreviewCount(requestedCount, availableCount) {
+    const requested = Math.max(1, Math.floor(number(requestedCount) || 5));
+    const limit = requested <= 10 ? requested : 10;
+    return Math.min(limit, availableCount);
+  }
+
+  function offerIdentityKey(offer) {
+    return `${String(offer && offer.merchantId || "").trim()}::${normalize(offer && offer.brand)}`;
+  }
+
+  function tierNameFromToken(value) {
+    const token = String(value || "").trim().toLowerCase();
+    if (token === "1" || token === "one") return "Tier 1";
+    if (token === "2" || token === "two") return "Tier 2";
+    if (token === "3" || token === "three") return "Tier 3";
+    if (token === "4" || token === "four") return "Tier 4";
+    return "";
+  }
+
+  function mergeTierPlanItem(plan, tier, count) {
+    if (!tier || !Number.isFinite(count) || count <= 0) return;
+    const existing = plan.find((item) => item.tier === tier);
+    const safeCount = Math.min(Math.floor(count), MAX_RECOMMENDATION_EXPORT);
+    if (existing) existing.count = safeCount;
+    else plan.push({ tier, count: safeCount });
+  }
+
+  function parseTierOfferRequest(prompt) {
+    const text = String(prompt || "");
+    const plan = [];
+    const countFirst = /\b(\d{1,4})\s*(?:offers?|brands?|recommendations?)?\s*(?:from|for|in|of)?\s*tier\s*([1-4])\b/gi;
+    const tierFirst = /\btier\s*([1-4])\s*(?:[:=\-]|with|for|of)?\s*(\d{1,4})\s*(?:offers?|brands?|recommendations?)?/gi;
+    let match;
+    while ((match = countFirst.exec(text))) {
+      mergeTierPlanItem(plan, tierNameFromToken(match[2]), Number(match[1]));
+    }
+    while ((match = tierFirst.exec(text))) {
+      mergeTierPlanItem(plan, tierNameFromToken(match[1]), Number(match[2]));
+    }
+    return plan;
+  }
+
+  function bundleRequestedCount(plan) {
+    return (plan || []).reduce((sum, item) => sum + number(item.count), 0);
+  }
+
+  function tierBundleCounts(rows) {
+    return rows.reduce((counts, offer) => {
+      counts[offer.tier] = (counts[offer.tier] || 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  function tierCandidatePool(tier, context = {}) {
+    const metricFilters = context.metricFilters || [];
+    const pool = applyMetricFilters(offers.filter((offer) => offer.tier === tier), metricFilters);
+    return rankedRecommendations(pool, {
+      ...context,
+      includeTier4: true,
+      includeBlack: tier === "BLACK TIER" || context.includeBlack
+    });
+  }
+
+  function isExcludedRecommendationOffer(offer) {
+    return state.excludedRecommendationKeys.has(offerIdentityKey(offer));
+  }
+
+  function rebuildRecommendationBundle(plan, options = {}) {
+    const previousRows = options.previousRows || [];
+    const context = options.context || {};
+    const rows = [];
+    const gaps = [];
+    const selectedKeys = new Set();
+
+    plan.forEach((item) => {
+      const tier = item.tier;
+      const requested = Math.min(Math.max(Math.floor(number(item.count) || 0), 0), MAX_RECOMMENDATION_EXPORT);
+      const tierRows = [];
+      previousRows
+        .filter((offer) => offer.tier === tier)
+        .forEach((offer) => {
+          const key = offerIdentityKey(offer);
+          if (tierRows.length >= requested || selectedKeys.has(key) || isExcludedRecommendationOffer(offer)) return;
+          tierRows.push(offer);
+          selectedKeys.add(key);
+        });
+
+      tierCandidatePool(tier, context).forEach((offer) => {
+        const key = offerIdentityKey(offer);
+        if (tierRows.length >= requested || selectedKeys.has(key) || isExcludedRecommendationOffer(offer)) return;
+        tierRows.push(offer);
+        selectedKeys.add(key);
+      });
+
+      rows.push(...tierRows);
+      if (tierRows.length < requested) {
+        gaps.push({ tier, requested, available: tierRows.length, gap: requested - tierRows.length });
+      }
+    });
+
+    const bundle = {
+      plan: plan.map((item) => ({ tier: item.tier, count: item.count })),
+      rows,
+      gaps,
+      context,
+      requestedCount: bundleRequestedCount(plan),
+      excludedKeys: Array.from(state.excludedRecommendationKeys)
+    };
+    state.activeRecommendationBundle = bundle;
+    setContext(buildRecommendationContext(rows, {
+      ...context,
+      bundle: true,
+      bundlePlan: bundle.plan,
+      requestedCount: bundle.requestedCount,
+      exportCount: rows.length,
+      gaps
+    }));
+    return bundle;
+  }
+
+  function bundlePlanText(plan) {
+    return plan.map((item) => `${item.tier}: ${number(item.count).toLocaleString()}`).join(", ");
+  }
+
+  function bundleCountsText(rows) {
+    const counts = tierBundleCounts(rows);
+    return Object.keys(counts)
+      .sort((a, b) => tierPriority({ tier: a }, true, true) - tierPriority({ tier: b }, true, true))
+      .map((tier) => `${tier}: ${counts[tier].toLocaleString()}`)
+      .join(", ");
+  }
+
+  function bundleGapText(gaps) {
+    if (!gaps || !gaps.length) return "";
+    return gaps.map((gap) => `${gap.tier} requested ${gap.requested.toLocaleString()}, found ${gap.available.toLocaleString()}, short ${gap.gap.toLocaleString()}`).join("; ");
+  }
+
+  function renderRecommendationBundleHtml(bundle, options = {}) {
+    const previewRows = bundle.rows.slice(0, recommendationPreviewCount(bundle.requestedCount, bundle.rows.length));
+    const downloadId = registerRecommendationDownload(bundle.rows, {
+      ...bundle.context,
+      downloadType: "offers",
+      filePrefix: "offer_recommendations",
+      exportScope: "tier_mix",
+      sheetName: "Offer Recommendations"
+    }, bundle.requestedCount);
+    const action = options.action || "Built a recommendation package";
+    const gapText = bundleGapText(bundle.gaps);
+    const details = [
+      `Plan: ${bundlePlanText(bundle.plan)}`,
+      `Current file: ${bundle.rows.length.toLocaleString()} offers (${bundleCountsText(bundle.rows) || "none"})`,
+      gapText ? `Shortage: ${gapText}` : ""
+    ].filter(Boolean).join(". ");
+    const note = options.note ? `<p>${escapeHtml(options.note)}</p>` : "";
+    return `<p><strong>${escapeHtml(action)}.</strong> ${escapeHtml(details)}.</p>` +
+      note +
+      `<div class="download-card">
+        <div>
+          <strong>Offer recommendation file</strong>
+          <span>${escapeHtml(bundle.rows.length.toLocaleString())} offers in one Excel sheet. Excluded offers stay out for this chat session.</span>
+        </div>
+        <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">Download Excel</button>
+      </div>` +
+      resultTable(previewRows, compactColumns);
+  }
+
+  function recommendationBundleAnswer(prompt, plan) {
+    const context = {
+      prompt,
+      includeTier4: true,
+      includeBlack: true,
+      metricFilters: extractMetricFilters(prompt),
+      metricSort: extractMetricSortIntent(prompt)
+    };
+    const bundle = rebuildRecommendationBundle(plan, { context });
+    return renderRecommendationBundleHtml(bundle);
+  }
+
+  function matchedOffersFromPrompt(prompt, pool) {
+    const normalizedPrompt = normalize(prompt);
+    const idMatches = new Set((String(prompt || "").match(/\b\d{5,8}(?:\.0)?\b/g) || []).map((id) => id.replace(/\.0$/, "")));
+    const ignoredTokens = new Set(["do", "not", "try", "dont", "want", "exclude", "remove", "skip", "change", "replace", "swap", "tier", "offer", "offers", "recommendation", "recommendations", "with", "other", "one", "another", "from", "the", "and"]);
+    const promptTokens = (String(prompt || "").toLowerCase().match(/[a-z0-9]+/g) || [])
+      .filter((token) => token.length >= 3 && !ignoredTokens.has(token));
+    const matches = [];
+    const seen = new Set();
+    [...pool]
+      .sort((a, b) => normalize(b.brand).length - normalize(a.brand).length)
+      .forEach((offer) => {
+        const key = offerIdentityKey(offer);
+        if (seen.has(key)) return;
+        const brand = normalize(offer.brand);
+        const id = String(offer.merchantId || "").trim();
+        const brandTokenMatch = promptTokens.some((token) => brand.includes(token));
+        if ((brand.length >= 3 && (normalizedPrompt.includes(brand) || brandTokenMatch)) || (id && idMatches.has(id))) {
+          seen.add(key);
+          matches.push(offer);
+        }
+      });
+    return matches;
+  }
+
+  function isRecommendationExclusionPrompt(prompt) {
+    return /\b(do\s*not\s*try|don't\s*try|dont\s*try|do\s*not\s*want|don't\s*want|dont\s*want|exclude|remove|skip|not\s*try)\b/i.test(prompt);
+  }
+
+  function isRecommendationReplacementPrompt(prompt) {
+    return /\b(change|replace|swap|another|other\s+one)\b/i.test(prompt) && Boolean(state.activeRecommendationBundle);
+  }
+
+  function recommendationBundleExclusionAnswer(prompt) {
+    const bundle = state.activeRecommendationBundle;
+    if (!bundle) return "Create a recommendation package first, then tell me which offers to exclude.";
+    let matches = matchedOffersFromPrompt(prompt, bundle.rows);
+    if (!matches.length) matches = matchedOffersFromPrompt(prompt, offers);
+    if (!matches.length) return "I could not match those offer names in the current data. Send the merchant names or IDs to exclude.";
+
+    const beforeRows = bundle.rows;
+    matches.forEach((offer) => state.excludedRecommendationKeys.add(offerIdentityKey(offer)));
+    const nextBundle = rebuildRecommendationBundle(bundle.plan, { previousRows: beforeRows, context: bundle.context });
+    const beforeKeys = new Set(beforeRows.map(offerIdentityKey));
+    const afterKeys = new Set(nextBundle.rows.map(offerIdentityKey));
+    const removed = beforeRows.filter((offer) => !afterKeys.has(offerIdentityKey(offer)));
+    const added = nextBundle.rows.filter((offer) => !beforeKeys.has(offerIdentityKey(offer)));
+    const removedText = removed.length ? `Removed: ${removed.map((offer) => offer.brand).join(", ")}` : `Excluded: ${matches.map((offer) => offer.brand).join(", ")}`;
+    const addedText = added.length ? `Added replacements: ${added.map((offer) => offer.brand).join(", ")}` : "No replacement was available for one or more excluded offers";
+    return renderRecommendationBundleHtml(nextBundle, {
+      action: "Updated the recommendation package",
+      note: `${removedText}. ${addedText}.`
+    });
+  }
+
+  function recommendationBundleReplacementAnswer(prompt) {
+    const bundle = state.activeRecommendationBundle;
+    if (!bundle) return "Create a recommendation package first, then ask me to change one offer.";
+    const promptedTier = tierFromPrompt(prompt);
+    const pool = promptedTier ? bundle.rows.filter((offer) => offer.tier === promptedTier) : bundle.rows;
+    if (!pool.length) return `There are no ${promptedTier || "matching"} offers in the current recommendation package.`;
+
+    const namedMatches = matchedOffersFromPrompt(prompt, pool);
+    const target = namedMatches[0] || pool[pool.length - 1];
+    const beforeRows = bundle.rows;
+    const beforeKeys = new Set(beforeRows.map(offerIdentityKey));
+    state.excludedRecommendationKeys.add(offerIdentityKey(target));
+    const nextBundle = rebuildRecommendationBundle(bundle.plan, { previousRows: beforeRows, context: bundle.context });
+    const replacement = nextBundle.rows.find((offer) => offer.tier === target.tier && !beforeKeys.has(offerIdentityKey(offer)));
+    const replacementText = replacement
+      ? `Replaced ${target.brand} with ${replacement.brand} from ${target.tier}.`
+      : `Removed ${target.brand} from ${target.tier}, but there was no unused replacement available.`;
+    return renderRecommendationBundleHtml(nextBundle, {
+      action: "Changed one recommendation",
+      note: replacementText
+    });
+  }
+
+  function metricSortDescription(metricSort) {
+    if (!metricSort || !metricSort.field) return "";
+    const direction = metricSort.direction === "asc" ? "lowest" : "highest";
+    return `tier priority first, then ${metricSort.label} ${direction}`;
+  }
+
   function recommendationHtml(rows, context = {}) {
     const language = responseLanguageFor(context.prompt || state.currentQuery);
     const copy = chatCopy(language);
@@ -2768,7 +3469,7 @@
     const requestedCount = number(context.requestedCount) || 5;
     const ranked = rankedRecommendations(rows, localizedContext);
     const exportRows = ranked.slice(0, requestedCount);
-    const top = exportRows.slice(0, 5);
+    const top = exportRows.slice(0, recommendationPreviewCount(requestedCount, exportRows.length));
     setContext(buildRecommendationContext(exportRows, { ...localizedContext, requestedCount, exportCount: exportRows.length }));
     if (!top.length) return language === "zh" ? copy.recommendationEmpty : "I found no offers that fit this recommendation request with the current filters.";
     const label = language === "zh"
@@ -2788,9 +3489,13 @@
     const showingText = language === "zh"
       ? chatFormat(copy.showingTop, { count: top.length.toLocaleString() })
       : `showing the top ${top.length.toLocaleString()} here so the chat stays readable.`;
-    const rankingText = language === "zh"
+    let rankingText = language === "zh"
       ? `${exportRows.length.toLocaleString()} 个 offer，${copy.rankedBy}`
       : `${exportRows.length.toLocaleString()} offers ranked by revenue, orders, CVR, AOV, then EPC.${filterNote}`;
+    const metricSortText = metricSortDescription(context.metricSort);
+    if (metricSortText) {
+      rankingText = `${exportRows.length.toLocaleString()} offers ranked by ${metricSortText}.${filterNote}`;
+    }
     return `<p><strong>${escapeHtml(previewTitle)}${label}:</strong> ${escapeHtml(showingText)} ${escapeHtml(exportNote)}</p>` +
       `<div class="download-card">
         <div>
@@ -2804,6 +3509,7 @@
         <ul>
           <li><strong>${escapeHtml(language === "zh" ? copy.merchantId : "Merchant ID")}:</strong> ${escapeHtml(offer.merchantId || (language === "zh" ? copy.notAvailable : "not available"))}</li>
           <li><strong>${escapeHtml(language === "zh" ? copy.keyMetrics : "Key metrics")}:</strong> AOV ${shortMoney(offer.aov)}, EPC ${shortEpc(offer.epc)}, commission ${shortPct(offer.commissionRate)}, clicks ${number(offer.clicks).toLocaleString()}, orders ${number(offer.orders).toLocaleString()}, CVR ${shortPct(offer.conversionRate)}, revenue ${shortMoney(offer.salesAmount)}</li>
+          ${tier2RecommendationDetailsHtml(offer, language)}
           <li><strong>${escapeHtml(language === "zh" ? copy.whyRecommended : "Why recommended")}:</strong> ${escapeHtml(whyRecommended(offer, localizedContext))}</li>
           <li><strong>${escapeHtml(language === "zh" ? copy.bestTrafficAngle : "Best traffic angle")}:</strong> ${escapeHtml(bestAngle(offer, localizedContext))}</li>
           <li><strong>${escapeHtml(language === "zh" ? copy.cautionNextStep : "Caution / next step")}:</strong> ${escapeHtml(caution(offer, language))}</li>
@@ -2812,13 +3518,14 @@
   }
 
   function paymentCycleOfferAnswer(prompt, filter) {
+    const language = responseLanguageFor(prompt);
     const rows = offers
       .filter((offer) => paymentCycleFilterMatches(offer, filter))
       .sort((a, b) => number(a.paymentCycle) - number(b.paymentCycle) || tierPriority(a, true, true) - tierPriority(b, true, true) || number(b.orders) - number(a.orders));
     const requestedCount = requestedRecommendationCount(prompt, Math.min(rows.length, MAX_RECOMMENDATION_EXPORT));
     const exportRows = rows.slice(0, Math.min(requestedCount, MAX_RECOMMENDATION_EXPORT));
     const top = exportRows.slice(0, 5);
-    const filterText = paymentCycleFilterText(filter);
+    const filterText = paymentCycleFilterText(filter, language);
     const scopeOperator = { "<": "below", "<=": "up-to", ">": "above", ">=": "at-least" }[filter.operator] || "cycle";
     const scope = `payment-cycle-${scopeOperator}-${filter.threshold}-days`;
     setContext(buildRecommendationContext(exportRows, {
@@ -2829,7 +3536,11 @@
       includeTier4: true,
       includeBlack: true
     }));
-    if (!top.length) return `I found no offers with ${escapeHtml(filterText)}.`;
+    if (!top.length) {
+      return language === "zh"
+        ? `没有找到${escapeHtml(filterText)}的 offer。可以尝试放宽条件，比如 120天以下。`
+        : `I found no offers with ${escapeHtml(filterText)}.`;
+    }
     const downloadId = registerRecommendationDownload(exportRows, {
       exportScope: scope,
       paymentCycleFilter: filter,
@@ -2839,6 +3550,20 @@
     const foundText = exportRows.length < rows.length
       ? `showing ${exportRows.length.toLocaleString()} of ${rows.length.toLocaleString()} matching offers`
       : `${exportRows.length.toLocaleString()} matching offers`;
+    if (language === "zh") {
+      const zhFoundText = exportRows.length < rows.length
+        ? `导出 ${exportRows.length.toLocaleString()} 个，共 ${rows.length.toLocaleString()} 个匹配 offer`
+        : `找到 ${exportRows.length.toLocaleString()} 个匹配 offer`;
+      return `<p><strong>付款周期筛选预览：</strong>${escapeHtml(filterText)}，按付款周期从短到长排序；${escapeHtml(zhFoundText)}。聊天中先预览前 ${top.length.toLocaleString()} 个。</p>` +
+        `<div class="download-card">
+          <div>
+            <strong>付款周期 offer 文件</strong>
+            <span>${exportRows.length.toLocaleString()} 个 offer，单一 Excel 总表，按付款周期从短到长排序。</span>
+          </div>
+          <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">下载 Excel</button>
+        </div>` +
+        resultTable(top, paymentCycleOfferColumns, language);
+    }
     return `<p><strong>Payment cycle preview:</strong> ${escapeHtml(filterText)}, sorted shortest first; ${escapeHtml(foundText)}. Showing the top ${top.length.toLocaleString()} here so the chat stays readable.</p>` +
       `<div class="download-card">
         <div>
@@ -2847,7 +3572,7 @@
         </div>
         <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">Download Excel</button>
       </div>` +
-      resultTable(top, paymentCycleOfferColumns);
+      resultTable(top, paymentCycleOfferColumns, language);
   }
 
   function paymentAnswer(prompt) {
@@ -2945,6 +3670,10 @@
     const lower = prompt.toLowerCase().trim();
     const language = responseLanguageFor(prompt);
     const copy = chatCopy(language);
+    const tierOfferPlan = parseTierOfferRequest(prompt);
+    if (tierOfferPlan.length) return recommendationBundleAnswer(prompt, tierOfferPlan);
+    if (isRecommendationExclusionPrompt(prompt)) return recommendationBundleExclusionAnswer(prompt);
+    if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
     const intent = detectQueryIntent(prompt);
     const asin = findByAsin(prompt);
     if (asin && intent === "asin") return asinAnswer(asin);
@@ -2988,6 +3717,7 @@
     const wantsGoogle = /google|keyword|brand keyword|search/.test(lower) || /关键词|搜索|品牌词/.test(prompt);
     const metricFilters = extractMetricFilters(prompt);
     const topMetricRequest = extractTopMetricRequest(prompt);
+    const metricSort = extractMetricSortIntent(prompt);
 
     if (topMetricRequest) {
       return topMetricOfferAnswer(prompt, topMetricRequest);
@@ -3001,7 +3731,7 @@
       let pool = category ? sortedForCategory(category, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt, tier }) : offers;
       if (tier) pool = pool.filter((offer) => offer.tier === tier);
       pool = applyMetricFilters(pool, metricFilters);
-      return recommendationHtml(pool, { category, tier, google: wantsGoogle, includeTier4: wantsTier4, includeBlack: wantsBlack, metricFilters, requestedCount: requestedRecommendationCount(prompt), prompt });
+      return recommendationHtml(pool, { category, tier, google: wantsGoogle, includeTier4: wantsTier4, includeBlack: wantsBlack, metricFilters, metricSort, requestedCount: requestedRecommendationCount(prompt), prompt });
     }
 
     if (tier) {
@@ -3012,6 +3742,7 @@
         .sort((a, b) => compareRecommendationOffers(a, b, { includeTier4: true, includeBlack: true }));
       setContext(buildTierContext(tier, rows));
       const topRows = topRecommendations(rows, { tier, includeTier4: true, includeBlack: true });
+      const columns = tier === "Tier 2" ? tier2CompactColumns : compactColumns;
       const title = language === "zh" ? `${escapeHtml(tier)} ${escapeHtml(copy.tierOverview)}` : `${escapeHtml(tier)} overview and top candidates:`;
       return title +
         downloadCardHtml(rows, {
@@ -3023,7 +3754,7 @@
           title: `${tier} file`,
           description: `${rows.length.toLocaleString()} ${tier} offers from the current offer data.`
         }) +
-        resultTable(topRows, compactColumns, language);
+        resultTable(topRows, columns, language);
     }
 
     if (category) {
@@ -3108,12 +3839,36 @@
     els.metrics.innerHTML = cards.map(([label, value]) => `<div class="metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   }
 
-  function renderTable(rows) {
-    els.tableCount.textContent = `${rows.length.toLocaleString()} ${t("table.offerCount", "matching offers")}`;
-    els.table.innerHTML = rows.slice(0, 80).map((offer) => {
-      const paidClass = hasPaymentRisk(offer) ? "unpaid" : hasPaidSignal(offer) ? "paid" : "neutral";
-      const movedNote = offer.tierOverride ? `<p class="tier-override-note">${escapeHtml(t("move.movedFrom", "Moved from"))} ${escapeHtml(optionText(offer.originalTier || "Unknown"))}</p>` : "";
-      return `<tr>
+  function dashboardOfferPreviewLimit() {
+    return state.category === "all" ? 5 : 80;
+  }
+
+  function dashboardCategoryHeaderRow(group, previewCount) {
+    const summary = group.summary;
+    const remaining = Math.max(0, group.rows.length - previewCount);
+    const remainingText = remaining ? ` · ${remaining.toLocaleString()} more` : "";
+    return `<tr class="category-group-row">
+      <td colspan="9">
+        <div class="category-group-summary">
+          <div>
+            <strong>${escapeHtml(group.category)}</strong>
+            <span>${group.rows.length.toLocaleString()} offers${escapeHtml(remainingText)}</span>
+          </div>
+          <dl>
+            <div><dt>CVR</dt><dd>${shortPct(summary.avgCvr)}</dd></div>
+            <div><dt>AOV</dt><dd>${shortMoney(summary.avgAov)}</dd></div>
+            <div><dt>Revenue</dt><dd>${shortMoney(summary.totalRevenue)}</dd></div>
+            <div><dt>Orders</dt><dd>${number(summary.totalOrders).toLocaleString()}</dd></div>
+          </dl>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function dashboardOfferRow(offer) {
+    const paidClass = hasPaymentRisk(offer) ? "unpaid" : hasPaidSignal(offer) ? "paid" : "neutral";
+    const movedNote = offer.tierOverride ? `<p class="tier-override-note">${escapeHtml(t("move.movedFrom", "Moved from"))} ${escapeHtml(optionText(offer.originalTier || "Unknown"))}</p>` : "";
+    return `<tr>
         <td><strong>${escapeHtml(offer.brand || "")}</strong><p>${escapeHtml(offer.merchantId || "")}</p><p>${escapeHtml(displayCategory(offer))}</p></td>
         <td><span class="badge tier">${escapeHtml(tierGroup(offer))}</span>${movedNote}</td>
         <td>${escapeHtml(offer.network || "")}</td>
@@ -3123,14 +3878,319 @@
         <td>${shortPct(offer.conversionRate)}</td>
         <td>${number(offer.orders).toLocaleString()}</td>
         <td><span class="badge ${paidClass}">${escapeHtml(offer.paymentStatus || "not available")}</span></td>
-        <td>${tierMoveControlHtml(offer)}</td>
       </tr>`;
+  }
+
+  function renderTable(rows) {
+    if (!els.table || !els.tableCount) return;
+    const groups = dashboardCategoryGroups(rows);
+    const previewLimit = dashboardOfferPreviewLimit();
+    els.tableCount.textContent = `${rows.length.toLocaleString()} ${t("table.offerCount", "matching offers")} across ${groups.length.toLocaleString()} main categories`;
+    els.table.innerHTML = groups.map((group) => {
+      const previewRows = group.rows.slice(0, previewLimit);
+      return dashboardCategoryHeaderRow(group, previewRows.length) +
+        previewRows.map(dashboardOfferRow).join("");
     }).join("");
+  }
+
+  function categoryReportTierLabel(tier) {
+    return tier === "BLACK TIER" ? "Black Tier" : tier;
+  }
+
+  function shortCategoryReportTierLabel(tier) {
+    if (tier === "BLACK TIER") return "Black";
+    return String(tier || "").replace("Tier ", "T");
+  }
+
+  function normalizeCategoryReportTiers(tiers) {
+    const selected = new Set(tiers || []);
+    return CATEGORY_REPORT_TIER_OPTIONS.filter((tier) => selected.has(tier));
+  }
+
+  function selectedCategoryReportTierSet() {
+    return new Set(normalizeCategoryReportTiers(state.categoryReportTiers));
+  }
+
+  function renderDashboardCategoryTierPicker() {
+    if (!els.dashboardCategoryTierPicker) return;
+    const options = [
+      { value: "all", label: "All Tier 1-4" },
+      ...CATEGORY_REPORT_TIER_OPTIONS.map((tier) => ({ value: tier, label: categoryReportTierLabel(tier) }))
+    ];
+    els.dashboardCategoryTierPicker.innerHTML = options.map((option) => `<label class="checkbox-row dashboard-category-tier-option">
+      <input type="checkbox" data-category-report-tier="${escapeHtml(option.value)}" />
+      <span>${escapeHtml(option.label)}</span>
+    </label>`).join("");
+    syncDashboardCategoryTierControls();
+  }
+
+  function syncDashboardCategoryTierControls() {
+    if (!els.dashboardCategoryTierPicker) return;
+    const selected = selectedCategoryReportTierSet();
+    const allStandardSelected = STANDARD_CATEGORY_REPORT_TIERS.every((tier) => selected.has(tier));
+    const someStandardSelected = STANDARD_CATEGORY_REPORT_TIERS.some((tier) => selected.has(tier));
+    els.dashboardCategoryTierPicker.querySelectorAll("[data-category-report-tier]").forEach((input) => {
+      const tier = input.dataset.categoryReportTier;
+      if (tier === "all") {
+        input.checked = allStandardSelected;
+        input.indeterminate = someStandardSelected && !allStandardSelected;
+        return;
+      }
+      input.checked = selected.has(tier);
+      input.indeterminate = false;
+    });
+  }
+
+  function setDashboardCategoryReportAll(checked) {
+    const selected = selectedCategoryReportTierSet();
+    STANDARD_CATEGORY_REPORT_TIERS.forEach((tier) => {
+      if (checked) selected.add(tier);
+      else selected.delete(tier);
+    });
+    if (checked) selected.delete("BLACK TIER");
+    state.categoryReportTiers = normalizeCategoryReportTiers(Array.from(selected));
+  }
+
+  function handleDashboardCategoryTierChange(event) {
+    const input = event.target.closest("[data-category-report-tier]");
+    if (!input) return;
+    const tier = input.dataset.categoryReportTier;
+    if (tier === "all") {
+      setDashboardCategoryReportAll(input.checked);
+    } else {
+      const selected = selectedCategoryReportTierSet();
+      if (input.checked) selected.add(tier);
+      else selected.delete(tier);
+      state.categoryReportTiers = normalizeCategoryReportTiers(Array.from(selected));
+    }
+    syncDashboardCategoryTierControls();
+    renderDashboardCategoryReport();
+  }
+
+  function dashboardCategoryReportRows() {
+    return normalizeCategoryReportTiers(state.categoryReportTiers).flatMap((tierName) => {
+      const sheet = sheetByName(tierName);
+      return sheet && Array.isArray(sheet.rows)
+        ? sheet.rows.map((row) => ({ ...row, __tierName: tierName }))
+        : [];
+    });
+  }
+
+  function tierBreakdownText(group) {
+    const breakdown = group.tierBreakdown || {};
+    return CATEGORY_REPORT_TIER_OPTIONS
+      .map((tier) => [tier, number(breakdown[tier])])
+      .filter(([, count]) => count > 0)
+      .map(([tier, count]) => `${shortCategoryReportTierLabel(tier)} ${count.toLocaleString()}`)
+      .join(" / ") || "-";
+  }
+
+  function dashboardCategorySortLabel(key) {
+    const labels = {
+      merchantCount: "Merchants",
+      revenue: "Revenue",
+      orders: "Orders",
+      clicks: "Clicks",
+      avgCvr: "CVR",
+      avgEpc: "EPC",
+      avgAov: "AOV",
+      category: "Category"
+    };
+    return labels[key] || "Revenue";
+  }
+
+  function dashboardCategoryDefaultSortDirection(key) {
+    return key === "category" ? "asc" : "desc";
+  }
+
+  function dashboardCategorySortableHeader(key, label) {
+    const active = state.categoryReportSort === key;
+    const direction = active ? state.categoryReportDirection : dashboardCategoryDefaultSortDirection(key);
+    const indicator = active ? (direction === "asc" ? "↑" : "↓") : "↕";
+    return `<th><button class="table-sort-button${active ? " active" : ""}" type="button" data-dashboard-category-sort-key="${escapeHtml(key)}" aria-label="Sort category report by ${escapeHtml(label)}">
+      <span>${escapeHtml(label)}</span>
+      <span class="sort-indicator" aria-hidden="true">${escapeHtml(indicator)}</span>
+    </button></th>`;
+  }
+
+  function handleDashboardCategorySortClick(event) {
+    const button = event.target.closest("[data-dashboard-category-sort-key]");
+    if (!button) return;
+    const key = button.dataset.dashboardCategorySortKey || "revenue";
+    if (state.categoryReportSort === key) {
+      state.categoryReportDirection = state.categoryReportDirection === "asc" ? "desc" : "asc";
+    } else {
+      state.categoryReportSort = key;
+      state.categoryReportDirection = dashboardCategoryDefaultSortDirection(key);
+    }
+    renderDashboardCategoryReport();
+  }
+
+  function dashboardCategorySortValue(group, key) {
+    if (key === "category") return String(group.category || "");
+    if (key === "merchantCount") return number(group.merchantCount);
+    if (key === "revenue") return number(group.revenue);
+    if (key === "orders") return number(group.orders);
+    if (key === "clicks") return number(group.clicks);
+    if (key === "avgCvr") return number(group.avgCvr);
+    if (key === "avgEpc") return number(group.avgEpc);
+    if (key === "avgAov") return number(group.avgAov);
+    return number(group.revenue);
+  }
+
+  function compareDashboardCategoryReportGroups(a, b) {
+    const key = state.categoryReportSort || "revenue";
+    const direction = state.categoryReportDirection === "asc" ? 1 : -1;
+    const left = dashboardCategorySortValue(a, key);
+    const right = dashboardCategorySortValue(b, key);
+    if (key === "category") {
+      const result = String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+      return result * (state.categoryReportDirection === "desc" ? -1 : 1);
+    }
+    const result = number(left) - number(right);
+    if (result) return result * direction;
+    if (a.category === "Uncategorized" && b.category !== "Uncategorized") return 1;
+    if (b.category === "Uncategorized" && a.category !== "Uncategorized") return -1;
+    return String(a.category || "").localeCompare(String(b.category || ""), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function filterDashboardCategoryReportGroups(groups) {
+    const search = normalize(state.categoryReportSearch);
+    const filtered = search
+      ? groups.filter((group) => {
+        const category = normalize(group.category);
+        const merchants = normalize(`${group.previewMerchants || ""} ${group.topMerchant || ""} ${(group.rows || []).slice(0, 24).map((row) => `${tierRowMerchantName(row)} ${tierRowMerchantId(row)}`).join(" ")}`);
+        return category.includes(search) || merchants.includes(search);
+      })
+      : groups.slice();
+    return filtered.sort(compareDashboardCategoryReportGroups);
+  }
+
+  function dashboardCategoryReportTableRows(groups) {
+    const maxRevenue = Math.max(...groups.map((group) => number(group.revenue)), 0);
+    return groups.map((group) => {
+      const revenuePct = maxRevenue ? Math.max(4, Math.round((number(group.revenue) / maxRevenue) * 100)) : 0;
+      return `<tr>
+      <td>
+        <strong>${escapeHtml(group.category)}</strong>
+        <span class="category-rank-bar" aria-hidden="true"><span style="width: ${revenuePct}%"></span></span>
+      </td>
+      <td>${number(group.merchantCount).toLocaleString()}</td>
+      <td>${shortMoney(group.revenue)}</td>
+      <td>${number(group.orders).toLocaleString()}</td>
+      <td>${number(group.clicks).toLocaleString()}</td>
+      <td>${shortPct(group.avgCvr)}</td>
+      <td>${shortEpc(group.avgEpc)}</td>
+      <td>${shortMoney(group.avgAov)}</td>
+      <td>${escapeHtml(group.previewMerchants || group.topMerchant || "-")}</td>
+      <td>${escapeHtml(tierBreakdownText(group))}</td>
+    </tr>`;
+    }).join("");
+  }
+
+  function dashboardCategoryPieMetricKey() {
+    const key = state.categoryReportSort || "revenue";
+    return CATEGORY_REPORT_ADDITIVE_SORTS.has(key) ? key : "revenue";
+  }
+
+  function dashboardCategoryPieHtml(groups) {
+    const metricKey = dashboardCategoryPieMetricKey();
+    const metricLabel = dashboardCategorySortLabel(metricKey);
+    const colors = ["#2f5f9f", "#177b73", "#c27a2c", "#6b7f2a", "#8a5a8c", "#5b7f8e", "#b04f4f", "#7a6b56"];
+    const slices = groups
+      .map((group) => ({
+        label: group.category,
+        value: number(dashboardCategorySortValue(group, metricKey))
+      }))
+      .filter((slice) => slice.value > 0);
+    const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+    if (!total) {
+      return `<section class="dashboard-category-pie" aria-label="Category pie chart">
+        <div class="category-pie-empty">No ${escapeHtml(metricLabel.toLowerCase())} data for the selected tiers.</div>
+      </section>`;
+    }
+
+    const topSlices = slices.slice(0, 7);
+    const otherValue = slices.slice(7).reduce((sum, slice) => sum + slice.value, 0);
+    if (otherValue > 0) topSlices.push({ label: "Other categories", value: otherValue });
+    let current = 0;
+    const gradient = topSlices.map((slice, index) => {
+      const start = current;
+      current += (slice.value / total) * 360;
+      return `${colors[index % colors.length]} ${start.toFixed(2)}deg ${current.toFixed(2)}deg`;
+    }).join(", ");
+    return `<section class="dashboard-category-pie" aria-label="Category pie chart">
+      <div class="category-pie-visual" style="background: conic-gradient(${gradient});">
+        <div>
+          <strong>${escapeHtml(metricLabel)}</strong>
+          <span>${escapeHtml(metricKey === "revenue" ? shortMoney(total) : total.toLocaleString())}</span>
+        </div>
+      </div>
+      <div class="category-pie-copy">
+        <h4>${escapeHtml(metricLabel)} mix by category</h4>
+        <p>Top categories from the current tier selection. Search and tier checkboxes update this chart.</p>
+        <ul class="category-pie-legend">
+          ${topSlices.map((slice, index) => {
+            const pct = total ? slice.value / total : 0;
+            const value = metricKey === "revenue" ? shortMoney(slice.value) : slice.value.toLocaleString();
+            return `<li>
+              <span class="category-pie-swatch" style="background: ${colors[index % colors.length]}"></span>
+              <strong>${escapeHtml(slice.label)}</strong>
+              <span>${escapeHtml(value)} / ${shortPct(pct)}</span>
+            </li>`;
+          }).join("")}
+        </ul>
+      </div>
+    </section>`;
+  }
+
+  function renderDashboardCategoryReport() {
+    if (!els.dashboardCategoryReportBody) return;
+    const rows = dashboardCategoryReportRows();
+    const allGroups = tierCategorySummaryRows(null, rows);
+    const groups = filterDashboardCategoryReportGroups(allGroups);
+    const totalRevenue = groups.reduce((sum, group) => sum + number(group.revenue), 0);
+    const totalOrders = groups.reduce((sum, group) => sum + number(group.orders), 0);
+    const totalClicks = groups.reduce((sum, group) => sum + number(group.clicks), 0);
+    const merchantCount = groups.reduce((sum, group) => sum + number(group.merchantCount), 0);
+    const selectedTiers = normalizeCategoryReportTiers(state.categoryReportTiers).map(categoryReportTierLabel);
+    if (els.dashboardCategoryReportSubtitle) {
+      const tierText = selectedTiers.length ? selectedTiers.join(", ") : "No tiers selected";
+      els.dashboardCategoryReportSubtitle.textContent = `${tierText} / ${rows.length.toLocaleString()} rows / ${groups.length.toLocaleString()} of ${allGroups.length.toLocaleString()} categories`;
+    }
+    if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearch;
+    els.dashboardCategoryReportBody.innerHTML = `<dl class="dashboard-category-report-totals">
+      <div><dt>${escapeHtml(labelText("Merchants"))}</dt><dd>${merchantCount.toLocaleString()}</dd></div>
+      <div><dt>${escapeHtml(labelText("Revenue"))}</dt><dd>${shortMoney(totalRevenue)}</dd></div>
+      <div><dt>${escapeHtml(labelText("Orders"))}</dt><dd>${totalOrders.toLocaleString()}</dd></div>
+      <div><dt>${escapeHtml(labelText("CVR"))}</dt><dd>${shortPct(totalClicks ? totalOrders / totalClicks : null)}</dd></div>
+    </dl>
+    <div class="table-wrap tier-category-table-wrap dashboard-category-table-wrap">
+      <table class="sheet-table tier-category-table dashboard-category-report-table">
+        <thead>
+          <tr>
+            ${dashboardCategorySortableHeader("category", labelText("Category"))}
+            ${dashboardCategorySortableHeader("merchantCount", labelText("Merchants"))}
+            ${dashboardCategorySortableHeader("revenue", labelText("Revenue"))}
+            ${dashboardCategorySortableHeader("orders", labelText("Orders"))}
+            ${dashboardCategorySortableHeader("clicks", labelText("Clicks"))}
+            ${dashboardCategorySortableHeader("avgCvr", labelText("CVR"))}
+            ${dashboardCategorySortableHeader("avgEpc", "EPC")}
+            ${dashboardCategorySortableHeader("avgAov", "AOV")}
+            <th>Top merchants</th>
+            <th>Tier mix</th>
+          </tr>
+        </thead>
+        <tbody>${groups.length ? dashboardCategoryReportTableRows(groups) : `<tr><td colspan="10">No category rows match the selected tiers or category search.</td></tr>`}</tbody>
+      </table>
+    </div>
+    ${dashboardCategoryPieHtml(groups)}`;
+    syncDashboardCategoryTierControls();
   }
 
   function renderAll(rows = getFiltered()) {
     renderMetrics(rows);
-    renderTable(rows);
+    renderDashboardCategoryReport();
     if (state.currentContext.type === "default") {
       setContext({ type: "default", items: rows.slice(0, 120), summary: aggregateRows(rows), filters: {} });
     }
@@ -3229,6 +4289,9 @@
       ["Payment Cycle", (offer) => offer.paymentCycle || ""],
       ["Recommended Link", (offer) => offer.recommendedLink || ""],
       ["Top ASINs", (offer) => Array.isArray(offer.topAsins) ? offer.topAsins.join(", ") : (offer.topAsins || offer.asinsText || "")],
+      ["Publisher Count", (offer) => tier2PublisherCountText(offer, "en") || offer.publisherCount || ""],
+      ["Publisher Success Rate", (offer) => tier2PublisherSuccessText(offer, "en") || ""],
+      ["Tier 2 Optimization Idea", (offer) => tier2OptimizationIdea(offer, "en") || ""],
       ["Recommended Action", (offer, index, context) => recommendedAction(offer, context.language || state.language)],
       ["Why Recommended", (offer, index, context) => whyRecommended(offer, context)],
       ["Best Traffic Angle", (offer, index, context) => bestAngle(offer, context)],
@@ -3254,8 +4317,7 @@
       ["Remaining Amount", (record) => number(record.remainingAmount)],
       ["Payment Cycle Days", (record) => number(record.paymentCycle)],
       ["Expected Payment Date", (record) => record.expectedPaymentDate || record.paymentAvailabilityDate || ""],
-      ["Last Checked", (record) => record.lastCheckedDate || ""],
-      ["Notes", (record) => record.notes || ""]
+      ["Last Checked", (record) => record.lastCheckedDate || ""]
     ];
   }
 
@@ -3317,19 +4379,24 @@
   }
 
   function workbookXml(sheetName = "Recommendations") {
+    const sheetNames = Array.isArray(sheetName) ? sheetName : [sheetName];
+    const sheets = sheetNames.map((name, index) => (
+      `<sheet name="${xmlEscape(safeSheetName(name || `Sheet ${index + 1}`))}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`
+    )).join("");
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>
-    <sheet name="${xmlEscape(safeSheetName(sheetName))}" sheetId="1" r:id="rId1"/>
-  </sheets>
+  <sheets>${sheets}</sheets>
 </workbook>`;
   }
 
-  function workbookRelsXml() {
+  function workbookRelsXml(sheetCount = 1) {
+    const worksheetRels = Array.from({ length: sheetCount }, (_, index) => (
+      `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+    )).join("\n  ");
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  ${worksheetRels}
+  <Relationship Id="rId${sheetCount + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
   }
 
@@ -3340,13 +4407,16 @@
 </Relationships>`;
   }
 
-  function contentTypesXml() {
+  function contentTypesXml(sheetCount = 1) {
+    const worksheetTypes = Array.from({ length: sheetCount }, (_, index) => (
+      `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+    )).join("\n  ");
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  ${worksheetTypes}
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`;
   }
@@ -3438,15 +4508,55 @@
     return concatBytes([...locals, centralDirectory, end]);
   }
 
-  function createRecommendationWorkbook(rows, context = {}) {
+  function uniqueWorkbookSheetName(name, usedNames) {
+    const base = safeSheetName(name || "Export");
+    let candidate = base;
+    let index = 2;
+    while (usedNames.has(candidate.toLowerCase())) {
+      const suffix = ` ${index}`;
+      candidate = `${base.slice(0, Math.max(1, 31 - suffix.length))}${suffix}`;
+      index += 1;
+    }
+    usedNames.add(candidate.toLowerCase());
+    return candidate;
+  }
+
+  function normalizeWorkbookSheets(sheets) {
+    const usedNames = new Set();
+    return (sheets.length ? sheets : [{ rows: [], sheetName: "Export" }]).map((sheet, index) => {
+      const rows = sheet.rows || [];
+      return {
+        ...sheet,
+        rows,
+        sheetName: uniqueWorkbookSheetName(sheet.sheetName || `Sheet ${index + 1}`, usedNames),
+        columns: sheet.columns || sheet.downloadColumns || objectExportColumns(rows)
+      };
+    });
+  }
+
+  function createWorkbookSheets(sheets) {
+    const normalizedSheets = normalizeWorkbookSheets(sheets);
+    const sheetCount = normalizedSheets.length;
     return createZip([
-      { name: "[Content_Types].xml", data: contentTypesXml() },
+      { name: "[Content_Types].xml", data: contentTypesXml(sheetCount) },
       { name: "_rels/.rels", data: rootRelsXml() },
-      { name: "xl/workbook.xml", data: workbookXml(context.sheetName) },
-      { name: "xl/_rels/workbook.xml.rels", data: workbookRelsXml() },
+      { name: "xl/workbook.xml", data: workbookXml(normalizedSheets.map((sheet) => sheet.sheetName)) },
+      { name: "xl/_rels/workbook.xml.rels", data: workbookRelsXml(sheetCount) },
       { name: "xl/styles.xml", data: stylesXml() },
-      { name: "xl/worksheets/sheet1.xml", data: worksheetXml(rows, context) }
+      ...normalizedSheets.map((sheet, index) => ({ name: `xl/worksheets/sheet${index + 1}.xml`, data: worksheetXml(sheet.rows, sheet) }))
     ]);
+  }
+
+  function createRecommendationWorkbook(rows, context = {}) {
+    if (Array.isArray(context.sheets) && context.sheets.length) {
+      return createWorkbookSheets(context.sheets.map((sheet) => ({ ...context, ...sheet, sheets: undefined })));
+    }
+    return createWorkbookSheets([{
+      ...context,
+      rows,
+      columns: context.columns || recommendationExportColumns(),
+      sheetName: context.sheetName || "Recommendations"
+    }]);
   }
 
   function triggerWorkbookDownload(workbook, filename) {
@@ -3513,12 +4623,33 @@
     if (sheet.headers && sheet.headers.length) {
       const rows = sortReportRows(getFilteredTierSheetRows(sheet), state.tierSheetSort, (row, key) => row[key]);
       const headers = visibleHeadersForSheet(sheet, displayHeadersForSheet(sheet, sheet.headers, false));
+      const categoryRows = tierCategorySummaryExportRows(sheet, rows);
+      const categoryHeaders = tierCategorySummaryExportHeaders();
+      const offerListRows = tierOfferListExportRows(sheet, rows);
+      const offerListHeaders = tierOfferListExportHeaders();
       downloadRowsAsXlsx(rows, {
         downloadType: "sheet",
         filePrefix: "tier_records",
         exportScope: state.selectedTierPage,
         sheetName: state.selectedTierPage,
-        downloadColumns: objectExportColumns(rows, headers)
+        downloadColumns: objectExportColumns(rows, headers),
+        sheets: [
+          {
+            sheetName: state.selectedTierPage,
+            rows,
+            columns: objectExportColumns(rows, headers)
+          },
+          {
+            sheetName: "Category Summary",
+            rows: categoryRows,
+            columns: objectExportColumns(categoryRows, categoryHeaders)
+          },
+          {
+            sheetName: "Offer List",
+            rows: offerListRows,
+            columns: objectExportColumns(offerListRows, offerListHeaders)
+          }
+        ]
       });
       return;
     }
@@ -3635,7 +4766,6 @@
         <td>${escapeHtml(record.paymentCycle ? `${record.paymentCycle} days` : "-")}</td>
         <td>${escapeHtml(record.expectedPaymentDate || record.paymentAvailabilityDate || "-")}</td>
         <td>${escapeHtml(record.lastCheckedDate || "-")}</td>
-        <td>${escapeHtml(record.notes || "-")}</td>
       </tr>`
     )).join("");
   }
@@ -3648,6 +4778,155 @@
 
   function sheetByName(name) {
     return (sheetReport.sheets || []).find((sheet) => sheet.name === name) || null;
+  }
+
+  function storageApi() {
+    try {
+      if (window.localStorage) return window.localStorage;
+      if (typeof localStorage !== "undefined") return localStorage;
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function isTierMoveTarget(tierName) {
+    return TIER_SHEET_MOVE_TARGETS.includes(tierName);
+  }
+
+  function isTierDataSheet(sheet) {
+    return Boolean(sheet && isTierMoveTarget(sheet.name) && Array.isArray(sheet.rows));
+  }
+
+  function loadManualTierMoves() {
+    const storage = storageApi();
+    if (!storage) return {};
+    try {
+      const parsed = JSON.parse(storage.getItem(TIER_SHEET_MOVE_STORAGE_KEY) || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return Object.entries(parsed).reduce((moves, [key, record]) => {
+        if (!record || typeof record !== "object") return moves;
+        const sourceTier = String(record.sourceTier || "");
+        const targetTier = String(record.targetTier || "");
+        if (!key || !isTierMoveTarget(sourceTier) || !isTierMoveTarget(targetTier) || sourceTier === targetTier) return moves;
+        moves[key] = {
+          sourceTier,
+          targetTier,
+          merchantId: String(record.merchantId || ""),
+          merchantName: String(record.merchantName || ""),
+          movedAt: String(record.movedAt || "")
+        };
+        return moves;
+      }, {});
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function persistManualTierMoves() {
+    const storage = storageApi();
+    if (!storage) return;
+    const keys = Object.keys(state.manualTierMoves || {});
+    if (!keys.length) {
+      storage.removeItem(TIER_SHEET_MOVE_STORAGE_KEY);
+      return;
+    }
+    storage.setItem(TIER_SHEET_MOVE_STORAGE_KEY, JSON.stringify(state.manualTierMoves));
+  }
+
+  function defineTierRowMeta(row, key, sourceTier, currentTier) {
+    Object.defineProperties(row, {
+      __tierRowKey: { value: key, enumerable: false, configurable: true },
+      __sourceTierName: { value: sourceTier, enumerable: false, configurable: true },
+      __tierName: { value: currentTier, enumerable: false, configurable: true }
+    });
+    return row;
+  }
+
+  function tierRowBaseKey(row, tierName, index) {
+    const merchantId = tierRowMerchantId(row);
+    if (merchantId) return `merchant:${merchantId}:${tierName}:${index}`;
+    const merchantName = normalize(tierRowMerchantName(row));
+    return `row:${tierName}:${index}:${merchantName || "unknown"}`;
+  }
+
+  function cloneTierRow(row, key, sourceTier, currentTier) {
+    return defineTierRowMeta({ ...row }, key, sourceTier, currentTier);
+  }
+
+  function cacheOriginalTierSheetRows() {
+    TIER_SHEET_MOVE_TARGETS.forEach((tierName) => {
+      const sheet = sheetByName(tierName);
+      if (!sheet || !Array.isArray(sheet.rows)) return;
+      const rows = sheet.rows.map((row, index) => {
+        const key = tierRowBaseKey(row, tierName, index);
+        const copy = cloneTierRow(row, key, tierName, tierName);
+        originalTierSheetRowIndex.set(key, { sourceTier: tierName, row: copy });
+        return copy;
+      });
+      originalTierSheetRows.set(tierName, rows);
+    });
+  }
+
+  function addTierRowToBucket(rowsByTier, keysByTier, tierName, row) {
+    const key = row.__tierRowKey || tierRowBaseKey(row, tierName, rowsByTier.get(tierName).length);
+    const keys = keysByTier.get(tierName);
+    if (keys.has(key)) return false;
+    keys.add(key);
+    rowsByTier.get(tierName).push(row);
+    return true;
+  }
+
+  function applyManualTierMoves() {
+    const rowsByTier = new Map(TIER_SHEET_MOVE_TARGETS.map((tierName) => [tierName, []]));
+    const keysByTier = new Map(TIER_SHEET_MOVE_TARGETS.map((tierName) => [tierName, new Set()]));
+    let movesChanged = false;
+
+    originalTierSheetRows.forEach((rows, tierName) => {
+      rows.forEach((row) => {
+        const key = row.__tierRowKey;
+        const move = state.manualTierMoves[key];
+        if (move && isTierMoveTarget(move.targetTier) && move.targetTier !== tierName) return;
+        addTierRowToBucket(rowsByTier, keysByTier, tierName, cloneTierRow(row, key, tierName, tierName));
+      });
+    });
+
+    Object.entries(state.manualTierMoves).forEach(([key, move]) => {
+      const original = originalTierSheetRowIndex.get(key);
+      if (!original || !isTierMoveTarget(move.targetTier)) {
+        delete state.manualTierMoves[key];
+        movesChanged = true;
+        return;
+      }
+      if (move.targetTier === original.sourceTier) return;
+      addTierRowToBucket(rowsByTier, keysByTier, move.targetTier, cloneTierRow(original.row, key, original.sourceTier, move.targetTier));
+    });
+
+    TIER_SHEET_MOVE_TARGETS.forEach((tierName) => {
+      const sheet = sheetByName(tierName);
+      if (sheet) sheet.rows = rowsByTier.get(tierName) || [];
+    });
+    applyManualTierMovesToOffers();
+    if (movesChanged) persistManualTierMoves();
+  }
+
+  function applyManualTierMovesToOffers() {
+    offers.forEach((offer, index) => {
+      offer.tier = originalOfferTiers[index] || "";
+    });
+    Object.entries(state.manualTierMoves || {}).forEach(([key, move]) => {
+      if (!move || !isTierMoveTarget(move.targetTier)) return;
+      const original = originalTierSheetRowIndex.get(key);
+      const merchantId = move.merchantId || (original && tierRowMerchantId(original.row));
+      if (!merchantId) return;
+      (offerGroupsByMerchantId.get(merchantId) || []).forEach((offer) => {
+        offer.tier = move.targetTier;
+      });
+    });
+  }
+
+  function hasManualTierMoves() {
+    return Object.keys(state.manualTierMoves || {}).length > 0;
   }
 
   function compactUnique(values) {
@@ -3712,10 +4991,24 @@
   }
 
   function renderTierSummary(sheet) {
-    const cards = sheet.summaryCards && sheet.summaryCards.length
-      ? sheet.summaryCards
+    const rows = sheet.rows || [];
+    const objective = (sheet.summaryCards || []).find((card) => String(card.label || "").toLowerCase() === "objective");
+    const cards = isTierDataSheet(sheet)
+      ? [
+          { label: "Brand Count", value: rows.length.toLocaleString() },
+          { label: "Total Clicks", value: rows.reduce((sum, row) => sum + tierRowClicks(row), 0).toLocaleString() },
+          { label: "Order Count", value: rows.reduce((sum, row) => sum + tierRowOrders(row), 0).toLocaleString() },
+          { label: "Revenue", value: shortMoney(rows.reduce((sum, row) => sum + tierRowRevenue(row), 0)) },
+          {
+            label: "Avg Conversion",
+            value: shortPct(rows.reduce((sum, row) => sum + tierRowClicks(row), 0)
+              ? rows.reduce((sum, row) => sum + tierRowOrders(row), 0) / rows.reduce((sum, row) => sum + tierRowClicks(row), 0)
+              : 0)
+          },
+          ...(objective ? [objective] : [])
+        ]
       : [
-          { label: "Rows", value: String((sheet.rows || []).length) },
+          { label: "Rows", value: String(rows.length) },
           { label: "Columns", value: String((sheet.headers || []).length) }
         ];
     els.tierPageSummary.innerHTML = cards.map((card) => (
@@ -3734,6 +5027,65 @@
     return label;
   }
 
+  function tierRowSelectionKey(row) {
+    return row && (row.__tierRowKey || tierRowBaseKey(row, state.selectedTierPage, 0));
+  }
+
+  function pruneTierSelectionToVisible() {
+    const visible = new Set(state.visibleTierRowKeys || []);
+    Array.from(state.selectedTierRowKeys).forEach((key) => {
+      if (!visible.has(key)) state.selectedTierRowKeys.delete(key);
+    });
+  }
+
+  function tierSelectionHeaderHtml() {
+    return `<th class="tier-select-cell"><input class="tier-row-checkbox" type="checkbox" data-tier-select-all aria-label="Select all visible merchants" /></th>`;
+  }
+
+  function tierSelectionCellHtml(row) {
+    const key = tierRowSelectionKey(row);
+    const checked = state.selectedTierRowKeys.has(key) ? " checked" : "";
+    const merchantName = tierRowMerchantName(row) || tierRowMerchantId(row) || "merchant";
+    return `<td class="tier-select-cell"><input class="tier-row-checkbox" type="checkbox" data-tier-select-row="${escapeHtml(key)}" aria-label="Select ${escapeHtml(merchantName)}" ${checked} /></td>`;
+  }
+
+  function setTierMoveStatus(message) {
+    state.tierMoveStatus = message || "";
+    if (els.tierMoveInlineStatus) els.tierMoveInlineStatus.textContent = state.tierMoveStatus;
+    if (els.tierMoveStatus) els.tierMoveStatus.textContent = state.tierMoveStatus;
+  }
+
+  function syncTierBulkControls() {
+    const visibleKeys = state.visibleTierRowKeys || [];
+    const visibleSet = new Set(visibleKeys);
+    const visibleSelectedCount = visibleKeys.filter((key) => state.selectedTierRowKeys.has(key)).length;
+    const totalSelectedCount = state.selectedTierRowKeys.size;
+
+    if (els.tierMoveSelected) {
+      els.tierMoveSelected.disabled = totalSelectedCount === 0;
+      els.tierMoveSelected.textContent = t("action.move", "Move");
+      els.tierMoveSelected.setAttribute("aria-label", totalSelectedCount ? `Move ${totalSelectedCount.toLocaleString()} selected merchants` : "Move selected merchants");
+    }
+    if (els.tierResetMoves) {
+      els.tierResetMoves.classList.toggle("hidden", !hasManualTierMoves());
+    }
+    if (els.tierSheetHead) {
+      const allCheckbox = els.tierSheetHead.querySelector("[data-tier-select-all]");
+      if (allCheckbox) {
+        allCheckbox.checked = Boolean(visibleKeys.length && visibleSelectedCount === visibleKeys.length);
+        allCheckbox.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleKeys.length;
+        allCheckbox.disabled = visibleKeys.length === 0;
+      }
+    }
+    if (els.tierSheetRows) {
+      els.tierSheetRows.querySelectorAll("[data-tier-select-row]").forEach((checkbox) => {
+        const key = checkbox.dataset.tierSelectRow || "";
+        checkbox.checked = state.selectedTierRowKeys.has(key);
+        checkbox.disabled = !visibleSet.has(key);
+      });
+    }
+  }
+
   function renderSheetTable(sheet, titleEl, countEl, headEl, rowsEl, customRows = null) {
     const headers = sheet.headers || [];
     const allDisplayHeaders = displayHeadersForSheet(sheet, headers, true);
@@ -3743,6 +5095,7 @@
       ? sortReportRows(sourceRows, state.tierSheetSort, (row, key) => row[key])
       : sourceRows;
     const grid = sheet.grid || [];
+    const selectable = isTierDataSheet(sheet);
     titleEl.textContent = `${sheet.name} ${t("sheet.targetRecords", "Sheet Records")}`;
     if (headers.length) {
       renderTierColumnPanel(sheet, allDisplayHeaders, displayHeaders);
@@ -3752,14 +5105,20 @@
           ? "100%"
           : `${Math.min(2600, Math.max(1200, displayHeaders.length * 130))}px`;
       }
+      state.visibleTierRowKeys = selectable ? rows.map(tierRowSelectionKey) : [];
+      if (selectable) pruneTierSelectionToVisible();
       countEl.textContent = `${rows.length.toLocaleString()} rows / ${displayHeaders.length.toLocaleString()} of ${allDisplayHeaders.length.toLocaleString()} columns`;
-      headEl.innerHTML = `<tr>${displayHeaders.map((header) => sortableHeaderHtml(header, state.tierSheetSort, "tier")).join("")}</tr>`;
+      headEl.innerHTML = `<tr>${selectable ? tierSelectionHeaderHtml() : ""}${displayHeaders.map((header) => sortableHeaderHtml(header, state.tierSheetSort, "tier")).join("")}</tr>`;
       rowsEl.innerHTML = rows.map((row) => (
-        `<tr class="${escapeHtml(tierRowClass(sheet, row))}">${displayHeaders.map((header) => `<td>${sheetCellHtml(sheet, row, header)}</td>`).join("")}</tr>`
+        `<tr class="${escapeHtml(tierRowClass(sheet, row))}" data-tier-row-key="${escapeHtml(tierRowSelectionKey(row))}">${selectable ? tierSelectionCellHtml(row) : ""}${displayHeaders.map((header) => `<td>${sheetCellHtml(sheet, row, header)}</td>`).join("")}</tr>`
       )).join("");
+      syncTierBulkControls();
       return;
     }
 
+    renderTierColumnPanel(sheet, [], []);
+    state.visibleTierRowKeys = [];
+    state.selectedTierRowKeys.clear();
     renderTierColumnPanel(sheet, [], []);
     const maxCols = grid.reduce((max, row) => Math.max(max, row.length), 0);
     countEl.textContent = `${grid.length.toLocaleString()} rows / ${maxCols.toLocaleString()} columns`;
@@ -3769,6 +5128,7 @@
     rowsEl.innerHTML = grid.map((row) => (
       `<tr>${Array.from({ length: maxCols }, (_, index) => `<td>${escapeHtml(row[index] || "")}</td>`).join("")}</tr>`
     )).join("");
+    syncTierBulkControls();
   }
 
   function tier2PhaseKind(sheet, row) {
@@ -3963,6 +5323,181 @@
     renderSheetTable(sheet, els.tierTableTitle, els.tierTableCount, els.tierSheetHead, els.tierSheetRows, getFilteredTierSheetRows(sheet));
   }
 
+  function canExpandTierSheet(tierName = state.selectedTierPage) {
+    return TIER_SHEET_EXPANDABLE_TIERS.has(tierName);
+  }
+
+  function syncTierSheetOverlay() {
+    const open = Boolean(state.expandedTierSheet) && canExpandTierSheet() && state.page === "tier";
+    if (state.expandedTierSheet && !open) state.expandedTierSheet = false;
+    document.body.classList.toggle("sheet-expanded-open", open);
+    if (els.sheetExpandedBackdrop) {
+      els.sheetExpandedBackdrop.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+    if (els.tierTablePanel) {
+      els.tierTablePanel.classList.toggle("sheet-expanded-panel", open);
+      if (open) {
+        els.tierTablePanel.setAttribute("role", "dialog");
+        els.tierTablePanel.setAttribute("aria-modal", "true");
+      } else {
+        els.tierTablePanel.removeAttribute("role");
+        els.tierTablePanel.removeAttribute("aria-modal");
+      }
+    }
+    const available = canExpandTierSheet() && state.page === "tier";
+    if (els.tierExpand) {
+      els.tierExpand.classList.toggle("hidden", !available || open);
+      els.tierExpand.disabled = !available;
+      els.tierExpand.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    if (els.tierOverlayClose) {
+      els.tierOverlayClose.classList.toggle("hidden", !open);
+    }
+  }
+
+  function openTierSheetOverlay() {
+    if (!canExpandTierSheet()) return;
+    state.expandedTierSheet = true;
+    syncTierSheetOverlay();
+    window.requestAnimationFrame(() => {
+      if (els.tierOverlayClose) els.tierOverlayClose.focus();
+    });
+  }
+
+  function closeTierSheetOverlay({ restoreFocus = true } = {}) {
+    const wasOpen = Boolean(state.expandedTierSheet);
+    state.expandedTierSheet = false;
+    syncTierSheetOverlay();
+    if (restoreFocus && wasOpen && els.tierExpand && !els.tierExpand.classList.contains("hidden")) {
+      els.tierExpand.focus();
+    }
+  }
+
+  function selectedTierRows(sheet) {
+    const selected = state.selectedTierRowKeys;
+    return ((sheet && sheet.rows) || []).filter((row) => selected.has(tierRowSelectionKey(row)));
+  }
+
+  function defaultTierMoveTarget() {
+    return TIER_SHEET_MOVE_TARGETS.find((tierName) => tierName !== state.selectedTierPage) || "";
+  }
+
+  function renderTierMoveDialog() {
+    if (!els.tierMoveDialog) return;
+    const selectedCount = state.selectedTierRowKeys.size;
+    const sourceTier = state.selectedTierPage;
+    if (!state.tierMoveTarget || state.tierMoveTarget === sourceTier) {
+      state.tierMoveTarget = defaultTierMoveTarget();
+    }
+    if (els.tierMoveSummary) {
+      els.tierMoveSummary.textContent = `${selectedCount.toLocaleString()} selected from ${sourceTier}`;
+    }
+    if (els.tierMoveTargets) {
+      els.tierMoveTargets.innerHTML = TIER_SHEET_MOVE_TARGETS.map((tierName) => {
+        const current = tierName === sourceTier;
+        const active = tierName === state.tierMoveTarget;
+        return `<button class="tier-move-target${active ? " active" : ""}" type="button" data-tier-move-target="${escapeHtml(tierName)}"${current ? " disabled" : ""}>
+          <span>${escapeHtml(categoryReportTierLabel(tierName))}</span>
+          <small>${current ? "Current tier" : `${((sheetByName(tierName) && sheetByName(tierName).rows) || []).length.toLocaleString()} rows`}</small>
+        </button>`;
+      }).join("");
+    }
+    if (els.tierMoveConfirm) {
+      els.tierMoveConfirm.disabled = !selectedCount || !state.tierMoveTarget || state.tierMoveTarget === sourceTier;
+      els.tierMoveConfirm.textContent = state.tierMoveTarget ? `Move to ${categoryReportTierLabel(state.tierMoveTarget)}` : "Move merchants";
+    }
+    if (els.tierMoveStatus) els.tierMoveStatus.textContent = state.tierMoveStatus || "";
+  }
+
+  function openTierMoveDialog() {
+    if (!state.selectedTierRowKeys.size || !els.tierMoveDialog) return;
+    state.tierMoveTarget = defaultTierMoveTarget();
+    renderTierMoveDialog();
+    els.tierMoveDialog.classList.remove("hidden");
+    document.body.classList.add("tier-move-open");
+    window.requestAnimationFrame(() => {
+      const active = els.tierMoveTargets && els.tierMoveTargets.querySelector(".tier-move-target.active:not(:disabled)");
+      if (active) active.focus();
+      else if (els.tierMoveConfirm) els.tierMoveConfirm.focus();
+    });
+  }
+
+  function closeTierMoveDialog() {
+    if (!els.tierMoveDialog) return;
+    els.tierMoveDialog.classList.add("hidden");
+    document.body.classList.remove("tier-move-open");
+    if (els.tierMoveSelected && !els.tierMoveSelected.disabled) els.tierMoveSelected.focus();
+  }
+
+  function moveSelectedTierRows() {
+    const sourceTier = state.selectedTierPage;
+    const targetTier = state.tierMoveTarget;
+    const sheet = sheetByName(sourceTier);
+    if (!sheet || !isTierMoveTarget(targetTier) || targetTier === sourceTier || !state.selectedTierRowKeys.size) return;
+
+    const selectedRows = selectedTierRows(sheet);
+    let movedCount = 0;
+    selectedRows.forEach((row) => {
+      const key = tierRowSelectionKey(row);
+      const original = originalTierSheetRowIndex.get(key);
+      if (!original) return;
+      if (targetTier === original.sourceTier) {
+        if (state.manualTierMoves[key]) {
+          delete state.manualTierMoves[key];
+          movedCount += 1;
+        }
+        return;
+      }
+      state.manualTierMoves[key] = {
+        sourceTier: original.sourceTier,
+        targetTier,
+        merchantId: tierRowMerchantId(original.row),
+        merchantName: tierRowMerchantName(original.row),
+        movedAt: localDateKey(new Date())
+      };
+      movedCount += 1;
+    });
+
+    persistManualTierMoves();
+    applyManualTierMoves();
+    state.selectedTierRowKeys.clear();
+    setTierMoveStatus(movedCount ? `Moved ${movedCount.toLocaleString()} to ${categoryReportTierLabel(targetTier)}` : "No merchants moved");
+    closeTierMoveDialog();
+    renderTierPage(sourceTier);
+    renderDashboardCategoryReport();
+  }
+
+  function resetTierMoves() {
+    if (!hasManualTierMoves()) return;
+    state.manualTierMoves = {};
+    state.selectedTierRowKeys.clear();
+    persistManualTierMoves();
+    applyManualTierMoves();
+    setTierMoveStatus("Manual tier moves reset");
+    renderTierPage(state.selectedTierPage);
+    renderDashboardCategoryReport();
+  }
+
+  function handleTierSelectionChange(event) {
+    const checkbox = event.target.closest("[data-tier-select-all], [data-tier-select-row]");
+    if (!checkbox) return;
+    setTierMoveStatus("");
+    if (checkbox.dataset.tierSelectAll !== undefined) {
+      const visibleKeys = state.visibleTierRowKeys || [];
+      visibleKeys.forEach((key) => {
+        if (checkbox.checked) state.selectedTierRowKeys.add(key);
+        else state.selectedTierRowKeys.delete(key);
+      });
+      syncTierBulkControls();
+      return;
+    }
+    const key = checkbox.dataset.tierSelectRow || "";
+    if (!key) return;
+    if (checkbox.checked) state.selectedTierRowKeys.add(key);
+    else state.selectedTierRowKeys.delete(key);
+    syncTierBulkControls();
+  }
+
   function sheetRowUniqueValues(rows, keys) {
     return Array.from(new Set(rows.map((row) => String(rowValue(row, keys) || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }
@@ -3992,6 +5527,211 @@
       .filter((row) => parseSheetNumber(rowValue(row, ["Revenue", "June Revenue", "May Revenue"])) >= minRevenue);
   }
 
+  function tierRowMerchantId(row) {
+    return String(rowValue(row, ["Merchant ID", "MerchantID", "ID"]) || "").trim().replace(/\.0$/, "");
+  }
+
+  function tierRowMerchantName(row) {
+    return String(rowValue(row, ["Merchant Name", "Brand", "Merchant"]) || "").trim();
+  }
+
+  function offerForTierRow(row) {
+    const merchantId = tierRowMerchantId(row);
+    return merchantId ? offersByMerchantId.get(merchantId) || null : null;
+  }
+
+  function offersForTierRow(row) {
+    const merchantId = tierRowMerchantId(row);
+    return merchantId ? offerGroupsByMerchantId.get(merchantId) || [] : [];
+  }
+
+  function tierRowCategory(row) {
+    const offer = offerForTierRow(row);
+    if (offer) return displayCategory(offer) || "Uncategorized";
+    return cleanCategoryValue(rowValue(row, ["Category", "Main Category", "Main category", "Sheet Category"])) || "Uncategorized";
+  }
+
+  function tierRowNumber(row, keys) {
+    return parseSheetNumber(rowValue(row, keys));
+  }
+
+  function tierRowRevenue(row) {
+    return tierRowNumber(row, ["Revenue", "June Revenue", "May Revenue", "Sales Amount", "Sales"]);
+  }
+
+  function tierRowOrders(row) {
+    return tierRowNumber(row, ["Order count", "Order Count", "Orders"]);
+  }
+
+  function tierRowClicks(row) {
+    return tierRowNumber(row, ["Clicks", "Total Clicks"]);
+  }
+
+  function tierRowEpc(row) {
+    return tierRowNumber(row, ["Backend EPC", "EPC"]);
+  }
+
+  function compareTierCategorySummaryRows(a, b) {
+    if (a.category === "Uncategorized" && b.category !== "Uncategorized") return 1;
+    if (b.category === "Uncategorized" && a.category !== "Uncategorized") return -1;
+    return number(b.revenue) - number(a.revenue) ||
+      number(b.orders) - number(a.orders) ||
+      number(b.merchantCount) - number(a.merchantCount) ||
+      String(a.category || "").localeCompare(String(b.category || ""), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function tierCategorySummaryRows(sheet, rows) {
+    const groups = new Map();
+    (rows || []).forEach((row) => {
+      const category = tierRowCategory(row);
+      if (!groups.has(category)) {
+        groups.set(category, {
+          category,
+          rows: [],
+          merchantIds: new Set(),
+          revenue: 0,
+          orders: 0,
+          clicks: 0,
+          epcWeightedByClicks: 0,
+          epcSum: 0,
+          epcCount: 0,
+          tierBreakdown: {}
+        });
+      }
+      const group = groups.get(category);
+      const merchantId = tierRowMerchantId(row);
+      const clicks = tierRowClicks(row);
+      const epc = tierRowEpc(row);
+      const tierName = row.__tierName || (sheet && sheet.name) || "";
+      group.rows.push(row);
+      if (merchantId) group.merchantIds.add(merchantId);
+      group.revenue += tierRowRevenue(row);
+      group.orders += tierRowOrders(row);
+      group.clicks += clicks;
+      if (tierName) group.tierBreakdown[tierName] = (group.tierBreakdown[tierName] || 0) + 1;
+      if (epc) {
+        if (clicks) group.epcWeightedByClicks += epc * clicks;
+        group.epcSum += epc;
+        group.epcCount += 1;
+      }
+    });
+
+    return Array.from(groups.values()).map((group) => {
+      const sortedRows = group.rows.slice().sort((a, b) => tierRowRevenue(b) - tierRowRevenue(a) || tierRowOrders(b) - tierRowOrders(a) || tierRowClicks(b) - tierRowClicks(a));
+      const topRow = sortedRows[0] || {};
+      const previewMerchants = sortedRows.slice(0, 3).map(tierRowMerchantName).filter(Boolean).join(", ");
+      return {
+        category: group.category,
+        merchantCount: group.merchantIds.size || group.rows.length,
+        rowCount: group.rows.length,
+        revenue: group.revenue,
+        orders: group.orders,
+        clicks: group.clicks,
+        avgCvr: group.clicks ? group.orders / group.clicks : null,
+        avgEpc: group.clicks && group.epcWeightedByClicks ? group.epcWeightedByClicks / group.clicks : (group.epcCount ? group.epcSum / group.epcCount : null),
+        avgAov: group.orders ? group.revenue / group.orders : null,
+        topMerchant: tierRowMerchantName(topRow),
+        previewMerchants,
+        tierBreakdown: group.tierBreakdown
+      };
+    }).sort(compareTierCategorySummaryRows);
+  }
+
+  function tierCategorySummaryTableRows(groups) {
+    return groups.map((group) => `<tr>
+      <td><strong>${escapeHtml(group.category)}</strong><p>${escapeHtml(group.previewMerchants || "-")}</p></td>
+      <td>${number(group.merchantCount).toLocaleString()}</td>
+      <td>${shortMoney(group.revenue)}</td>
+      <td>${number(group.orders).toLocaleString()}</td>
+      <td>${shortPct(group.avgCvr)}</td>
+      <td>${shortEpc(group.avgEpc)}</td>
+      <td>${escapeHtml(group.topMerchant || "-")}</td>
+    </tr>`).join("");
+  }
+
+  function renderTierCategorySummary(sheet, rows) {
+    const groups = tierCategorySummaryRows(sheet, rows);
+    const totalRevenue = groups.reduce((sum, group) => sum + number(group.revenue), 0);
+    const totalOrders = groups.reduce((sum, group) => sum + number(group.orders), 0);
+    const totalClicks = groups.reduce((sum, group) => sum + number(group.clicks), 0);
+    const merchantCount = groups.reduce((sum, group) => sum + number(group.merchantCount), 0);
+    els.tierCategorySummary.innerHTML = `<div class="tier-category-header">
+      <div>
+        <h3>Category-wise report</h3>
+        <p>${number(rows.length).toLocaleString()} rows / ${number(groups.length).toLocaleString()} categories</p>
+      </div>
+      <dl>
+        <div><dt>${escapeHtml(labelText("Merchants"))}</dt><dd>${merchantCount.toLocaleString()}</dd></div>
+        <div><dt>${escapeHtml(labelText("Revenue"))}</dt><dd>${shortMoney(totalRevenue)}</dd></div>
+        <div><dt>${escapeHtml(labelText("Orders"))}</dt><dd>${totalOrders.toLocaleString()}</dd></div>
+        <div><dt>${escapeHtml(labelText("CVR"))}</dt><dd>${shortPct(totalClicks ? totalOrders / totalClicks : null)}</dd></div>
+      </dl>
+    </div>
+    <div class="table-wrap tier-category-table-wrap">
+      <table class="sheet-table tier-category-table">
+        <thead>
+          <tr>
+            <th>${escapeHtml(labelText("Category"))}</th>
+            <th>${escapeHtml(labelText("Merchants"))}</th>
+            <th>${escapeHtml(labelText("Revenue"))}</th>
+            <th>${escapeHtml(labelText("Orders"))}</th>
+            <th>${escapeHtml(labelText("CVR"))}</th>
+            <th>EPC</th>
+            <th>Top merchant</th>
+          </tr>
+        </thead>
+        <tbody>${groups.length ? tierCategorySummaryTableRows(groups) : `<tr><td colspan="7">No category rows match the current filters.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function tierCategorySummaryExportHeaders() {
+    return ["Category", "Merchant Count", "Row Count", "Revenue", "Orders", "Clicks", "Avg Conversion", "Avg EPC", "AOV", "Top Merchant", "Top Merchants"];
+  }
+
+  function tierCategorySummaryExportRows(sheet, rows) {
+    return tierCategorySummaryRows(sheet, rows).map((group) => ({
+      "Category": group.category,
+      "Merchant Count": group.merchantCount,
+      "Row Count": group.rowCount,
+      "Revenue": group.revenue,
+      "Orders": group.orders,
+      "Clicks": group.clicks,
+      "Avg Conversion": group.avgCvr,
+      "Avg EPC": group.avgEpc,
+      "AOV": group.avgAov,
+      "Top Merchant": group.topMerchant,
+      "Top Merchants": group.previewMerchants
+    }));
+  }
+
+  function averageCommissionRateForTierRow(row) {
+    const rates = offersForTierRow(row)
+      .map((offer) => Number(offer.commissionRate))
+      .filter((rate) => Number.isFinite(rate));
+    if (!rates.length) return null;
+    return rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
+  }
+
+  function roundedUpCommissionRateText(row) {
+    const rate = averageCommissionRateForTierRow(row);
+    if (rate === null) return "";
+    return `${Math.ceil(rate * 100)}%`;
+  }
+
+  function tierOfferListExportHeaders() {
+    return ["Merchant ID", "Merchant Name", "Category", "Avg Commission Rate"];
+  }
+
+  function tierOfferListExportRows(sheet, rows) {
+    return (rows || []).map((row) => ({
+      "Merchant ID": tierRowMerchantId(row),
+      "Merchant Name": tierRowMerchantName(row),
+      "Category": tierRowCategory(row),
+      "Avg Commission Rate": roundedUpCommissionRateText(row)
+    }));
+  }
+
   function renderTierPage(tierName) {
     const sheet = sheetByName(tierName);
     els.tierPageTitle.textContent = tierName;
@@ -3999,16 +5739,25 @@
     if (!sheet) {
       els.tierPageSummary.innerHTML = "";
       els.tierPageNotes.innerHTML = `<p>${escapeHtml(t("tier.noMatch", "No matching sheet tab was found in the current export."))}</p>`;
+      els.tierCategorySummary.innerHTML = "";
       els.tierSheetHead.innerHTML = "";
       els.tierSheetRows.innerHTML = "";
       els.tierTableCount.textContent = "";
       renderTierColumnPanel(null, [], []);
+      state.visibleTierRowKeys = [];
+      state.selectedTierRowKeys.clear();
+      syncTierBulkControls();
+      closeTierSheetOverlay({ restoreFocus: false });
+      syncTierSheetOverlay();
       return;
     }
     refreshTierSheetFilters(sheet);
     renderTierSummary(sheet);
     els.tierPageNotes.innerHTML = renderTierLogicSummary(sheet);
-    renderTierSheetTable(sheet);
+    const filteredRows = getFilteredTierSheetRows(sheet);
+    renderTierCategorySummary(sheet, filteredRows);
+    renderSheetTable(sheet, els.tierTableTitle, els.tierTableCount, els.tierSheetHead, els.tierSheetRows, filteredRows);
+    syncTierSheetOverlay();
   }
 
   function targetRecords() {
@@ -4113,6 +5862,11 @@
 
   function switchPage(page) {
     state.page = page;
+    if (page !== "tier") {
+      state.selectedTierRowKeys.clear();
+      closeTierSheetOverlay({ restoreFocus: false });
+      closeTierMoveDialog();
+    }
     const isTier = page === "tier";
     const isSheets = page === "sheets";
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
@@ -4141,6 +5895,7 @@
     refreshTargetFilters();
     setDatasetStamp();
     setPaymentStamp("saved", isoDate(PAYMENT_TODAY));
+    renderDashboardCategoryTierPicker();
     quickPrompts.forEach(({ key, prompt }) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -4161,6 +5916,12 @@
     els.minAov.addEventListener("input", () => { state.minAov = els.minAov.value; renderAll(); });
     els.minCvr.addEventListener("input", () => { state.minCvr = els.minCvr.value; renderAll(); });
     els.notPaidOnly.addEventListener("change", () => { state.notPaidOnly = els.notPaidOnly.checked; renderAll(); });
+    els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
+    els.dashboardCategorySearch.addEventListener("input", () => {
+      state.categoryReportSearch = els.dashboardCategorySearch.value;
+      renderDashboardCategoryReport();
+    });
+    els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategorySortClick);
     els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.sheetsNav.addEventListener("click", () => switchPage("sheets"));
@@ -4175,6 +5936,8 @@
     els.tierNavButtons.forEach((button) => {
       button.addEventListener("click", () => {
         state.selectedTierPage = button.dataset.tierPage;
+        state.selectedTierRowKeys.clear();
+        setTierMoveStatus("");
         switchPage("tier");
       });
     });
@@ -4210,10 +5973,36 @@
     els.tierColumnAll.addEventListener("click", () => {
       resetTierVisibleHeaders(sheetByName(state.selectedTierPage));
     });
-    els.table.addEventListener("click", handleTierMoveClick);
+    if (els.table) els.table.addEventListener("click", handleTierMoveClick);
     els.tierSheetRows.addEventListener("click", handleTierMoveClick);
     els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
+    els.tierSheetHead.addEventListener("change", handleTierSelectionChange);
+    els.tierSheetRows.addEventListener("change", handleTierSelectionChange);
+    els.tierMoveSelected.addEventListener("click", openTierMoveDialog);
+    els.tierResetMoves.addEventListener("click", resetTierMoves);
+    els.tierMoveTargets.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-tier-move-target]");
+      if (!button || button.disabled) return;
+      state.tierMoveTarget = button.dataset.tierMoveTarget;
+      renderTierMoveDialog();
+    });
+    els.tierMoveConfirm.addEventListener("click", moveSelectedTierRows);
+    els.tierMoveCancel.addEventListener("click", closeTierMoveDialog);
+    els.tierMoveClose.addEventListener("click", closeTierMoveDialog);
+    els.tierMoveDialog.addEventListener("click", (event) => {
+      if (event.target === els.tierMoveDialog) closeTierMoveDialog();
+    });
+    els.tierExpand.addEventListener("click", openTierSheetOverlay);
+    els.tierOverlayClose.addEventListener("click", () => closeTierSheetOverlay());
+    els.sheetExpandedBackdrop.addEventListener("click", () => closeTierSheetOverlay());
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && els.tierMoveDialog && !els.tierMoveDialog.classList.contains("hidden")) {
+        closeTierMoveDialog();
+        return;
+      }
+      if (event.key === "Escape" && state.expandedTierSheet) closeTierSheetOverlay();
+    });
     els.paymentMonth.addEventListener("change", () => { state.payments.month = els.paymentMonth.value; renderPaymentsPage(); });
     els.paymentNetwork.addEventListener("change", () => { state.payments.network = els.paymentNetwork.value; renderPaymentsPage(); });
     els.paymentRegion.addEventListener("change", () => { state.payments.region = els.paymentRegion.value; renderPaymentsPage(); });
@@ -4261,5 +6050,31 @@
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
   }
 
-  init();
+  cacheOriginalTierSheetRows();
+  applyManualTierMoves();
+
+  if (window.__OFFER_INTELLIGENCE_TEST__) {
+    window.OFFER_INTELLIGENCE_TEST_HOOKS = {
+      categoryForPrompt,
+      detectQueryIntent,
+      cleanedMerchantLookupPhrase,
+      hasStrongMerchantLookup,
+      extractMetricFilters,
+      extractMetricSortIntent,
+      extractPaymentCycleFilter,
+      paymentCycleFilterText,
+      getPaymentRecords,
+      withPendingPaymentPlaceholders,
+      requestedRecommendationCount,
+      parseTierOfferRequest,
+      answerPrompt,
+      currentRecommendationBundle: () => state.activeRecommendationBundle,
+      excludedRecommendationKeys: () => Array.from(state.excludedRecommendationKeys),
+      rankedRecommendations,
+      displayCategory,
+      dashboardCategoryGroups
+    };
+  } else {
+    init();
+  }
 })();
