@@ -67,6 +67,7 @@ const sandbox = {
 sandbox.window.document = sandbox.document;
 
 runScript("public/chatbot_data.js", sandbox);
+runScript("public/product_keywords.js", sandbox);
 runScript("public/sheet_report_data.js", sandbox);
 runScript("public/chatbot_i18n.js", sandbox);
 runScript("public/tier2_recommendation_rules.js", sandbox);
@@ -102,6 +103,7 @@ assertTruthy(headphoneMatches.length > 0, "headphones should match offers in cur
 assertEqual(headphoneMatches[0].offer.brand, "Shokz Official", "headphones should rank Shokz first from the current data");
 const headphoneAnswer = hooks.answerPrompt("headphones");
 assertMatch(headphoneAnswer, /offers related to headphones\/audio/i, "headphones answer should describe the broader audio match");
+assertMatch(headphoneAnswer, /Top 5 brand recommendations/i, "keyword answer should return five brand recommendations by default");
 assertMatch(headphoneAnswer, /Shokz Official/, "headphones answer should include Shokz in the preview");
 const keywordContext = hooks.currentContext();
 assertEqual(keywordContext.type, "keyword", "headphones answer should set keyword context");
@@ -114,6 +116,13 @@ assertTruthy(keywordContext.summary.avgAov > 0, "keyword context should summariz
 assertTruthy(keywordContext.summary.blendedEpc > 0, "keyword context should summarize blended EPC across matches");
 assertTruthy(keywordContext.summary.avgCvr > 0, "keyword context should summarize average CVR across matches");
 
+assertMatch(
+  hooks.answerPrompt("earphone"),
+  /Shokz Official/i,
+  "earphone synonym should use product-name keyword data and recommend Shokz"
+);
+assertEqual(hooks.currentContext().type, "keyword", "earphone synonym should set keyword context");
+
 assertEqual(
   hooks.answerPrompt("audio"),
   "Do you mean headphones/earbuds/audio products, or do you want all electronics offers?",
@@ -124,6 +133,18 @@ assertEqual(hooks.currentContext().filters.totalMatches, 0, "ambiguous audio con
 const poolCleanerAnswer = hooks.answerPrompt("pool cleaner");
 assertMatch(poolCleanerAnswer, /offers related to pool cleaner/i, "pool cleaner should use keyword search");
 assertEqual(hooks.currentContext().type, "keyword", "pool cleaner should set keyword context");
+
+const openMoveMatches = hooks.keywordSearchMatches("openmove");
+assertTruthy(
+  openMoveMatches.some((match) => match.offer.brand === "Shokz Official"),
+  "product-name keyword search should match Shokz OpenMove from 产品名称 data"
+);
+assertMatch(
+  hooks.answerPrompt("openmove"),
+  /Shokz Official/i,
+  "plain product keyword should route to keyword search and recommend matching offers"
+);
+assertEqual(hooks.currentContext().type, "keyword", "plain product keyword should set keyword context");
 
 assertEqual(hooks.answerPrompt("zzznomatch offers"), "No matching offers found in current data.", "unknown offer keyword should return the no-match message");
 assertEqual(hooks.currentContext().type, "keyword", "unknown keyword should still set keyword context");

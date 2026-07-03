@@ -149,6 +149,12 @@ python scripts/build_sheet_report_data.py
 ruby scripts/build_offer_chatbot_data.rb
 ```
 
+Product-name keyword data for Tier 1-3 offers is generated from the brand/ASIN workbook into `data/product_name_keywords_t1_t3.csv` and `public/product_keywords.js`.
+
+```bash
+python scripts/import_product_name_keywords.py --source "/path/to/brand and asins t1-t3.xlsx"
+```
+
 ## Example Prompts
 
 ```text
