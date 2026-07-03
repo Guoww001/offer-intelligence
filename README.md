@@ -131,6 +131,8 @@ The tier pages include move controls for changing merchant tier placement. By de
 The browser never receives the Apps Script secret. It only calls `/api/tier_moves`; the Vercel function validates the optional admin token and forwards the server-side secret to Google Apps Script.
 When `TIER_MOVES_ADMIN_TOKEN` is enabled, the first protected move prompts the operator for the token and stores it in that browser's local storage as `offerTierMoveAdminToken`.
 
+The Apps Script keeps `Tier Overrides` as an audit sheet and also physically reconciles the tier tabs: active moves append the merchant row to the target tier sheet and remove it from the source tier sheet. Clearing a move attempts to roll the row back to its source tier using the stored row snapshot.
+
 If `TIER_MOVES_WEBHOOK_URL` is not configured, move buttons still work locally but the status message says the change is local only.
 
 ## Run Locally
