@@ -67,51 +67,6 @@
           <div class="quick-actions" id="quickActions"></div>
         </section>
 
-        <section class="metrics dashboard-page" id="metrics"></section>
-
-        <section class="panel filters dashboard-filters dashboard-page" aria-label="Dashboard filters">
-          <div class="panel-title">
-            <span data-i18n="filters.dashboard">Dashboard Filters</span>
-          </div>
-          <label>
-            <span data-i18n="label.Tier">Tier</span>
-            <select id="tierFilter">
-              <option value="all">All tiers</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="label.Network">Network</span>
-            <select id="networkFilter">
-              <option value="all">All networks</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="label.Category">Category</span>
-            <select id="categoryFilter">
-              <option value="all">All categories</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="filter.minEpc">Min EPC</span>
-            <input id="minEpc" type="number" step="0.01" min="0" placeholder="0.00" />
-          </label>
-          <label>
-            <span data-i18n="filter.minAov">Min AOV</span>
-            <input id="minAov" type="number" step="1" min="0" placeholder="0" />
-          </label>
-          <label>
-            <span data-i18n="filter.minConversion">Min conversion</span>
-            <input id="minCvr" type="number" step="0.1" min="0" placeholder="%" />
-          </label>
-          <label class="checkbox-row">
-            <input id="notPaidOnly" type="checkbox" />
-            <span data-i18n="filter.unpaidOnly">Unpaid only</span>
-          </label>
-          <button class="secondary-button" id="resetFilters" type="button">
-            <span data-i18n="action.reset">Reset</span>
-          </button>
-        </section>
-
         <section class="main-grid dashboard-page">
           <section class="chat-panel" aria-label="Chat">
             <div class="chat-log" id="chatLog"></div>

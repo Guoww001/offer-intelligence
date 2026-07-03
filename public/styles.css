@@ -446,6 +446,7 @@ p {
   grid-template-columns: minmax(0, 1.04fr) minmax(360px, 0.96fr);
   gap: 14px;
   align-items: stretch;
+  min-height: clamp(620px, calc(100vh - 150px), 820px);
 }
 
 .chat-panel,
@@ -458,7 +459,7 @@ p {
 }
 
 .chat-panel {
-  min-height: 520px;
+  min-height: clamp(620px, calc(100vh - 150px), 820px);
   display: grid;
   grid-template-rows: 1fr auto;
 }
@@ -466,7 +467,8 @@ p {
 .chat-log {
   padding: 14px;
   overflow: auto;
-  max-height: 620px;
+  max-height: none;
+  min-height: 0;
 }
 
 .message {
@@ -663,12 +665,12 @@ p {
 }
 
 .insight-panel {
-  align-self: start;
+  align-self: stretch;
   display: grid;
   gap: 10px;
   grid-template-rows: auto minmax(0, 1fr);
-  max-height: min(620px, calc(100vh - 190px));
-  min-height: min(520px, calc(100vh - 190px));
+  max-height: none;
+  min-height: clamp(620px, calc(100vh - 150px), 820px);
   overflow: hidden;
   padding: 14px;
 }
@@ -797,7 +799,7 @@ p {
 }
 
 .context-panel {
-  max-height: min(520px, 58vh);
+  max-height: none;
   min-height: 0;
   overscroll-behavior: contain;
   overflow: auto;
