@@ -74,6 +74,10 @@
       search: "",
       overdueOnly: false
     },
+    paymentSort: {
+      key: "",
+      direction: "asc"
+    },
     selectedTierPage: "Tier 1",
     expandedTierSheet: false,
     selectedTierRowKeys: new Set(),
@@ -141,6 +145,7 @@
     stamp: document.getElementById("datasetStamp"),
     download: document.getElementById("downloadCsv"),
     paymentDownload: document.getElementById("downloadPaymentsXlsx"),
+    paymentHead: document.getElementById("paymentTableHead"),
     sheetDownload: document.getElementById("downloadSheetXlsx"),
     tierDownload: document.getElementById("downloadTierXlsx"),
     contextTitle: document.getElementById("contextTitle"),
@@ -2215,6 +2220,11 @@
       renderSheetPage();
       return;
     }
+    if (button.dataset.reportSortScope === "payment") {
+      updateReportSort(state.paymentSort, key);
+      renderPaymentsPage();
+      return;
+    }
     updateReportSort(state.tierSheetSort, key);
     renderTierPage(state.selectedTierPage);
   }
@@ -3781,6 +3791,48 @@
       number(b.remainingAmount) - number(a.remainingAmount) ||
       String(b.reportMonthKey).localeCompare(String(a.reportMonthKey))
     ));
+  }
+
+  const paymentTableColumns = [
+    { label: "Merchant ID", render: (record) => escapeHtml(record.merchantId || "") },
+    { label: "Merchant", render: (record) => `<strong>${escapeHtml(record.merchantName || "")}</strong><p>${escapeHtml(displayCategory(record))}</p>` },
+    { label: "Network", render: (record) => escapeHtml(record.network || "") },
+    { label: "Region", render: (record) => escapeHtml(record.region || "-") },
+    { label: "Tier", render: (record) => `<span class="badge tier">${escapeHtml(record.tier || "Unknown")}</span>` },
+    { label: "Month", render: (record) => escapeHtml(`${optionText(record.reportMonth)} ${record.reportYear}`) },
+    { label: "Status", render: (record) => `<span class="badge ${paymentStatusClass(record.paymentStatus)}">${escapeHtml(statusText(record.paymentStatus || "Unknown"))}</span>` },
+    { label: "Revenue Made", render: (record) => paymentMoney(record, record.revenueMade) },
+    { label: "Commission Made", render: (record) => paymentMoney(record, record.commissionMade) },
+    { label: "Cycle", render: (record) => escapeHtml(record.paymentCycle ? `${record.paymentCycle} days` : "-") },
+    { label: "Expected Payment Date", render: (record) => escapeHtml(record.expectedPaymentDate || record.paymentAvailabilityDate || "-") },
+    { label: "Last Checked", render: (record) => escapeHtml(record.lastCheckedDate || "-") }
+  ];
+
+  function paymentMonthSortValue(record) {
+    const year = Number(record.reportYear || 0);
+    const monthIndex = PAYMENT_MONTHS.indexOf(record.reportMonth);
+    return year * 100 + (monthIndex < 0 ? 0 : monthIndex + 1);
+  }
+
+  function paymentTableSortValue(record, key) {
+    if (key === "Merchant ID") return record.merchantId || "";
+    if (key === "Merchant") return record.merchantName || "";
+    if (key === "Network") return record.network || "";
+    if (key === "Region") return record.region || "";
+    if (key === "Tier") return record.tier || "";
+    if (key === "Month") return paymentMonthSortValue(record);
+    if (key === "Status") return paymentStatusRank(record.paymentStatus);
+    if (key === "Revenue Made") return number(record.revenueMade);
+    if (key === "Commission Made") return number(record.commissionMade);
+    if (key === "Cycle") return number(record.paymentCycle);
+    if (key === "Expected Payment Date") return record.expectedPaymentDate || record.paymentAvailabilityDate || "";
+    if (key === "Last Checked") return record.lastCheckedDate || "";
+    return record[key] || "";
+  }
+
+  function sortPaymentRowsForTable(rows, sortState = state.paymentSort) {
+    if (!sortState || !sortState.key) return sortPaymentRows(rows);
+    return sortReportRows(rows, sortState, paymentTableSortValue);
   }
 
   function findPaymentMerchantMatches(query) {
@@ -5474,14 +5526,15 @@
 
   function getFilteredPayments() {
     const search = normalize(state.payments.search);
-    return sortPaymentRows(getPaymentRecords()
+    const rows = getPaymentRecords()
       .filter((record) => state.payments.month === "all" || record.reportMonth === state.payments.month || record.reportMonthKey === state.payments.month)
       .filter((record) => state.payments.network === "all" || record.network === state.payments.network)
       .filter((record) => state.payments.region === "all" || record.region === state.payments.region)
       .filter((record) => state.payments.tier === "all" || record.tier === state.payments.tier)
       .filter((record) => state.payments.status === "all" || record.paymentStatus === state.payments.status)
       .filter((record) => !state.payments.overdueOnly || isPaymentOverdue(record))
-      .filter((record) => !search || normalize(`${record.merchantName} ${record.merchantId} ${record.region || ""}`).includes(search)));
+      .filter((record) => !search || normalize(`${record.merchantName} ${record.merchantId} ${record.region || ""}`).includes(search));
+    return sortPaymentRowsForTable(rows);
   }
 
   function latestPaymentCheckedDate(rows) {
@@ -5509,22 +5562,16 @@
     els.paymentSummary.innerHTML = cards.map(([label, value]) => `<div class="metric payment-metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   }
 
+  function renderPaymentHead() {
+    if (!els.paymentHead) return;
+    els.paymentHead.innerHTML = `<tr>${paymentTableColumns.map((column) => sortableHeaderHtml(column.label, state.paymentSort, "payment")).join("")}</tr>`;
+  }
+
   function renderPaymentRows(rows) {
     els.paymentTableCount.textContent = `${rows.length.toLocaleString()} ${t("payment.tableCount", "matching payment records")}`;
     els.paymentRows.innerHTML = rows.map((record) => (
       `<tr data-merchant-id="${escapeHtml(record.merchantId || record.merchantName)}">
-        <td>${escapeHtml(record.merchantId || "")}</td>
-        <td><strong>${escapeHtml(record.merchantName || "")}</strong><p>${escapeHtml(displayCategory(record))}</p></td>
-        <td>${escapeHtml(record.network || "")}</td>
-        <td>${escapeHtml(record.region || "-")}</td>
-        <td><span class="badge tier">${escapeHtml(record.tier || "Unknown")}</span></td>
-        <td>${escapeHtml(`${optionText(record.reportMonth)} ${record.reportYear}`)}</td>
-        <td><span class="badge ${paymentStatusClass(record.paymentStatus)}">${escapeHtml(statusText(record.paymentStatus || "Unknown"))}</span></td>
-        <td>${paymentMoney(record, record.revenueMade)}</td>
-        <td>${paymentMoney(record, record.commissionMade)}</td>
-        <td>${escapeHtml(record.paymentCycle ? `${record.paymentCycle} days` : "-")}</td>
-        <td>${escapeHtml(record.expectedPaymentDate || record.paymentAvailabilityDate || "-")}</td>
-        <td>${escapeHtml(record.lastCheckedDate || "-")}</td>
+        ${paymentTableColumns.map((column) => `<td>${column.render(record)}</td>`).join("")}
       </tr>`
     )).join("");
   }
@@ -5532,6 +5579,7 @@
   function renderPaymentsPage() {
     const rows = getFilteredPayments();
     renderPaymentSummary(rows);
+    renderPaymentHead();
     renderPaymentRows(rows);
   }
 
@@ -6922,6 +6970,7 @@
     els.paymentStatus.addEventListener("change", () => { state.payments.status = els.paymentStatus.value; renderPaymentsPage(); });
     els.paymentSearch.addEventListener("input", () => { state.payments.search = els.paymentSearch.value; renderPaymentsPage(); });
     els.paymentOverdueOnly.addEventListener("change", () => { state.payments.overdueOnly = els.paymentOverdueOnly.checked; renderPaymentsPage(); });
+    if (els.paymentHead) els.paymentHead.addEventListener("click", handleReportSortClick);
     els.paymentSync.addEventListener("click", () => refreshLevantaPayments());
     els.languageToggle.addEventListener("click", toggleLanguage);
     els.reset.addEventListener("click", resetFilters);
@@ -6977,6 +7026,8 @@
       normalizeRegion,
       paymentCurrencySymbol,
       paymentMoney,
+      sortPaymentRowsForTable,
+      paymentTableSortValue,
       keywordSearchRequest,
       keywordSearchMatches,
       getPaymentRecords,
