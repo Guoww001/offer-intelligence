@@ -450,7 +450,7 @@ p {
 
 .payment-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1020,6 +1020,8 @@ p {
 .payments-page {
   display: grid;
   gap: 14px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  min-height: calc(100vh - 36px);
 }
 
 .payments-header {
@@ -1031,8 +1033,9 @@ p {
 
 .payment-filters {
   display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(150px, 1fr)) minmax(260px, 1.45fr);
   gap: 10px;
+  align-items: end;
 }
 
 .payment-filters label,
@@ -1071,11 +1074,20 @@ p {
 }
 
 .payment-layout {
-  display: block;
+  display: grid;
+  min-height: 0;
+}
+
+.payment-table-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .payment-table-wrap {
-  max-height: 650px;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
 }
 
 .payment-table {
