@@ -7471,8 +7471,13 @@
     if (els.reportsSubnav) els.reportsSubnav.classList.toggle("collapsed", !state.reportsOpen);
   }
 
+  function updatePageModeClass(page = state.page) {
+    if (document.body) document.body.classList.toggle("dashboard-mode", page === "dashboard");
+  }
+
   function switchPage(page) {
     state.page = page;
+    updatePageModeClass(page);
     if (page !== "tier") {
       state.selectedTierRowKeys.clear();
       closeTierSheetOverlay({ restoreFocus: false });
@@ -7515,6 +7520,7 @@
     setPaymentStamp("saved", isoDate(PAYMENT_TODAY));
     renderDashboardCategoryTierPicker();
     updateReportsNavState();
+    updatePageModeClass();
     quickPrompts.forEach(({ key, prompt }) => {
       const button = document.createElement("button");
       button.type = "button";

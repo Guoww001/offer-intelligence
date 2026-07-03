@@ -32,6 +32,10 @@ body {
   font-family: "Plus Jakarta Sans", "Geist", "Satoshi", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+body.dashboard-mode {
+  overflow: hidden;
+}
+
 button,
 input,
 select {
@@ -48,6 +52,13 @@ button {
   min-height: 100vh;
 }
 
+body.dashboard-mode .app-shell {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .sidebar {
   border-right: 0;
   background:
@@ -58,6 +69,11 @@ button {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+body.dashboard-mode .sidebar {
+  min-height: 0;
+  overflow: auto;
 }
 
 .brand-mark {
@@ -412,11 +428,22 @@ p {
   min-width: 0;
 }
 
+body.dashboard-mode .workspace {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
+}
+
+body.dashboard-mode .topbar.dashboard-page {
+  flex: 0 0 auto;
 }
 
 .quick-actions {
@@ -483,6 +510,14 @@ p {
   min-height: clamp(620px, calc(100vh - 150px), 820px);
 }
 
+body.dashboard-mode .main-grid.dashboard-page {
+  flex: 1 1 auto;
+  grid-auto-rows: minmax(0, 1fr);
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .chat-panel,
 .insight-panel,
 .table-panel {
@@ -496,6 +531,12 @@ p {
   min-height: clamp(620px, calc(100vh - 150px), 820px);
   display: grid;
   grid-template-rows: 1fr auto;
+}
+
+body.dashboard-mode .chat-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-log {
@@ -515,9 +556,9 @@ p {
 }
 
 .message.assistant {
-  background: #2f3438;
-  border: 1px solid #24292d;
-  color: #f6f8fa;
+  background: #eef6ff;
+  border: 1px solid #c9ddf6;
+  color: var(--ink);
 }
 
 .message.user {
@@ -537,13 +578,18 @@ p {
 }
 
 .message.assistant > p {
-  color: rgba(246, 248, 250, 0.92);
+  color: var(--ink);
 }
 
 .message.assistant .recommendation-answer,
 .message.assistant .result-table-wrap,
 .message.assistant .download-card {
   color: var(--ink);
+}
+
+.message.assistant .recommendation-answer,
+.message.assistant .result-table-wrap {
+  border-color: rgba(29, 111, 214, 0.2);
 }
 
 .merchant-card {
@@ -724,6 +770,11 @@ p {
   min-height: clamp(620px, calc(100vh - 150px), 820px);
   overflow: hidden;
   padding: 14px;
+}
+
+body.dashboard-mode .insight-panel {
+  height: 100%;
+  min-height: 0;
 }
 
 .chart-header {
@@ -1021,7 +1072,10 @@ p {
   display: grid;
   gap: 14px;
   grid-template-rows: auto auto auto minmax(0, 1fr);
-  min-height: calc(100vh - 36px);
+  height: calc(100vh - 36px);
+  height: calc(100dvh - 36px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .payments-header {
@@ -1075,19 +1129,24 @@ p {
 
 .payment-layout {
   display: grid;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .payment-table-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
-.payment-table-wrap {
+.table-wrap.payment-table-wrap {
   height: 100%;
   max-height: none;
   min-height: 0;
+  overflow: auto;
 }
 
 .payment-table {
