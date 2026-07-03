@@ -24,7 +24,7 @@ Internal YeahPromos Amazon offer intelligence dashboard for offer ranking, categ
 
 Main category logic is based on the Google Sheet `Category` value when it is present.
 
-- Tier 1 `Category`: column 22
+- Tier 1 `Category`: column 23
 - Tier 2 `Category`: column 22
 - Tier 3 `Category`: column 12
 - Tier 4 `Category`: column 13
@@ -58,8 +58,8 @@ The dashboard renders a standalone category-wise report from the tier sheet rows
 Manual test case:
 
 1. Open `http://127.0.0.1:8765` and confirm the dashboard category report defaults to `Tier 1`, `Tier 2`, `Tier 3`, and `Tier 4` with `BLACK TIER` unchecked.
-2. Confirm the current exported data shows `6,302` rows, `48` categories, `$2,166,390.16` revenue, and `21,843` orders for the default Tier 1-4 view.
-3. Clear the tier selection, check only `Tier 3`, and confirm the report updates to `370` rows, `26` categories, `$514,930.55` revenue, `4,056` orders, and Tier mix values that only use `T3`.
+2. Confirm the current exported data shows `6,312` rows, `38` categories, `$2,424,718.79` revenue, and `24,250` orders for the default Tier 1-4 view.
+3. Clear the tier selection, check only `Tier 3`, and confirm the report updates to `387` rows, `26` categories, `$488,765.00` revenue, `3,735` orders, and Tier mix values that only use `T3`.
 4. Check `BLACK TIER`, then click `All Tier 1-4`; confirm `BLACK TIER` is cleared again and the report returns to the default Tier 1-4 totals.
 
 ### Chatbot Intent Flow
