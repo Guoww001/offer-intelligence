@@ -1,7 +1,8 @@
 (function () {
   const data = window.CHATBOT_DATA || { summary: {}, offers: [] };
   const sheetReport = window.SHEET_REPORT_DATA || { sheets: [], tierSheets: [] };
-  const offers = data.offers || [];
+  const productKeywordData = window.PRODUCT_KEYWORDS || { merchants: [] };
+  const offers = mergeProductKeywordsIntoOffers(data.offers || [], productKeywordData);
   const chatbotI18n = window.CHATBOT_I18N || {};
   const tier2Rules = window.TIER2_RECOMMENDATION_RULES || {};
   const TIER_MOVE_OPTIONS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
@@ -612,6 +613,56 @@
     return String(value || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
   }
 
+  function productKeywordBrandKey(value) {
+    return String(value || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+  }
+
+  function arrayFromKeywordValue(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.flatMap(arrayFromKeywordValue);
+    return String(value)
+      .split(/\s*\|\s*/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function mergeUniqueValues(...groups) {
+    const seen = new Set();
+    const output = [];
+    groups.flatMap(arrayFromKeywordValue).forEach((value) => {
+      const key = String(value).toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      output.push(value);
+    });
+    return output;
+  }
+
+  function mergeProductKeywordsIntoOffers(baseOffers, keywordData = {}) {
+    const rows = Array.isArray(keywordData.merchants) ? keywordData.merchants : [];
+    if (!rows.length) return baseOffers;
+    const byId = new Map();
+    const byBrand = new Map();
+    rows.forEach((row) => {
+      const merchantId = String(row.merchantId || "").trim();
+      const brandKey = row.brandKey || productKeywordBrandKey(row.merchantName);
+      if (merchantId && !byId.has(merchantId)) byId.set(merchantId, row);
+      if (brandKey && !byBrand.has(brandKey)) byBrand.set(brandKey, row);
+    });
+    return baseOffers.map((offer) => {
+      const merchantId = String(offer.merchantId || "").trim();
+      const keywordRow = byId.get(merchantId) || byBrand.get(productKeywordBrandKey(offer.brand || offer.merchantName));
+      if (!keywordRow) return offer;
+      offer.productAsins = mergeUniqueValues(offer.productAsins, keywordRow.productAsins);
+      offer.productTitles = mergeUniqueValues(offer.productTitles, keywordRow.productTitles);
+      offer.productKeywords = mergeUniqueValues(offer.productKeywords, keywordRow.productKeywords);
+      offer.productNameCount = Number(keywordRow.productNameCount) || offer.productNameCount;
+      offer.productAsinCount = Number(keywordRow.productAsinCount) || offer.productAsinCount;
+      offer.productKeywordSource = keywordData.summary && keywordData.summary.source ? keywordData.summary.source : "product keyword workbook";
+      return offer;
+    });
+  }
+
   function canonicalTierName(value) {
     const text = String(value || "").trim().toLowerCase();
     if (text === "black tier" || text === "black") return "BLACK TIER";
@@ -856,6 +907,8 @@
         offer.product_title,
         offer.productName,
         offer.product_name,
+        offer.productTitles,
+        offer.product_titles,
         offer.title,
         offer.asinTitle,
         offer.asin_title,
@@ -866,7 +919,7 @@
         offer.dealInfo,
         offer.discountInfo
       ]),
-      asin: flattenSearchValues([offer.topAsins, offer.asinsText, offer.feishuCategoryAsin]),
+      asin: flattenSearchValues([offer.topAsins, offer.productAsins, offer.asinsText, offer.feishuCategoryAsin]),
       notes: flattenSearchValues([offer.notes, offer.recommendation, offer.recommendationNotes, offer.reason])
     };
   }
@@ -1034,9 +1087,11 @@
     };
 
     allAliases.forEach((alias) => {
-      if (groupValues.some((value) => searchValueExactMatches(value, alias))) {
+      const productExact = productValues.some((value) => searchValueExactMatches(value, alias));
+      const categoryExact = categoryValues.some((value) => searchValueExactMatches(value, alias));
+      if (productExact || categoryExact || groupValues.some((value) => searchValueExactMatches(value, alias))) {
         const primary = keywordAliasIsPrimary(alias, request);
-        recordMatch(primary ? 1 : 3, primary ? 1000 : 660, primary ? "Exact match" : "Synonym match", alias, "offer data");
+        recordMatch(primary ? 1 : 3, primary ? 1000 : 660, primary ? "Exact match" : "Synonym match", alias, productExact ? "product" : categoryExact ? "category" : "offer data");
       }
     });
 
@@ -1161,6 +1216,7 @@
     if (request.knownKeyword) return true;
     if (hasDirectMerchantKeywordLookup(prompt)) return false;
     if (context.category && hasMainCategoryValue(context.category) && normalize(context.category) === normalize(request.keyword)) return false;
+    if (keywordSearchMatches(prompt).some((match) => (match.matchedFields || []).includes("product"))) return true;
     return wantsRecommendationList(prompt) ||
       /\b(?:find|search|keyword|keywords|related|similar|matching)\b/i.test(prompt) ||
       /搜索|查找|找|关键词|相关|相似|匹配/.test(prompt);
@@ -2229,7 +2285,10 @@
     const match = text.toUpperCase().match(/\bB[A-Z0-9]{9}\b/);
     if (!match) return null;
     const asin = match[0];
-    return { asin, rows: offers.filter((offer) => (offer.topAsins || []).includes(asin)) };
+    return { asin, rows: offers.filter((offer) => (
+      (offer.topAsins || []).includes(asin) ||
+      (offer.productAsins || []).includes(asin)
+    )) };
   }
 
   function metricTermPattern() {
@@ -2660,6 +2719,7 @@
     const lower = String(text || "").toLowerCase();
     const phrase = cleanedCategoryPhrase(text);
     const phraseTokens = meaningfulTokens(phrase);
+    const allowFuzzyCategory = hasCategoryIntentText(text) || wantsRecommendationList(text) || phraseTokens.length > 1;
     const mainCategories = uniqueCategoryValues()
       .filter((cat) => cat !== "Uncategorized")
       .sort((a, b) => String(b).length - String(a).length);
@@ -2668,7 +2728,7 @@
       return categoryLower && (lower.includes(categoryLower) || String(phrase || "").toLowerCase().includes(categoryLower));
     });
     if (directMain) return directMain;
-    if (phrase) {
+    if (phrase && allowFuzzyCategory) {
       const bestMain = mainCategories
         .map((category) => ({ category, score: categoryScore(phrase, category) }))
         .sort((a, b) => b.score - a.score)[0];
@@ -2680,7 +2740,7 @@
       return categoryLower && categoryLower !== "uncategorized" && (lower.includes(categoryLower) || String(phrase || "").toLowerCase().includes(categoryLower));
     });
     if (direct) return direct;
-    if (phrase) {
+    if (phrase && allowFuzzyCategory) {
       const best = knownCategories
         .map((category) => ({ category, score: categoryScore(phrase, category) }))
         .sort((a, b) => b.score - a.score)[0];
@@ -3602,7 +3662,7 @@
         resultTable(topRows, keywordColumns, language);
     }
 
-    return `<p><strong>I found offers related to ${escapeHtml(scopeLabel)}.</strong> Here are the best matching offers based on category, product keyword, and recommendation priority.</p>` +
+    return `<p><strong>I found offers related to ${escapeHtml(scopeLabel)}.</strong> Top ${topRows.length.toLocaleString()} brand recommendations with the usual offer data are below, based on category, product keyword, and recommendation priority.</p>` +
       `<p><strong>Matched categories:</strong> ${escapeHtml(matchedCategories.join(", ") || "not available in current data")}${escapeHtml(filterNote)}</p>` +
       `<div class="download-card">
         <div>

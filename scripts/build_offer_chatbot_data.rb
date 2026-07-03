@@ -14,6 +14,7 @@ output_js = ARGV[4] || "outputs/offer_chatbot/chatbot_data.js"
 sheet_block_dir = ARGV[5] || "work/backend_epc_sheet_blocks"
 all_invoice_json = ARGV[6] || "outputs/levanta_invoice_items_march_april_2026.json"
 feishu_category_csv = ARGV[7] || "work/feishu_merchant_categories.csv"
+product_keyword_csv = ARGV[8] || "data/product_name_keywords_t1_t3.csv"
 
 def num(value)
   text = value.to_s.strip
@@ -41,6 +42,14 @@ def split_asins(value)
        .split(/[,\s，、]+/)
        .map { |asin| asin.strip.upcase }
        .select { |asin| asin.match?(/\AB[A-Z0-9]{9}\z/) }
+       .uniq
+end
+
+def split_pipe_list(value)
+  value.to_s
+       .split(/\s*\|\s*/)
+       .map(&:strip)
+       .reject(&:empty?)
        .uniq
 end
 
@@ -379,6 +388,29 @@ if File.exist?(feishu_category_csv)
   end
 end
 
+product_keywords_by_mid = {}
+product_keywords_by_brand = {}
+if File.exist?(product_keyword_csv)
+  CSV.read(product_keyword_csv, headers: true).each do |row|
+    merchant_id = merchant_key(row["merchantId"])
+    merchant_name = clean_text(row["merchantName"])
+    info = compact_hash({
+      "merchantId" => merchant_id,
+      "merchantName" => merchant_name,
+      "productNameCount" => num(row["productNameCount"])&.to_i,
+      "productAsinCount" => num(row["productAsinCount"])&.to_i,
+      "productAsins" => split_pipe_list(row["productAsins"]),
+      "productTitles" => split_pipe_list(row["productTitles"]),
+      "productKeywords" => split_pipe_list(row["productKeywords"]),
+      "productKeywordSource" => File.basename(product_keyword_csv)
+    })
+    next if merchant_id.empty? && merchant_name.to_s.empty?
+
+    product_keywords_by_mid[merchant_id] = info unless merchant_id.empty?
+    product_keywords_by_brand[normalize_brand(merchant_name)] = info unless merchant_name.to_s.empty?
+  end
+end
+
 sheet_blocks_by_tier_row = {}
 block_start_rows = { "Tier 1" => 10, "Tier 2" => 13, "Tier 3" => 10, "Tier 4" => 10 }
 block_start_rows.each do |tier, header_row|
@@ -397,6 +429,7 @@ offers = CSV.read(brand_csv, headers: true).map do |row|
   lev_cat = levanta_category_by_brand[normalize_brand(row["brand"])]
   feishu_cat = feishu_category_by_mid[mid] || feishu_category_by_brand[normalize_brand(row["brand"])]
   sheet_block = sheet_blocks_by_tier_row[[row["tier"], row["row_number"].to_i]] || {}
+  product_keyword = product_keywords_by_mid[mid] || product_keywords_by_brand[normalize_brand(row["brand"])]
 
   network = backend && backend["backend_network"].to_s.strip != "" ? backend["backend_network"] : row["network_or_agency"]
   paid = levanta_network?(network) ? not_paid_by_brand[normalize_brand(row["brand"])] : nil
@@ -492,6 +525,12 @@ offers = CSV.read(brand_csv, headers: true).map do |row|
     "atcPerClick" => round(num(row["atc_per_click"]), 6),
     "backendMatchStatus" => backend ? backend["backend_match_status"] : "No backend match",
     "topAsins" => asins,
+    "productAsins" => product_keyword&.fetch("productAsins", nil),
+    "productTitles" => product_keyword&.fetch("productTitles", nil),
+    "productKeywords" => product_keyword&.fetch("productKeywords", nil),
+    "productNameCount" => product_keyword&.fetch("productNameCount", nil),
+    "productAsinCount" => product_keyword&.fetch("productAsinCount", nil),
+    "productKeywordSource" => product_keyword&.fetch("productKeywordSource", nil),
     "asinsText" => clean_text(row["asins"]),
     "hasAsin" => !asins.empty?,
     "mayRevenue" => round(num(row["may_revenue"]), 2),
@@ -630,6 +669,7 @@ summary = {
   "sheetCategorizedCount" => offers.count { |offer| offer["sheetCategory"] },
   "levantaCategorizedCount" => offers.count { |offer| offer["levantaCategory"] },
   "feishuCategorizedCount" => offers.count { |offer| offer["feishuMainCategory"] || offer["feishuSubCategory"] },
+  "productKeywordMatchedCount" => offers.count { |offer| offer["productKeywords"] },
   "paymentSummary" => payment_summary
 }
 
@@ -640,7 +680,8 @@ payload = {
     "backendEpc" => File.basename(backend_csv),
     "payments" => File.basename(not_paid_csv),
     "levantaCategories" => File.exist?(category_csv) ? File.basename(category_csv) : nil,
-    "feishuCategories" => File.exist?(feishu_category_csv) ? File.basename(feishu_category_csv) : nil
+    "feishuCategories" => File.exist?(feishu_category_csv) ? File.basename(feishu_category_csv) : nil,
+    "productKeywords" => File.exist?(product_keyword_csv) ? File.basename(product_keyword_csv) : nil
   },
   "offers" => offers,
   "paymentRecords" => payment_records
