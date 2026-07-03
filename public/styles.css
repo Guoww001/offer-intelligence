@@ -368,6 +368,11 @@ p {
   box-shadow: 0 0 0 3px rgba(23, 123, 115, 0.13);
 }
 
+.chat-input input:focus {
+  border-color: var(--nav-active);
+  box-shadow: 0 0 0 3px rgba(29, 111, 214, 0.14);
+}
+
 .checkbox-row {
   flex-direction: row !important;
   align-items: center;
@@ -510,8 +515,9 @@ p {
 }
 
 .message.assistant {
-  background: var(--green-soft);
-  border: 1px solid #cbe7e2;
+  background: #2f3438;
+  border: 1px solid #24292d;
+  color: #f6f8fa;
 }
 
 .message.user {
@@ -528,6 +534,16 @@ p {
   margin-top: 8px;
   color: var(--ink);
   font-size: 12px;
+}
+
+.message.assistant > p {
+  color: rgba(246, 248, 250, 0.92);
+}
+
+.message.assistant .recommendation-answer,
+.message.assistant .result-table-wrap,
+.message.assistant .download-card {
+  color: var(--ink);
 }
 
 .merchant-card {
@@ -688,8 +704,14 @@ p {
 }
 
 .chat-input button {
-  background: var(--teal);
-  border-color: var(--teal);
+  background: var(--nav-active);
+  border-color: var(--nav-active);
+  color: #fff;
+}
+
+.chat-input button:hover {
+  background: #155ab9;
+  border-color: #155ab9;
   color: #fff;
 }
 
