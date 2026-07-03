@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Offer Intelligence Chat</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=20260702-merge1" />
+    <link rel="stylesheet" href="./styles.css?v=20260703-dashboard-layout1" />
   </head>
   <body>
     <div class="app-shell">
@@ -68,16 +68,6 @@
         </section>
 
         <section class="main-grid dashboard-page">
-          <section class="chat-panel" aria-label="Chat">
-            <div class="chat-log" id="chatLog"></div>
-            <form class="chat-input" id="chatForm">
-              <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
-              <button type="submit" aria-label="Send">
-                <span data-i18n="action.send">Send</span>
-              </button>
-            </form>
-          </section>
-
           <section class="insight-panel" aria-label="Insights">
             <div class="chart-header">
               <div>
@@ -90,23 +80,16 @@
             </div>
             <div class="recommendation-box context-panel" id="recommendationBox"></div>
           </section>
-        </section>
 
-        <section class="panel table-panel dashboard-category-report dashboard-page" id="dashboardCategoryReport" aria-label="Dashboard category-wise report">
-          <div class="tier-category-header dashboard-category-report-header">
-            <div>
-              <h3>Category-wise report</h3>
-              <p id="dashboardCategoryReportSubtitle"></p>
-            </div>
-            <div class="dashboard-category-tier-picker" id="dashboardCategoryTierPicker" aria-label="Category report tier selection"></div>
-          </div>
-          <div class="dashboard-category-controls" aria-label="Category report controls">
-            <label>
-              <span>Category</span>
-              <input id="dashboardCategorySearch" type="search" placeholder="Search category or merchant" />
-            </label>
-          </div>
-          <div id="dashboardCategoryReportBody"></div>
+          <section class="chat-panel" aria-label="Chat">
+            <div class="chat-log" id="chatLog"></div>
+            <form class="chat-input" id="chatForm">
+              <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
+              <button type="submit" aria-label="Send">
+                <span data-i18n="action.send">Send</span>
+              </button>
+            </form>
+          </section>
         </section>
 
         <section class="payments-page hidden" id="paymentsPage" aria-label="Payments">
@@ -230,6 +213,22 @@
                 <tbody id="sheetGridRows"></tbody>
               </table>
             </div>
+          </section>
+          <section class="panel table-panel dashboard-category-report" id="dashboardCategoryReport" aria-label="Reports category-wise report">
+            <div class="tier-category-header dashboard-category-report-header">
+              <div>
+                <h3>Category-wise report</h3>
+                <p id="dashboardCategoryReportSubtitle"></p>
+              </div>
+              <div class="dashboard-category-tier-picker" id="dashboardCategoryTierPicker" aria-label="Category report tier selection"></div>
+            </div>
+            <div class="dashboard-category-controls" aria-label="Category report controls">
+              <label>
+                <span>Category</span>
+                <input id="dashboardCategorySearch" type="search" placeholder="Search category or merchant" />
+              </label>
+            </div>
+            <div id="dashboardCategoryReportBody"></div>
           </section>
         </section>
 
