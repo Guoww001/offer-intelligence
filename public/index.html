@@ -21,20 +21,71 @@
         <button class="language-toggle" id="languageToggle" type="button">中文简体</button>
 
         <nav class="page-nav" aria-label="Pages">
-          <button class="page-nav-button active" id="dashboardNav" data-icon="grid" type="button"><span data-i18n="nav.dashboard">Dashboard</span></button>
-          <button class="page-nav-button" id="paymentsNav" data-icon="card" type="button"><span data-i18n="nav.payments">Payments</span></button>
+          <button class="page-nav-button active" id="dashboardNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+            </span>
+            <span data-i18n="nav.dashboard">Dashboard</span>
+          </button>
+          <button class="page-nav-button" id="paymentsNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 9h16"/><path d="M8 14h4"/></svg>
+            </span>
+            <span data-i18n="nav.payments">Payments</span>
+          </button>
           <div class="nav-group">
-            <button class="page-nav-button report-nav" id="sheetsNav" data-icon="chart" type="button">
+            <button class="page-nav-button report-nav" id="sheetsNav" type="button" aria-expanded="true" aria-controls="reportsSubnav">
+              <span class="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg>
+              </span>
               <span data-i18n="nav.reports">Reports</span>
-              <small data-i18n="nav.targets">Targets</small>
+              <span class="nav-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg>
+              </span>
             </button>
-            <div class="nav-subnav" aria-label="Report pages">
-              <button class="page-nav-button" id="categoryNav" type="button">Category</button>
-              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 1" type="button">Tier 1</button>
-              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 2" type="button">Tier 2</button>
-              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 3" type="button">Tier 3</button>
-              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 4" type="button">Tier 4</button>
-              <button class="page-nav-button tier-nav-button" data-tier-page="BLACK TIER" type="button">Black Tier</button>
+            <div class="nav-subnav" id="reportsSubnav" aria-label="Report pages">
+              <button class="page-nav-button" id="targetNav" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M9 5v14"/><path d="M5 10h14"/></svg>
+                </span>
+                <span data-i18n="nav.targets">Targets</span>
+              </button>
+              <button class="page-nav-button" id="categoryNav" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+                </span>
+                <span data-i18n="nav.category">Category</span>
+              </button>
+              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 1" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 19h14"/><path d="M8 16v-5"/><path d="M12 16V7"/><path d="M16 16v-8"/></svg>
+                </span>
+                <span>Tier 1</span>
+              </button>
+              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 2" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 19h14"/><path d="M8 16v-4"/><path d="M12 16V8"/><path d="M16 16v-6"/></svg>
+                </span>
+                <span>Tier 2</span>
+              </button>
+              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 3" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 19h14"/><path d="M8 16v-3"/><path d="M12 16v-5"/><path d="M16 16v-7"/></svg>
+                </span>
+                <span>Tier 3</span>
+              </button>
+              <button class="page-nav-button tier-nav-button" data-tier-page="Tier 4" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 19h14"/><path d="M8 16v-2"/><path d="M12 16v-4"/><path d="M16 16v-5"/></svg>
+                </span>
+                <span>Tier 4</span>
+              </button>
+              <button class="page-nav-button tier-nav-button" data-tier-page="BLACK TIER" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7z"/><path d="m5 19 14-14"/></svg>
+                </span>
+                <span>Black Tier</span>
+              </button>
             </div>
           </div>
         </nav>

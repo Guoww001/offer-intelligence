@@ -128,6 +128,7 @@
     excludedRecommendationKeys: new Set(),
     recommendationDownloads: {},
     downloadSequence: 0,
+    reportsOpen: true,
     language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en"
   };
 
@@ -135,6 +136,8 @@
     dashboardNav: document.getElementById("dashboardNav"),
     paymentsNav: document.getElementById("paymentsNav"),
     sheetsNav: document.getElementById("sheetsNav"),
+    targetNav: document.getElementById("targetNav"),
+    reportsSubnav: document.getElementById("reportsSubnav"),
     categoryNav: document.getElementById("categoryNav"),
     tier: document.getElementById("tierFilter"),
     network: document.getElementById("networkFilter"),
@@ -272,6 +275,7 @@
       "nav.payments": "付款",
       "nav.reports": "报表",
       "nav.targets": "目标",
+      "nav.category": "品类",
       "sidebar.status": "数据状态",
       "source.backendEpc": "后台 EPC",
       "source.payments": "2-6月付款",
@@ -7414,6 +7418,11 @@
     renderSheetPage();
   }
 
+  function updateReportsNavState() {
+    if (els.sheetsNav) els.sheetsNav.setAttribute("aria-expanded", state.reportsOpen ? "true" : "false");
+    if (els.reportsSubnav) els.reportsSubnav.classList.toggle("collapsed", !state.reportsOpen);
+  }
+
   function switchPage(page) {
     state.page = page;
     if (page !== "tier") {
@@ -7424,6 +7433,7 @@
     const isTier = page === "tier";
     const isSheets = page === "sheets";
     const isCategory = page === "category";
+    if (isSheets || isCategory || isTier) state.reportsOpen = true;
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.sheetPage.classList.toggle("hidden", !isSheets);
@@ -7432,10 +7442,12 @@
     els.dashboardNav.classList.toggle("active", page === "dashboard");
     els.paymentsNav.classList.toggle("active", page === "payments");
     els.sheetsNav.classList.toggle("active", isSheets || isCategory || isTier);
+    els.targetNav.classList.toggle("active", isSheets);
     els.categoryNav.classList.toggle("active", isCategory);
     els.tierNavButtons.forEach((button) => {
       button.classList.toggle("active", isTier && button.dataset.tierPage === state.selectedTierPage);
     });
+    updateReportsNavState();
     if (page === "payments") {
       renderPaymentsPage();
       if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
@@ -7454,6 +7466,7 @@
     setDatasetStamp();
     setPaymentStamp("saved", isoDate(PAYMENT_TODAY));
     renderDashboardCategoryTierPicker();
+    updateReportsNavState();
     quickPrompts.forEach(({ key, prompt }) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -7482,7 +7495,11 @@
     els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategorySortClick);
     els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
-    els.sheetsNav.addEventListener("click", () => switchPage("sheets"));
+    els.sheetsNav.addEventListener("click", () => {
+      state.reportsOpen = !state.reportsOpen;
+      updateReportsNavState();
+    });
+    els.targetNav.addEventListener("click", () => switchPage("sheets"));
     els.categoryNav.addEventListener("click", () => switchPage("category"));
     els.targetMonthSelect.addEventListener("change", () => {
       state.targetFilters.month = els.targetMonthSelect.value;
