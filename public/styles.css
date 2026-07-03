@@ -1171,11 +1171,16 @@ p {
   --target-violet: #6a4df4;
   --target-amber: #d9871f;
   --target-shadow: 0 22px 70px rgba(28, 42, 66, 0.09);
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.95fr);
+  align-items: start;
   gap: 16px;
   padding: 4px;
 }
 
 .sheet-page-header {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
   min-height: 54px;
 }
 
@@ -1194,10 +1199,14 @@ p {
 }
 
 .sheet-page .sheet-target-filters {
+  grid-column: 2;
+  grid-row: 1;
   grid-template-columns: repeat(3, minmax(150px, 230px));
   justify-content: end;
-  margin-left: auto;
-  max-width: min(760px, 100%);
+  align-self: center;
+  width: 100%;
+  margin-left: 0;
+  max-width: none;
   border-color: rgba(36, 104, 242, 0.14);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 253, 0.94)),
@@ -1220,8 +1229,13 @@ p {
 }
 
 .sheet-page .tier-summary {
+  grid-column: 1 / -1;
   grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: 14px;
+}
+
+.sheet-page .sheet-target-notes {
+  grid-column: 1 / -1;
 }
 
 .target-kpi-card,
@@ -2729,6 +2743,18 @@ td strong {
 
   .sheet-target-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sheet-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sheet-page-header,
+  .sheet-page .sheet-target-filters,
+  .sheet-page .tier-summary,
+  .sheet-page .sheet-target-notes {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .sheet-page .sheet-target-filters {

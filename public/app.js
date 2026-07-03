@@ -7107,7 +7107,18 @@
     </section>`;
   }
 
-  function targetTrendHtml(allRecords) {
+  function targetTrendSubtitle(metric = targetMetricConfig()) {
+    const tier = state.targetFilters.tier;
+    return tier === "all" ? `Total ${metric.label.toLowerCase()} trajectory` : `${tier} ${metric.label.toLowerCase()} trajectory`;
+  }
+
+  function targetMetricTabsHtml(metric = targetMetricConfig()) {
+    return TARGET_METRICS.map((item) => (
+      `<button class="target-metric-tab${item.key === metric.key ? " active" : ""}" type="button" data-target-metric="${escapeHtml(item.key)}" aria-pressed="${item.key === metric.key ? "true" : "false"}">${escapeHtml(item.label)}</button>`
+    )).join("");
+  }
+
+  function targetTrendPlotHtml(allRecords) {
     const tier = state.targetFilters.tier;
     const metric = targetMetricConfig();
     const trendRows = Array.from(new Set(allRecords.map((record) => record.Month).filter(Boolean)))
@@ -7132,27 +7143,29 @@
       return { ...row, x, y };
     });
     const polyline = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
-    const tabs = TARGET_METRICS.map((item) => (
-      `<button class="target-metric-tab${item.key === metric.key ? " active" : ""}" type="button" data-target-metric="${escapeHtml(item.key)}" aria-pressed="${item.key === metric.key ? "true" : "false"}">${escapeHtml(item.label)}</button>`
-    )).join("");
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly ${escapeHtml(metric.label)} trend">
+      <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="trend-axis"></line>
+      <polyline points="${polyline}" class="trend-line"></polyline>
+      ${points.map((point) => `<g>
+        <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4.5" class="trend-dot"></circle>
+        <text x="${point.x.toFixed(2)}" y="${Math.max(14, point.y - 12).toFixed(2)}" text-anchor="middle">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>
+        <text x="${point.x.toFixed(2)}" y="${height - 6}" text-anchor="middle" class="trend-month">${escapeHtml(point.month)}</text>
+      </g>`).join("")}
+    </svg>`;
+  }
+
+  function targetTrendHtml(allRecords) {
+    const metric = targetMetricConfig();
     return `<section class="target-report-card target-trend-card target-card-enter" style="--i:6">
       <div class="target-section-header">
         <div>
           <h3>Monthly trend</h3>
-          <p>${escapeHtml(tier === "all" ? `Total ${metric.label.toLowerCase()} trajectory` : `${tier} ${metric.label.toLowerCase()} trajectory`)}</p>
+          <p data-target-trend-subtitle>${escapeHtml(targetTrendSubtitle(metric))}</p>
         </div>
-        <div class="target-metric-tabs" aria-label="Trend metric">${tabs}</div>
+        <div class="target-metric-tabs" aria-label="Trend metric">${targetMetricTabsHtml(metric)}</div>
       </div>
       <div class="target-trend-plot">
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly ${escapeHtml(metric.label)} trend">
-          <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="trend-axis"></line>
-          <polyline points="${polyline}" class="trend-line"></polyline>
-          ${points.map((point) => `<g>
-            <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4.5" class="trend-dot"></circle>
-            <text x="${point.x.toFixed(2)}" y="${Math.max(14, point.y - 12).toFixed(2)}" text-anchor="middle">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>
-            <text x="${point.x.toFixed(2)}" y="${height - 6}" text-anchor="middle" class="trend-month">${escapeHtml(point.month)}</text>
-          </g>`).join("")}
-        </svg>
+        ${targetTrendPlotHtml(allRecords)}
       </div>
     </section>`;
   }
@@ -7267,11 +7280,13 @@
     return `<span class="target-matrix-delta ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : "-"} ${(pctValue * 100).toFixed(0)}%</span>`;
   }
 
-  function targetMatrixHtml(records, comparisonRows = []) {
+  function targetMatrixHtml(records, comparisonRows = [], options = {}) {
     const metric = targetMetricConfig();
     const comparisonMap = targetComparisonMap(comparisonRows);
     const rows = sortedTargetMatrixRows(records, comparisonMap);
     const total = targetSummary(rows);
+    const enterClass = options.animate === false ? "" : " target-card-enter";
+    const enterStyle = options.animate === false ? "" : ` style="--i:7"`;
     const headers = [
       ["Tier", "Tier"],
       ["Active Brands", "Active Brands"],
@@ -7286,7 +7301,7 @@
     const headerMap = new Map(headers);
     const mobileSortControls = headers.map(([key, label]) => targetMatrixSortHeaderHtml(key, label).replace(/^<th>|<\/th>$/g, "")).join("");
     const cell = (key, value) => `<td data-label="${escapeHtml(headerMap.get(key) || key)}">${value}</td>`;
-    return `<section class="target-report-card target-matrix-card target-card-enter" style="--i:7">
+    return `<section class="target-report-card target-matrix-card${enterClass}"${enterStyle}>
       <div class="target-section-header">
         <div>
           <h3>Tier comparison matrix</h3>
@@ -7353,6 +7368,45 @@
     els.sheetPageNotes.innerHTML = `${targetProgressHtml(rows)}${targetTrendHtml(allRecords)}${targetMatrixHtml(rows, comparisonRows)}`;
   }
 
+  function currentTargetPageData() {
+    const allRecords = targetRecords();
+    const rows = filteredTargetRecords();
+    const comparisonRows = state.targetFilters.compareMonth
+      ? targetRowsForMonth(allRecords, state.targetFilters.compareMonth, state.targetFilters.tier)
+      : [];
+    return { allRecords, rows, comparisonRows };
+  }
+
+  function refreshTargetTrendOnly(allRecords) {
+    const trendCard = els.sheetPageNotes && els.sheetPageNotes.querySelector(".target-trend-card");
+    if (!trendCard) return false;
+    const metric = targetMetricConfig();
+    const subtitle = trendCard.querySelector("[data-target-trend-subtitle]");
+    const plot = trendCard.querySelector(".target-trend-plot");
+    if (subtitle) subtitle.textContent = targetTrendSubtitle(metric);
+    if (plot) plot.innerHTML = targetTrendPlotHtml(allRecords);
+    trendCard.querySelectorAll("[data-target-metric]").forEach((button) => {
+      const active = button.dataset.targetMetric === metric.key;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    return true;
+  }
+
+  function refreshTargetMatrixOnly(rows, comparisonRows) {
+    const matrixCard = els.sheetPageNotes && els.sheetPageNotes.querySelector(".target-matrix-card");
+    if (!matrixCard) return false;
+    matrixCard.outerHTML = targetMatrixHtml(rows, comparisonRows, { animate: false });
+    return true;
+  }
+
+  function refreshTargetMetricViews() {
+    const { allRecords, rows, comparisonRows } = currentTargetPageData();
+    const trendUpdated = refreshTargetTrendOnly(allRecords);
+    const matrixUpdated = refreshTargetMatrixOnly(rows, comparisonRows);
+    if (!trendUpdated || !matrixUpdated) renderSheetPage();
+  }
+
   function focusTargetEditField() {
     window.requestAnimationFrame(() => {
       const input = els.sheetPageNotes && els.sheetPageNotes.querySelector(".target-edit-form input");
@@ -7370,7 +7424,7 @@
     const metricButton = event.target.closest("[data-target-metric]");
     if (metricButton) {
       state.targetMetric = metricButton.dataset.targetMetric || "revenue";
-      renderSheetPage();
+      refreshTargetMetricViews();
       return;
     }
     const editButton = event.target.closest(".target-edit-button[data-target-edit-key]");
