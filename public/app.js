@@ -6253,7 +6253,7 @@
 
     (sheet.rows || []).forEach((row) => {
       const offer = offerForSheetRow(row);
-      if (offer && !sheetNameMatchesTier(sheetTier, offer.tier)) return;
+      if (offer && offer.tierOverride && !sheetNameMatchesTier(sheetTier, offer.tier)) return;
       keptRows.push(row);
       const key = sheetRowKey(row);
       if (key) rowKeys.add(key);
@@ -7714,7 +7714,8 @@
       excludedRecommendationKeys: () => Array.from(state.excludedRecommendationKeys),
       rankedRecommendations,
       displayCategory,
-      dashboardCategoryGroups
+      dashboardCategoryGroups,
+      tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName))
     };
   } else {
     init();
