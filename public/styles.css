@@ -1036,7 +1036,8 @@ p {
 }
 
 .tier-page,
-.sheet-page {
+.sheet-page,
+.category-page {
   display: grid;
   gap: 14px;
 }

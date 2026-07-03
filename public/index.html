@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Offer Intelligence Chat</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=20260703-dashboard-layout1" />
+    <link rel="stylesheet" href="./styles.css?v=20260703-category-page1" />
   </head>
   <body>
     <div class="app-shell">
@@ -28,7 +28,8 @@
               <span data-i18n="nav.reports">Reports</span>
               <small data-i18n="nav.targets">Targets</small>
             </button>
-            <div class="nav-subnav" aria-label="Tier reports">
+            <div class="nav-subnav" aria-label="Report pages">
+              <button class="page-nav-button" id="categoryNav" type="button">Category</button>
               <button class="page-nav-button tier-nav-button" data-tier-page="Tier 1" type="button">Tier 1</button>
               <button class="page-nav-button tier-nav-button" data-tier-page="Tier 2" type="button">Tier 2</button>
               <button class="page-nav-button tier-nav-button" data-tier-page="Tier 3" type="button">Tier 3</button>
@@ -214,7 +215,16 @@
               </table>
             </div>
           </section>
-          <section class="panel table-panel dashboard-category-report" id="dashboardCategoryReport" aria-label="Reports category-wise report">
+        </section>
+
+        <section class="category-page hidden" id="categoryPage" aria-label="Category reports">
+          <div class="tier-header">
+            <div>
+              <h2>Category</h2>
+              <p>Category-wise performance summary from tier sheets</p>
+            </div>
+          </div>
+          <section class="panel table-panel dashboard-category-report" id="dashboardCategoryReport" aria-label="Category-wise report">
             <div class="tier-category-header dashboard-category-report-header">
               <div>
                 <h3>Category-wise report</h3>
@@ -331,6 +341,6 @@
     <script src="./product_keywords.js?v=20260703-product1"></script>
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
-    <script src="./app.js?v=20260703-tiermoves1"></script>
+    <script src="./app.js?v=20260703-category-page1"></script>
   </body>
 </html>
