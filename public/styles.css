@@ -443,7 +443,7 @@ p {
 
 .main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.04fr) minmax(360px, 0.96fr);
+  grid-template-columns: minmax(360px, 0.96fr) minmax(0, 1.04fr);
   gap: 14px;
   align-items: stretch;
   min-height: clamp(620px, calc(100vh - 150px), 820px);
@@ -1036,7 +1036,8 @@ p {
 }
 
 .tier-page,
-.sheet-page {
+.sheet-page,
+.category-page {
   display: grid;
   gap: 14px;
 }

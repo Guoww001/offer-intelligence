@@ -122,6 +122,7 @@
     dashboardNav: document.getElementById("dashboardNav"),
     paymentsNav: document.getElementById("paymentsNav"),
     sheetsNav: document.getElementById("sheetsNav"),
+    categoryNav: document.getElementById("categoryNav"),
     tier: document.getElementById("tierFilter"),
     network: document.getElementById("networkFilter"),
     category: document.getElementById("categoryFilter"),
@@ -152,6 +153,7 @@
     contextSubtitle: document.getElementById("contextSubtitle"),
     paymentsPage: document.getElementById("paymentsPage"),
     sheetPage: document.getElementById("sheetPage"),
+    categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
     sheetPageSubtitle: document.getElementById("sheetPageSubtitle"),
     sheetPageSummary: document.getElementById("sheetPageSummary"),
@@ -6830,13 +6832,16 @@
     }
     const isTier = page === "tier";
     const isSheets = page === "sheets";
+    const isCategory = page === "category";
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.sheetPage.classList.toggle("hidden", !isSheets);
+    els.categoryPage.classList.toggle("hidden", !isCategory);
     els.tierPage.classList.toggle("hidden", !isTier);
     els.dashboardNav.classList.toggle("active", page === "dashboard");
     els.paymentsNav.classList.toggle("active", page === "payments");
-    els.sheetsNav.classList.toggle("active", isSheets || isTier);
+    els.sheetsNav.classList.toggle("active", isSheets || isCategory || isTier);
+    els.categoryNav.classList.toggle("active", isCategory);
     els.tierNavButtons.forEach((button) => {
       button.classList.toggle("active", isTier && button.dataset.tierPage === state.selectedTierPage);
     });
@@ -6845,6 +6850,7 @@
       if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
     }
     if (isSheets) renderSheetPage();
+    if (isCategory) renderDashboardCategoryReport();
     if (isTier) renderTierPage(state.selectedTierPage);
   }
 
@@ -6886,6 +6892,7 @@
     els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.sheetsNav.addEventListener("click", () => switchPage("sheets"));
+    els.categoryNav.addEventListener("click", () => switchPage("category"));
     els.targetMonthSelect.addEventListener("change", () => {
       state.targetFilters.month = els.targetMonthSelect.value;
       renderSheetPage();
