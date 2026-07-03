@@ -230,6 +230,21 @@ assertTruthy(
   paymentRows.every((record) => Number(record.revenueMade) > 0 || Number(record.commissionMade) > 0),
   "frontend payment records should all have revenue or commission"
 );
+const paymentsByRevenue = hooks.sortPaymentRowsForTable(paymentRows, { key: "Revenue Made", direction: "desc" });
+assertTruthy(
+  paymentsByRevenue.every((record, index, rows) => index === 0 || Number(rows[index - 1].revenueMade) >= Number(record.revenueMade)),
+  "payment table should sort revenue made descending"
+);
+const paymentsByMerchant = hooks.sortPaymentRowsForTable(paymentRows, { key: "Merchant", direction: "asc" });
+assertTruthy(
+  paymentsByMerchant.every((record, index, rows) => index === 0 || String(rows[index - 1].merchantName || "").localeCompare(String(record.merchantName || ""), undefined, { numeric: true, sensitivity: "base" }) <= 0),
+  "payment table should sort merchant names ascending"
+);
+const paymentsByMonth = hooks.sortPaymentRowsForTable(paymentRows, { key: "Month", direction: "desc" });
+assertTruthy(
+  paymentsByMonth.every((record, index, rows) => index === 0 || Number(hooks.paymentTableSortValue(rows[index - 1], "Month")) >= Number(hooks.paymentTableSortValue(record, "Month"))),
+  "payment table should sort months descending"
+);
 assertEqual(hooks.paymentMoney({ region: "US" }, 12.3), "$12.3", "US payment money should use dollars");
 assertEqual(hooks.normalizeRegion("amazon.com"), "US", "amazon.com should display as US");
 assertEqual(hooks.normalizeRegion("Amazon.ca"), "Canada", "Amazon.ca should display as Canada");
