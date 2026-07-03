@@ -71,8 +71,7 @@
       region: "all",
       tier: "all",
       status: "all",
-      search: "",
-      overdueOnly: false
+      search: ""
     },
     paymentSort: {
       key: "",
@@ -213,7 +212,6 @@
     paymentTier: document.getElementById("paymentTierFilter"),
     paymentStatus: document.getElementById("paymentStatusFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
-    paymentOverdueOnly: document.getElementById("paymentOverdueOnly"),
     languageToggle: document.getElementById("languageToggle")
   };
 
@@ -274,7 +272,6 @@
       "filter.minRevenue": "最低收入",
       "filter.unpaidOnly": "仅未付款",
       "filter.pendingOnly": "仅待处理",
-      "filter.overdueOnly": "仅到期/逾期",
       "action.reset": "重置",
       "action.send": "发送",
       "action.move": "移动",
@@ -595,8 +592,7 @@
   function paymentSummaryMoney(rows, value) {
     const symbols = new Set(rows.map(paymentCurrencySymbol).filter(Boolean));
     if (symbols.size <= 1) return moneyWithSymbol(value, symbols.values().next().value || "$");
-    if (!isAvailable(value) || !Number.isFinite(Number(value))) return "-";
-    return `Mixed ${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    return moneyWithSymbol(value, "$");
   }
 
   function pct(value) {
@@ -5526,7 +5522,6 @@
     els.paymentTier.value = state.payments.tier;
     els.paymentStatus.value = state.payments.status;
     els.paymentSearch.value = state.payments.search;
-    els.paymentOverdueOnly.checked = state.payments.overdueOnly;
   }
 
   function getFilteredPayments() {
@@ -5537,7 +5532,6 @@
       .filter((record) => state.payments.region === "all" || record.region === state.payments.region)
       .filter((record) => state.payments.tier === "all" || record.tier === state.payments.tier)
       .filter((record) => state.payments.status === "all" || record.paymentStatus === state.payments.status)
-      .filter((record) => !state.payments.overdueOnly || isPaymentOverdue(record))
       .filter((record) => !search || normalize(`${record.merchantName} ${record.merchantId} ${record.region || ""}`).includes(search));
     return sortPaymentRowsForTable(rows);
   }
@@ -6992,7 +6986,6 @@
     els.paymentTier.addEventListener("change", () => { state.payments.tier = els.paymentTier.value; renderPaymentsPage(); });
     els.paymentStatus.addEventListener("change", () => { state.payments.status = els.paymentStatus.value; renderPaymentsPage(); });
     els.paymentSearch.addEventListener("input", () => { state.payments.search = els.paymentSearch.value; renderPaymentsPage(); });
-    els.paymentOverdueOnly.addEventListener("change", () => { state.payments.overdueOnly = els.paymentOverdueOnly.checked; renderPaymentsPage(); });
     if (els.paymentHead) els.paymentHead.addEventListener("click", handleReportSortClick);
     els.paymentSync.addEventListener("click", () => refreshLevantaPayments());
     els.languageToggle.addEventListener("click", toggleLanguage);
