@@ -337,6 +337,7 @@
       "label.Revenue made": "产生收入",
       "label.Commission made": "产生佣金",
       "label.Last checked": "上次检查",
+      "label.Payment rate": "付款率",
       "label.Paid": "已付款",
       "label.Pending": "待处理",
       "label.Unpaid": "未付款",
@@ -1800,6 +1801,7 @@
       unpaidMerchantCount: unpaidMerchants.size,
       pendingMerchantCount: pendingMerchants.size,
       paidMerchantCount: paidMerchants.size,
+      paymentRate: merchantIds.size ? paidMerchants.size / merchantIds.size : 0,
       overdueMerchantCount: overdueMerchants.size,
       overdueCount: overdueRows.length
     };
@@ -5583,12 +5585,11 @@
 
   function renderPaymentSummary(rows) {
     const s = updatePaymentSummary(rows);
-    const lastChecked = latestPaymentCheckedDate(rows);
     const cards = [
       ["Merchants", s.merchantCount.toLocaleString()],
       ["Revenue made", paymentSummaryMoney(rows, s.totalRevenueMade)],
       ["Commission made", paymentSummaryMoney(rows, s.totalCommissionMade)],
-      ["Last checked", lastChecked || "-"],
+      ["Payment rate", shortPct(s.paymentRate)],
       ["Paid", s.paidMerchantCount.toLocaleString()],
       ["Pending", s.pendingMerchantCount.toLocaleString()],
       ["Unpaid", s.unpaidMerchantCount.toLocaleString()],
