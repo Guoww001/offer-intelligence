@@ -29,7 +29,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Plus Jakarta Sans", "Geist", "Satoshi", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 button,
@@ -1100,6 +1100,632 @@ p {
   overflow: auto;
 }
 
+.sheet-page {
+  --target-blue: #2468f2;
+  --target-ink: #17233c;
+  --target-soft: #f7faf8;
+  --target-green: #16a064;
+  --target-violet: #6a4df4;
+  --target-amber: #d9871f;
+  --target-shadow: 0 22px 70px rgba(28, 42, 66, 0.09);
+  gap: 16px;
+  padding: 4px;
+}
+
+.sheet-page-header {
+  min-height: 54px;
+}
+
+.sheet-page-header h2 {
+  color: var(--target-ink);
+  font-size: clamp(24px, 2.2vw, 34px);
+  font-weight: 850;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+.sheet-page-header p {
+  margin-top: 6px;
+  color: #607086;
+  font-size: 13px;
+}
+
+.sheet-page .sheet-target-filters {
+  grid-template-columns: repeat(3, minmax(150px, 230px));
+  justify-content: end;
+  margin-left: auto;
+  max-width: min(760px, 100%);
+  border-color: rgba(36, 104, 242, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 253, 0.94)),
+    var(--panel);
+  box-shadow: 0 16px 40px rgba(27, 54, 90, 0.08);
+}
+
+.sheet-page .sheet-target-filters label span {
+  color: #465979;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sheet-page .sheet-target-filters select {
+  border-color: #d9e4f4;
+  background-color: #fbfdff;
+  color: var(--target-ink);
+  font-weight: 800;
+}
+
+.sheet-page .tier-summary {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.target-kpi-card,
+.target-progress-card,
+.target-report-card,
+.sheet-page .tier-table-panel {
+  border: 1px solid rgba(29, 56, 96, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 252, 253, 0.94)),
+    var(--panel);
+  border-radius: 8px;
+  box-shadow: var(--target-shadow);
+}
+
+.target-kpi-card {
+  position: relative;
+  min-height: 116px;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  overflow: hidden;
+  padding: 18px;
+}
+
+.target-kpi-card > div {
+  min-width: 0;
+}
+
+.target-kpi-card::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.target-kpi-icon {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 850;
+}
+
+.target-kpi-icon.blue {
+  background: #e8f0ff;
+  color: #2468f2;
+}
+
+.target-kpi-icon.green {
+  background: #e4f7ed;
+  color: #16a064;
+}
+
+.target-kpi-icon.amber {
+  background: #fff1dd;
+  color: #d9871f;
+}
+
+.target-kpi-icon.violet {
+  background: #eee8ff;
+  color: #6a4df4;
+}
+
+.target-kpi-icon.slate {
+  background: #e9eef8;
+  color: #375177;
+}
+
+.target-kpi-card span,
+.target-progress-values span {
+  color: #65758f;
+  font-size: 11px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.target-kpi-card strong {
+  display: block;
+  margin: 6px 0;
+  color: var(--target-ink);
+  font-size: 24px;
+  font-weight: 850;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.target-delta,
+.target-matrix-delta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-height: 22px;
+  color: #65758f;
+  font-size: 11px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.target-delta.up,
+.target-matrix-delta.up,
+.target-progress-card .positive {
+  color: var(--target-green);
+}
+
+.target-delta.down,
+.target-matrix-delta.down,
+.target-progress-card .negative {
+  color: #d94d5c;
+}
+
+.sheet-target-notes {
+  display: grid;
+  gap: 16px;
+  overflow: visible;
+}
+
+.target-progress-section {
+  display: grid;
+  gap: 12px;
+}
+
+.target-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.target-section-header h3 {
+  color: var(--target-ink);
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.target-section-header p {
+  margin-top: 4px;
+  color: #607086;
+}
+
+.target-section-header > span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(22, 160, 100, 0.22);
+  border-radius: 7px;
+  background: #ebf8f1;
+  color: #138555;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 0 10px;
+}
+
+.target-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.target-progress-card {
+  display: grid;
+  gap: 12px;
+  min-height: 168px;
+  padding: 16px;
+  transition: transform 540ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 540ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.target-progress-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 28px 80px rgba(28, 42, 66, 0.13);
+}
+
+.target-progress-card-head,
+.target-progress-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.target-progress-card-head strong {
+  display: block;
+  color: var(--target-ink);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.target-progress-card-head span:not(.target-status-pill) {
+  color: #607086;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.target-status-pill {
+  align-self: start;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 0 9px;
+}
+
+.target-status-pill.met {
+  background: #e7f6ef;
+  color: #128151;
+}
+
+.target-status-pill.miss {
+  background: #fff0e1;
+  color: #b46b16;
+}
+
+.target-progress-values strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--target-ink);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.target-value-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.target-value-line strong {
+  margin-top: 0;
+}
+
+.target-edit-button,
+.target-edit-form button {
+  min-height: 26px;
+  border: 1px solid rgba(36, 104, 242, 0.18);
+  border-radius: 7px;
+  background: #eef4ff;
+  color: var(--target-blue);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 0 9px;
+  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1), background 260ms cubic-bezier(0.32, 0.72, 0, 1), border-color 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.target-edit-button:hover,
+.target-edit-form button:hover {
+  background: #e1ecff;
+  border-color: rgba(36, 104, 242, 0.32);
+  transform: translateY(-1px);
+}
+
+.target-edit-button:active,
+.target-edit-form button:active,
+.target-metric-tab:active {
+  transform: scale(0.98);
+}
+
+.target-edit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.target-edit-form input {
+  min-height: 30px;
+  min-width: 0;
+  border: 1px solid #c9d9f2;
+  border-radius: 7px;
+  background: #fbfdff;
+  color: var(--target-ink);
+  font-size: 12px;
+  font-weight: 750;
+  outline: 0;
+  padding: 5px 8px;
+}
+
+.target-edit-form input:focus {
+  border-color: var(--target-blue);
+  box-shadow: 0 0 0 3px rgba(36, 104, 242, 0.13);
+}
+
+.target-edit-form button[data-target-edit-cancel] {
+  background: #f6f8fb;
+  border-color: #dbe4f0;
+  color: #607086;
+}
+
+.target-progress-values div:last-child {
+  text-align: right;
+}
+
+.target-progress-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6ebf1;
+}
+
+.target-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16a064, #2468f2);
+  transform-origin: left center;
+  animation: targetBarFill 760ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  will-change: transform;
+}
+
+.target-progress-card p {
+  color: #607086;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.target-report-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 253, 0.97)),
+    var(--panel);
+}
+
+.target-trend-card {
+  min-height: 260px;
+}
+
+.target-metric-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid #dce6f4;
+  border-radius: 8px;
+  background: #f6f9fd;
+  padding: 3px;
+}
+
+.target-metric-tab {
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #52657f;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 0 12px;
+  white-space: normal;
+  transition: transform 300ms cubic-bezier(0.32, 0.72, 0, 1), background 300ms cubic-bezier(0.32, 0.72, 0, 1), color 300ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.target-metric-tab:hover {
+  color: var(--target-blue);
+}
+
+.target-metric-tab.active {
+  background: #fff;
+  color: var(--target-blue);
+  box-shadow: 0 8px 22px rgba(36, 104, 242, 0.12);
+}
+
+.target-trend-plot {
+  overflow: hidden;
+  border: 1px solid rgba(29, 56, 96, 0.08);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(247, 250, 251, 0.92)),
+    repeating-linear-gradient(0deg, transparent 0, transparent 35px, rgba(36, 104, 242, 0.06) 36px);
+}
+
+.target-trend-plot svg {
+  display: block;
+  width: 100%;
+  height: 230px;
+}
+
+.trend-axis {
+  stroke: #dde5ef;
+  stroke-width: 1.2;
+}
+
+.trend-line {
+  fill: none;
+  stroke: var(--target-blue);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 900;
+  stroke-dashoffset: 900;
+  animation: targetTrendDraw 980ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.trend-dot {
+  fill: #fff;
+  stroke: var(--target-blue);
+  stroke-width: 3;
+}
+
+.target-trend-plot text {
+  fill: var(--target-ink);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.target-trend-plot .trend-month {
+  fill: #607086;
+  font-size: 10px;
+}
+
+.target-matrix-wrap {
+  max-height: 430px;
+  border: 1px solid rgba(29, 56, 96, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.target-mobile-sort-controls {
+  display: none;
+}
+
+.target-matrix-table {
+  min-width: 1080px;
+}
+
+.target-matrix-table th,
+.target-matrix-table td {
+  white-space: nowrap;
+}
+
+.target-matrix-table td:not(:first-child),
+.target-matrix-table th:not(:first-child) {
+  text-align: right;
+}
+
+.target-tier-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.tier-dot {
+  width: 9px;
+  height: 9px;
+  display: inline-block;
+  border-radius: 3px;
+  background: var(--target-blue);
+  flex: 0 0 auto;
+}
+
+.tier-dot.tier-2 {
+  background: var(--target-green);
+}
+
+.tier-dot.tier-3 {
+  background: var(--target-amber);
+}
+
+.tier-dot.tier-4 {
+  background: var(--target-violet);
+}
+
+.tier-dot.black-tier {
+  background: #34435f;
+}
+
+.target-matrix-total td {
+  background: #f8fafc;
+  color: var(--target-ink);
+  font-weight: 850;
+}
+
+.target-matrix-delta {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.target-matrix-delta.flat {
+  color: #7b8798;
+}
+
+.target-matrix-delta.total {
+  color: #375177;
+}
+
+.target-empty-state {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #cdd8e8;
+  border-radius: 8px;
+  color: #607086;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sheet-page .tier-table-panel {
+  overflow: hidden;
+}
+
+.sheet-page .tier-table-panel .table-toolbar {
+  padding: 16px 18px 0;
+}
+
+.sheet-page .sheet-table-wrap {
+  margin: 0 18px 18px;
+  border: 1px solid rgba(29, 56, 96, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.target-card-enter {
+  animation: targetCardIn 760ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+  will-change: transform, opacity;
+}
+
+@keyframes targetCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes targetBarFill {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes targetTrendDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .target-card-enter,
+  .target-progress-bar span,
+  .trend-line {
+    animation: none;
+  }
+
+  .target-progress-card,
+  .target-edit-button,
+  .target-edit-form button,
+  .target-metric-tab {
+    transition: none;
+  }
+}
+
 .tier-category-summary {
   display: grid;
   gap: 12px;
@@ -2042,6 +2668,21 @@ td strong {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .sheet-page .sheet-target-filters {
+    justify-content: stretch;
+    margin-top: 0;
+    margin-left: 0;
+    max-width: none;
+  }
+
+  .sheet-page .tier-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .target-progress-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .panel-title,
   .checkbox-row,
   .secondary-button {
@@ -2168,6 +2809,156 @@ td strong {
     grid-template-columns: 1fr 1fr;
   }
 
+  .sheet-page .sheet-target-filters,
+  .sheet-page .tier-summary,
+  .target-progress-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .target-section-header,
+  .target-progress-card-head,
+  .target-progress-values {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .target-metric-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .target-metric-tab {
+    min-width: 0;
+    padding: 0 8px;
+  }
+
+  .target-mobile-sort-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .target-mobile-sort-controls .table-sort-button {
+    min-height: 34px;
+    border: 1px solid #dce6f4;
+    border-radius: 7px;
+    background: #fff;
+    color: #52657f;
+    font-size: 11px;
+    font-weight: 850;
+    padding: 0 10px;
+    text-align: left;
+  }
+
+  .target-mobile-sort-controls .table-sort-button.active {
+    background: #eef4ff;
+    border-color: rgba(36, 104, 242, 0.22);
+    color: var(--target-blue);
+  }
+
+  .target-matrix-wrap {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .target-matrix-table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .target-matrix-table thead {
+    display: none;
+  }
+
+  .target-matrix-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .target-matrix-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    border: 1px solid rgba(29, 56, 96, 0.1);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 14px 34px rgba(28, 42, 66, 0.07);
+    padding: 10px;
+  }
+
+  .target-matrix-table td,
+  .target-matrix-table td:not(:first-child) {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    border: 0;
+    padding: 8px 6px;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .target-matrix-table td::before {
+    content: attr(data-label);
+    color: #65758f;
+    font-size: 10px;
+    font-weight: 850;
+    line-height: 1.2;
+  }
+
+  .target-matrix-table td:first-child,
+  .target-matrix-table td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .target-matrix-table td:first-child {
+    border-bottom: 1px solid #edf2f7;
+    padding-bottom: 10px;
+  }
+
+  .target-matrix-table td:first-child::before {
+    display: none;
+  }
+
+  .target-matrix-table td:last-child {
+    border-top: 1px solid #edf2f7;
+    padding-top: 10px;
+  }
+
+  .target-matrix-table .target-matrix-total {
+    background: #f8fafc;
+  }
+
+  .target-matrix-total td {
+    background: transparent;
+  }
+
+  .target-matrix-delta {
+    justify-content: flex-start;
+    width: auto;
+  }
+
+  .target-trend-plot svg {
+    height: 170px;
+  }
+
+  .target-edit-form {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .target-value-line {
+    flex-wrap: wrap;
+  }
+
+  .target-progress-values div:last-child {
+    text-align: left;
+  }
+
   .main-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2232,5 +3023,16 @@ td strong {
 
   .download-xlsx-button {
     width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .target-mobile-sort-controls,
+  .target-matrix-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .target-report-card {
+    padding: 14px;
   }
 }

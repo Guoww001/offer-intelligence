@@ -39,6 +39,15 @@
   const TIER_SHARED_MOVES_API = "/api/tier_moves";
   const TIER_MOVE_ADMIN_TOKEN_KEY = "offerTierMoveAdminToken";
   const CATEGORY_REPORT_ADDITIVE_SORTS = new Set(["merchantCount", "revenue", "orders", "clicks"]);
+  const TARGET_OVERRIDES_KEY = "offerTargetTextOverrides.v1";
+  const TARGET_TIER_ORDER = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "Black Tier", "BLACK TIER"];
+  const TARGET_METRICS = [
+    { key: "revenue", label: "Revenue" },
+    { key: "orders", label: "Orders" },
+    { key: "clicks", label: "Clicks" },
+    { key: "conversion", label: "Avg Conversion" },
+    { key: "brands", label: "Active Brands" }
+  ];
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const originalTierSheetRows = new Map();
   const originalTierSheetRowIndex = new Map();
@@ -98,10 +107,14 @@
     tierVisibleColumns: loadTierVisibleColumns(),
     targetFilters: {
       month: "",
+      compareMonth: "",
       tier: "all"
     },
+    targetMetric: "revenue",
+    targetOverrides: loadTargetOverrides(),
+    targetEditingKey: "",
     targetSort: {
-      key: "",
+      key: "Tier",
       direction: "asc"
     },
     tierSheetSort: {
@@ -159,6 +172,7 @@
     sheetPageSummary: document.getElementById("sheetPageSummary"),
     sheetPageNotes: document.getElementById("sheetPageNotes"),
     targetMonthSelect: document.getElementById("targetMonthSelect"),
+    targetCompareMonthSelect: document.getElementById("targetCompareMonthSelect"),
     targetTierFilter: document.getElementById("targetTierFilter"),
     sheetTableTitle: document.getElementById("sheetTableTitle"),
     sheetTableCount: document.getElementById("sheetTableCount"),
@@ -696,6 +710,19 @@
 
   function saveTierOverrides() {
     localStorage.setItem(TIER_OVERRIDE_KEY, JSON.stringify(tierOverrides));
+  }
+
+  function loadTargetOverrides() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(TARGET_OVERRIDES_KEY) || "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveTargetOverrides() {
+    localStorage.setItem(TARGET_OVERRIDES_KEY, JSON.stringify(state.targetOverrides || {}));
   }
 
   function loadTierVisibleColumns() {
@@ -2212,13 +2239,22 @@
     sortState.direction = defaultReportSortDirection(key);
   }
 
+  function updateTargetMatrixSort(key) {
+    if (state.targetSort.key === key) {
+      state.targetSort.direction = state.targetSort.direction === "asc" ? "desc" : "asc";
+      return;
+    }
+    state.targetSort.key = key;
+    state.targetSort.direction = key === "Tier" ? "asc" : "desc";
+  }
+
   function handleReportSortClick(event) {
     const button = event.target.closest("[data-report-sort-key]");
     if (!button) return;
     const key = button.dataset.reportSortKey || "";
     if (!key) return;
     if (button.dataset.reportSortScope === "target") {
-      updateReportSort(state.targetSort, key);
+      updateTargetMatrixSort(key);
       renderSheetPage();
       return;
     }
@@ -6723,12 +6759,32 @@
     syncTierSheetOverlay();
   }
 
+  function targetOverrideKey(record) {
+    return `${record.__monthKey || record.Month || "unknown"}::${record.Tier || "unknown"}`;
+  }
+
+  function applyTargetOverride(record) {
+    const key = targetOverrideKey(record);
+    const override = state.targetOverrides && state.targetOverrides[key];
+    if (override !== undefined && String(override).trim() !== "") {
+      const candidate = { ...record, Target: override };
+      if (targetGoal(candidate)) {
+        record.Target = override;
+      } else {
+        record.__invalidTargetOverride = override;
+      }
+    }
+    record.__targetOverrideKey = key;
+    return record;
+  }
+
   function targetRecords() {
     const sheet = sheetByName("Tier Summary & Target");
     const grid = (sheet && sheet.grid) || [];
     const records = [];
     let headers = [];
     let currentMonth = "";
+    let currentMonthKey = "";
     grid.forEach((row) => {
       const first = String(row[0] || "").trim();
       const tier = String(row[1] || "").trim();
@@ -6738,17 +6794,19 @@
       }
       if (first && /^\d{4}-\d{2}-\d{2}/.test(first)) {
         const date = new Date(`${first.slice(0, 10)}T00:00:00`);
+        currentMonthKey = first.slice(0, 7);
         currentMonth = Number.isNaN(date.getTime())
           ? first
-          : date.toLocaleString(undefined, { month: "long", year: "numeric" });
+          : date.toLocaleString("en-US", { month: "long", year: "numeric" });
       }
       if (!headers.length || !tier) return;
-      const record = { Month: currentMonth };
+      const record = { Month: currentMonth, __monthKey: currentMonthKey };
       headers.forEach((header, index) => {
         if (!header) return;
         record[header] = row[index] || "";
       });
-      if (record.Tier) records.push(record);
+      record.__sourceTarget = record.Target || "";
+      if (record.Tier) records.push(applyTargetOverride(record));
     });
     return records;
   }
@@ -6759,68 +6817,601 @@
       .filter((record) => state.targetFilters.tier === "all" || record.Tier === state.targetFilters.tier);
   }
 
+  function targetMonthSortValue(month) {
+    const match = targetRecords().find((record) => record.Month === month);
+    return match ? match.__monthKey || month : month;
+  }
+
   function refreshTargetFilters() {
     const records = targetRecords();
-    const months = Array.from(new Set(records.map((record) => record.Month).filter(Boolean)));
-    const tiers = Array.from(new Set(records.map((record) => record.Tier).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const months = Array.from(new Set(records.map((record) => record.Month).filter(Boolean)))
+      .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))));
+    const tiers = Array.from(new Set(records.map((record) => record.Tier).filter((tier) => tier && String(tier).toLowerCase() !== "total"))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     const monthOptions = months.map((month) => ({ value: month, label: month }));
     if (!state.targetFilters.month && monthOptions.length) state.targetFilters.month = monthOptions[monthOptions.length - 1].value;
+    if (!state.targetFilters.compareMonth && monthOptions.length > 1) state.targetFilters.compareMonth = monthOptions[Math.max(0, monthOptions.length - 2)].value;
+    if (state.targetFilters.compareMonth === state.targetFilters.month) {
+      const currentIndex = months.indexOf(state.targetFilters.month);
+      state.targetFilters.compareMonth = months[currentIndex - 1] || months[currentIndex + 1] || "";
+    }
     replaceSelectWithOptions(els.targetMonthSelect, [{ value: "all", label: "All months" }, ...monthOptions], state.targetFilters.month || "all");
+    replaceSelectWithOptions(
+      els.targetCompareMonthSelect,
+      [{ value: "", label: "No comparison" }, ...monthOptions.filter((option) => option.value !== els.targetMonthSelect.value)],
+      state.targetFilters.compareMonth || ""
+    );
     replaceSelectOptions(els.targetTierFilter, "All tiers", tiers, state.targetFilters.tier);
     state.targetFilters.month = els.targetMonthSelect.value;
+    state.targetFilters.compareMonth = els.targetCompareMonthSelect.value;
     state.targetFilters.tier = els.targetTierFilter.value;
   }
 
-  function renderSheetSummary(records) {
+  function isTargetTotalRow(record) {
+    return String(record && record.Tier || "").toLowerCase() === "total";
+  }
+
+  function targetTierSortRank(tier) {
+    const text = String(tier || "").trim().toLowerCase();
+    const index = TARGET_TIER_ORDER.findIndex((item) => item.toLowerCase() === text);
+    if (index >= 0) return index;
+    const match = text.match(/tier\s*([0-9]+)/);
+    return match ? Number(match[1]) - 1 : 99;
+  }
+
+  function targetRowsForMonth(records, month, tier = state.targetFilters.tier) {
+    return (records || [])
+      .filter((record) => month === "all" || record.Month === month)
+      .filter((record) => tier === "all" || record.Tier === tier);
+  }
+
+  function targetMetricRows(records) {
+    return (records || [])
+      .filter((record) => !isTargetTotalRow(record))
+      .sort((a, b) => targetTierSortRank(a.Tier) - targetTierSortRank(b.Tier) || String(a.Tier).localeCompare(String(b.Tier), undefined, { numeric: true }));
+  }
+
+  function targetSummary(records) {
     const summaryRows = records.some((record) => record.Tier === "Total")
       ? records.filter((record) => record.Tier === "Total")
-      : records;
-    const totals = summaryRows.reduce((acc, record) => {
+      : targetMetricRows(records);
+    return summaryRows.reduce((acc, record) => {
       acc.brands += parseSheetNumber(record["Brand Count"]);
       acc.clicks += parseSheetNumber(record["Total Clicks"]);
       acc.orders += parseSheetNumber(record["Order Count"]);
       acc.revenue += parseSheetNumber(record.Revenue);
+      const conversion = percentageNumberForHeader("Avg Conversion", record["Avg Conversion"]);
+      if (conversion !== null) {
+        acc.conversionWeighted += conversion * parseSheetNumber(record["Total Clicks"]);
+        acc.conversionFallback += conversion;
+        acc.conversionCount += 1;
+      }
+      acc.newEntries += parseSheetNumber(record["New Tier Entries"]);
+      acc.exits += parseSheetNumber(record["Tier Exits"]);
       return acc;
-    }, { brands: 0, clicks: 0, orders: 0, revenue: 0 });
+    }, { brands: 0, clicks: 0, orders: 0, revenue: 0, conversionWeighted: 0, conversionFallback: 0, conversionCount: 0, newEntries: 0, exits: 0 });
+  }
+
+  function targetAvgConversion(summary) {
+    if (summary.clicks && summary.orders) return summary.orders / summary.clicks;
+    if (summary.clicks && summary.conversionWeighted) return (summary.conversionWeighted / summary.clicks) / 100;
+    if (summary.conversionCount) return (summary.conversionFallback / summary.conversionCount) / 100;
+    return 0;
+  }
+
+  function compactNumber(value) {
+    const n = Number(value) || 0;
+    if (Math.abs(n) >= 1000000) return `${(n / 1000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}M`;
+    if (Math.abs(n) >= 1000) return `${(n / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}K`;
+    return n.toLocaleString();
+  }
+
+  function compactMoney(value) {
+    const n = Number(value) || 0;
+    if (Math.abs(n) >= 1000000) return `$${(n / 1000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}M`;
+    if (Math.abs(n) >= 1000) return `$${(n / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}K`;
+    return shortMoney(n);
+  }
+
+  function targetMetricConfig(key = state.targetMetric) {
+    return TARGET_METRICS.find((metric) => metric.key === key) || TARGET_METRICS[0];
+  }
+
+  function targetRowMetricValue(record, key = state.targetMetric) {
+    if (key === "orders") return parseSheetNumber(record["Order Count"]);
+    if (key === "clicks") return parseSheetNumber(record["Total Clicks"]);
+    if (key === "conversion") return (percentageNumberForHeader("Avg Conversion", record["Avg Conversion"]) || 0) / 100;
+    if (key === "brands") return parseSheetNumber(record["Brand Count"]);
+    return parseSheetNumber(record.Revenue);
+  }
+
+  function targetSummaryMetricValue(summary, key = state.targetMetric) {
+    if (key === "orders") return summary.orders;
+    if (key === "clicks") return summary.clicks;
+    if (key === "conversion") return targetAvgConversion(summary);
+    if (key === "brands") return summary.brands;
+    return summary.revenue;
+  }
+
+  function formatTargetMetricValue(key, value) {
+    if (key === "revenue") return compactMoney(value);
+    if (key === "conversion") return shortPct(value);
+    return compactNumber(value);
+  }
+
+  function targetComparisonMap(rows) {
+    return new Map(targetMetricRows(rows).map((row) => [String(row.Tier || ""), row]));
+  }
+
+  function targetDeltaHtml(current, comparison, mode, comparisonLabel) {
+    if (!comparisonLabel || comparison === null || comparison === undefined) return `<span class="target-delta flat">No comparison</span>`;
+    const diff = Number(current || 0) - Number(comparison || 0);
+    if (!Number.isFinite(diff) || Math.abs(diff) < 0.000001) return `<span class="target-delta flat">0 vs ${escapeHtml(comparisonLabel)}</span>`;
+    const direction = diff > 0 ? "up" : "down";
+    let text = "";
+    if (mode === "rate") {
+      text = `${Math.abs(diff * 100).toFixed(2)}pp vs ${comparisonLabel}`;
+    } else {
+      const denom = Math.abs(Number(comparison || 0));
+      const pctChange = denom ? diff / denom : null;
+      text = pctChange === null
+        ? `${compactNumber(Math.abs(diff))} vs ${comparisonLabel}`
+        : `${Math.abs(pctChange * 100).toFixed(1)}% vs ${comparisonLabel}`;
+    }
+    return `<span class="target-delta ${direction}">${direction === "up" ? "+" : "-"} ${escapeHtml(text)}</span>`;
+  }
+
+  function renderSheetSummary(records, comparisonRecords, comparisonLabel) {
+    const totals = targetSummary(records);
+    const comparison = comparisonRecords && comparisonRecords.length ? targetSummary(comparisonRecords) : null;
+    const avgConversion = targetAvgConversion(totals);
+    const comparisonConversion = comparison ? targetAvgConversion(comparison) : null;
     const cards = [
-      { label: "Rows", value: String(records.length) },
-      { label: "Brand Count", value: totals.brands.toLocaleString() },
-      { label: "Total Clicks", value: totals.clicks.toLocaleString() },
-      { label: "Order Count", value: totals.orders.toLocaleString() },
-      { label: "Revenue", value: shortMoney(totals.revenue) }
+      { icon: "$", label: "Revenue", value: compactMoney(totals.revenue), delta: targetDeltaHtml(totals.revenue, comparison && comparison.revenue, "number", comparisonLabel), tone: "blue" },
+      { icon: "#", label: "Orders", value: compactNumber(totals.orders), delta: targetDeltaHtml(totals.orders, comparison && comparison.orders, "number", comparisonLabel), tone: "green" },
+      { icon: "C", label: "Clicks", value: compactNumber(totals.clicks), delta: targetDeltaHtml(totals.clicks, comparison && comparison.clicks, "number", comparisonLabel), tone: "amber" },
+      { icon: "%", label: "Avg Conversion", value: shortPct(avgConversion), delta: targetDeltaHtml(avgConversion, comparisonConversion, "rate", comparisonLabel), tone: "violet" },
+      { icon: "B", label: "Active Brands", value: compactNumber(totals.brands), delta: targetDeltaHtml(totals.brands, comparison && comparison.brands, "number", comparisonLabel), tone: "slate" }
     ];
-    els.sheetPageSummary.innerHTML = cards.map((card) => (
-      `<div class="metric"><span>${escapeHtml(labelText(card.label))}</span><strong>${escapeHtml(card.value)}</strong></div>`
+    els.sheetPageSummary.innerHTML = cards.map((card, index) => (
+      `<article class="target-kpi-card target-card-enter" style="--i:${index}">
+        <div class="target-kpi-icon ${escapeHtml(card.tone)}">${escapeHtml(card.icon)}</div>
+        <div>
+          <span>${escapeHtml(labelText(card.label))}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          ${card.delta}
+        </div>
+      </article>`
     )).join("");
+  }
+
+  function targetGoal(record) {
+    const text = String(record.Target || "");
+    const revenue = text.match(/Revenue Target:\s*\$?\s*([\d,.]+)\s*([KMB])?\+?/i);
+    if (revenue) {
+      const scale = { K: 1000, M: 1000000, B: 1000000000 }[String(revenue[2] || "").toUpperCase()] || 1;
+      const target = parseSheetNumber(revenue[1]) * scale;
+      return { type: "revenue", label: "Revenue target", target, actual: parseSheetNumber(record.Revenue), targetText: compactMoney(target), actualText: compactMoney(parseSheetNumber(record.Revenue)) };
+    }
+    const promote = text.match(/Brand Target:\s*Promote\s*([\d,.]+)\s*Brands?/i);
+    if (promote) {
+      const target = parseSheetNumber(promote[1]);
+      const actual = parseSheetNumber(record["Tier Exits"]);
+      return { type: "promotion", label: "Promotion target", target, actual, targetText: `${target.toLocaleString()} brands`, actualText: `${actual.toLocaleString()} moved` };
+    }
+    const brand = text.match(/Brand Target:\s*([\d,.]+)\+?/i);
+    if (brand) {
+      const target = parseSheetNumber(brand[1]);
+      const actual = parseSheetNumber(record["Brand Count"]);
+      return { type: "brand", label: "Brand target", target, actual, targetText: `${target.toLocaleString()} brands`, actualText: `${actual.toLocaleString()} active` };
+    }
+    return null;
+  }
+
+  function targetEditValue(record, goal) {
+    const text = String(record.Target || "");
+    if (goal && goal.type === "revenue") {
+      const match = text.match(/Revenue Target:\s*([^;]+)/i);
+      return match ? match[1].trim() : goal.targetText;
+    }
+    if (goal && goal.type === "promotion") {
+      const match = text.match(/Brand Target:\s*Promote\s*([\d,.]+)\s*Brands?/i);
+      return match ? match[1].trim().replace(/,/g, "") : String(goal.target || "");
+    }
+    if (goal && goal.type === "brand") {
+      const match = text.match(/Brand Target:\s*([\d,.]+)/i);
+      return match ? match[1].trim().replace(/,/g, "") : String(goal.target || "");
+    }
+    return String(record.Target || "").trim();
+  }
+
+  function targetEditInputAttributes(goal) {
+    if (goal && (goal.type === "promotion" || goal.type === "brand")) {
+      return `type="number" inputmode="numeric" min="0" step="1"`;
+    }
+    return `type="text"`;
+  }
+
+  function replaceTargetClause(text, pattern, replacement) {
+    const current = String(text || "").trim();
+    if (!current) return replacement;
+    return pattern.test(current) ? current.replace(pattern, replacement) : `${current}; ${replacement}`;
+  }
+
+  function targetTextFromEditValue(record, value) {
+    const goal = targetGoal(record);
+    const clean = String(value || "").trim();
+    if (!clean || !goal) return clean;
+    const current = String(record.Target || "").trim();
+    if (goal.type === "revenue") {
+      return replaceTargetClause(current, /Revenue Target:\s*[^;]+/i, `Revenue Target: ${clean}`);
+    }
+    if (goal.type === "promotion") {
+      const count = (clean.match(/[\d,.]+/) || [""])[0] || clean;
+      const suffixMatch = current.match(/Brand Target:\s*Promote\s*[\d,.]+\s*Brands?([^;]*)/i);
+      const suffix = suffixMatch && suffixMatch[1] ? suffixMatch[1].trim() : "";
+      return replaceTargetClause(current, /Brand Target:\s*Promote\s*[^;]+/i, `Brand Target: Promote ${count} Brands${suffix ? ` ${suffix}` : ""}`);
+    }
+    if (goal.type === "brand") {
+      return replaceTargetClause(current, /Brand Target:\s*(?!Promote)[^;]+/i, `Brand Target: ${clean}`);
+    }
+    return clean;
+  }
+
+  function targetGoalCardHtml(record, index) {
+    const goal = targetGoal(record);
+    if (!goal || !goal.target) return "";
+    const progress = goal.actual / goal.target;
+    const capped = Math.max(0, Math.min(100, progress * 100));
+    const delta = goal.actual - goal.target;
+    const met = delta >= 0;
+    const editKey = record.__targetOverrideKey || targetOverrideKey(record);
+    const targetControl = state.targetEditingKey === editKey
+      ? `<form class="target-edit-form" data-target-edit-form data-target-edit-key="${escapeHtml(editKey)}">
+          <input name="target" ${targetEditInputAttributes(goal)} value="${escapeHtml(targetEditValue(record, goal))}" aria-label="Target value for ${escapeHtml(record.Tier)}" />
+          <button type="submit">Save</button>
+          <button type="button" data-target-edit-cancel>Cancel</button>
+        </form>`
+      : `<span class="target-value-line">
+          <strong>${escapeHtml(goal.targetText)}</strong>
+          <button class="target-edit-button" type="button" data-target-edit-key="${escapeHtml(editKey)}" aria-label="Edit target for ${escapeHtml(record.Tier)}">Edit</button>
+        </span>`;
+    return `<article class="target-progress-card target-card-enter" style="--i:${index}">
+      <div class="target-progress-card-head">
+        <div>
+          <strong>${escapeHtml(record.Tier)}</strong>
+          <span>${escapeHtml(goal.label)}</span>
+        </div>
+        <span class="target-status-pill ${met ? "met" : "miss"}">${met ? "On track" : "Watch"}</span>
+      </div>
+      <div class="target-progress-values">
+        <div>
+          <span>Target</span>
+          ${targetControl}
+        </div>
+        <div><span>Actual</span><strong>${escapeHtml(goal.actualText)}</strong></div>
+      </div>
+      <div class="target-progress-bar" aria-hidden="true"><span style="width:${capped.toFixed(2)}%"></span></div>
+      <p class="${met ? "positive" : "negative"}">${met ? "+" : "-"} ${escapeHtml(delta >= 0 ? `${compactNumber(delta)} above target` : `${compactNumber(Math.abs(delta))} to target`)}</p>
+    </article>`;
+  }
+
+  function targetProgressHtml(records) {
+    const cards = targetMetricRows(records).map(targetGoalCardHtml).filter(Boolean);
+    return `<section class="target-progress-section target-card-enter" style="--i:5">
+      <div class="target-section-header">
+        <div>
+          <h3>Tier target progress</h3>
+          <p>${escapeHtml(state.targetFilters.month === "all" ? "All months" : state.targetFilters.month)} targets by tier</p>
+        </div>
+        <span>${cards.length.toLocaleString()} active targets</span>
+      </div>
+      <div class="target-progress-grid">${cards.length ? cards.join("") : `<div class="target-empty-state">No written targets match the selected month and tier.</div>`}</div>
+    </section>`;
+  }
+
+  function targetTrendHtml(allRecords) {
+    const tier = state.targetFilters.tier;
+    const metric = targetMetricConfig();
+    const trendRows = Array.from(new Set(allRecords.map((record) => record.Month).filter(Boolean)))
+      .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))))
+      .map((month) => {
+        const summary = targetSummary(targetRowsForMonth(allRecords, month, tier));
+        return { month, value: targetSummaryMetricValue(summary, metric.key) };
+      });
+    const values = trendRows.map((row) => row.value);
+    const max = Math.max(...values, 0);
+    const min = Math.min(...values, 0);
+    const width = 620;
+    const height = 170;
+    const padX = 44;
+    const padY = 24;
+    const innerWidth = width - padX * 2;
+    const innerHeight = height - padY * 2;
+    const range = max - min || 1;
+    const points = trendRows.map((row, index) => {
+      const x = padX + (trendRows.length <= 1 ? innerWidth / 2 : (index / (trendRows.length - 1)) * innerWidth);
+      const y = padY + innerHeight - ((row.value - min) / range) * innerHeight;
+      return { ...row, x, y };
+    });
+    const polyline = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const tabs = TARGET_METRICS.map((item) => (
+      `<button class="target-metric-tab${item.key === metric.key ? " active" : ""}" type="button" data-target-metric="${escapeHtml(item.key)}" aria-pressed="${item.key === metric.key ? "true" : "false"}">${escapeHtml(item.label)}</button>`
+    )).join("");
+    return `<section class="target-report-card target-trend-card target-card-enter" style="--i:6">
+      <div class="target-section-header">
+        <div>
+          <h3>Monthly trend</h3>
+          <p>${escapeHtml(tier === "all" ? `Total ${metric.label.toLowerCase()} trajectory` : `${tier} ${metric.label.toLowerCase()} trajectory`)}</p>
+        </div>
+        <div class="target-metric-tabs" aria-label="Trend metric">${tabs}</div>
+      </div>
+      <div class="target-trend-plot">
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly ${escapeHtml(metric.label)} trend">
+          <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="trend-axis"></line>
+          <polyline points="${polyline}" class="trend-line"></polyline>
+          ${points.map((point) => `<g>
+            <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4.5" class="trend-dot"></circle>
+            <text x="${point.x.toFixed(2)}" y="${Math.max(14, point.y - 12).toFixed(2)}" text-anchor="middle">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>
+            <text x="${point.x.toFixed(2)}" y="${height - 6}" text-anchor="middle" class="trend-month">${escapeHtml(point.month)}</text>
+          </g>`).join("")}
+        </svg>
+      </div>
+    </section>`;
+  }
+
+  function targetWrittenGoalForMetric(record, key = state.targetMetric) {
+    const text = String(record.Target || "");
+    if (key === "revenue") {
+      const revenue = text.match(/Revenue Target:\s*\$?\s*([\d,.]+)\s*([KMB])?\+?/i);
+      if (!revenue) return null;
+      const scale = { K: 1000, M: 1000000, B: 1000000000 }[String(revenue[2] || "").toUpperCase()] || 1;
+      const target = parseSheetNumber(revenue[1]) * scale;
+      return { basis: "target", label: "Revenue target", target, actual: targetRowMetricValue(record, key) };
+    }
+    if (key === "brands") {
+      const promote = text.match(/Brand Target:\s*Promote\s*([\d,.]+)\s*Brands?/i);
+      if (promote) {
+        const target = parseSheetNumber(promote[1]);
+        return { basis: "target", label: "Promotion target", target, actual: parseSheetNumber(record["Tier Exits"]) };
+      }
+      const brand = text.match(/Brand Target:\s*([\d,.]+)\+?/i);
+      if (!brand) return null;
+      const target = parseSheetNumber(brand[1]);
+      return { basis: "target", label: "Brand target", target, actual: targetRowMetricValue(record, key) };
+    }
+    return null;
+  }
+
+  function targetMetricComparisonScore(record, comparisonMap) {
+    const metric = targetMetricConfig();
+    const goal = targetWrittenGoalForMetric(record, metric.key);
+    if (goal && goal.target) return goal.actual / goal.target;
+    const comparison = comparisonMap && comparisonMap.get(String(record.Tier || ""));
+    if (!comparison) return "";
+    const current = targetRowMetricValue(record, metric.key);
+    const previous = targetRowMetricValue(comparison, metric.key);
+    if (!previous) return current ? 1 : 0;
+    return (current - previous) / Math.abs(previous);
+  }
+
+  function targetMetricVsHtml(record, comparisonMap, comparisonLabel) {
+    if (isTargetTotalRow(record)) return `<span class="target-matrix-delta total">Portfolio</span>`;
+    const metric = targetMetricConfig();
+    const goal = targetWrittenGoalForMetric(record, metric.key);
+    if (goal && goal.target) {
+      const pctValue = goal.actual / goal.target;
+      const delta = goal.actual - goal.target;
+      return `<span class="target-matrix-delta ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : "-"} ${(pctValue * 100).toFixed(0)}% target</span>`;
+    }
+    const comparison = comparisonMap && comparisonMap.get(String(record.Tier || ""));
+    if (!comparison || !comparisonLabel) return `<span class="target-matrix-delta flat">No benchmark</span>`;
+    const current = targetRowMetricValue(record, metric.key);
+    const previous = targetRowMetricValue(comparison, metric.key);
+    const diff = current - previous;
+    if (Math.abs(diff) < 0.000001) return `<span class="target-matrix-delta flat">0 vs ${escapeHtml(comparisonLabel)}</span>`;
+    const direction = diff > 0 ? "up" : "down";
+    const text = metric.key === "conversion"
+      ? `${Math.abs(diff * 100).toFixed(2)}pp`
+      : (previous ? `${Math.abs((diff / Math.abs(previous)) * 100).toFixed(1)}%` : formatTargetMetricValue(metric.key, Math.abs(diff)));
+    return `<span class="target-matrix-delta ${direction}">${direction === "up" ? "+" : "-"} ${escapeHtml(text)} vs ${escapeHtml(comparisonLabel)}</span>`;
+  }
+
+  function targetMatrixSortHeaderHtml(key, label) {
+    const active = state.targetSort.key === key;
+    const direction = active ? state.targetSort.direction : "";
+    const indicator = active ? (direction === "asc" ? "&#8593;" : "&#8595;") : "&#8597;";
+    return `<th><button class="table-sort-button target-sort-button${active ? " active" : ""}" type="button" data-report-sort-scope="target" data-report-sort-key="${escapeHtml(key)}" aria-label="Sort by ${escapeHtml(label)}">
+      <span>${escapeHtml(label)}</span>
+      <span class="sort-indicator" aria-hidden="true">${indicator}</span>
+    </button></th>`;
+  }
+
+  function targetMatrixSortValue(row, key, comparisonMap) {
+    if (key === "Tier") return targetTierSortRank(row.Tier);
+    if (key === "Active Brands") return targetRowMetricValue(row, "brands");
+    if (key === "Revenue") return targetRowMetricValue(row, "revenue");
+    if (key === "Orders") return targetRowMetricValue(row, "orders");
+    if (key === "Clicks") return targetRowMetricValue(row, "clicks");
+    if (key === "Avg Conversion") return targetRowMetricValue(row, "conversion");
+    if (key === "New Entries") return parseSheetNumber(row["New Tier Entries"]);
+    if (key === "Exits") return parseSheetNumber(row["Tier Exits"]);
+    if (key === "vs Target") return targetMetricComparisonScore(row, comparisonMap);
+    return row[key];
+  }
+
+  function sortedTargetMatrixRows(records, comparisonMap) {
+    const rows = targetMetricRows(records);
+    const sortState = state.targetSort && state.targetSort.key ? state.targetSort : { key: "Tier", direction: "asc" };
+    const multiplier = sortState.direction === "desc" ? -1 : 1;
+    return rows
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const left = targetMatrixSortValue(a.row, sortState.key, comparisonMap);
+        const right = targetMatrixSortValue(b.row, sortState.key, comparisonMap);
+        const leftEmpty = String(left ?? "").trim() === "";
+        const rightEmpty = String(right ?? "").trim() === "";
+        if (leftEmpty || rightEmpty) {
+          if (leftEmpty === rightEmpty) return a.index - b.index;
+          return leftEmpty ? 1 : -1;
+        }
+        const result = compareReportValues(sortState.key, left, right);
+        return result ? result * multiplier : a.index - b.index;
+      })
+      .map((item) => item.row);
+  }
+
+  function targetVsGoalHtml(record) {
+    if (isTargetTotalRow(record)) return `<span class="target-matrix-delta total">Portfolio</span>`;
+    const goal = targetGoal(record);
+    if (!goal || !goal.target) return `<span class="target-matrix-delta flat">No target</span>`;
+    const delta = goal.actual - goal.target;
+    const pctValue = goal.actual / goal.target;
+    return `<span class="target-matrix-delta ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : "-"} ${(pctValue * 100).toFixed(0)}%</span>`;
+  }
+
+  function targetMatrixHtml(records, comparisonRows = []) {
+    const metric = targetMetricConfig();
+    const comparisonMap = targetComparisonMap(comparisonRows);
+    const rows = sortedTargetMatrixRows(records, comparisonMap);
+    const total = targetSummary(rows);
+    const headers = [
+      ["Tier", "Tier"],
+      ["Active Brands", "Active Brands"],
+      ["Revenue", "Revenue"],
+      ["Orders", "Orders"],
+      ["Clicks", "Clicks"],
+      ["Avg Conversion", "Avg Conv."],
+      ["New Entries", "New Entries"],
+      ["Exits", "Exits"],
+      ["vs Target", "vs Target"]
+    ];
+    const headerMap = new Map(headers);
+    const mobileSortControls = headers.map(([key, label]) => targetMatrixSortHeaderHtml(key, label).replace(/^<th>|<\/th>$/g, "")).join("");
+    const cell = (key, value) => `<td data-label="${escapeHtml(headerMap.get(key) || key)}">${value}</td>`;
+    return `<section class="target-report-card target-matrix-card target-card-enter" style="--i:7">
+      <div class="target-section-header">
+        <div>
+          <h3>Tier comparison matrix</h3>
+          <p>${escapeHtml(metric.label)} comparison with target, entries and exits by tier</p>
+        </div>
+      </div>
+      <div class="target-mobile-sort-controls" aria-label="Sort tier comparison matrix">
+        ${mobileSortControls}
+      </div>
+      <div class="table-wrap target-matrix-wrap">
+        <table class="target-matrix-table">
+          <thead><tr>${headers.map(([key, label]) => targetMatrixSortHeaderHtml(key, label)).join("")}</tr></thead>
+          <tbody>
+            ${rows.map((row) => `<tr>
+              ${cell("Tier", `<span class="target-tier-label"><span class="tier-dot ${escapeHtml(String(row.Tier).toLowerCase().replace(/[^a-z0-9]+/g, "-"))}"></span><strong>${escapeHtml(row.Tier)}</strong></span>`)}
+              ${cell("Active Brands", parseSheetNumber(row["Brand Count"]).toLocaleString())}
+              ${cell("Revenue", compactMoney(parseSheetNumber(row.Revenue)))}
+              ${cell("Orders", parseSheetNumber(row["Order Count"]).toLocaleString())}
+              ${cell("Clicks", parseSheetNumber(row["Total Clicks"]).toLocaleString())}
+              ${cell("Avg Conversion", escapeHtml(formatSheetCell("Avg Conversion", row["Avg Conversion"])))}
+              ${cell("New Entries", parseSheetNumber(row["New Tier Entries"]).toLocaleString())}
+              ${cell("Exits", parseSheetNumber(row["Tier Exits"]).toLocaleString())}
+              ${cell("vs Target", targetMetricVsHtml(row, comparisonMap, state.targetFilters.compareMonth))}
+            </tr>`).join("")}
+            <tr class="target-matrix-total">
+              ${cell("Tier", "<strong>Total</strong>")}
+              ${cell("Active Brands", total.brands.toLocaleString())}
+              ${cell("Revenue", compactMoney(total.revenue))}
+              ${cell("Orders", total.orders.toLocaleString())}
+              ${cell("Clicks", total.clicks.toLocaleString())}
+              ${cell("Avg Conversion", shortPct(targetAvgConversion(total)))}
+              ${cell("New Entries", total.newEntries.toLocaleString())}
+              ${cell("Exits", total.exits.toLocaleString())}
+              ${cell("vs Target", `<span class="target-matrix-delta total">Portfolio</span>`)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>`;
   }
 
   function renderSheetPage() {
     refreshTargetFilters();
-    const rows = sortReportRows(filteredTargetRecords(), state.targetSort, (row, key) => row[key]);
+    const allRecords = targetRecords();
+    const rows = filteredTargetRecords();
+    const comparisonRows = state.targetFilters.compareMonth
+      ? targetRowsForMonth(allRecords, state.targetFilters.compareMonth, state.targetFilters.tier)
+      : [];
     if (!rows.length) {
-      els.sheetPageTitle.textContent = t("sheet.targets", "Monthly Targets");
+      els.sheetPageTitle.textContent = "Report Overview";
       els.sheetPageSubtitle.textContent = t("sheet.noTargets", "No target rows found in the current sheet export");
       els.sheetPageSummary.innerHTML = "";
       els.sheetPageNotes.innerHTML = `<p>${escapeHtml(t("sheet.noTargetMatch", "No target data matched the selected filters."))}</p>`;
-      els.sheetGridHead.innerHTML = "";
-      els.sheetGridRows.innerHTML = "";
-      els.sheetTableCount.textContent = "";
+      if (els.sheetGridHead) els.sheetGridHead.innerHTML = "";
+      if (els.sheetGridRows) els.sheetGridRows.innerHTML = "";
+      if (els.sheetTableCount) els.sheetTableCount.textContent = "";
       return;
     }
-    els.sheetPageTitle.textContent = t("sheet.targets", "Monthly Targets");
-    els.sheetPageSubtitle.textContent = `${state.targetFilters.month === "all" ? optionText("All months") : state.targetFilters.month} / ${t("sheet.targetSummary", "target and performance summary")}`;
-    renderSheetSummary(rows);
-    const targetRows = rows.filter((record) => String(record.Target || "").trim());
-    els.sheetPageNotes.innerHTML = targetRows.length
-      ? `<div class="target-list">${targetRows.map((record) => `<span><strong>${escapeHtml(record.Tier)}</strong>${escapeHtml(record.Target)}</span>`).join("")}</div>`
-      : `<p>${escapeHtml(t("sheet.noTargetNotes", "No written target notes for this selection."))}</p>`;
-    const headers = ["Month", "Tier", "Brand Count", "Total Clicks", "Order Count", "Revenue", "Avg Conversion", "New Tier Entries", "Tier Exits", "Target"];
-    els.sheetTableTitle.textContent = t("sheet.targetRecords", "Monthly Target Records");
-    els.sheetTableCount.textContent = `${rows.length.toLocaleString()} ${t("sheet.targetRows", "target rows")}`;
-    els.sheetGridHead.innerHTML = `<tr>${headers.map((header) => sortableHeaderHtml(header, state.targetSort, "target")).join("")}</tr>`;
-    els.sheetGridRows.innerHTML = rows.map((row) => (
-      `<tr>${headers.map((header) => `<td>${escapeHtml(formatSheetCell(header, row[header]))}</td>`).join("")}</tr>`
-    )).join("");
+    const monthText = state.targetFilters.month === "all" ? optionText("All months") : state.targetFilters.month;
+    const tierText = state.targetFilters.tier === "all" ? "all tiers" : state.targetFilters.tier;
+    els.sheetPageTitle.textContent = "Report Overview";
+    els.sheetPageSubtitle.textContent = `${monthText} performance summary for ${tierText}`;
+    renderSheetSummary(rows, comparisonRows, state.targetFilters.compareMonth);
+    els.sheetPageNotes.innerHTML = `${targetProgressHtml(rows)}${targetTrendHtml(allRecords)}${targetMatrixHtml(rows, comparisonRows)}`;
+  }
+
+  function focusTargetEditField() {
+    window.requestAnimationFrame(() => {
+      const input = els.sheetPageNotes && els.sheetPageNotes.querySelector(".target-edit-form input");
+      if (input) input.focus();
+    });
+  }
+
+  function handleTargetReportClick(event) {
+    const cancelButton = event.target.closest("[data-target-edit-cancel]");
+    if (cancelButton) {
+      state.targetEditingKey = "";
+      renderSheetPage();
+      return;
+    }
+    const metricButton = event.target.closest("[data-target-metric]");
+    if (metricButton) {
+      state.targetMetric = metricButton.dataset.targetMetric || "revenue";
+      renderSheetPage();
+      return;
+    }
+    const editButton = event.target.closest(".target-edit-button[data-target-edit-key]");
+    if (editButton) {
+      state.targetEditingKey = editButton.dataset.targetEditKey || "";
+      renderSheetPage();
+      focusTargetEditField();
+      return;
+    }
+    if (event.target.closest("[data-report-sort-key]")) handleReportSortClick(event);
+  }
+
+  function handleTargetReportSubmit(event) {
+    const form = event.target.closest("[data-target-edit-form]");
+    if (!form) return;
+    event.preventDefault();
+    const key = form.dataset.targetEditKey || "";
+    const input = form.querySelector("input[name='target']");
+    if (!key || !input) return;
+    const value = input.value.trim();
+    const currentRecord = targetRecords().find((record) => record.__targetOverrideKey === key);
+    const targetText = currentRecord ? targetTextFromEditValue(currentRecord, value) : value;
+    if (value) {
+      const candidate = currentRecord ? { ...currentRecord, Target: targetText } : { Target: targetText };
+      if (!targetGoal(candidate)) {
+        input.setCustomValidity("Enter a valid target value.");
+        input.reportValidity();
+        return;
+      }
+      input.setCustomValidity("");
+    }
+    if (value) {
+      state.targetOverrides[key] = targetText;
+    } else {
+      delete state.targetOverrides[key];
+    }
+    saveTargetOverrides();
+    state.targetEditingKey = "";
+    renderSheetPage();
   }
 
   function switchPage(page) {
@@ -6897,6 +7488,10 @@
       state.targetFilters.month = els.targetMonthSelect.value;
       renderSheetPage();
     });
+    els.targetCompareMonthSelect.addEventListener("change", () => {
+      state.targetFilters.compareMonth = els.targetCompareMonthSelect.value;
+      renderSheetPage();
+    });
     els.targetTierFilter.addEventListener("change", () => {
       state.targetFilters.tier = els.targetTierFilter.value;
       renderSheetPage();
@@ -6941,7 +7536,9 @@
     els.tierColumnAll.addEventListener("click", () => {
       resetTierVisibleHeaders(sheetByName(state.selectedTierPage));
     });
-    els.sheetGridHead.addEventListener("click", handleReportSortClick);
+    els.sheetPageNotes.addEventListener("click", handleTargetReportClick);
+    els.sheetPageNotes.addEventListener("submit", handleTargetReportSubmit);
+    if (els.sheetGridHead) els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("change", handleTierSelectionChange);
     els.tierSheetRows.addEventListener("change", handleTierSelectionChange);
@@ -6982,7 +7579,7 @@
     if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
-    els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
+    if (els.sheetDownload) els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
     els.tierDownload.addEventListener("click", downloadTierSheetXlsx);
     document.querySelectorAll(".sort-button").forEach((button) => {
       button.addEventListener("click", () => {
