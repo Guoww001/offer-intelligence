@@ -4855,7 +4855,6 @@
   }
 
   function renderAll(rows = getFiltered()) {
-    renderMetrics(rows);
     renderDashboardCategoryReport();
     if (state.currentContext.type === "default") {
       setContext({ type: "default", items: rows.slice(0, 120), summary: aggregateRows(rows), filters: {} });
@@ -4863,13 +4862,13 @@
   }
 
   function syncControls() {
-    els.tier.value = state.tier;
-    els.network.value = state.network;
-    els.category.value = state.category;
-    els.minEpc.value = state.minEpc;
-    els.minAov.value = state.minAov;
-    els.minCvr.value = state.minCvr;
-    els.notPaidOnly.checked = state.notPaidOnly;
+    if (els.tier) els.tier.value = state.tier;
+    if (els.network) els.network.value = state.network;
+    if (els.category) els.category.value = state.category;
+    if (els.minEpc) els.minEpc.value = state.minEpc;
+    if (els.minAov) els.minAov.value = state.minAov;
+    if (els.minCvr) els.minCvr.value = state.minCvr;
+    if (els.notPaidOnly) els.notPaidOnly.checked = state.notPaidOnly;
     document.querySelectorAll(".sort-button").forEach((button) => button.classList.toggle("active", button.dataset.sort === state.sort));
   }
 
@@ -6802,9 +6801,9 @@
   }
 
   function init() {
-    fillSelect(els.tier, uniqueValues("tier"));
-    fillSelect(els.network, uniqueValues("network"));
-    fillSelect(els.category, uniqueCategoryValues());
+    if (els.tier) fillSelect(els.tier, uniqueValues("tier"));
+    if (els.network) fillSelect(els.network, uniqueValues("network"));
+    if (els.category) fillSelect(els.category, uniqueCategoryValues());
     refreshPaymentFilterOptions();
     refreshTargetFilters();
     setDatasetStamp();
@@ -6820,16 +6819,16 @@
       els.quickActions.appendChild(button);
     });
 
-    [els.tier, els.network, els.category].forEach((select) => {
+    [els.tier, els.network, els.category].filter(Boolean).forEach((select) => {
       select.addEventListener("change", () => {
         state[select.id.replace("Filter", "")] = select.value;
         renderAll();
       });
     });
-    els.minEpc.addEventListener("input", () => { state.minEpc = els.minEpc.value; renderAll(); });
-    els.minAov.addEventListener("input", () => { state.minAov = els.minAov.value; renderAll(); });
-    els.minCvr.addEventListener("input", () => { state.minCvr = els.minCvr.value; renderAll(); });
-    els.notPaidOnly.addEventListener("change", () => { state.notPaidOnly = els.notPaidOnly.checked; renderAll(); });
+    if (els.minEpc) els.minEpc.addEventListener("input", () => { state.minEpc = els.minEpc.value; renderAll(); });
+    if (els.minAov) els.minAov.addEventListener("input", () => { state.minAov = els.minAov.value; renderAll(); });
+    if (els.minCvr) els.minCvr.addEventListener("input", () => { state.minCvr = els.minCvr.value; renderAll(); });
+    if (els.notPaidOnly) els.notPaidOnly.addEventListener("change", () => { state.notPaidOnly = els.notPaidOnly.checked; renderAll(); });
     els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
     els.dashboardCategorySearch.addEventListener("input", () => {
       state.categoryReportSearch = els.dashboardCategorySearch.value;
@@ -6924,7 +6923,7 @@
     els.paymentOverdueOnly.addEventListener("change", () => { state.payments.overdueOnly = els.paymentOverdueOnly.checked; renderPaymentsPage(); });
     els.paymentSync.addEventListener("click", () => refreshLevantaPayments());
     els.languageToggle.addEventListener("click", toggleLanguage);
-    els.reset.addEventListener("click", resetFilters);
+    if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
     els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
