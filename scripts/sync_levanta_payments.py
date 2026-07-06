@@ -112,6 +112,54 @@ def validate_payment_records(records: list[dict], months: list[tuple[str, int, i
     }
 
 
+def source_payment_record_id(record: dict, merchant_id: str) -> str:
+    month_key = str(record.get("reportMonthKey") or "").strip()
+    merchant_name = str(record.get("merchantName") or record.get("brand") or "").strip()
+    brand_key = server.normalize(merchant_name)
+    if merchant_id and month_key and brand_key:
+        return f"{merchant_id}::{month_key}::{brand_key}"
+    return str(record.get("id") or "").strip()
+
+
+def reconcile_source_payment_record(record: dict) -> dict:
+    if not isinstance(record, dict):
+        return record
+
+    merchant_name = str(record.get("merchantName") or record.get("brand") or "").strip()
+    source_merchant_id = str(record.get("merchantId") or record.get("brand_id") or "").strip()
+    network = record.get("network") or "Levanta"
+    offer = server.offer_for_payment_source(source_merchant_id, merchant_name, network)
+    if not offer:
+        return record
+
+    merchant_id = str(offer.get("merchantId") or source_merchant_id).strip()
+    if not merchant_id:
+        return record
+
+    reconciled = dict(record)
+    reconciled["merchantId"] = merchant_id
+
+    levanta_brand_id = str(reconciled.get("levantaBrandId") or "").strip()
+    if not levanta_brand_id and server.normalize(network) == "levanta" and source_merchant_id != merchant_id:
+        levanta_brand_id = source_merchant_id
+    if levanta_brand_id:
+        reconciled["levantaBrandId"] = levanta_brand_id
+
+    new_id = source_payment_record_id(reconciled, merchant_id)
+    if new_id:
+        reconciled["id"] = new_id
+
+    for key in ("network", "tier", "category", "categoryPath", "mainCategory", "subCategory", "mainCategoryCn", "subCategoryCn"):
+        value = reconciled.get(key)
+        if value not in (None, "", "Unknown", "Uncategorized"):
+            continue
+        offer_value = offer.get(key)
+        if offer_value not in (None, ""):
+            reconciled[key] = offer_value
+
+    return reconciled
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch Levanta payments and update public/chatbot_data.js.")
     parser.add_argument("--start", default="", help="Optional first report month, formatted YYYY-MM. Empty uses server/API default.")
@@ -143,6 +191,7 @@ def main() -> int:
     checked_at = ""
     if source_url:
         raw_records, checked_at = fetch_payment_records_from_source(source_url, args.start, args.end)
+        raw_records = [reconcile_source_payment_record(record) for record in raw_records]
     else:
         api_key = os.environ.get("LEVANTA_API_KEY", "").strip()
         if not api_key:
