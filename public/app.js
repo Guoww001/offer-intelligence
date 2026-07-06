@@ -610,6 +610,10 @@
     return moneyWithSymbol(value, "$");
   }
 
+  function paymentCycleText(offer, fallback = "not available in current data") {
+    return offer && offer.paymentCycle ? `${offer.paymentCycle} days` : fallback;
+  }
+
   function pct(value) {
     if (!isAvailable(value) || !Number.isFinite(Number(value))) return "not available in current data";
     return (Number(value) * 100).toFixed(2) + "%";
@@ -3175,7 +3179,7 @@
   }
 
   const contextColumns = [
-    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small><br><small>${escapeHtml(displayCategory(o))}</small>` },
+    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
     { label: "Tier", render: (o) => escapeHtml(tierGroup(o)) },
     { label: "Highlight", render: (o) => escapeHtml(highlightStatus(o)) },
     { label: "Category", render: (o) => escapeHtml(displayCategory(o)) },
@@ -3184,24 +3188,12 @@
     { label: "CVR", render: (o) => shortPct(o.conversionRate) },
     { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
     { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Commission", render: (o) => shortMoney(o.affCommission) },
-    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") },
-    { label: "Action", render: (o) => escapeHtml(recommendedAction(o)) }
+    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
+    { label: "Payment cycle", render: (o) => escapeHtml(paymentCycleText(o, "-")) }
   ];
 
-  const tier2PublisherColumns = [
-    { label: "Publisher Count", render: (o) => escapeHtml(tier2PublisherCountText(o) || textValue(o.publisherCount)) },
-    { label: "Success Rate", render: (o) => escapeHtml(tier2PublisherSuccessText(o) || (o.successRate === undefined ? "not available" : shortPct(o.successRate))) },
-    { label: "Tier 2 Optimization Idea", render: (o) => escapeHtml(tier2OptimizationIdea(o) || "not applicable") }
-  ];
-
-  function contextColumnsFor(rows) {
-    if (!rows.some((offer) => offer.tier === "Tier 2")) return contextColumns;
-    return [
-      ...contextColumns.slice(0, 3),
-      ...tier2PublisherColumns,
-      ...contextColumns.slice(3)
-    ];
+  function contextColumnsFor() {
+    return contextColumns;
   }
 
   function insightList(rows) {
@@ -3340,7 +3332,7 @@
       ["Average CVR", shortPct(s.avgCvr)]
     ]) +
     `<div class="context-note"><strong>Best traffic angle:</strong> ${escapeHtml(top[0] ? bestAngle(top[0], { category: context.filters.category }) : "not available in current data")}</div>` +
-    miniTable(top, contextColumnsFor(top).slice(0, 9)) +
+    miniTable(top, contextColumnsFor(top)) +
     insightList(top);
   }
 
@@ -3363,7 +3355,7 @@
     `<div class="context-note"><strong>Matched categories:</strong> ${escapeHtml(categoryText)}</div>` +
     `<div class="context-note"><strong>Top 5 recommended offers:</strong> ${escapeHtml(topText)}</div>` +
     `<div class="context-note"><strong>Tier breakdown:</strong> ${escapeHtml(tierText)}</div>` +
-    miniTable(rows, contextColumnsFor(rows).slice(0, 10));
+    miniTable(rows, contextColumnsFor(rows));
   }
 
   function renderContextPanel(context) {
@@ -3415,30 +3407,13 @@
   function fieldRows(offer, language = state.language) {
     const notAvailable = language === "zh" ? chatCopy(language).notAvailable : "not available in current data";
     return [
-      ["Merchant ID", textValue(offer.merchantId)],
-      ["Merchant name", textValue(offer.brand)],
+      ["Merchant", textValue(offer.brand || offer.merchantId)],
       ["Tier", textValue(tierGroup(offer))],
       ["Category", textValue(displayCategory(offer))],
-      ["Network", textValue(offer.network)],
-      ["AOV", money(offer.aov)],
-      ["EPC", epc(offer.epc)],
-      ["CPC", textValue(offer.cpc)],
-      ["Clicks", countValue(offer.clicks)],
-      ["DPV", countValue(offer.dpv)],
-      ["ATC", countValue(offer.atc)],
-      ["Order count", countValue(offer.orders)],
-      ["Revenue", money(offer.salesAmount)],
-      ["Conversion rate", pct(offer.conversionRate)],
-      ...tier2FieldRows(offer, language),
-      ["Commission", money(offer.affCommission)],
+      ["Region", textValue(offer.region)],
       ["Commission rate", pct(offer.commissionRate)],
-      ["Discount/deal info", textValue(offer.dealInfo || offer.discountInfo)],
-      ["Top ASINs", offer.topAsins && offer.topAsins.length ? offer.topAsins.slice(0, 8).join(", ") : notAvailable],
-      ["Payment status", textValue(offer.paymentStatus)],
-      ["Payment cycle", offer.paymentCycle ? `${offer.paymentCycle} days` : notAvailable],
-      ["Link status", textValue(offer.linkStatus || offer.recommendedLink)],
-      ["Recommended action", recommendedAction(offer, language)],
-      ["Notes / recommendation", textValue(offer.recommendation || offer.reason)]
+      ["Payment cycle", paymentCycleText(offer, notAvailable)],
+      ["AOV", money(offer.aov)]
     ];
   }
 
@@ -3459,7 +3434,7 @@
         sheetName: "Merchant"
       }, {
         title: "Merchant file",
-        description: "1 offer row with metrics, payment status, ASINs, and recommendation notes."
+        description: "1 offer row with compact merchant metrics."
       });
   }
 
@@ -3471,56 +3446,20 @@
     </table></div>`;
   }
 
-  const compactColumns = [
-    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
-    { label: "Tier", render: (o) => escapeHtml(tierGroup(o)) },
-    { label: "Category", render: (o) => escapeHtml(o.category || "Uncategorized") },
-    { label: "EPC", render: (o) => shortEpc(o.epc) },
-    { label: "AOV", render: (o) => shortMoney(o.aov) },
-    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
-    { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
-    { label: "CVR", render: (o) => shortPct(o.conversionRate) },
-    { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
-  ];
-
-  const topMetricColumns = [
+  const chatOverviewColumns = [
     { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
     { label: "Tier", render: (o) => escapeHtml(tierGroup(o)) },
     { label: "Category", render: (o) => escapeHtml(displayCategory(o)) },
-    { label: "AOV", render: (o) => shortMoney(o.aov) },
-    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
-    { label: "EPC", render: (o) => shortEpc(o.epc) },
-    { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
-    { label: "CVR", render: (o) => shortPct(o.conversionRate) },
-    { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
+    { label: "Region", render: (o) => escapeHtml(o.region || "-") },
+    { label: "Commission rate", render: (o) => shortPct(o.commissionRate) },
+    { label: "Payment cycle", render: (o) => escapeHtml(paymentCycleText(o, "-")) },
+    { label: "AOV", render: (o) => shortMoney(o.aov) }
   ];
 
-  const keywordColumns = [
-    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
-    { label: "Tier", render: (o) => escapeHtml(tierGroup(o)) },
-    { label: "Category", render: (o) => escapeHtml(displayCategory(o)) },
-    { label: "AOV", render: (o) => shortMoney(o.aov) },
-    { label: "EPC", render: (o) => shortEpc(o.epc) },
-    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
-    { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
-    { label: "CVR", render: (o) => shortPct(o.conversionRate) },
-    { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
-  ];
-
-  const tier2CompactColumns = [
-    { label: "Merchant", render: (o) => `<strong>${escapeHtml(o.brand || "")}</strong><br><small>${escapeHtml(o.merchantId || "")}</small>` },
-    { label: "Highlight", render: (o) => escapeHtml(highlightStatus(o)) },
-    { label: "Publisher Count", render: (o) => escapeHtml(tier2PublisherCountText(o) || textValue(o.publisherCount)) },
-    { label: "Success Rate", render: (o) => escapeHtml(tier2PublisherSuccessText(o) || "not available") },
-    { label: "Tier 2 Optimization Idea", render: (o) => escapeHtml(tier2OptimizationIdea(o) || "not available") },
-    { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
-    { label: "CVR", render: (o) => shortPct(o.conversionRate) },
-    { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Payment", render: (o) => escapeHtml(o.paymentStatus || "not available") }
-  ];
+  const compactColumns = chatOverviewColumns;
+  const topMetricColumns = chatOverviewColumns;
+  const keywordColumns = chatOverviewColumns;
+  const tier2CompactColumns = chatOverviewColumns;
 
   function metricMentioned(prompt, metric) {
     const text = String(prompt || "").toLowerCase();
@@ -7714,6 +7653,8 @@
       recommendationDownloads: () => state.recommendationDownloads,
       excludedRecommendationKeys: () => Array.from(state.excludedRecommendationKeys),
       rankedRecommendations,
+      chatOverviewColumnLabels: () => chatOverviewColumns.map((column) => column.label),
+      contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       displayCategory,
       dashboardCategoryGroups,
       tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName))
