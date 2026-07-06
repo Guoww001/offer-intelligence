@@ -154,6 +154,13 @@ assertTruthy(keywordContext.summary.avgAov > 0, "keyword context should summariz
 assertTruthy(keywordContext.summary.blendedEpc > 0, "keyword context should summarize blended EPC across matches");
 assertTruthy(keywordContext.summary.avgCvr > 0, "keyword context should summarize average CVR across matches");
 
+const skincareRequest = hooks.keywordSearchRequest("skincare brands");
+assertTruthy(skincareRequest, "skincare brands should create a keyword request");
+assertEqual(skincareRequest.canonical, "skincare", "skincare brands should map to the skincare synonym group");
+const skincareMatches = hooks.keywordSearchMatches("skincare brands");
+assertTruthy(skincareMatches.some((match) => match.offer.brand === "Anua"), "skincare brands should include skincare product brands like Anua");
+assertTruthy(!skincareMatches.some((match) => match.offer.brand === "Ulike"), "skincare brands should exclude hair-removal/IPL-led brands like Ulike");
+
 assertMatch(
   hooks.answerPrompt("earphone"),
   /Shokz Official/i,
