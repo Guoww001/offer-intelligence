@@ -21,6 +21,12 @@ function assertMatch(actual, pattern, label) {
   }
 }
 
+function assertNotMatch(actual, pattern, label) {
+  if (pattern.test(actual)) {
+    throw new Error(`${label}: expected ${JSON.stringify(actual)} not to match ${pattern}`);
+  }
+}
+
 function assertApprox(actual, expected, label, tolerance = 1e-9) {
   if (Math.abs(actual - expected) > tolerance) {
     throw new Error(`${label}: expected ${expected}, got ${actual}`);
@@ -97,6 +103,23 @@ assertEqual(hooks.cleanedMerchantLookupPhrase("Shokz offers"), "Shokz", "offer w
 assertEqual(hooks.categoryForPrompt("Shokz offers"), null, "merchant plus offers should not become a category");
 assertEqual(hooks.detectQueryIntent("Shokz offers"), "merchant", "merchant plus offers should route to merchant lookup");
 assertEqual(hooks.hasStrongMerchantLookup("Shokz offers", null), true, "merchant plus offers should be a strong merchant lookup");
+const merchantOverviewAnswer = hooks.answerPrompt("362653");
+for (const label of ["Merchant", "Tier", "Category", "Region", "Commission rate", "Payment cycle", "AOV"]) {
+  assertMatch(merchantOverviewAnswer, new RegExp(`<strong>${label}:<\\/strong>`), `merchant overview should include ${label}`);
+}
+for (const label of ["Merchant ID", "Network", "EPC", "Clicks", "Orders", "Revenue", "Payment status", "Recommended action"]) {
+  assertNotMatch(merchantOverviewAnswer, new RegExp(`<strong>${label}:<\\/strong>`), `merchant overview should omit ${label}`);
+}
+assertEqual(
+  hooks.chatOverviewColumnLabels().join("|"),
+  "Merchant|Tier|Category|Region|Commission rate|Payment cycle|AOV",
+  "chatbot overview tables should use the compact merchant fields"
+);
+assertEqual(
+  hooks.contextColumnLabels().join("|"),
+  "Merchant|Tier|Highlight|Category|AOV|EPC|CVR|Orders|Revenue|Commission made|Payment cycle",
+  "right-side overview should keep the full offer scan columns"
+);
 
 assertEqual(hooks.categoryForPrompt("Electronics"), "Electronics", "main category should be recognized");
 assertEqual(hooks.detectQueryIntent("Electronics"), "category", "main category should route to category lookup");
