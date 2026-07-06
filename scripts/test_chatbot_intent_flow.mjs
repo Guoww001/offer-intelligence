@@ -284,6 +284,15 @@ assertTruthy(
   "payment table should sort months descending"
 );
 assertEqual(hooks.paymentMoney({ region: "US" }, 12.3), "$12.3", "US payment money should use dollars");
+const mixedRegionPaymentSummary = hooks.paymentSummaryMoney([{ region: "US" }, { region: "UK" }, { region: "DE" }], 1234.56);
+assertEqual(mixedRegionPaymentSummary, "$1,234.56", "all-region payment summary should use dollars for mixed currencies");
+assertNotMatch(mixedRegionPaymentSummary, /mixed/i, "all-region payment summary should not show mixed currency wording");
+assertEqual(hooks.paymentSummaryMoney([{ region: "UK" }], 12.3, "all"), "$12.3", "all-region payment summary should prefer dollars even when visible rows share one non-USD currency");
+assertEqual(
+  hooks.paymentStatusSummaryItems({ paidMerchantCount: 1, pendingMerchantCount: 2, unpaidMerchantCount: 3, overdueMerchantCount: 4 }).map(([label]) => label).join("|"),
+  "Paid|Pending|Unpaid|Overdue",
+  "payment status summary should keep paid, pending, unpaid, and overdue in one ordered row"
+);
 assertEqual(hooks.normalizeRegion("amazon.com"), "US", "amazon.com should display as US");
 assertEqual(hooks.normalizeRegion("Amazon.ca"), "Canada", "Amazon.ca should display as Canada");
 assertEqual(hooks.normalizeRegion("amazon.co.uk"), "UK", "amazon.co.uk should display as UK");

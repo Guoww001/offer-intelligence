@@ -604,10 +604,11 @@
     return moneyWithSymbol(value, paymentCurrencySymbol(record));
   }
 
-  function paymentSummaryMoney(rows, value) {
+  function paymentSummaryMoney(rows, value, regionFilter = "") {
+    if (String(regionFilter || "").trim().toLowerCase() === "all") return moneyWithSymbol(value, "$");
     const symbols = new Set(rows.map(paymentCurrencySymbol).filter(Boolean));
-    if (symbols.size <= 1) return moneyWithSymbol(value, symbols.values().next().value || "$");
-    return moneyWithSymbol(value, "$");
+    const symbol = symbols.size === 1 ? symbols.values().next().value : "$";
+    return moneyWithSymbol(value, symbol || "$");
   }
 
   function paymentCycleText(offer, fallback = "not available in current data") {
@@ -5526,15 +5527,24 @@
     const s = updatePaymentSummary(rows);
     const cards = [
       ["Merchants", s.merchantCount.toLocaleString()],
-      ["Revenue made", paymentSummaryMoney(rows, s.totalRevenueMade)],
-      ["Commission made", paymentSummaryMoney(rows, s.totalCommissionMade)],
-      ["Payment rate", shortPct(s.paymentRate)],
-      ["Paid", s.paidMerchantCount.toLocaleString()],
-      ["Pending", s.pendingMerchantCount.toLocaleString()],
-      ["Unpaid", s.unpaidMerchantCount.toLocaleString()],
-      ["Overdue", s.overdueMerchantCount.toLocaleString()]
+      ["Revenue made", paymentSummaryMoney(rows, s.totalRevenueMade, state.payments.region)],
+      ["Commission made", paymentSummaryMoney(rows, s.totalCommissionMade, state.payments.region)],
+      ["Payment rate", shortPct(s.paymentRate)]
     ];
-    els.paymentSummary.innerHTML = cards.map(([label, value]) => `<div class="metric payment-metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+    const statusRow = paymentStatusSummaryItems(s)
+      .map(([label, value]) => `<div class="payment-status-pill"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`)
+      .join("");
+    els.paymentSummary.innerHTML = cards.map(([label, value]) => `<div class="metric payment-metric"><span>${escapeHtml(labelText(label))}</span><strong>${escapeHtml(value)}</strong></div>`).join("") +
+      `<div class="payment-status-row" aria-label="Payment status summary">${statusRow}</div>`;
+  }
+
+  function paymentStatusSummaryItems(summary) {
+    return [
+      ["Paid", summary.paidMerchantCount.toLocaleString()],
+      ["Pending", summary.pendingMerchantCount.toLocaleString()],
+      ["Unpaid", summary.unpaidMerchantCount.toLocaleString()],
+      ["Overdue", summary.overdueMerchantCount.toLocaleString()]
+    ];
   }
 
   function renderPaymentHead() {
@@ -7639,6 +7649,8 @@
       normalizeRegion,
       paymentCurrencySymbol,
       paymentMoney,
+      paymentSummaryMoney,
+      paymentStatusSummaryItems,
       sortPaymentRowsForTable,
       paymentTableSortValue,
       keywordSearchRequest,
