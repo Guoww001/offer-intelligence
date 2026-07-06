@@ -76,6 +76,21 @@ runScript("public/app.js", sandbox);
 const hooks = sandbox.window.OFFER_INTELLIGENCE_TEST_HOOKS;
 assertTruthy(hooks, "app should expose test hooks in test mode");
 
+for (const tierName of ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]) {
+  const sheet = sandbox.window.SHEET_REPORT_DATA.sheets.find((entry) => entry.name === tierName);
+  const displayRows = hooks.tierSheetRowsForDisplay(tierName);
+  assertTruthy(sheet, `${tierName} sheet payload should be present`);
+  assertEqual(
+    displayRows.length,
+    sheet.rows.length,
+    `${tierName} sheet display rows should use the sheet payload row count`
+  );
+}
+assertTruthy(
+  hooks.tierSheetRowsForDisplay("Tier 2").some((row) => row["Merchant ID"] === "380767" && row["Merchant Name"] === "Typhur US"),
+  "Tier 2 sheet display should not hide rows because chatbot data has an older tier"
+);
+
 assertEqual(hooks.categoryForPrompt("Shokz"), null, "plain merchant name should not become a category");
 assertEqual(hooks.detectQueryIntent("Shokz"), "merchant", "plain merchant name should route to merchant lookup");
 assertEqual(hooks.cleanedMerchantLookupPhrase("Shokz offers"), "Shokz", "offer wording should be stripped before merchant matching");
