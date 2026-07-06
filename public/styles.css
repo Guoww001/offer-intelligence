@@ -502,6 +502,36 @@ body.dashboard-mode .topbar.dashboard-page {
   font-size: 19px;
 }
 
+.payment-status-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payment-status-pill {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 22px rgba(37, 48, 56, 0.04);
+}
+
+.payment-status-pill span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.payment-status-pill strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+}
+
 .main-grid {
   display: grid;
   grid-template-columns: minmax(360px, 0.96fr) minmax(0, 1.04fr);
@@ -2961,6 +2991,22 @@ td strong {
   .sheet-page .tier-summary,
   .target-progress-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .payment-status-row {
+    gap: 6px;
+  }
+
+  .payment-status-pill {
+    padding: 9px 8px;
+  }
+
+  .payment-status-pill span {
+    font-size: 10px;
+  }
+
+  .payment-status-pill strong {
+    font-size: 16px;
   }
 
   .target-section-header,
