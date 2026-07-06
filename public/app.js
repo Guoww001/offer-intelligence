@@ -257,7 +257,7 @@
 
   const keywordSynonymMap = {
     headphones: ["headphone", "earbuds", "earbud", "earphones", "earphone", "headset", "headsets", "audio", "wireless earbuds", "bluetooth earbuds", "bluetooth headphones", "wireless headphones", "gaming headset", "open-ear headphones", "open ear headphones", "bone conduction"],
-    skincare: ["skin care", "beauty", "facial care", "facial", "serum", "toner", "moisturizer", "moisturiser", "sunscreen", "acne", "cleanser", "face wash", "anti aging", "anti-aging"],
+    skincare: ["skin care", "skin-care", "skin care products", "skincare products", "facial care", "serum", "toner", "moisturizer", "moisturiser", "sunscreen", "acne", "cleanser", "face wash", "cleansing oil", "cleansing foam", "anti aging", "anti-aging", "face cream", "face moisturizer", "sheet mask", "face mask"],
     "pool cleaner": ["pool cleaners", "pool robot", "pool robots", "robotic pool cleaner", "robotic pool cleaners", "pool vacuum", "pool vacuums", "pool maintenance", "pool cleaning", "泳池机器人", "泳池清洁机器人", "泳池清洁器"],
     vacuum: ["vacuums", "robot vacuum", "robot vacuums", "stick vacuum", "stick vacuums", "cordless vacuum", "cordless vacuums", "cleaning appliance", "cleaning appliances", "vacuum cleaner", "vacuum cleaners"],
     chair: ["chairs", "office chair", "office chairs", "ergonomic chair", "ergonomic chairs", "gaming chair", "gaming chairs", "furniture"],
@@ -874,6 +874,21 @@
     "产品", "商品", "相似", "搜索", "查找"
   ]);
 
+  const skincareProductSignals = [
+    "skin care", "skincare", "serum", "toner", "moisturizer", "moisturiser", "sunscreen",
+    "cleanser", "face wash", "cleansing oil", "cleansing foam", "face cream", "face moisturizer",
+    "lotion", "essence", "ampoule", "exfoliating", "retinol", "hyaluronic acid", "niacinamide",
+    "ceramide", "collagen", "pdrn", "snail mucin", "acne", "blackhead", "pimple", "dark spot",
+    "redness relief", "skin barrier", "pore care", "toner pad", "face mist", "sheet mask", "face mask",
+    "korean skincare", "korean skin care"
+  ];
+
+  const nonSkincareDeviceSignals = [
+    "hair removal", "laser hair", "ipl", "intense pulsed light", "hair reduction", "permanent hair",
+    "permanent hair reduction", "epilator", "depilator", "armpit", "ushr", "sapphire air",
+    "ice cooling", "ice-cooling", "body hair", "light hair removal", "laser hair removal", "hair removal device"
+  ];
+
   function meaningfulTokens(value) {
     return words(value)
       .map(singularToken)
@@ -1004,6 +1019,40 @@
       asin: flattenSearchValues([offer.topAsins, offer.productAsins, offer.asinsText, offer.feishuCategoryAsin]),
       notes: flattenSearchValues([offer.notes, offer.recommendation, offer.recommendationNotes, offer.reason])
     };
+  }
+
+  function valuesMatchingAliases(values, aliases) {
+    return (values || []).filter((value) => aliases.some((alias) => searchValueMatches(value, alias)));
+  }
+
+  function productTitleValues(offer) {
+    return flattenSearchValues([
+      offer.productTitle,
+      offer.product_title,
+      offer.productName,
+      offer.product_name,
+      offer.productTitles,
+      offer.product_titles,
+      offer.title,
+      offer.asinTitle,
+      offer.asin_title,
+      offer.asinTitles
+    ]);
+  }
+
+  function qualifiesAsSkincareBrand(offer) {
+    const groups = keywordFieldGroups(offer);
+    const productValues = groups.product || [];
+    const skincareSignals = valuesMatchingAliases(productValues, skincareProductSignals);
+    if (!skincareSignals.length) return false;
+
+    const nonSkincareDeviceSignalsFound = valuesMatchingAliases(productValues, nonSkincareDeviceSignals);
+    if (!nonSkincareDeviceSignalsFound.length) return true;
+
+    const titles = productTitleValues(offer);
+    const skincareTitleCount = valuesMatchingAliases(titles, skincareProductSignals).length;
+    const deviceTitleCount = valuesMatchingAliases(titles, nonSkincareDeviceSignals).length;
+    return skincareTitleCount > deviceTitleCount;
   }
 
   function searchValueMatches(value, alias) {
@@ -1143,6 +1192,7 @@
 
   function keywordOfferMatch(offer, request) {
     if (!offer || !request) return null;
+    if (request.canonical === "skincare" && !qualifiesAsSkincareBrand(offer)) return null;
     const groups = keywordFieldGroups(offer);
     const groupValues = Object.values(groups).flat();
     const categoryValues = groups.category || [];
