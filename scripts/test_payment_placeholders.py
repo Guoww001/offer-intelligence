@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from scripts import sync_levanta_payments  # noqa: E402
 
 
 def assert_true(value, label):
@@ -70,6 +71,35 @@ def main() -> int:
         "RENPHO Wellness": "363199",
     }
     for merchant_name, merchant_id in expected_renpho_ids.items():
+        source_brand_id = f"source-{server.normalize(merchant_name)}-brand-id"
+        source_payment_record = {
+            "id": f"{source_brand_id}::2026-06::{server.normalize(merchant_name)}",
+            "merchantId": source_brand_id,
+            "merchantName": merchant_name,
+            "network": "Levanta",
+            "tier": "Unknown",
+            "category": "Uncategorized",
+            "reportMonth": "June",
+            "reportYear": 2026,
+            "reportMonthKey": "2026-06",
+            "revenueMade": 1,
+            "commissionMade": 0.1,
+            "paymentStatus": "Pending",
+        }
+        reconciled_source_record = sync_levanta_payments.reconcile_source_payment_record(source_payment_record)
+        assert_true(
+            reconciled_source_record.get("merchantId") == merchant_id,
+            f"source API rows for {merchant_name} should be reconciled to Levanta MID {merchant_id}",
+        )
+        assert_true(
+            reconciled_source_record.get("levantaBrandId") == source_brand_id,
+            f"source API rows for {merchant_name} should preserve source brand id",
+        )
+        assert_true(
+            str(reconciled_source_record.get("id") or "").startswith(f"{merchant_id}::2026-06::"),
+            f"source API rows for {merchant_name} should rebuild the payment id with the Levanta MID",
+        )
+
         renpho_rows = [record for record in records if record.get("merchantName") == merchant_name]
         assert_true(renpho_rows, f"{merchant_name} payment rows should exist")
         for record in renpho_rows:
