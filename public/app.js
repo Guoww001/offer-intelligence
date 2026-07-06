@@ -225,6 +225,8 @@
     paymentRegion: document.getElementById("paymentRegionFilter"),
     paymentTier: document.getElementById("paymentTierFilter"),
     paymentStatus: document.getElementById("paymentStatusFilter"),
+    paymentSort: document.getElementById("paymentSortFilter"),
+    paymentSortDirection: document.getElementById("paymentSortDirectionFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
     languageToggle: document.getElementById("languageToggle")
   };
@@ -286,6 +288,8 @@
       "filter.minRevenue": "最低收入",
       "filter.unpaidOnly": "仅未付款",
       "filter.pendingOnly": "仅待处理",
+      "label.Sort by": "排序字段",
+      "label.Direction": "排序方向",
       "action.reset": "重置",
       "action.send": "发送",
       "action.move": "移动",
@@ -381,6 +385,9 @@
       "option.Overdue": "逾期",
       "option.Partial": "部分付款",
       "option.Unknown": "未知",
+      "option.Default priority": "默认优先级",
+      "option.Ascending": "升序",
+      "option.Descending": "降序",
       "move.original": "原始",
       "move.movedFrom": "从原层级移动",
       "option.February": "二月",
@@ -3788,6 +3795,19 @@
     { label: "Last Checked", render: (record) => escapeHtml(record.lastCheckedDate || "-") }
   ];
 
+  const PAYMENT_STATUS_FILTER_EXCLUSIONS = new Set(["Overdue"]);
+
+  function paymentStatusFilterValues() {
+    return uniquePaymentValues("paymentStatus").filter((status) => !PAYMENT_STATUS_FILTER_EXCLUSIONS.has(status));
+  }
+
+  function paymentSortOptions() {
+    return [
+      { value: "", label: optionText("Default priority") },
+      ...paymentTableColumns.map((column) => ({ value: column.label, label: labelText(column.label) }))
+    ];
+  }
+
   function paymentMonthSortValue(record) {
     const year = Number(record.reportYear || 0);
     const monthIndex = PAYMENT_MONTHS.indexOf(record.reportMonth);
@@ -5485,12 +5505,35 @@
     replaceSelectOptions(els.paymentNetwork, "All networks", uniquePaymentValues("network"), state.payments.network);
     replaceSelectOptions(els.paymentRegion, "All regions", uniquePaymentValues("region"), state.payments.region);
     replaceSelectOptions(els.paymentTier, "All tiers", uniquePaymentValues("tier"), state.payments.tier);
-    replaceSelectOptions(els.paymentStatus, "All status", uniquePaymentValues("paymentStatus"), state.payments.status);
+    replaceSelectOptions(els.paymentStatus, "All status", paymentStatusFilterValues(), state.payments.status);
     state.payments.month = els.paymentMonth.value;
     state.payments.network = els.paymentNetwork.value;
     state.payments.region = els.paymentRegion.value;
     state.payments.tier = els.paymentTier.value;
     state.payments.status = els.paymentStatus.value;
+    refreshPaymentSortOptions();
+  }
+
+  function refreshPaymentSortOptions() {
+    if (!els.paymentSort || !els.paymentSortDirection) return;
+    const options = paymentSortOptions();
+    const nextKey = options.some((option) => option.value === state.paymentSort.key) ? state.paymentSort.key : "";
+    const nextDirection = state.paymentSort.direction === "desc" ? "desc" : "asc";
+    state.paymentSort.key = nextKey;
+    state.paymentSort.direction = nextDirection;
+    replaceSelectWithOptions(els.paymentSort, options, nextKey);
+    replaceSelectWithOptions(els.paymentSortDirection, [
+      { value: "asc", label: "Ascending" },
+      { value: "desc", label: "Descending" }
+    ], nextDirection);
+    syncPaymentSortControls();
+  }
+
+  function syncPaymentSortControls() {
+    if (!els.paymentSort || !els.paymentSortDirection) return;
+    els.paymentSort.value = state.paymentSort.key || "";
+    els.paymentSortDirection.value = state.paymentSort.direction || "asc";
+    els.paymentSortDirection.disabled = !state.paymentSort.key;
   }
 
   function syncPaymentControls() {
@@ -5500,6 +5543,7 @@
     els.paymentTier.value = state.payments.tier;
     els.paymentStatus.value = state.payments.status;
     els.paymentSearch.value = state.payments.search;
+    syncPaymentSortControls();
   }
 
   function getFilteredPayments() {
@@ -5563,6 +5607,7 @@
 
   function renderPaymentsPage() {
     const rows = getFilteredPayments();
+    syncPaymentSortControls();
     renderPaymentSummary(rows);
     renderPaymentHead();
     renderPaymentRows(rows);
@@ -7592,6 +7637,15 @@
     els.paymentRegion.addEventListener("change", () => { state.payments.region = els.paymentRegion.value; renderPaymentsPage(); });
     els.paymentTier.addEventListener("change", () => { state.payments.tier = els.paymentTier.value; renderPaymentsPage(); });
     els.paymentStatus.addEventListener("change", () => { state.payments.status = els.paymentStatus.value; renderPaymentsPage(); });
+    els.paymentSort.addEventListener("change", () => {
+      state.paymentSort.key = els.paymentSort.value;
+      state.paymentSort.direction = state.paymentSort.key ? defaultReportSortDirection(state.paymentSort.key) : "asc";
+      renderPaymentsPage();
+    });
+    els.paymentSortDirection.addEventListener("change", () => {
+      state.paymentSort.direction = els.paymentSortDirection.value;
+      renderPaymentsPage();
+    });
     els.paymentSearch.addEventListener("input", () => { state.payments.search = els.paymentSearch.value; renderPaymentsPage(); });
     if (els.paymentHead) els.paymentHead.addEventListener("click", handleReportSortClick);
     els.paymentSync.addEventListener("click", () => refreshLevantaPayments());
@@ -7651,6 +7705,8 @@
       paymentMoney,
       paymentSummaryMoney,
       paymentStatusSummaryItems,
+      paymentStatusFilterValues,
+      paymentSortOptions,
       sortPaymentRowsForTable,
       paymentTableSortValue,
       keywordSearchRequest,

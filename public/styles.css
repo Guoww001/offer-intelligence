@@ -1117,9 +1117,13 @@ body.dashboard-mode .insight-panel {
 
 .payment-filters {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr)) minmax(260px, 1.45fr);
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 12px;
   align-items: end;
+}
+
+.payment-filter-search {
+  grid-column: span 2;
 }
 
 .payment-filters label,
@@ -1146,6 +1150,12 @@ body.dashboard-mode .insight-panel {
   color: var(--ink);
   outline: 0;
   padding: 6px 9px;
+}
+
+.payment-filters select,
+.payment-filters input[type="search"] {
+  min-height: 38px;
+  padding: 8px 10px;
 }
 
 .payment-filters select:focus,
@@ -2883,6 +2893,10 @@ td strong {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .payment-filter-search {
+    grid-column: span 2;
+  }
+
   .tier-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2985,6 +2999,10 @@ td strong {
   .sheet-target-filters,
   .tier-summary {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .payment-filter-search {
+    grid-column: 1 / -1;
   }
 
   .sheet-page .sheet-target-filters,
@@ -3221,6 +3239,10 @@ td strong {
 }
 
 @media (max-width: 360px) {
+  .payment-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .target-mobile-sort-controls,
   .target-matrix-table tr {
     grid-template-columns: minmax(0, 1fr);

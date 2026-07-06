@@ -293,6 +293,11 @@ assertEqual(
   "Paid|Pending|Unpaid|Overdue",
   "payment status summary should keep paid, pending, unpaid, and overdue in one ordered row"
 );
+assertTruthy(!hooks.paymentStatusFilterValues().includes("Overdue"), "payment status filter should not include overdue-only filtering");
+const paymentSortOptionValues = hooks.paymentSortOptions().map((option) => option.value);
+assertEqual(paymentSortOptionValues[0], "", "payment sort filter should start with the default priority option");
+assertTruthy(paymentSortOptionValues.includes("Revenue Made"), "payment sort filter should include revenue sorting");
+assertTruthy(paymentSortOptionValues.includes("Commission Made"), "payment sort filter should include commission sorting");
 assertEqual(hooks.normalizeRegion("amazon.com"), "US", "amazon.com should display as US");
 assertEqual(hooks.normalizeRegion("Amazon.ca"), "Canada", "Amazon.ca should display as Canada");
 assertEqual(hooks.normalizeRegion("amazon.co.uk"), "UK", "amazon.co.uk should display as UK");
