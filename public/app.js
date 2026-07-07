@@ -4745,12 +4745,24 @@
   }
 
   function tierBreakdownText(group) {
+    return tierBreakdownEntries(group)
+      .map(([tier, count]) => `${shortCategoryReportTierLabel(tier)} ${count.toLocaleString()}`)
+      .join(" / ") || "-";
+  }
+
+  function tierBreakdownEntries(group) {
     const breakdown = group.tierBreakdown || {};
     return CATEGORY_REPORT_TIER_OPTIONS
       .map((tier) => [tier, number(breakdown[tier])])
-      .filter(([, count]) => count > 0)
-      .map(([tier, count]) => `${shortCategoryReportTierLabel(tier)} ${count.toLocaleString()}`)
-      .join(" / ") || "-";
+      .filter(([, count]) => count > 0);
+  }
+
+  function tierMixColor(tier) {
+    if (tier === "Tier 1") return "#2f80ff";
+    if (tier === "Tier 2") return "#17b978";
+    if (tier === "Tier 3") return "#f59e0b";
+    if (tier === "Tier 4") return "#ff6b4a";
+    return "#6b7280";
   }
 
   function dashboardCategorySortLabel(key) {
@@ -4765,6 +4777,66 @@
       category: "Category"
     };
     return labels[key] || "Revenue";
+  }
+
+  function categoryPalette(category) {
+    const text = String(category || "").toLowerCase();
+    const palettes = [
+      [/baby|kid|nursery|stroller|children|toddler/, "#ff5aa5", "#fff0f7"],
+      [/electronic|cell phone|camera|audio|video games|computer|software/, "#2563eb", "#edf4ff"],
+      [/beauty|personal care|skin|hair|makeup/, "#a855f7", "#f6edff"],
+      [/home\s*(?:&|and)?\s*kitchen/, "#00a676", "#eafff7"],
+      [/kitchen\s*(?:&|and)?\s*dining|dining|cookware|food/, "#f59e0b", "#fff7e6"],
+      [/home|furniture|bedding|mattress/, "#00a676", "#eafff7"],
+      [/health|household|wellness|medical|vitamin/, "#06b6d4", "#e9fbff"],
+      [/clothing|shoes|jewelry|fashion|apparel/, "#ff6b35", "#fff0ea"],
+      [/patio|lawn|garden|outdoor|sports|camping/, "#84cc16", "#f3ffe7"],
+      [/pet|dog|cat/, "#facc15", "#fff9d8"],
+      [/automotive|motorcycle|car/, "#ef4444", "#fff0f0"],
+      [/tool|improvement|industrial/, "#f97316", "#fff2e8"],
+      [/toy|game|craft|sewing|handmade/, "#ec4899", "#fff0f7"],
+      [/grocery|gourmet/, "#14b8a6", "#ecfffb"],
+      [/office|book|music|instrument/, "#6366f1", "#f0f1ff"]
+    ];
+    const match = palettes.find(([pattern]) => pattern.test(text));
+    if (match) return { color: match[1], tint: match[2] };
+    return { color: "#64748b", tint: "#f1f5f9" };
+  }
+
+  function categoryReportKey(category) {
+    return safeFilePart(category || "uncategorized", "uncategorized");
+  }
+
+  function categoryReportMetricText(metricKey, value) {
+    if (metricKey === "revenue" || metricKey === "avgAov") return shortMoney(value);
+    if (metricKey === "avgCvr") return shortPct(value);
+    if (metricKey === "avgEpc") return shortEpc(value);
+    return number(value).toLocaleString();
+  }
+
+  function categoryReportTooltipText(group, metricKey, metricValue, total) {
+    const share = total ? shortPct(metricValue / total) : "-";
+    return [
+      `${group.category}: ${categoryReportMetricText(metricKey, metricValue)} (${share})`,
+      `${number(group.merchantCount).toLocaleString()} merchants`,
+      `${number(group.orders).toLocaleString()} orders`,
+      `Top: ${group.previewMerchants || group.topMerchant || "-"}`
+    ].join(" | ");
+  }
+
+  function categoryTierMixHtml(group, variant = "") {
+    const entries = tierBreakdownEntries(group);
+    const total = entries.reduce((sum, [, count]) => sum + count, 0);
+    if (!entries.length || !total) return `<span class="category-tier-mix-empty">-</span>`;
+    const className = variant ? ` category-tier-mix-${variant}` : "";
+    return `<div class="category-tier-mix${className}" aria-label="${escapeHtml(tierBreakdownText(group))}">
+      <div class="category-tier-mix-bar" aria-hidden="true">
+        ${entries.map(([tier, count]) => `<span style="width: ${(count / total * 100).toFixed(2)}%; --tier-color: ${tierMixColor(tier)};"></span>`).join("")}
+      </div>
+      <div class="category-tier-mix-labels">
+        ${entries.map(([tier, count]) => `<span style="--tier-color: ${tierMixColor(tier)};"><i aria-hidden="true"></i>${escapeHtml(shortCategoryReportTierLabel(tier))} ${count.toLocaleString()}</span>`).join("")}
+      </div>
+    </div>`;
   }
 
   function dashboardCategoryDefaultSortDirection(key) {
@@ -4782,6 +4854,11 @@
   }
 
   function handleDashboardCategorySortClick(event) {
+    const exportButton = event.target.closest("[data-category-export]");
+    if (exportButton && els.dashboardCategoryReportBody.contains(exportButton)) {
+      downloadFocusedCategoryRows(exportButton);
+      return;
+    }
     const button = event.target.closest("[data-dashboard-category-sort-key]");
     if (!button) return;
     const key = button.dataset.dashboardCategorySortKey || "revenue";
@@ -4836,12 +4913,26 @@
 
   function dashboardCategoryReportTableRows(groups) {
     const maxRevenue = Math.max(...groups.map((group) => number(group.revenue)), 0);
+    const metricKey = dashboardCategoryPieMetricKey();
+    const metricTotal = groups.reduce((sum, group) => sum + number(dashboardCategorySortValue(group, metricKey)), 0);
     return groups.map((group) => {
       const revenuePct = maxRevenue ? Math.max(4, Math.round((number(group.revenue) / maxRevenue) * 100)) : 0;
-      return `<tr>
+      const palette = categoryPalette(group.category);
+      const categoryKey = categoryReportKey(group.category);
+      const metricValue = number(dashboardCategorySortValue(group, metricKey));
+      return `<tr class="dashboard-category-row" data-category-highlight="${escapeHtml(categoryKey)}"
+        data-category-color="${escapeHtml(palette.color)}" data-category-tint="${escapeHtml(palette.tint)}"
+        data-category-title="${escapeHtml(group.category)}" data-category-value="${escapeHtml(categoryReportMetricText(metricKey, metricValue))}"
+        data-category-share="${escapeHtml(metricTotal ? shortPct(metricValue / metricTotal) : "-")}"
+        data-category-merchants="${escapeHtml(number(group.merchantCount).toLocaleString())}"
+        data-category-orders="${escapeHtml(number(group.orders).toLocaleString())}"
+        data-category-top="${escapeHtml(group.previewMerchants || group.topMerchant || "-")}" tabindex="0">
       <td>
-        <strong>${escapeHtml(group.category)}</strong>
-        <span class="category-rank-bar" aria-hidden="true"><span style="width: ${revenuePct}%"></span></span>
+        <strong class="category-name-chip" style="--category-color: ${palette.color}; --category-tint: ${palette.tint};">
+          <span class="category-dot" aria-hidden="true"></span>
+          ${escapeHtml(group.category)}
+        </strong>
+        <span class="category-rank-bar" aria-hidden="true"><span style="width: ${revenuePct}%; --category-color: ${palette.color};"></span></span>
       </td>
       <td>${number(group.merchantCount).toLocaleString()}</td>
       <td>${shortMoney(group.revenue)}</td>
@@ -4851,7 +4942,7 @@
       <td>${shortEpc(group.avgEpc)}</td>
       <td>${shortMoney(group.avgAov)}</td>
       <td>${escapeHtml(group.previewMerchants || group.topMerchant || "-")}</td>
-      <td>${escapeHtml(tierBreakdownText(group))}</td>
+      <td>${categoryTierMixHtml(group)}</td>
     </tr>`;
     }).join("");
   }
@@ -4861,15 +4952,32 @@
     return CATEGORY_REPORT_ADDITIVE_SORTS.has(key) ? key : "revenue";
   }
 
+  function isDashboardCategoryGlobalOverview() {
+    const selected = selectedCategoryReportTierSet();
+    return selected.size === STANDARD_CATEGORY_REPORT_TIERS.length &&
+      STANDARD_CATEGORY_REPORT_TIERS.every((tier) => selected.has(tier));
+  }
+
+  function dashboardCategoryPieSelectionText() {
+    const selected = normalizeCategoryReportTiers(state.categoryReportTiers).map(categoryReportTierLabel);
+    return selected.length ? selected.join(", ") : "No tiers selected";
+  }
+
   function dashboardCategoryPieHtml(groups) {
     const metricKey = dashboardCategoryPieMetricKey();
     const metricLabel = dashboardCategorySortLabel(metricKey);
-    const colors = ["#2f5f9f", "#177b73", "#c27a2c", "#6b7f2a", "#8a5a8c", "#5b7f8e", "#b04f4f", "#7a6b56"];
     const slices = groups
-      .map((group) => ({
-        label: group.category,
-        value: number(dashboardCategorySortValue(group, metricKey))
-      }))
+      .map((group) => {
+        const palette = categoryPalette(group.category);
+        return {
+          group,
+          key: categoryReportKey(group.category),
+          color: palette.color,
+          tint: palette.tint,
+          label: group.category,
+          value: number(dashboardCategorySortValue(group, metricKey))
+        };
+      })
       .filter((slice) => slice.value > 0);
     const total = slices.reduce((sum, slice) => sum + slice.value, 0);
     if (!total) {
@@ -4878,38 +4986,260 @@
       </section>`;
     }
 
-    const topSlices = slices.slice(0, 7);
-    const otherValue = slices.slice(7).reduce((sum, slice) => sum + slice.value, 0);
-    if (otherValue > 0) topSlices.push({ label: "Other categories", value: otherValue });
+    const shouldGroupOverflow = isDashboardCategoryGlobalOverview();
+    const visibleSlices = shouldGroupOverflow ? slices.slice(0, 7) : slices.slice();
+    const overflowSlices = shouldGroupOverflow ? slices.slice(7) : [];
+    const otherValue = overflowSlices.reduce((sum, slice) => sum + slice.value, 0);
+    if (otherValue > 0) {
+      visibleSlices.push({
+        group: {
+          category: "Other selected categories",
+          rows: overflowSlices.flatMap((slice) => slice.group.rows || []),
+          merchantCount: overflowSlices.reduce((sum, slice) => sum + number(slice.group.merchantCount), 0),
+          orders: overflowSlices.reduce((sum, slice) => sum + number(slice.group.orders), 0),
+          previewMerchants: overflowSlices.slice(0, 3).map((slice) => slice.group.topMerchant).filter(Boolean).join(", ")
+        },
+        key: "other-categories",
+        color: "#64748b",
+        tint: "#f1f5f9",
+        label: "Other selected categories",
+        value: otherValue
+      });
+    }
     let current = 0;
-    const gradient = topSlices.map((slice, index) => {
-      const start = current;
-      current += (slice.value / total) * 360;
-      return `${colors[index % colors.length]} ${start.toFixed(2)}deg ${current.toFixed(2)}deg`;
-    }).join(", ");
+    const sliceMarkup = visibleSlices.map((slice) => {
+      const pct = slice.value / total;
+      const dash = pct * 100;
+      const dashOffset = -current;
+      current += dash;
+      const tooltip = categoryReportTooltipText(slice.group, metricKey, slice.value, total);
+      return `<circle class="category-pie-slice" cx="50" cy="50" r="40" pathLength="100"
+        stroke="${slice.color}" stroke-dasharray="${dash.toFixed(4)} ${(100 - dash).toFixed(4)}"
+        stroke-dashoffset="${dashOffset.toFixed(4)}" data-category-highlight="${escapeHtml(slice.key)}"
+        data-category-color="${escapeHtml(slice.color)}" data-category-tint="${escapeHtml(slice.tint)}"
+        data-category-title="${escapeHtml(slice.label)}" data-category-value="${escapeHtml(categoryReportMetricText(metricKey, slice.value))}"
+        data-category-share="${escapeHtml(shortPct(pct))}" data-category-merchants="${escapeHtml(number(slice.group.merchantCount).toLocaleString())}"
+        data-category-orders="${escapeHtml(number(slice.group.orders).toLocaleString())}" data-category-top="${escapeHtml(slice.group.previewMerchants || slice.group.topMerchant || "-")}"
+        data-category-tooltip="${escapeHtml(tooltip)}" tabindex="0" role="button" aria-label="${escapeHtml(tooltip)}">
+        <title>${escapeHtml(tooltip)}</title>
+      </circle>`;
+    }).join("");
+    const leader = visibleSlices[0];
+    const selectionText = dashboardCategoryPieSelectionText();
+    const segmentText = shouldGroupOverflow && otherValue > 0
+      ? `${visibleSlices.length} visible segments from ${groups.length.toLocaleString()} ${selectionText} categories.`
+      : `${visibleSlices.length.toLocaleString()} categories from ${selectionText}.`;
     return `<section class="dashboard-category-pie" aria-label="Category pie chart">
-      <div class="category-pie-visual" style="background: conic-gradient(${gradient});">
-        <div>
+      <div class="category-pie-visual" style="--leader-color: ${leader.color};">
+        <svg class="category-pie-svg" viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(metricLabel)} mix by category">
+          <circle class="category-pie-track" cx="50" cy="50" r="40"></circle>
+          <g transform="rotate(-90 50 50)">${sliceMarkup}</g>
+        </svg>
+        <div class="category-pie-spotlight" data-category-pie-spotlight>
           <strong>${escapeHtml(metricLabel)}</strong>
           <span>${escapeHtml(metricKey === "revenue" ? shortMoney(total) : total.toLocaleString())}</span>
+          <small>${escapeHtml(`${leader.label} leads at ${shortPct(leader.value / total)}`)}</small>
         </div>
+        <div class="category-pie-tooltip" data-category-pie-tooltip hidden></div>
       </div>
       <div class="category-pie-copy">
         <h4>${escapeHtml(metricLabel)} mix by category</h4>
-        <p>Top categories from the current tier selection. Search and tier checkboxes update this chart.</p>
-        <ul class="category-pie-legend">
-          ${topSlices.map((slice, index) => {
+        <p>${escapeHtml(segmentText)}</p>
+        <ul class="category-pie-legend" aria-label="${escapeHtml(metricLabel)} category legend">
+          ${visibleSlices.map((slice) => {
             const pct = total ? slice.value / total : 0;
-            const value = metricKey === "revenue" ? shortMoney(slice.value) : slice.value.toLocaleString();
-            return `<li>
-              <span class="category-pie-swatch" style="background: ${colors[index % colors.length]}"></span>
+            const value = categoryReportMetricText(metricKey, slice.value);
+            return `<li data-category-highlight="${escapeHtml(slice.key)}" tabindex="0" style="--category-color: ${slice.color}; --category-tint: ${slice.tint};"
+              data-category-color="${escapeHtml(slice.color)}" data-category-tint="${escapeHtml(slice.tint)}"
+              data-category-title="${escapeHtml(slice.label)}" data-category-value="${escapeHtml(value)}"
+              data-category-share="${escapeHtml(shortPct(pct))}" data-category-merchants="${escapeHtml(number(slice.group.merchantCount).toLocaleString())}"
+              data-category-orders="${escapeHtml(number(slice.group.orders).toLocaleString())}" data-category-top="${escapeHtml(slice.group.previewMerchants || slice.group.topMerchant || "-")}"
+              data-category-tooltip="${escapeHtml(categoryReportTooltipText(slice.group, metricKey, slice.value, total))}">
+              <span class="category-pie-swatch" aria-hidden="true"></span>
               <strong>${escapeHtml(slice.label)}</strong>
               <span>${escapeHtml(value)} / ${shortPct(pct)}</span>
             </li>`;
           }).join("")}
         </ul>
+        <div class="category-pie-actions" style="--category-color: ${leader.color}; --category-tint: ${leader.tint};">
+          <button class="category-focus-export" type="button" data-category-export="${escapeHtml(leader.key)}" data-category-export-label="${escapeHtml(leader.label)}">Export focused category</button>
+          <span data-category-export-note>${escapeHtml(`${leader.label}: ${(leader.group.rows || []).length.toLocaleString()} rows in selected tiers`)}</span>
+        </div>
       </div>
     </section>`;
+  }
+
+  function dashboardCategoryOptimizationPreviewsHtml(groups) {
+    if (!groups.length) return "";
+    const metricKey = dashboardCategoryPieMetricKey();
+    const metricKeys = ["revenue", "orders", "clicks", "merchantCount"];
+    const leader = groups[0];
+    const leaderPalette = categoryPalette(leader.category);
+    const maxMetric = Math.max(...groups.slice(0, 4).map((group) => number(dashboardCategorySortValue(group, metricKey))), 1);
+    const bars = groups.slice(0, 4).map((group) => {
+      const palette = categoryPalette(group.category);
+      const value = number(dashboardCategorySortValue(group, metricKey));
+      return `<li style="--category-color: ${palette.color}; --category-tint: ${palette.tint};">
+        <span>${escapeHtml(group.category)}</span>
+        <strong>${escapeHtml(categoryReportMetricText(metricKey, value))}</strong>
+        <i aria-hidden="true"><b style="width: ${Math.max(5, value / maxMetric * 100).toFixed(1)}%;"></b></i>
+      </li>`;
+    }).join("");
+    const merchantRows = (leader.rows || []).slice(0, 4).map((row) => `<li>
+      <span>${escapeHtml(tierRowMerchantName(row) || "-")}</span>
+      <strong>${escapeHtml(shortMoney(tierRowRevenue(row)))}</strong>
+    </li>`).join("");
+    return `<section class="category-optimization-previews" aria-label="Category optimization visual examples">
+      <article class="category-idea-card category-idea-card-metrics">
+        <div class="category-idea-heading">
+          <span>01 Metric lens</span>
+          <strong>Switch the chart focus</strong>
+        </div>
+        <div class="category-metric-pills" aria-label="Metric preview controls">
+          ${metricKeys.map((key) => `<button class="${key === metricKey ? "active" : ""}" type="button" data-dashboard-category-sort-key="${escapeHtml(key)}">${escapeHtml(dashboardCategorySortLabel(key))}</button>`).join("")}
+        </div>
+        <ul class="category-preview-bars">${bars}</ul>
+      </article>
+      <article class="category-idea-card category-idea-card-drawer" style="--category-color: ${leaderPalette.color}; --category-tint: ${leaderPalette.tint};">
+        <div class="category-idea-heading">
+          <span>02 Drill-down drawer</span>
+          <strong>${escapeHtml(leader.category)}</strong>
+        </div>
+        <div class="category-drawer-preview">
+          <dl>
+            <div><dt>Revenue</dt><dd>${escapeHtml(shortMoney(leader.revenue))}</dd></div>
+            <div><dt>CVR</dt><dd>${escapeHtml(shortPct(leader.avgCvr))}</dd></div>
+            <div><dt>Orders</dt><dd>${number(leader.orders).toLocaleString()}</dd></div>
+          </dl>
+          <ul>${merchantRows || `<li><span>No merchants</span><strong>-</strong></li>`}</ul>
+        </div>
+      </article>
+      <article class="category-idea-card category-idea-card-tier">
+        <div class="category-idea-heading">
+          <span>03 Tier mix bar</span>
+          <strong>Readable distribution</strong>
+        </div>
+        ${categoryTierMixHtml(leader, "large")}
+        <p>${escapeHtml(`${leader.category} has ${number(leader.rowCount || (leader.rows || []).length).toLocaleString()} sheet rows across the selected tiers.`)}</p>
+      </article>
+    </section>`;
+  }
+
+  function currentDashboardCategoryReportGroups() {
+    return filterDashboardCategoryReportGroups(tierCategorySummaryRows(null, dashboardCategoryReportRows()));
+  }
+
+  function dashboardCategoryGroupForExport(key) {
+    const groups = currentDashboardCategoryReportGroups();
+    if (key === "other-categories") {
+      const metricKey = dashboardCategoryPieMetricKey();
+      const slices = groups
+        .map((group) => ({
+          group,
+          key: categoryReportKey(group.category),
+          value: number(dashboardCategorySortValue(group, metricKey))
+        }))
+        .filter((slice) => slice.value > 0);
+      const rows = slices.slice(7).flatMap((slice) => slice.group.rows || []);
+      return { label: "Other categories", rows };
+    }
+    const group = groups.find((item) => categoryReportKey(item.category) === key);
+    return group ? { label: group.category, rows: group.rows || [] } : { label: "", rows: [] };
+  }
+
+  function updateCategoryExportAction(target) {
+    const body = els.dashboardCategoryReportBody;
+    if (!body || !target) return;
+    const button = body.querySelector("[data-category-export]");
+    const note = body.querySelector("[data-category-export-note]");
+    if (!button) return;
+    const key = target.dataset.categoryHighlight || "";
+    const title = target.dataset.categoryTitle || "";
+    button.dataset.categoryExport = key;
+    button.dataset.categoryExportLabel = title;
+    button.closest(".category-pie-actions")?.style.setProperty("--category-color", target.dataset.categoryColor || "#2f80ff");
+    if (note) note.textContent = `${title}: ${target.dataset.categoryMerchants || "0"} merchants / ${target.dataset.categoryOrders || "0"} orders`;
+  }
+
+  function downloadFocusedCategoryRows(button) {
+    const key = button.dataset.categoryExport || "";
+    const result = dashboardCategoryGroupForExport(key);
+    if (!result.rows.length) return;
+    downloadRowsAsXlsx(result.rows, {
+      downloadType: "sheet",
+      filePrefix: "category_focus",
+      exportScope: result.label,
+      sheetName: `${result.label}`.slice(0, 31),
+      downloadColumns: objectExportColumns(result.rows)
+    });
+  }
+
+  function animateDashboardCategoryRefresh() {
+    if (!els.dashboardCategoryReportBody) return;
+    els.dashboardCategoryReportBody.classList.remove("category-report-refreshing");
+    void els.dashboardCategoryReportBody.offsetWidth;
+    els.dashboardCategoryReportBody.classList.add("category-report-refreshing");
+  }
+
+  function updateCategoryPieSpotlight(target) {
+    const body = els.dashboardCategoryReportBody;
+    if (!body || !target) return;
+    const spotlight = body.querySelector("[data-category-pie-spotlight]");
+    if (!spotlight) return;
+    const color = target.dataset.categoryColor || "#2f80ff";
+    spotlight.style.setProperty("--leader-color", color);
+    spotlight.innerHTML = `<strong>${escapeHtml(target.dataset.categoryTitle || "")}</strong>
+      <span>${escapeHtml(target.dataset.categoryValue || "")}</span>
+      <small>${escapeHtml(`${target.dataset.categoryShare || "-"} / ${target.dataset.categoryMerchants || "0"} merchants`)}</small>`;
+  }
+
+  function setCategoryHighlight(target, event) {
+    const body = els.dashboardCategoryReportBody;
+    if (!body || !target) return;
+    const key = target.dataset.categoryHighlight || "";
+    body.querySelectorAll("[data-category-highlight]").forEach((item) => {
+      item.classList.toggle("category-active", item.dataset.categoryHighlight === key);
+      item.classList.toggle("category-dimmed", item.dataset.categoryHighlight !== key);
+    });
+    updateCategoryPieSpotlight(target);
+    updateCategoryExportAction(target);
+    const tooltip = body.querySelector("[data-category-pie-tooltip]");
+    if (!tooltip) return;
+    tooltip.hidden = false;
+    tooltip.innerHTML = `<strong>${escapeHtml(target.dataset.categoryTitle || "")}</strong>
+      <span>${escapeHtml(`${target.dataset.categoryValue || "-"} / ${target.dataset.categoryShare || "-"}`)}</span>
+      <small>${escapeHtml(`${target.dataset.categoryMerchants || "0"} merchants / ${target.dataset.categoryOrders || "0"} orders`)}</small>
+      <small>${escapeHtml(`Top: ${target.dataset.categoryTop || "-"}`)}</small>`;
+    const rect = body.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const x = event && Number.isFinite(event.clientX) ? event.clientX : targetRect.left + targetRect.width / 2;
+    const y = event && Number.isFinite(event.clientY) ? event.clientY : targetRect.top + targetRect.height / 2;
+    tooltip.style.left = `${Math.min(Math.max(x - rect.left + 14, 12), rect.width - 260)}px`;
+    tooltip.style.top = `${Math.max(y - rect.top - 18, 12)}px`;
+  }
+
+  function clearCategoryHighlight() {
+    const body = els.dashboardCategoryReportBody;
+    if (!body) return;
+    body.querySelectorAll("[data-category-highlight]").forEach((item) => {
+      item.classList.remove("category-active", "category-dimmed");
+    });
+    const tooltip = body.querySelector("[data-category-pie-tooltip]");
+    if (tooltip) tooltip.hidden = true;
+  }
+
+  function handleCategoryPointerMove(event) {
+    const target = event.target.closest("[data-category-highlight]");
+    if (!target || !els.dashboardCategoryReportBody.contains(target)) {
+      clearCategoryHighlight();
+      return;
+    }
+    setCategoryHighlight(target, event);
+  }
+
+  function handleCategoryFocus(event) {
+    const target = event.target.closest("[data-category-highlight]");
+    if (target && els.dashboardCategoryReportBody.contains(target)) setCategoryHighlight(target);
   }
 
   function renderDashboardCategoryReport() {
@@ -4933,6 +5263,8 @@
       <div><dt>${escapeHtml(labelText("Orders"))}</dt><dd>${totalOrders.toLocaleString()}</dd></div>
       <div><dt>${escapeHtml(labelText("CVR"))}</dt><dd>${shortPct(totalClicks ? totalOrders / totalClicks : null)}</dd></div>
     </dl>
+    ${dashboardCategoryPieHtml(groups)}
+    ${dashboardCategoryOptimizationPreviewsHtml(groups)}
     <div class="table-wrap tier-category-table-wrap dashboard-category-table-wrap">
       <table class="sheet-table tier-category-table dashboard-category-report-table">
         <thead>
@@ -4951,8 +5283,8 @@
         </thead>
         <tbody>${groups.length ? dashboardCategoryReportTableRows(groups) : `<tr><td colspan="10">No category rows match the selected tiers or category search.</td></tr>`}</tbody>
       </table>
-    </div>
-    ${dashboardCategoryPieHtml(groups)}`;
+    </div>`;
+    animateDashboardCategoryRefresh();
     syncDashboardCategoryTierControls();
   }
 
@@ -6664,6 +6996,7 @@
       const previewMerchants = sortedRows.slice(0, 3).map(tierRowMerchantName).filter(Boolean).join(", ");
       return {
         category: group.category,
+        rows: sortedRows,
         merchantCount: group.merchantIds.size || group.rows.length,
         rowCount: group.rows.length,
         revenue: group.revenue,
@@ -7592,6 +7925,10 @@
       renderDashboardCategoryReport();
     });
     els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategorySortClick);
+    els.dashboardCategoryReportBody.addEventListener("pointermove", handleCategoryPointerMove);
+    els.dashboardCategoryReportBody.addEventListener("pointerleave", clearCategoryHighlight);
+    els.dashboardCategoryReportBody.addEventListener("focusin", handleCategoryFocus);
+    els.dashboardCategoryReportBody.addEventListener("focusout", clearCategoryHighlight);
     els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.sheetsNav.addEventListener("click", () => {
