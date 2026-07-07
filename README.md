@@ -15,10 +15,23 @@ Internal YeahPromos Amazon offer intelligence dashboard for offer ranking, categ
 - Tier 2 publisher recommendation rules in `public/tier2_recommendation_rules.js`.
 - Tier sheet category-wise reporting and multi-sheet XLSX exports.
 - Levanta payment API helpers in `server.py` and `api/levanta/payments.py`.
+- Read-only Offer DB API helpers in `offer_db.py` and `api/db/`.
 - Data rebuild and regression scripts in `scripts/`.
+- DB migration runbook and reporting contract in `docs/`.
 - GitHub Actions CI in `.github/workflows/ci.yml`.
 
 ## Current Behavior
+
+### Database Migration Path
+
+The dashboard uses a hybrid migration path: MySQL is the server-side source of truth, while the browser keeps loading committed static payloads by default. Browser code must not connect to MySQL directly.
+
+- Reporting views/tables are limited to `oi_*` objects.
+- Static snapshots can be built with `scripts/build_db_static_snapshot.py`.
+- Freshness and coverage checks live in `scripts/validate_db_migration.py`.
+- Server-only endpoints are available at `/api/db/status`, `/api/db/merchant`, and `/api/db/search`.
+- All DB endpoints require `OFFER_DB_API_TOKEN`.
+- Full setup details are in `docs/offer-db-migration.md`.
 
 ### Category Logic
 
@@ -46,6 +59,7 @@ Each tier page (`Tier 1`, `Tier 2`, `Tier 3`, `Tier 4`, and `BLACK TIER`) render
 - Tier XLSX downloads include the selected tier sheet plus a `Category Summary` sheet.
 - Tier XLSX downloads also include an `Offer List` sheet with `Merchant ID`, `Merchant Name`, `Category`, and `Avg Commission Rate`.
 - `Avg Commission Rate` is rounded up to a whole percentage for export.
+- Tier row colors prefer `visualStatusColor` fields when present, then fall back to legacy tier rules.
 
 ### Dashboard Category Report
 
@@ -143,6 +157,7 @@ macOS/Linux:
 export LEVANTA_API_KEY="your_levanta_api_key"
 export TIER_MOVES_WEBHOOK_URL="your_apps_script_web_app_url"
 export TIER_MOVES_WEBHOOK_SECRET="your_shared_secret"
+export OFFER_DB_API_TOKEN="your_internal_db_api_token"
 python3 server.py
 ```
 
@@ -152,6 +167,7 @@ Windows PowerShell:
 $env:LEVANTA_API_KEY="your_levanta_api_key"
 $env:TIER_MOVES_WEBHOOK_URL="your_apps_script_web_app_url"
 $env:TIER_MOVES_WEBHOOK_SECRET="your_shared_secret"
+$env:OFFER_DB_API_TOKEN="your_internal_db_api_token"
 python server.py
 ```
 
@@ -162,6 +178,7 @@ http://127.0.0.1:8765
 ```
 
 The frontend can load from saved data without the Levanta key, but live payment sync requires `LEVANTA_API_KEY`.
+DB APIs also require the `OFFER_DB_*` connection variables and `OFFER_DB_API_TOKEN`.
 
 ## Data Rebuild Scripts
 
@@ -170,6 +187,13 @@ The repository is a Python-served static frontend, not a Node app. The generated
 ```bash
 python scripts/build_sheet_report_data.py
 ruby scripts/build_offer_chatbot_data.rb
+```
+
+DB-backed snapshot and migration validation:
+
+```bash
+python scripts/validate_db_migration.py --output output/db_migration_status.json
+python scripts/build_db_static_snapshot.py --chatbot-output output/db_static_snapshot/chatbot_data.js
 ```
 
 Product-name keyword data for Tier 1-3 offers is generated from the brand/ASIN workbook into `data/product_name_keywords_t1_t3.csv` and `public/product_keywords.js`.
@@ -204,10 +228,14 @@ node --check public/tier2_recommendation_rules.js
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_tier2_recommendation_rules.mjs
 node scripts/test_sheet_categories.mjs
+node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
+python -m py_compile offer_db.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
 ```
 
 ## Security
 
-Do not commit `.env`, API keys, logs, or PID files. The server reads the Levanta key from the environment only.
+Do not commit `.env`, API keys, database passwords, logs, or PID files. Server secrets must stay in deployment environment variables only.
+
+The production DB user for this app should be read-only and limited to `SELECT` on `oi_*` objects. Do not expose or migrate user, site, bank, login-log, payment-callback, link-tracking, or raw network integration tables into browser payloads or API responses.

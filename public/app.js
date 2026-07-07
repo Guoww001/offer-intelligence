@@ -6,6 +6,10 @@
   const chatbotI18n = window.CHATBOT_I18N || {};
   const tier2Rules = window.TIER2_RECOMMENDATION_RULES || {};
   const TIER_MOVE_OPTIONS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
+  const TIER_VISUAL_STATUS_COLOR_KEYS = ["visualStatusColor", "visual_status_color", "Visual Status Color", "Visual Status"];
+  const TIER_VISUAL_STATUS_CODE_KEYS = ["visualStatusCode", "visual_status_code", "Visual Status Code", "Reason Code"];
+  const TIER_VISUAL_STATUS_REASON_KEYS = ["visualStatusReason", "visual_status_reason", "Visual Status Reason", "Reason Text"];
+  const TIER_VISUAL_STATUS_SOURCE_KEYS = ["visualStatusSource", "visual_status_source", "Visual Status Source", "Source"];
   const TIER_OVERRIDE_KEY = "offerTierOverrides";
   const TIER_COLUMN_KEY = "offerTierVisibleColumns";
   const offersByMerchantId = new Map();
@@ -6512,6 +6516,73 @@
     return "";
   }
 
+  function normalizeVisualStatusColor(value) {
+    const text = String(value || "").trim().toLowerCase();
+    if (!text) return null;
+    if (["green", "yellow", "red"].includes(text)) return text;
+    if (["none", "neutral", "no color", "no-color", "clear"].includes(text)) return "";
+    return null;
+  }
+
+  function firstPresentRowValue(row, keys) {
+    if (!row) return "";
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(row, key) && row[key] != null && String(row[key]).trim() !== "") {
+        return row[key];
+      }
+    }
+    return "";
+  }
+
+  function explicitVisualStatusColor(row) {
+    if (!row) return null;
+    const nestedColor = row.visualStatus && typeof row.visualStatus === "object" ? row.visualStatus.color : "";
+    const color = normalizeVisualStatusColor(nestedColor || firstPresentRowValue(row, TIER_VISUAL_STATUS_COLOR_KEYS));
+    return color;
+  }
+
+  function tierRowRuleHighlightKind(sheet, row) {
+    if (!sheet) return "";
+    const reason = tierReasonText(row).toLowerCase();
+    const rank = parseSheetNumber(row["Original Rank"]);
+    if (sheet.name === "Tier 1") {
+      return rank >= 40 ? "green" : "";
+    }
+    if (sheet.name === "Tier 2") {
+      return tier2PhaseKind(sheet, row);
+    }
+    if (sheet.name === "Tier 3") {
+      if (/new june raw offer with orders|moved from tier 4/.test(reason)) return "green";
+      if (/moved from tier 2|declined|declining/.test(reason)) return "red";
+      return "";
+    }
+    if (sheet.name === "Tier 4") {
+      if (/new june raw offer/.test(reason)) return "green";
+      if (/moved to tier 4|moved\/kept in tier 4|0 orders|no june .*raw data/.test(reason)) return "red";
+      return "";
+    }
+    return "";
+  }
+
+  function visualStatusForTierRow(sheet, row) {
+    const explicitColor = explicitVisualStatusColor(row);
+    if (explicitColor !== null) {
+      return {
+        color: explicitColor,
+        code: firstPresentRowValue(row, TIER_VISUAL_STATUS_CODE_KEYS),
+        reason: firstPresentRowValue(row, TIER_VISUAL_STATUS_REASON_KEYS),
+        source: firstPresentRowValue(row, TIER_VISUAL_STATUS_SOURCE_KEYS) || "manual"
+      };
+    }
+    const color = tierRowRuleHighlightKind(sheet, row);
+    return {
+      color,
+      code: color ? `legacy_${sheet.name.toLowerCase().replace(/\s+/g, "_")}` : "",
+      reason: tierReasonText(row),
+      source: color ? "rule" : ""
+    };
+  }
+
   function displayHeadersForSheet(sheet, headers) {
     if (!sheet || !(sheetReport.tierSheets || []).includes(sheet.name)) return headers || [];
     if (sheet.name !== "Tier 1") return headers || [];
@@ -6617,7 +6688,14 @@
       else if (header === "COUNTRY" || header === "Country") row[header] = offer.country || "";
       else if (header === "Tier Reason" || header === "Reason") row[header] = `${t("move.movedFrom", "Moved from")} ${optionText(offer.originalTier || "Unknown")}`;
       else if (header === "Recommendation") row[header] = offer.recommendation || recommendedAction(offer);
+      else if (header === "Visual Status Color") row[header] = offer.visualStatusColor || "";
+      else if (header === "Visual Status Code") row[header] = offer.visualStatusCode || "";
+      else if (header === "Visual Status Reason") row[header] = offer.visualStatusReason || "";
+      else if (header === "Visual Status Source") row[header] = offer.visualStatusSource || "";
       else row[header] = offer[header] || "";
+    });
+    ["visualStatusColor", "visualStatusCode", "visualStatusReason", "visualStatusSource"].forEach((key) => {
+      if (offer[key] !== undefined) row[key] = offer[key];
     });
     return row;
   }
@@ -6652,26 +6730,7 @@
   }
 
   function tierRowHighlightKind(sheet, row) {
-    if (!sheet) return "";
-    const reason = tierReasonText(row).toLowerCase();
-    const rank = parseSheetNumber(row["Original Rank"]);
-    if (sheet.name === "Tier 1") {
-      return rank >= 40 ? "green" : "";
-    }
-    if (sheet.name === "Tier 2") {
-      return tier2PhaseKind(sheet, row);
-    }
-    if (sheet.name === "Tier 3") {
-      if (/new june raw offer with orders|moved from tier 4/.test(reason)) return "green";
-      if (/moved from tier 2|declined|declining/.test(reason)) return "red";
-      return "";
-    }
-    if (sheet.name === "Tier 4") {
-      if (/new june raw offer/.test(reason)) return "green";
-      if (/moved to tier 4|moved\/kept in tier 4|0 orders|no june .*raw data/.test(reason)) return "red";
-      return "";
-    }
-    return "";
+    return visualStatusForTierRow(sheet, row).color || "";
   }
 
   function tierRowClass(sheet, row) {
@@ -6682,6 +6741,11 @@
 
   function sheetCellHtml(sheet, row, header) {
     const value = formatSheetCell(header, row[header]);
+    if (header === "Visual Status Color" || header === "visualStatusColor") {
+      const color = normalizeVisualStatusColor(value);
+      if (!color || !value) return escapeHtml(value);
+      return `<span class="phase-pill phase-${escapeHtml(color)}">${escapeHtml(value)}</span>`;
+    }
     const kind = header === "Phase" ? tier2PhaseKind(sheet, row) : "";
     if (!kind || !value) return escapeHtml(value);
     return `<span class="phase-pill phase-${escapeHtml(kind)}">${escapeHtml(value)}</span>`;
@@ -8112,7 +8176,9 @@
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       displayCategory,
       dashboardCategoryGroups,
-      tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName))
+      tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName)),
+      tierRowHighlightKind: (sheetName, row) => tierRowHighlightKind(sheetByName(sheetName) || { name: sheetName }, row || {}),
+      visualStatusForTierRow: (sheetName, row) => visualStatusForTierRow(sheetByName(sheetName) || { name: sheetName }, row || {})
     };
   } else {
     init();

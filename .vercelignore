@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.vercel
+.git
+output
+outputs
+work
+*.log
+*.pid
+__pycache__
+*.pyc
+*.pyo
+*.xlsx
+*.xls
+*.csv
+*.tsv
