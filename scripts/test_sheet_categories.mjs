@@ -30,6 +30,14 @@ for (const [tier, expectedIndex] of Object.entries(categoryColumnByTier)) {
   assertEqual(sheet.headers.indexOf("Category") + 1, expectedIndex, `${tier} Category column`);
 }
 
+const tier1Sheet = sheetReportData.sheets.find((entry) => entry.name === "Tier 1");
+const tier1DirectNetworkRows = tier1Sheet.rows.filter((row) => row.Agency === "Direct" && row.Network === "Direct");
+assertEqual(tier1DirectNetworkRows.length, 0, "Tier 1 Direct-agency rows with Direct network");
+const tier1DirectSample = tier1Sheet.rows.find((row) => row["Merchant ID"] === "362178" && row["Merchant Name"] === "Hcalory");
+if (!tier1DirectSample) throw new Error("Tier 1 Hcalory sample row is missing");
+assertEqual(tier1DirectSample.Agency, "Direct", "Tier 1 Hcalory Agency should remain Direct");
+assertEqual(tier1DirectSample.Network, "Amazon", "Tier 1 Hcalory Network should be Amazon");
+
 const expectedOfferCategories = [
   ["Tier 1", "362653", "Shokz Official", "Electronics"],
   ["Tier 2", "369227", "True Classic", "Clothing, Shoes & Jewelry"],
