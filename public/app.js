@@ -4782,24 +4782,25 @@
   function categoryPalette(category) {
     const text = String(category || "").toLowerCase();
     const palettes = [
-      [/baby|kid|nursery|stroller|children|toddler/, "#ff7ab6", "#fff0f7"],
-      [/electronic|cell phone|camera|audio|video games|computer|software/, "#2f80ff", "#edf5ff"],
-      [/beauty|personal care|skin|hair|makeup/, "#d85adf", "#fbecff"],
-      [/home|kitchen|furniture|bedding|mattress/, "#17b978", "#ecfff7"],
-      [/kitchen|dining|cookware|food/, "#f59e0b", "#fff7e6"],
-      [/health|household|wellness|medical|vitamin/, "#10b8a6", "#ebfffb"],
-      [/clothing|shoes|jewelry|fashion|apparel/, "#ff6b4a", "#fff0ec"],
-      [/patio|lawn|garden|outdoor|sports|camping/, "#67b32e", "#f2ffe9"],
-      [/pet|dog|cat/, "#f7c948", "#fff8d8"],
+      [/baby|kid|nursery|stroller|children|toddler/, "#ff5aa5", "#fff0f7"],
+      [/electronic|cell phone|camera|audio|video games|computer|software/, "#2563eb", "#edf4ff"],
+      [/beauty|personal care|skin|hair|makeup/, "#a855f7", "#f6edff"],
+      [/home\s*(?:&|and)?\s*kitchen/, "#00a676", "#eafff7"],
+      [/kitchen\s*(?:&|and)?\s*dining|dining|cookware|food/, "#f59e0b", "#fff7e6"],
+      [/home|furniture|bedding|mattress/, "#00a676", "#eafff7"],
+      [/health|household|wellness|medical|vitamin/, "#06b6d4", "#e9fbff"],
+      [/clothing|shoes|jewelry|fashion|apparel/, "#ff6b35", "#fff0ea"],
+      [/patio|lawn|garden|outdoor|sports|camping/, "#84cc16", "#f3ffe7"],
+      [/pet|dog|cat/, "#facc15", "#fff9d8"],
       [/automotive|motorcycle|car/, "#ef4444", "#fff0f0"],
-      [/tool|improvement|industrial/, "#fb923c", "#fff3e8"],
-      [/toy|game|craft|sewing|handmade/, "#9b5cf6", "#f5efff"],
-      [/grocery|gourmet|food/, "#22c55e", "#effff4"],
-      [/office|book|music|instrument/, "#38bdf8", "#ebfaff"]
+      [/tool|improvement|industrial/, "#f97316", "#fff2e8"],
+      [/toy|game|craft|sewing|handmade/, "#ec4899", "#fff0f7"],
+      [/grocery|gourmet/, "#14b8a6", "#ecfffb"],
+      [/office|book|music|instrument/, "#6366f1", "#f0f1ff"]
     ];
     const match = palettes.find(([pattern]) => pattern.test(text));
     if (match) return { color: match[1], tint: match[2] };
-    return { color: "#8b7e66", tint: "#f6f1e8" };
+    return { color: "#64748b", tint: "#f1f5f9" };
   }
 
   function categoryReportKey(category) {
@@ -4986,8 +4987,8 @@
           previewMerchants: slices.slice(7, 10).map((slice) => slice.group.topMerchant).filter(Boolean).join(", ")
         },
         key: "other-categories",
-        color: "#8b7e66",
-        tint: "#f6f1e8",
+        color: "#64748b",
+        tint: "#f1f5f9",
         label: "Other categories",
         value: otherValue
       });
