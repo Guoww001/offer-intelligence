@@ -4952,6 +4952,17 @@
     return CATEGORY_REPORT_ADDITIVE_SORTS.has(key) ? key : "revenue";
   }
 
+  function isDashboardCategoryGlobalOverview() {
+    const selected = selectedCategoryReportTierSet();
+    return selected.size === STANDARD_CATEGORY_REPORT_TIERS.length &&
+      STANDARD_CATEGORY_REPORT_TIERS.every((tier) => selected.has(tier));
+  }
+
+  function dashboardCategoryPieSelectionText() {
+    const selected = normalizeCategoryReportTiers(state.categoryReportTiers).map(categoryReportTierLabel);
+    return selected.length ? selected.join(", ") : "No tiers selected";
+  }
+
   function dashboardCategoryPieHtml(groups) {
     const metricKey = dashboardCategoryPieMetricKey();
     const metricLabel = dashboardCategorySortLabel(metricKey);
@@ -4975,26 +4986,28 @@
       </section>`;
     }
 
-    const topSlices = slices.slice(0, 7);
-    const otherValue = slices.slice(7).reduce((sum, slice) => sum + slice.value, 0);
+    const shouldGroupOverflow = isDashboardCategoryGlobalOverview();
+    const visibleSlices = shouldGroupOverflow ? slices.slice(0, 7) : slices.slice();
+    const overflowSlices = shouldGroupOverflow ? slices.slice(7) : [];
+    const otherValue = overflowSlices.reduce((sum, slice) => sum + slice.value, 0);
     if (otherValue > 0) {
-      topSlices.push({
+      visibleSlices.push({
         group: {
-          category: "Other categories",
-          rows: slices.slice(7).flatMap((slice) => slice.group.rows || []),
-          merchantCount: slices.slice(7).reduce((sum, slice) => sum + number(slice.group.merchantCount), 0),
-          orders: slices.slice(7).reduce((sum, slice) => sum + number(slice.group.orders), 0),
-          previewMerchants: slices.slice(7, 10).map((slice) => slice.group.topMerchant).filter(Boolean).join(", ")
+          category: "Other selected categories",
+          rows: overflowSlices.flatMap((slice) => slice.group.rows || []),
+          merchantCount: overflowSlices.reduce((sum, slice) => sum + number(slice.group.merchantCount), 0),
+          orders: overflowSlices.reduce((sum, slice) => sum + number(slice.group.orders), 0),
+          previewMerchants: overflowSlices.slice(0, 3).map((slice) => slice.group.topMerchant).filter(Boolean).join(", ")
         },
         key: "other-categories",
         color: "#64748b",
         tint: "#f1f5f9",
-        label: "Other categories",
+        label: "Other selected categories",
         value: otherValue
       });
     }
     let current = 0;
-    const sliceMarkup = topSlices.map((slice) => {
+    const sliceMarkup = visibleSlices.map((slice) => {
       const pct = slice.value / total;
       const dash = pct * 100;
       const dashOffset = -current;
@@ -5011,7 +5024,11 @@
         <title>${escapeHtml(tooltip)}</title>
       </circle>`;
     }).join("");
-    const leader = topSlices[0];
+    const leader = visibleSlices[0];
+    const selectionText = dashboardCategoryPieSelectionText();
+    const segmentText = shouldGroupOverflow && otherValue > 0
+      ? `${visibleSlices.length} visible segments from ${groups.length.toLocaleString()} ${selectionText} categories.`
+      : `${visibleSlices.length.toLocaleString()} categories from ${selectionText}.`;
     return `<section class="dashboard-category-pie" aria-label="Category pie chart">
       <div class="category-pie-visual" style="--leader-color: ${leader.color};">
         <svg class="category-pie-svg" viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(metricLabel)} mix by category">
@@ -5027,9 +5044,9 @@
       </div>
       <div class="category-pie-copy">
         <h4>${escapeHtml(metricLabel)} mix by category</h4>
-        <p>${escapeHtml(`${topSlices.length} visible segments from ${groups.length.toLocaleString()} matching categories.`)}</p>
+        <p>${escapeHtml(segmentText)}</p>
         <ul class="category-pie-legend" aria-label="${escapeHtml(metricLabel)} category legend">
-          ${topSlices.map((slice) => {
+          ${visibleSlices.map((slice) => {
             const pct = total ? slice.value / total : 0;
             const value = categoryReportMetricText(metricKey, slice.value);
             return `<li data-category-highlight="${escapeHtml(slice.key)}" tabindex="0" style="--category-color: ${slice.color}; --category-tint: ${slice.tint};"
