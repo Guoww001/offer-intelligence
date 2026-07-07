@@ -88,6 +88,90 @@ def tier_rank(tier)
   { "Tier 1" => 1, "Tier 2" => 2, "Tier 3" => 3, "Tier 4" => 4, "BLACK TIER" => 9 }.fetch(tier, 8)
 end
 
+def first_present_hash(hash, keys)
+  keys.each do |key|
+    value = hash[key]
+    text = value.to_s.strip
+    return text unless text.empty?
+  end
+  nil
+end
+
+def normalize_visual_status_color(value)
+  text = value.to_s.strip.downcase
+  return nil if text.empty?
+  return text if %w[green yellow red].include?(text)
+  return "none" if ["none", "neutral", "no color", "no-color", "clear"].include?(text)
+
+  nil
+end
+
+def tier_visual_status(tier, row, sheet_block)
+  manual_color = normalize_visual_status_color(
+    first_present_hash(sheet_block, ["Visual Status Color", "visualStatusColor", "Visual Status"]) ||
+      first_present_hash(row, ["visual_status_color", "visualStatusColor", "Visual Status Color"])
+  )
+  if manual_color
+    return {
+      "visualStatusColor" => manual_color,
+      "visualStatusCode" => first_present_hash(sheet_block, ["Visual Status Code", "Reason Code"]) || "manual_override",
+      "visualStatusReason" => first_present_hash(sheet_block, ["Visual Status Reason", "Reason Text"]),
+      "visualStatusSource" => "manual"
+    }
+  end
+
+  reason = (
+    first_present_hash(row, ["tier_reason_or_black_reason", "reason", "recommendation"]) ||
+    first_present_hash(sheet_block, ["Tier Reason", "Reason", "Recommendation"]) ||
+    ""
+  ).downcase
+  phase = first_present_hash(sheet_block, ["Phase"]).to_s.downcase
+  rank = (num(row["original_rank"]) || num(sheet_block["Original Rank"]) || 0).to_f
+  color = "none"
+  code = "no_rule_match"
+
+  if tier == "Tier 1" && rank >= 40
+    color = "green"
+    code = "tier1_rank_40_plus"
+  elsif tier == "Tier 2"
+    if phase.include?("growing")
+      color = "green"
+      code = "tier2_phase_growing"
+    elsif phase.include?("stable")
+      color = "yellow"
+      code = "tier2_phase_stable"
+    elsif phase.include?("declining")
+      color = "red"
+      code = "tier2_phase_declining"
+    end
+  elsif tier == "Tier 3"
+    if reason.match?(/new june raw offer with orders|moved from tier 4/)
+      color = "green"
+      code = "tier3_new_or_recovered"
+    elsif reason.match?(/moved from tier 2|declined|declining/)
+      color = "red"
+      code = "tier3_declining"
+    end
+  elsif tier == "Tier 4"
+    if reason.match?(/new june raw offer/)
+      color = "green"
+      code = "tier4_new_raw_offer"
+    elsif reason.match?(/moved to tier 4|moved\/kept in tier 4|0 orders|no june .*raw data/)
+      color = "red"
+      code = "tier4_zero_or_missing_orders"
+    end
+  end
+
+  {
+    "visualStatusColor" => color,
+    "visualStatusCode" => code,
+    "visualStatusReason" => first_present_hash(sheet_block, ["Visual Status Reason", "Reason Text"]) ||
+      first_present_hash(row, ["tier_reason_or_black_reason", "reason", "recommendation"]) ||
+      first_present_hash(sheet_block, ["Tier Reason", "Reason", "Recommendation"]),
+    "visualStatusSource" => "rule"
+  }
+end
+
 def best_payment_offer(candidates)
   candidates.compact.min_by do |offer|
     [tier_rank(offer["tier"]), -num(offer["salesAmount"]).to_f, offer["brand"].to_s]
@@ -465,6 +549,7 @@ offers = CSV.read(brand_csv, headers: true).map do |row|
   publisher_count = clean_text(sheet_block["Publisher Count"])
   publisher_count_june = clean_text(sheet_block["Publisher Count June"])
   best_sub_category_bsr = clean_text(row["best_sub_category_bsr"]) || clean_text(sheet_block["Best Sub Category BSR"])
+  visual_status = tier_visual_status(row["tier"], row, sheet_block)
 
   payment_state =
     if paid
@@ -538,6 +623,10 @@ offers = CSV.read(brand_csv, headers: true).map do |row|
     "completionRate" => round(num(row["completion_rate"]) || num(sheet_block["Completion Rate"]), 6),
     "timeline" => clean_text(row["timeline"]),
     "phase" => phase,
+    "visualStatusColor" => visual_status["visualStatusColor"],
+    "visualStatusCode" => visual_status["visualStatusCode"],
+    "visualStatusReason" => visual_status["visualStatusReason"],
+    "visualStatusSource" => visual_status["visualStatusSource"],
     "paymentCycle" => payment_cycle,
     "paymentCycleSource" => payment_cycle_source,
     "publisherCount" => publisher_count,

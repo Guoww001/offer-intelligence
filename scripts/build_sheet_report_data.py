@@ -62,6 +62,91 @@ def numeric_value(cell):
     return None
 
 
+def parse_number(value):
+    text = str(value or "").strip().replace("$", "").replace(",", "").replace("%", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def first_present(row, keys):
+    for key in keys:
+        value = row.get(key)
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    return ""
+
+
+def normalize_visual_status_color(value):
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text in {"green", "yellow", "red"}:
+        return text
+    if text in {"none", "neutral", "no color", "no-color", "clear"}:
+        return "none"
+    return None
+
+
+def tier_reason_text(row):
+    return first_present(row, ["Tier Reason", "Reason", "Recommendation"]).lower()
+
+
+def tier_visual_status(sheet_name, row):
+    manual_color = normalize_visual_status_color(first_present(row, ["Visual Status Color", "visualStatusColor", "Visual Status"]))
+    if manual_color is not None:
+        return {
+            "visualStatusColor": manual_color,
+            "visualStatusCode": first_present(row, ["Visual Status Code", "Reason Code"]) or "manual_override",
+            "visualStatusReason": first_present(row, ["Visual Status Reason", "Reason Text"]),
+            "visualStatusSource": "manual",
+        }
+
+    reason = tier_reason_text(row)
+    rank = parse_number(row.get("Original Rank")) or 0
+    phase = str(row.get("Phase") or "").strip().lower()
+    color = "none"
+    code = "no_rule_match"
+
+    if sheet_name == "Tier 1" and rank >= 40:
+        color = "green"
+        code = "tier1_rank_40_plus"
+    elif sheet_name == "Tier 2":
+        if "growing" in phase:
+            color = "green"
+            code = "tier2_phase_growing"
+        elif "stable" in phase:
+            color = "yellow"
+            code = "tier2_phase_stable"
+        elif "declining" in phase:
+            color = "red"
+            code = "tier2_phase_declining"
+    elif sheet_name == "Tier 3":
+        if re.search(r"new june raw offer with orders|moved from tier 4", reason):
+            color = "green"
+            code = "tier3_new_or_recovered"
+        elif re.search(r"moved from tier 2|declined|declining", reason):
+            color = "red"
+            code = "tier3_declining"
+    elif sheet_name == "Tier 4":
+        if re.search(r"new june raw offer", reason):
+            color = "green"
+            code = "tier4_new_raw_offer"
+        elif re.search(r"moved to tier 4|moved/kept in tier 4|0 orders|no june .*raw data", reason):
+            color = "red"
+            code = "tier4_zero_or_missing_orders"
+
+    return {
+        "visualStatusColor": color,
+        "visualStatusCode": code,
+        "visualStatusReason": first_present(row, ["Visual Status Reason", "Reason Text"]) or first_present(row, ["Tier Reason", "Reason", "Recommendation"]),
+        "visualStatusSource": "rule",
+    }
+
+
 def trim_matrix(rows):
     while rows and all(is_empty(value) for value in rows[-1]):
         rows.pop()
@@ -166,6 +251,9 @@ def parse_sheet(ws):
         if all(is_empty(value) for value in values):
             continue
         table_rows.append(row_to_dict(headers, values))
+    if ws.title in TIER_SHEETS:
+        for row in table_rows:
+            row.update(tier_visual_status(ws.title, row))
 
     return {
         "name": ws.title,
