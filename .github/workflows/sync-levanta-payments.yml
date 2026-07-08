@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PAYMENT_SYNC_SOURCE_URL: ${{ vars.PAYMENT_SYNC_SOURCE_URL }}
+      PAYMENT_SYNC_TOKEN: ${{ secrets.PAYMENT_SYNC_TOKEN }}
 
     steps:
       - name: Check out repository

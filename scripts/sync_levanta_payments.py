@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
@@ -64,26 +64,37 @@ def source_url_with_window(source_url: str, start: str = "", end: str = "") -> s
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def fetch_payment_records_from_source(source_url: str, start: str, end: str) -> tuple[list[dict], str]:
+def fetch_payment_records_from_source(source_url: str, start: str, end: str, source_token: str = "") -> tuple[list[dict], str]:
     url = source_url_with_window(source_url, start, end)
-    request = Request(
-        url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "YeahPromos-Offer-Intelligence-PaymentSync/1.0",
-        },
-    )
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "YeahPromos-Offer-Intelligence-PaymentSync/1.0",
+    }
+    if source_token:
+        headers["Authorization"] = f"Bearer {source_token}"
+    request = Request(url, headers=headers)
     last_error = ""
+    payload = None
     for attempt in range(3):
         try:
             with urlopen(request, timeout=240) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             break
+        except HTTPError as error:
+            body = error.read().decode("utf-8", "replace")[:500]
+            last_error = f"HTTP {error.code} {error.reason}: {body}"
+            if error.code in {408, 429} or error.code >= 500:
+                if attempt < 2:
+                    time.sleep(1 + attempt)
+                    continue
+            break
         except (URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
             last_error = str(error)
             if attempt < 2:
                 time.sleep(1 + attempt)
-    else:
+                continue
+            break
+    if payload is None:
         raise ValueError(f"Payment source request failed after retries: {last_error}")
     if not payload.get("ok"):
         raise ValueError(f"Payment source returned an error: {payload.get('error') or payload}")
@@ -170,6 +181,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PAYMENT_SYNC_SOURCE_URL", ""),
         help="Optional Vercel payment API URL. When set, GitHub pulls records from Vercel instead of reading LEVANTA_API_KEY.",
     )
+    parser.add_argument(
+        "--source-token",
+        default=os.environ.get("PAYMENT_SYNC_TOKEN", "") or os.environ.get("OI_PAYMENT_SYNC_TOKEN", ""),
+        help="Optional bearer token for protected payment source URLs.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Fetch and validate without writing chatbot_data.js.")
     return parser.parse_args()
 
@@ -190,7 +206,12 @@ def main() -> int:
     source_url = str(args.source_url or "").strip()
     checked_at = ""
     if source_url:
-        raw_records, checked_at = fetch_payment_records_from_source(source_url, args.start, args.end)
+        raw_records, checked_at = fetch_payment_records_from_source(
+            source_url,
+            args.start,
+            args.end,
+            str(args.source_token or "").strip(),
+        )
         raw_records = [reconcile_source_payment_record(record) for record in raw_records]
     else:
         api_key = os.environ.get("LEVANTA_API_KEY", "").strip()

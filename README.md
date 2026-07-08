@@ -59,6 +59,8 @@ python scripts/hash_auth_password.py
 
 The login protects `/api/levanta/payments`, `/api/tier_moves`, `/api/ui/db/*`, and the browser payload endpoint `/api/auth/data`. The generated payload files stay outside `public/` so direct static downloads do not bypass the login screen.
 
+Scheduled payment syncs can call the protected `/api/levanta/payments` endpoint without a browser session by setting the same `PAYMENT_SYNC_TOKEN` in Vercel and as a GitHub Actions repository secret. The sync script sends it as a bearer token when `PAYMENT_SYNC_SOURCE_URL` is configured.
+
 ### Category Logic
 
 Main category logic is based on the Google Sheet `Category` value when it is present.
@@ -188,6 +190,7 @@ export OI_AUTH_ENABLED=1
 export OI_ADMIN_USERNAME="admin"
 export OI_ADMIN_PASSWORD_HASH="your_pbkdf2_sha256_hash"
 export OI_SESSION_SECRET="your_random_session_secret"
+export PAYMENT_SYNC_TOKEN="your_random_payment_sync_token"
 python3 server.py
 ```
 
@@ -202,6 +205,7 @@ $env:OI_AUTH_ENABLED="1"
 $env:OI_ADMIN_USERNAME="admin"
 $env:OI_ADMIN_PASSWORD_HASH="your_pbkdf2_sha256_hash"
 $env:OI_SESSION_SECRET="your_random_session_secret"
+$env:PAYMENT_SYNC_TOKEN="your_random_payment_sync_token"
 python server.py
 ```
 
@@ -274,6 +278,6 @@ python -m py_compile auth.py browser_payloads.py protected_payloads.py server.py
 
 Do not commit `.env`, API keys, database passwords, logs, or PID files. Server secrets must stay in deployment environment variables only.
 
-Do not commit `OI_ADMIN_PASSWORD`, `OI_ADMIN_PASSWORD_HASH`, or `OI_SESSION_SECRET` outside deployment configuration. Prefer `OI_ADMIN_PASSWORD_HASH` over plaintext `OI_ADMIN_PASSWORD`.
+Do not commit `OI_ADMIN_PASSWORD`, `OI_ADMIN_PASSWORD_HASH`, `OI_SESSION_SECRET`, or `PAYMENT_SYNC_TOKEN` outside deployment configuration. Prefer `OI_ADMIN_PASSWORD_HASH` over plaintext `OI_ADMIN_PASSWORD`.
 
 The production DB user for this app should be read-only and limited to `SELECT` on `oi_*` objects. Do not expose or migrate user, site, bank, login-log, payment-callback, link-tracking, or raw network integration tables into browser payloads or API responses.

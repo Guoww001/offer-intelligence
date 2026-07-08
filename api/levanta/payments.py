@@ -29,7 +29,7 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if not require_auth(self):
+        if not require_auth(self, allow_payment_sync_token=True):
             return
         api_key = os.environ.get("LEVANTA_API_KEY", "").strip()
         if not api_key:
