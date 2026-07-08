@@ -768,7 +768,7 @@ class Handler(BaseHTTPRequestHandler):
             handle_protected_data(self)
             return
         if parsed.path == "/api/levanta/payments":
-            if not require_auth(self):
+            if not require_auth(self, allow_payment_sync_token=True):
                 return
             self.handle_payments_api(parsed)
             return

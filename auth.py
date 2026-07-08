@@ -14,6 +14,7 @@ from typing import Any
 SESSION_COOKIE = "oi_session"
 HASH_PREFIX = "pbkdf2_sha256"
 DEFAULT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+PAYMENT_SYNC_TOKEN_HEADER = "X-Payment-Sync-Token"
 
 
 def _json_bytes(payload: Any) -> bytes:
@@ -52,6 +53,14 @@ def _plain_password() -> str:
 
 def session_secret() -> str:
     return os.environ.get("OI_SESSION_SECRET", "").strip()
+
+
+def payment_sync_token() -> str:
+    return (
+        os.environ.get("PAYMENT_SYNC_TOKEN")
+        or os.environ.get("OI_PAYMENT_SYNC_TOKEN")
+        or ""
+    ).strip()
 
 
 def session_ttl_seconds() -> int:
@@ -163,6 +172,34 @@ def session_payload(headers) -> dict[str, Any] | None:
         return None
 
 
+def _header_value(headers, name: str) -> str:
+    return (
+        headers.get(name)
+        or headers.get(name.lower())
+        or headers.get(name.title())
+        or ""
+    ).strip()
+
+
+def _bearer_token(headers) -> str:
+    value = _header_value(headers, "Authorization")
+    prefix = "Bearer "
+    if value[: len(prefix)].lower() != prefix.lower():
+        return ""
+    return value[len(prefix) :].strip()
+
+
+def is_payment_sync_authenticated(headers) -> bool:
+    expected = payment_sync_token()
+    if not expected:
+        return False
+    candidates = (
+        _bearer_token(headers),
+        _header_value(headers, PAYMENT_SYNC_TOKEN_HEADER),
+    )
+    return any(hmac.compare_digest(candidate, expected) for candidate in candidates if candidate)
+
+
 def is_authenticated(target) -> bool:
     return session_payload(target.headers) is not None
 
@@ -193,8 +230,10 @@ def clear_cookie_header(secure: bool) -> str:
     return _cookie_header("", 0, secure)
 
 
-def require_auth(target) -> bool:
+def require_auth(target, allow_payment_sync_token: bool = False) -> bool:
     if not auth_enabled():
+        return True
+    if allow_payment_sync_token and is_payment_sync_authenticated(target.headers):
         return True
     status = auth_config_status()
     if not status["configured"]:

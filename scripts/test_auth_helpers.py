@@ -19,6 +19,8 @@ def main():
         "OI_ADMIN_PASSWORD_HASH",
         "OI_SESSION_SECRET",
         "OI_SESSION_TTL_SECONDS",
+        "PAYMENT_SYNC_TOKEN",
+        "OI_PAYMENT_SYNC_TOKEN",
     )}
     try:
         os.environ["OI_AUTH_ENABLED"] = "1"
@@ -26,6 +28,8 @@ def main():
         os.environ["OI_ADMIN_PASSWORD_HASH"] = auth.make_password_hash("correct horse battery")
         os.environ["OI_SESSION_SECRET"] = "unit-test-session-secret"
         os.environ["OI_SESSION_TTL_SECONDS"] = "3600"
+        os.environ["PAYMENT_SYNC_TOKEN"] = "source-sync-token"
+        os.environ.pop("OI_PAYMENT_SYNC_TOKEN", None)
         os.environ.pop("OI_ADMIN_PASSWORD", None)
 
         status = auth.auth_config_status()
@@ -41,6 +45,27 @@ def main():
         tampered = token[:-2] + "xx"
         bad_headers = {"Cookie": f"{auth.SESSION_COOKIE}={tampered}"}
         assert_true(auth.session_payload(bad_headers) is None, "tampered session should be rejected")
+
+        assert_true(
+            auth.is_payment_sync_authenticated({"Authorization": "Bearer source-sync-token"}),
+            "bearer sync token should authenticate",
+        )
+        assert_true(
+            auth.is_payment_sync_authenticated({auth.PAYMENT_SYNC_TOKEN_HEADER: "source-sync-token"}),
+            "header sync token should authenticate",
+        )
+        assert_true(
+            not auth.is_payment_sync_authenticated({"Authorization": "Bearer wrong-token"}),
+            "wrong bearer sync token should be rejected",
+        )
+
+        class FakeTarget:
+            headers = {"Authorization": "Bearer source-sync-token"}
+
+        assert_true(
+            auth.require_auth(FakeTarget(), allow_payment_sync_token=True),
+            "require_auth should allow a valid payment sync token when requested",
+        )
 
         print("auth helper checks passed")
     finally:
