@@ -52,9 +52,16 @@
     { key: "conversion", label: "Avg Conversion" },
     { key: "brands", label: "Active Brands" }
   ];
+  const DB_STATUS_UI_API = "/api/ui/db/status";
+  const DB_MERCHANT_UI_API = "/api/ui/db/merchant";
+  const DB_SEARCH_UI_API = "/api/ui/db/search";
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const originalTierSheetRows = new Map();
   const originalTierSheetRowIndex = new Map();
+  const dbMerchantCache = new Map();
+  const dbMerchantLoading = new Set();
+  const dbSearchCache = new Map();
+  const dbSearchLoading = new Set();
   let paymentRecords = visiblePaymentRecords(withPendingPaymentPlaceholders((data.paymentRecords || []).map(normalizePaymentRecord)));
   const paymentRecordsByMerchant = new Map();
   rebuildPaymentIndex();
@@ -119,6 +126,12 @@
     targetSort: {
       key: "Tier",
       direction: "asc"
+    },
+    dbStatus: {
+      data: null,
+      loading: false,
+      error: "",
+      monthKey: ""
     },
     tierSheetSort: {
       key: "",
@@ -4585,6 +4598,152 @@
     return closestMatchesHtml(matches, prompt);
   }
 
+  function dbMerchantProductRows(products = []) {
+    return products.slice(0, 5).map((product) => {
+      const asin = product.asin || "-";
+      const name = product.productName || product.title || "Unnamed product";
+      const bsr = product.bsr || product.subCategoryBsr || "-";
+      return `<li><strong>${escapeHtml(asin)}</strong><span>${escapeHtml(name)}</span><small>BSR ${escapeHtml(bsr)}</small></li>`;
+    }).join("");
+  }
+
+  function dbMerchantInsightHtml(payload, fallbackOffer = {}) {
+    if (!payload || payload.ok === false) return "";
+    const merchant = payload.merchant || {};
+    const monthly = Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics[0] : null;
+    const products = Array.isArray(payload.products) ? payload.products : [];
+    const title = merchant.merchantName || fallbackOffer.brand || `Merchant ${payload.merchantId || ""}`;
+    const productCount = merchant.productCount ?? products.length;
+    const monthLine = monthly
+      ? `${escapeHtml(monthly.month || "Latest month")}: ${compactNumber(monthly.orders || 0)} orders, ${compactMoney(monthly.revenue || 0)} revenue, EPC ${shortEpc(monthly.epc || 0)}`
+      : "Monthly Amazon metrics are not available for this merchant yet.";
+    return `<section class="db-chat-card">
+      <div class="db-chat-card-head">
+        <strong>Live DB details</strong>
+        <span>${escapeHtml(title)}</span>
+      </div>
+      <div class="db-chat-facts">
+        <span>${escapeHtml(String(productCount || 0))} products</span>
+        <span>${escapeHtml(monthLine)}</span>
+      </div>
+      ${products.length ? `<ul class="db-chat-products">${dbMerchantProductRows(products)}</ul>` : `<p>No product rows returned by DB for this merchant.</p>`}
+    </section>`;
+  }
+
+  async function loadDbMerchantInsight(offer) {
+    if (!offer || typeof fetch !== "function") return;
+    const merchantId = String(offer.merchantId || "").trim();
+    if (!merchantId || dbMerchantLoading.has(merchantId)) return;
+    if (dbMerchantCache.has(merchantId)) {
+      const cached = dbMerchantInsightHtml(dbMerchantCache.get(merchantId), offer);
+      if (cached) addMessage("assistant", cached);
+      return;
+    }
+    dbMerchantLoading.add(merchantId);
+    try {
+      const response = await fetch(`${DB_MERCHANT_UI_API}?merchantId=${encodeURIComponent(merchantId)}&limit=8&months=6`, { cache: "no-store" });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        payload = null;
+      }
+      if (!response.ok || (payload && payload.ok === false)) {
+        throw new Error((payload && payload.error) || `HTTP ${response.status}`);
+      }
+      dbMerchantCache.set(merchantId, payload);
+      const html = dbMerchantInsightHtml(payload, offer);
+      if (html) addMessage("assistant", html);
+    } catch (error) {
+      addMessage("assistant", `<section class="db-chat-card db-chat-card-muted"><strong>Live DB details unavailable</strong><p>The static merchant answer is still loaded. DB detail requires the server-side Offer DB environment.</p></section>`);
+    } finally {
+      dbMerchantLoading.delete(merchantId);
+    }
+  }
+
+  function dbLookupSkipPrompt(prompt) {
+    const lower = String(prompt || "").toLowerCase().trim();
+    if (lower.length < 3 || /^(help|hello|hi|what can you do)\??$/.test(lower)) return true;
+    if (findByAsin(prompt) || extractPaymentCycleFilter(prompt) || promptHasPaymentTerms(lower)) return true;
+    if (tierFromPrompt(prompt) || extractMetricFilters(prompt).length || extractMetricSortIntent(prompt) || extractTopMetricRequest(prompt)) return true;
+    return /\b(?:recommend|top|best|category|categories|payment|paid|unpaid|late|overdue|export|download|list)\b/.test(lower);
+  }
+
+  function dbSearchQueryForPrompt(prompt) {
+    const cleaned = cleanedMerchantLookupPhrase(prompt) || String(prompt || "").trim();
+    return cleaned.replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+
+  function dbMerchantOfferForPrompt(prompt) {
+    const exact = findByMerchantId(prompt);
+    if (exact) return exact;
+    if (dbLookupSkipPrompt(prompt)) return null;
+    const query = dbSearchQueryForPrompt(prompt);
+    if (query.length < 2) return null;
+    const matches = findMerchantMatches(query);
+    const first = matches[0];
+    const second = matches[1];
+    if (!first) return null;
+    if (matches.length === 1) return first.offer;
+    if (first.adjusted >= 95 && (!second || first.adjusted - second.adjusted > 10)) return first.offer;
+    return null;
+  }
+
+  function dbSearchRowsHtml(rows = []) {
+    return rows.slice(0, 6).map((row) => {
+      const merchantId = row.merchantId || "-";
+      const merchantName = row.merchantName || row.brand || "Unnamed merchant";
+      const meta = [row.network, row.status, row.commissionRate ? `Commission ${row.commissionRate}` : ""].filter(Boolean).join(" / ");
+      return `<li><strong>${escapeHtml(merchantId)}</strong><span>${escapeHtml(merchantName)}</span><small>${escapeHtml(meta || "DB match")}</small></li>`;
+    }).join("");
+  }
+
+  function dbSearchInsightHtml(payload) {
+    if (!payload || payload.ok === false) return "";
+    const rows = Array.isArray(payload.results) ? payload.results : [];
+    const title = `Live DB search: ${payload.query || ""}`.trim();
+    return `<section class="db-chat-card">
+      <div class="db-chat-card-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(rows.length ? `${rows.length} public matches` : "No public matches")}</span>
+      </div>
+      ${rows.length ? `<ul class="db-chat-products db-chat-search">${dbSearchRowsHtml(rows)}</ul>` : `<p>No DB merchants in the public snapshot matched this search.</p>`}
+    </section>`;
+  }
+
+  async function loadDbSearchInsight(prompt) {
+    if (typeof fetch !== "function" || dbLookupSkipPrompt(prompt)) return;
+    const query = dbSearchQueryForPrompt(prompt);
+    if (query.length < 2) return;
+    const cacheKey = normalize(query);
+    if (!cacheKey || dbSearchLoading.has(cacheKey)) return;
+    if (dbSearchCache.has(cacheKey)) {
+      const cached = dbSearchInsightHtml(dbSearchCache.get(cacheKey));
+      if (cached) addMessage("assistant", cached);
+      return;
+    }
+    dbSearchLoading.add(cacheKey);
+    try {
+      const response = await fetch(`${DB_SEARCH_UI_API}?q=${encodeURIComponent(query)}&limit=6`, { cache: "no-store" });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        payload = null;
+      }
+      if (!response.ok || (payload && payload.ok === false)) {
+        throw new Error((payload && payload.error) || `HTTP ${response.status}`);
+      }
+      dbSearchCache.set(cacheKey, payload);
+      const html = dbSearchInsightHtml(payload);
+      if (html) addMessage("assistant", html);
+    } catch (error) {
+      dbSearchCache.delete(cacheKey);
+    } finally {
+      dbSearchLoading.delete(cacheKey);
+    }
+  }
+
   function addMessage(role, html) {
     const msg = document.createElement("div");
     msg.className = `message ${role}`;
@@ -4594,8 +4753,11 @@
   }
 
   function applyPrompt(prompt) {
+    const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     addMessage("user", escapeHtml(prompt));
     addMessage("assistant", answerPrompt(prompt));
+    if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
+    else loadDbSearchInsight(prompt);
   }
 
   function renderMetrics(rows) {
@@ -7248,7 +7410,77 @@
       record.__sourceTarget = record.Target || "";
       if (record.Tier) records.push(applyTargetOverride(record));
     });
+    return records.length ? records : derivedTargetRecordsFromTierSheets();
+  }
+
+  function derivedTargetRecordsFromTierSheets() {
+    const monthKey = data.summary && data.summary.generatedAt ? String(data.summary.generatedAt).slice(0, 7) : localDateKey(new Date()).slice(0, 7);
+    const date = new Date(`${monthKey}-01T00:00:00`);
+    const month = Number.isNaN(date.getTime()) ? monthKey : date.toLocaleString("en-US", { month: "long", year: "numeric" });
+    const records = TIER_MOVE_OPTIONS.map((tierName) => {
+      const sheet = sheetByName(tierName);
+      const rows = (sheet && Array.isArray(sheet.rows)) ? sheet.rows : [];
+      const clicks = rows.reduce((sum, row) => sum + tierRowClicks(row), 0);
+      const orders = rows.reduce((sum, row) => sum + tierRowOrders(row), 0);
+      const revenue = rows.reduce((sum, row) => sum + tierRowRevenue(row), 0);
+      const conversion = clicks ? orders / clicks : 0;
+      return applyTargetOverride({
+        Month: month,
+        __monthKey: monthKey,
+        __derivedFromTierSheets: true,
+        Tier: tierName === "BLACK TIER" ? "Black Tier" : tierName,
+        "Brand Count": rows.length,
+        "Total Clicks": clicks,
+        "Order Count": orders,
+        Revenue: revenue,
+        "Avg Conversion": conversion,
+        "New Tier Entries": 0,
+        "Tier Exits": 0,
+        Target: ""
+      });
+    });
+    const total = records.reduce((acc, record) => {
+      acc.brands += parseSheetNumber(record["Brand Count"]);
+      acc.clicks += parseSheetNumber(record["Total Clicks"]);
+      acc.orders += parseSheetNumber(record["Order Count"]);
+      acc.revenue += parseSheetNumber(record.Revenue);
+      return acc;
+    }, { brands: 0, clicks: 0, orders: 0, revenue: 0 });
+    records.push(applyTargetOverride({
+      Month: month,
+      __monthKey: monthKey,
+      __derivedFromTierSheets: true,
+      Tier: "Total",
+      "Brand Count": total.brands,
+      "Total Clicks": total.clicks,
+      "Order Count": total.orders,
+      Revenue: total.revenue,
+      "Avg Conversion": total.clicks ? total.orders / total.clicks : 0,
+      "New Tier Entries": 0,
+      "Tier Exits": 0,
+      Target: ""
+    }));
     return records;
+  }
+
+  function targetRecordMetricTotal(record) {
+    return parseSheetNumber(record && record["Brand Count"]) +
+      parseSheetNumber(record && record["Total Clicks"]) +
+      parseSheetNumber(record && record["Order Count"]) +
+      parseSheetNumber(record && record.Revenue);
+  }
+
+  function targetMonthHasMetrics(records, month) {
+    return (records || [])
+      .filter((record) => record.Month === month)
+      .some((record) => targetRecordMetricTotal(record) > 0);
+  }
+
+  function preferredTargetMonth(records) {
+    const months = Array.from(new Set((records || []).map((record) => record.Month).filter(Boolean)))
+      .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))));
+    const monthsWithMetrics = months.filter((month) => targetMonthHasMetrics(records, month));
+    return monthsWithMetrics[monthsWithMetrics.length - 1] || months[months.length - 1] || "";
   }
 
   function filteredTargetRecords() {
@@ -7268,7 +7500,9 @@
       .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))));
     const tiers = Array.from(new Set(records.map((record) => record.Tier).filter((tier) => tier && String(tier).toLowerCase() !== "total"))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     const monthOptions = months.map((month) => ({ value: month, label: month }));
-    if (!state.targetFilters.month && monthOptions.length) state.targetFilters.month = monthOptions[monthOptions.length - 1].value;
+    if ((!state.targetFilters.month || !targetMonthHasMetrics(records, state.targetFilters.month)) && monthOptions.length) {
+      state.targetFilters.month = preferredTargetMonth(records);
+    }
     if (!state.targetFilters.compareMonth && monthOptions.length > 1) state.targetFilters.compareMonth = monthOptions[Math.max(0, monthOptions.length - 2)].value;
     if (state.targetFilters.compareMonth === state.targetFilters.month) {
       const currentIndex = months.indexOf(state.targetFilters.month);
@@ -7350,6 +7584,416 @@
     if (Math.abs(n) >= 1000000) return `$${(n / 1000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}M`;
     if (Math.abs(n) >= 1000) return `$${(n / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}K`;
     return shortMoney(n);
+  }
+
+  function dateKey(value) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+  }
+
+  function monthKeyFromText(value) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})/);
+    return match ? `${match[1]}-${match[2]}` : "";
+  }
+
+  function monthLabelFromKey(value) {
+    const key = monthKeyFromText(value);
+    if (!key) return "Reporting";
+    const date = new Date(`${key}-01T00:00:00`);
+    return Number.isNaN(date.getTime()) ? key : date.toLocaleString("en-US", { month: "long" });
+  }
+
+  function dbStatusTitleForMonth(value) {
+    const label = monthLabelFromKey(value);
+    return label === "Reporting" ? "Reporting coverage" : `${label} reporting coverage`;
+  }
+
+  function addDaysToDateKey(value, days) {
+    const key = dateKey(value);
+    if (!key) return "";
+    const date = new Date(`${key}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    date.setDate(date.getDate() + Number(days || 0));
+    return localDateKey(date);
+  }
+
+  function compareDateKeys(left, right) {
+    const a = dateKey(left);
+    const b = dateKey(right);
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+    return a.localeCompare(b);
+  }
+
+  function shortDateLabel(value) {
+    const key = dateKey(value);
+    if (!key) return "-";
+    const date = new Date(`${key}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return key;
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  function axisDateLabel(value) {
+    const key = dateKey(value);
+    if (!key) return "-";
+    const date = new Date(`${key}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return key;
+    return date.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
+  }
+
+  function dateRangeLabel(start, end) {
+    const startLabel = shortDateLabel(start);
+    const endLabel = shortDateLabel(end);
+    if (startLabel === "-" && endLabel === "-") return "-";
+    if (startLabel === endLabel || endLabel === "-") return startLabel;
+    if (startLabel === "-") return endLabel;
+    return `${startLabel}-${endLabel}`;
+  }
+
+  function targetDbStatusMonthKey() {
+    if (state.targetFilters.month && state.targetFilters.month !== "all") {
+      return monthKeyFromText(targetMonthSortValue(state.targetFilters.month));
+    }
+    return "";
+  }
+
+  function coverageValue(item = {}) {
+    const matched = Number(item.matched);
+    const total = Number(item.total);
+    if (Number.isFinite(matched) && Number.isFinite(total) && total > 0) {
+      return `${matched.toLocaleString()} / ${total.toLocaleString()}`;
+    }
+    if (Number.isFinite(matched)) return matched.toLocaleString();
+    return "-";
+  }
+
+  function coverageDetail(item = {}) {
+    const coverage = Number(item.coverage);
+    if (Number.isFinite(coverage)) return shortPct(coverage);
+    return item.available === false ? "Unavailable" : "Coverage";
+  }
+
+  function dbDailyTrendRows(payload = state.dbStatus.data) {
+    const trend = payload && payload.dailyTrend ? payload.dailyTrend : {};
+    const rows = Array.isArray(trend.rows) ? trend.rows.slice() : [];
+    const observedThrough = dateKey(trend.observedThrough || payload?.latestDates?.aggregateOrders?.latest || payload?.latestDates?.amazonOrders?.latest);
+    const expectedCompleteThrough = dateKey(trend.expectedCompleteThrough);
+    const normalized = rows
+      .map((row) => {
+        const day = dateKey(row.date || row.day);
+        if (!day) return null;
+        const state = row.state || (
+          expectedCompleteThrough && compareDateKeys(day, expectedCompleteThrough) > 0
+            ? "delay"
+            : observedThrough && compareDateKeys(day, observedThrough) > 0
+              ? "stale"
+              : "observed"
+        );
+        const orders = row.orders === null || row.orders === undefined ? null : Number(row.orders) || 0;
+        const revenue = row.revenue === null || row.revenue === undefined ? null : Number(row.revenue) || 0;
+        const clicks = row.clicks === null || row.clicks === undefined ? null : Number(row.clicks) || 0;
+        return {
+          ...row,
+          date: day,
+          state,
+          isDelay: state === "delay",
+          isComplete: row.isComplete !== undefined ? Boolean(row.isComplete) : state !== "delay",
+          orders,
+          revenue,
+          clicks
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    let previousObserved = null;
+    normalized.forEach((row) => {
+      row.ordersDelta = null;
+      row.revenueDelta = null;
+      row.clicksDelta = null;
+      if (row.state !== "delay" && Number.isFinite(row.orders)) {
+        if (previousObserved) {
+          row.ordersDelta = row.orders - previousObserved.orders;
+          row.revenueDelta = row.revenue - previousObserved.revenue;
+          row.clicksDelta = row.clicks - previousObserved.clicks;
+        }
+        previousObserved = row;
+      }
+    });
+    return normalized;
+  }
+
+  function dbStatusViewModel(payload = state.dbStatus.data) {
+    const trend = payload && payload.dailyTrend ? payload.dailyTrend : {};
+    const latestDates = payload && payload.latestDates ? payload.latestDates : {};
+    const currentDate = dateKey(trend.currentDate) || localDateKey(new Date());
+    const delayDays = Number.isFinite(Number(trend.delayDays)) ? Number(trend.delayDays) : 2;
+    const expectedCompleteThrough = dateKey(trend.expectedCompleteThrough) || addDaysToDateKey(currentDate, -delayDays);
+    const observedThrough = dateKey(trend.observedThrough || latestDates.aggregateOrders?.latest || latestDates.amazonOrders?.latest);
+    const latestDataDate = dateKey(trend.latestDataDate || latestDates.aggregateOrders?.latest || latestDates.amazonOrders?.latest);
+    const trendMonthKey = monthKeyFromText(trend.month || currentDate || state.dbStatus.monthKey);
+    const delayWindowStart = addDaysToDateKey(expectedCompleteThrough, 1);
+    const health = !observedThrough || !expectedCompleteThrough
+      ? "unknown"
+      : compareDateKeys(observedThrough, expectedCompleteThrough) >= 0
+        ? "fresh"
+        : "stale";
+    const coverage = payload && payload.coverage ? payload.coverage : {};
+    const coverageCards = [
+      { label: "Offer coverage", value: coverageValue(coverage.cnpscy_advert), detail: coverageDetail(coverage.cnpscy_advert), tone: "green" },
+      { label: "Aggregate coverage", value: coverageValue(coverage.cnpscy_order_new_aggregate), detail: coverageDetail(coverage.cnpscy_order_new_aggregate), tone: "blue" },
+      { label: "Product coverage", value: coverageValue(coverage.cnpscy_amazon_product), detail: coverageDetail(coverage.cnpscy_amazon_product), tone: "blue" },
+      { label: "Snapshot IDs", value: Number(payload?.staticSnapshot?.merchantIds || coverage.staticNumericMerchantIds || 0).toLocaleString(), detail: payload?.staticSnapshot?.generatedAt ? `Built ${shortDateLabel(payload.staticSnapshot.generatedAt)}` : "Static page", tone: "slate" }
+    ];
+    const latestCards = [
+      { label: "Offer aggregate", value: dateKey(latestDates.aggregateOrders?.latest) || "-", detail: latestDates.aggregateOrders?.table || "cnpscy_order_new_aggregate" },
+      { label: "Amazon orders", value: dateKey(latestDates.amazonOrders?.latest) || "-", detail: latestDates.amazonOrders?.table || "cnpscy_amazon_order" },
+      { label: "Amazon clicks", value: dateKey(latestDates.amazonClicks?.latest) || "-", detail: latestDates.amazonClicks?.table || "cnpscy_amazon_click" },
+      { label: "Products", value: dateKey(latestDates.products?.latest) || "-", detail: latestDates.products?.table || "cnpscy_amazon_product" }
+    ];
+    return {
+      title: dbStatusTitleForMonth(trendMonthKey),
+      monthKey: trendMonthKey,
+      health,
+      delayDays,
+      currentDate,
+      expectedCompleteThrough,
+      observedThrough,
+      latestDataDate,
+      delayWindowText: dateRangeLabel(delayWindowStart, currentDate),
+      coverageCards,
+      latestCards,
+      primarySource: trend.primarySource || "cnpscy_order_new_aggregate",
+      checkedAt: payload?.checkedAt || ""
+    };
+  }
+
+  function dbStatusDemoEnabled() {
+    const location = window.location || {};
+    const host = String(location.hostname || "");
+    if (host !== "localhost" && host !== "127.0.0.1") return false;
+    const search = String(location.search || "");
+    return new URLSearchParams(search).get("dbStatusDemo") === "1";
+  }
+
+  function demoDbStatusPayload() {
+    const currentDate = localDateKey(new Date());
+    const expectedCompleteThrough = addDaysToDateKey(currentDate, -2);
+    const rows = [];
+    for (let offset = 8; offset >= 0; offset -= 1) {
+      const day = addDaysToDateKey(currentDate, -offset);
+      const state = compareDateKeys(day, expectedCompleteThrough) > 0 ? "delay" : "observed";
+      const completeIndex = 8 - offset;
+      rows.push({
+        date: day,
+        state,
+        isComplete: state !== "delay",
+        orders: state === "delay" ? null : 72 + completeIndex * 9 + (completeIndex % 3) * 6,
+        revenue: state === "delay" ? null : 3200 + completeIndex * 420,
+        clicks: state === "delay" ? null : 820 + completeIndex * 55
+      });
+    }
+    return {
+      ok: true,
+      demo: true,
+      checkedAt: new Date().toISOString(),
+      staticSnapshot: { generatedAt: new Date().toISOString(), merchantIds: offers.length },
+      latestDates: {
+        amazonOrders: { latest: expectedCompleteThrough, table: "cnpscy_amazon_order" },
+        amazonClicks: { latest: addDaysToDateKey(expectedCompleteThrough, -1), table: "cnpscy_amazon_click" },
+        aggregateOrders: { latest: expectedCompleteThrough, table: "cnpscy_order_new_aggregate" },
+        products: { latest: expectedCompleteThrough, table: "cnpscy_amazon_product" }
+      },
+      coverage: {
+        staticNumericMerchantIds: offers.length,
+        cnpscy_advert: { matched: offers.length, total: offers.length, coverage: 1 },
+        cnpscy_order_new_aggregate: { matched: offers.length, total: offers.length, coverage: 1 },
+        cnpscy_amazon_product: { matched: Math.max(0, offers.length - 6), total: offers.length, coverage: offers.length ? (offers.length - 6) / offers.length : 0 },
+        cnpscy_amazon_product_extra: { matched: Math.max(0, offers.length - 304), total: offers.length, coverage: offers.length ? (offers.length - 304) / offers.length : 0 }
+      },
+      dailyTrend: {
+        month: currentDate.slice(0, 7),
+        delayDays: 2,
+        currentDate,
+        observedThrough: expectedCompleteThrough,
+        expectedCompleteThrough,
+        rows
+      }
+    };
+  }
+
+  function deltaText(value, formatter = compactNumber) {
+    if (!Number.isFinite(Number(value))) return "No prior day";
+    const number = Number(value);
+    if (Math.abs(number) < 0.000001) return "0 vs previous day";
+    return `${number > 0 ? "+" : "-"}${formatter(Math.abs(number))} vs previous day`;
+  }
+
+  function dbTrendPath(points) {
+    if (!points.length) return "";
+    return points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+  }
+
+  function dbDailyTrendChartHtml(rows, delayDays = 2) {
+    if (!rows.length) {
+      return `<div class="target-empty-state">DB daily trend will appear after the status API responds.</div>`;
+    }
+    const maxValue = Math.max(1, ...rows.map((row) => Number(row.orders) || 0));
+    const width = 760;
+    const height = 250;
+    const pad = { left: 42, right: 18, top: 24, bottom: 48 };
+    const innerWidth = width - pad.left - pad.right;
+    const innerHeight = height - pad.top - pad.bottom;
+    const step = rows.length > 1 ? innerWidth / (rows.length - 1) : innerWidth;
+    const barWidth = Math.max(12, Math.min(34, step * 0.5));
+    const points = [];
+    const bars = rows.map((row, index) => {
+      const x = pad.left + index * step;
+      const value = Number(row.orders) || 0;
+      const barHeight = Math.max(row.state === "delay" ? 14 : 3, (value / maxValue) * innerHeight);
+      const y = pad.top + innerHeight - barHeight;
+      if (row.state !== "delay" || value > 0) points.push({ x, y, row });
+      const tooltipWidth = 176;
+      const tooltipHeight = 70;
+      const tooltipX = Math.min(width - pad.right - tooltipWidth, Math.max(pad.left, x - tooltipWidth / 2));
+      const tooltipY = Math.max(8, y - tooltipHeight - 12);
+      const status = row.state === "delay" ? "Partial lag window" : row.state === "stale" ? "Missing after expected date" : "Complete";
+      const revenue = compactMoney(row.revenue || 0);
+      const clicks = compactNumber(row.clicks || 0);
+      const label = `${shortDateLabel(row.date)}: ${compactNumber(value)} orders, ${revenue}, ${clicks} clicks`;
+      return `<g class="db-trend-day ${escapeHtml(row.state)}" tabindex="0" role="img" aria-label="${escapeHtml(label)}">
+        <rect class="db-trend-hover-band" x="${(x - step / 2).toFixed(2)}" y="${pad.top}" width="${Math.max(step, barWidth).toFixed(2)}" height="${innerHeight}" rx="6"></rect>
+        <rect class="db-trend-bar" x="${(x - barWidth / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="5"></rect>
+        <text x="${x.toFixed(2)}" y="${height - 22}" text-anchor="middle">${escapeHtml(axisDateLabel(row.date))}</text>
+        <g class="db-trend-tooltip" transform="translate(${tooltipX.toFixed(2)} ${tooltipY.toFixed(2)})">
+          <rect width="${tooltipWidth}" height="${tooltipHeight}" rx="8"></rect>
+          <text x="10" y="18">${escapeHtml(shortDateLabel(row.date))} / ${escapeHtml(status)}</text>
+          <text x="10" y="36">${escapeHtml(compactNumber(value))} orders / ${escapeHtml(revenue)}</text>
+          <text x="10" y="54">${escapeHtml(clicks)} clicks / CVR ${escapeHtml(shortPct(row.conversionRate || 0))}</text>
+        </g>
+      </g>`;
+    }).join("");
+    const delayStartIndex = rows.findIndex((row) => row.state === "delay");
+    const delayZone = delayStartIndex >= 0
+      ? `<rect class="db-delay-zone" x="${Math.max(pad.left, pad.left + delayStartIndex * step - step / 2).toFixed(2)}" y="${pad.top}" width="${(width - pad.right - Math.max(pad.left, pad.left + delayStartIndex * step - step / 2)).toFixed(2)}" height="${innerHeight}" rx="8"></rect>
+         <text class="db-delay-label" x="${(width - pad.right - 8).toFixed(2)}" y="${(pad.top + 18).toFixed(2)}" text-anchor="end">${Number(delayDays) || 2}-day reporting delay</text>`
+      : "";
+    const observedRows = rows.filter((row) => row.state !== "delay" && Number.isFinite(row.orders));
+    const latest = observedRows[observedRows.length - 1];
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Daily DB orders trend with reporting delay">
+      ${delayZone}
+      <line class="trend-axis" x1="${pad.left}" y1="${pad.top + innerHeight}" x2="${width - pad.right}" y2="${pad.top + innerHeight}"></line>
+      <line class="trend-axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + innerHeight}"></line>
+      ${bars}
+      <path class="trend-line db-trend-line" d="${escapeHtml(dbTrendPath(points))}"></path>
+      ${points.map((point) => `<circle class="trend-dot db-trend-dot ${escapeHtml(point.row.state)}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4"></circle>`).join("")}
+      <text x="${pad.left}" y="16">Offer aggregate orders per day</text>
+      ${latest ? `<text class="db-latest-label" x="${width - pad.right}" y="${height - 4}" text-anchor="end">Latest complete: ${escapeHtml(shortDateLabel(latest.date))}</text>` : ""}
+    </svg>`;
+  }
+
+  function dbStatusPanelHtml() {
+    const data = state.dbStatus.data;
+    const fallbackTitle = dbStatusTitleForMonth(state.dbStatus.monthKey || targetDbStatusMonthKey());
+    if (!data && state.dbStatus.loading) {
+      return `<section class="target-report-card db-status-card target-card-enter" style="--i:0">
+        <div class="target-section-header">
+          <div><h3>${escapeHtml(fallbackTitle)}</h3><p>Loading production reporting status from the safe UI API</p></div>
+          <span>Syncing</span>
+        </div>
+        <div class="db-status-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+      </section>`;
+    }
+    if (!data && state.dbStatus.error) {
+      return `<section class="target-report-card db-status-card db-status-error target-card-enter" style="--i:0">
+        <div class="target-section-header">
+          <div><h3>${escapeHtml(fallbackTitle)}</h3><p>${escapeHtml(state.dbStatus.error)}</p></div>
+          <span>Static fallback</span>
+        </div>
+      </section>`;
+    }
+    if (!data) return "";
+    const model = dbStatusViewModel(data);
+    const rows = dbDailyTrendRows(data);
+    const latestObserved = rows.filter((row) => row.state !== "delay" && Number.isFinite(row.orders)).slice(-1)[0];
+    const statusText = model.health === "fresh" ? "On track" : model.health === "stale" ? "Behind" : "Unknown";
+    const sourcePrefix = data.demo ? "Local demo preview. " : "";
+    return `<section class="target-report-card db-status-card target-card-enter" style="--i:0">
+      <div class="target-section-header db-status-head">
+        <div>
+          <h3>${escapeHtml(model.title)}</h3>
+          <p>${escapeHtml(sourcePrefix)}Offer aggregate complete through ${escapeHtml(shortDateLabel(model.observedThrough || model.expectedCompleteThrough))}; ${escapeHtml(model.delayWindowText)} is the normal ${model.delayDays}-day reporting lag window. Source: ${escapeHtml(model.primarySource)}.</p>
+        </div>
+        <span class="db-health-pill ${escapeHtml(model.health)}">${escapeHtml(statusText)}</span>
+      </div>
+      <div class="db-status-grid">
+        ${model.coverageCards.map((card) => `<article class="db-mini-card ${escapeHtml(card.tone)}">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          <small>${escapeHtml(card.detail)}</small>
+        </article>`).join("")}
+      </div>
+      <div class="db-latest-grid">
+        ${model.latestCards.map((card) => `<div><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.detail)}</small></div>`).join("")}
+      </div>
+      <div class="db-trend-layout">
+        <div class="target-trend-plot db-trend-plot">${dbDailyTrendChartHtml(rows, model.delayDays)}</div>
+        <aside class="db-trend-aside">
+          <span>Latest complete day</span>
+          <strong>${escapeHtml(shortDateLabel(model.observedThrough || model.expectedCompleteThrough))}</strong>
+          <p>${latestObserved ? `${compactNumber(latestObserved.orders)} orders, ${compactMoney(latestObserved.revenue)} revenue` : "Waiting for DB rows"}</p>
+          <small>${latestObserved ? escapeHtml(`${deltaText(latestObserved.ordersDelta, compactNumber)} / ${compactNumber(latestObserved.clicks || 0)} clicks`) : "No daily comparison yet"}</small>
+        </aside>
+      </div>
+    </section>`;
+  }
+
+  function refreshDbStatusUi() {
+    if (state.page === "sheets" && els.sheetPageNotes) renderSheetPage();
+  }
+
+  function ensureDbStatusForSelectedMonth() {
+    if (window.__OFFER_INTELLIGENCE_TEST__) return;
+    const desiredMonthKey = targetDbStatusMonthKey();
+    if (state.dbStatus.monthKey === desiredMonthKey || state.dbStatus.loading) return;
+    window.setTimeout(() => loadDbStatus(desiredMonthKey), 0);
+  }
+
+  async function loadDbStatus(monthKey = targetDbStatusMonthKey()) {
+    if (typeof fetch !== "function") return;
+    const normalizedMonthKey = monthKeyFromText(monthKey);
+    state.dbStatus.loading = true;
+    state.dbStatus.error = "";
+    state.dbStatus.monthKey = normalizedMonthKey;
+    refreshDbStatusUi();
+    try {
+      const url = normalizedMonthKey ? `${DB_STATUS_UI_API}?month=${encodeURIComponent(normalizedMonthKey)}` : DB_STATUS_UI_API;
+      const response = await fetch(url, { cache: "no-store" });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        payload = null;
+      }
+      if (!response.ok || (payload && payload.ok === false)) {
+        throw new Error((payload && payload.error) || `HTTP ${response.status}`);
+      }
+      state.dbStatus.data = payload;
+      state.dbStatus.monthKey = monthKeyFromText(payload?.dailyTrend?.month || normalizedMonthKey);
+      state.dbStatus.error = "";
+    } catch (error) {
+      if (dbStatusDemoEnabled()) {
+        state.dbStatus.data = demoDbStatusPayload();
+        state.dbStatus.monthKey = monthKeyFromText(state.dbStatus.data?.dailyTrend?.month || normalizedMonthKey);
+        state.dbStatus.error = "";
+        return;
+      }
+      state.dbStatus.error = `DB status API unavailable; showing static snapshot data. ${error && error.message ? error.message : ""}`.trim();
+    } finally {
+      state.dbStatus.loading = false;
+      refreshDbStatusUi();
+    }
   }
 
   function targetMetricConfig(key = state.targetMetric) {
@@ -7796,10 +8440,11 @@
       els.sheetPageTitle.textContent = "Report Overview";
       els.sheetPageSubtitle.textContent = t("sheet.noTargets", "No target rows found in the current sheet export");
       els.sheetPageSummary.innerHTML = "";
-      els.sheetPageNotes.innerHTML = `<p>${escapeHtml(t("sheet.noTargetMatch", "No target data matched the selected filters."))}</p>`;
+      els.sheetPageNotes.innerHTML = `${dbStatusPanelHtml()}<p>${escapeHtml(t("sheet.noTargetMatch", "No target data matched the selected filters."))}</p>`;
       if (els.sheetGridHead) els.sheetGridHead.innerHTML = "";
       if (els.sheetGridRows) els.sheetGridRows.innerHTML = "";
       if (els.sheetTableCount) els.sheetTableCount.textContent = "";
+      ensureDbStatusForSelectedMonth();
       return;
     }
     const monthText = state.targetFilters.month === "all" ? optionText("All months") : state.targetFilters.month;
@@ -7807,7 +8452,8 @@
     els.sheetPageTitle.textContent = "Report Overview";
     els.sheetPageSubtitle.textContent = `${monthText} performance summary for ${tierText}`;
     renderSheetSummary(rows, comparisonRows, state.targetFilters.compareMonth);
-    els.sheetPageNotes.innerHTML = `${targetProgressHtml(rows)}${targetTrendHtml(allRecords)}${targetMatrixHtml(rows, comparisonRows)}`;
+    els.sheetPageNotes.innerHTML = `${dbStatusPanelHtml()}${targetProgressHtml(rows)}${targetTrendHtml(allRecords)}${targetMatrixHtml(rows, comparisonRows)}`;
+    ensureDbStatusForSelectedMonth();
   }
 
   function currentTargetPageData() {
@@ -8133,6 +8779,7 @@
     renderAll();
     renderPaymentsPage();
     rerenderForLanguage();
+    loadDbStatus(targetDbStatusMonthKey());
     loadSharedTierMoves({ silent: true });
     maybeAutoSyncLevantaPayments();
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
@@ -8178,7 +8825,13 @@
       dashboardCategoryGroups,
       tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName)),
       tierRowHighlightKind: (sheetName, row) => tierRowHighlightKind(sheetByName(sheetName) || { name: sheetName }, row || {}),
-      visualStatusForTierRow: (sheetName, row) => visualStatusForTierRow(sheetByName(sheetName) || { name: sheetName }, row || {})
+      visualStatusForTierRow: (sheetName, row) => visualStatusForTierRow(sheetByName(sheetName) || { name: sheetName }, row || {}),
+      targetRecords,
+      preferredTargetMonth,
+      targetMonthHasMetrics: (month) => targetMonthHasMetrics(targetRecords(), month),
+      dbStatusViewModel,
+      dbDailyTrendRows,
+      dbDailyTrendChartHtml
     };
   } else {
     init();

@@ -31,6 +31,10 @@ The dashboard uses a hybrid migration path: MySQL is the server-side source of t
 - Freshness and coverage checks live in `scripts/validate_db_migration.py`.
 - Server-only endpoints are available at `/api/db/status`, `/api/db/merchant`, and `/api/db/search`.
 - All DB endpoints require `OFFER_DB_API_TOKEN`.
+- Browser-safe wrappers live at `/api/ui/db/status`, `/api/ui/db/merchant`, and `/api/ui/db/search`; the page auto-loads
+  DB freshness/daily-delay status, appends live merchant DB details after Merchant ID/brand chat lookups, and adds DB-backed
+  public search matches when a chat query is a merchant lookup.
+- Local UI preview without DB env can use `http://127.0.0.1:8765/?dbStatusDemo=1`; this demo mode only activates on localhost.
 - Full setup details are in `docs/offer-db-migration.md`.
 
 ### Category Logic
