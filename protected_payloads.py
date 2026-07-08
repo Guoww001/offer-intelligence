@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from auth import require_auth, send_json
@@ -29,11 +28,3 @@ def handle_protected_data(target) -> None:
     target.send_header("Content-Length", str(len(body)))
     target.end_headers()
     target.wfile.write(body)
-
-
-class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        handle_protected_data(self)
-
-    def do_OPTIONS(self):
-        send_json(self, 204, {})

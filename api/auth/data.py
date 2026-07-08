@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 
-from api.protected_data import handle_protected_data
 from auth import handle_auth_options
+from protected_payloads import handle_protected_data
 
 
 class handler(BaseHTTPRequestHandler):
