@@ -267,7 +267,7 @@ node scripts/test_sheet_categories.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
-python -m py_compile auth.py browser_payloads.py server.py offer_db.py api/protected_data.py api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
+python -m py_compile auth.py browser_payloads.py protected_payloads.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
 ```
 
 ## Security

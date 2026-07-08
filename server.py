@@ -16,7 +16,6 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from api.tier_moves import handle_tier_moves
-from api.protected_data import handle_protected_data
 from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth
 from browser_payloads import browser_payload_path
 from offer_db import (
@@ -29,6 +28,7 @@ from offer_db import (
     search_payload,
     status_payload,
 )
+from protected_payloads import handle_protected_data
 
 
 ROOT = Path(__file__).resolve().parent
