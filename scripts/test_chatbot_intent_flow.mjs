@@ -300,7 +300,16 @@ assertEqual(
   "Paid|Pending|Unpaid|Overdue",
   "payment status summary should keep paid, pending, unpaid, and overdue in one ordered row"
 );
-assertTruthy(!hooks.paymentStatusFilterValues().includes("Overdue"), "payment status filter should not include overdue-only filtering");
+assertEqual(
+  hooks.paymentStatusFilterValues().slice(0, 4).join("|"),
+  "Paid|Pending|Unpaid|Overdue",
+  "payment status filter should include overdue in the expected status order"
+);
+assertNotMatch(
+  fs.readFileSync("public/index.html", "utf8"),
+  /paymentSortDirectionFilter/,
+  "payment filters should not render a separate sort direction select"
+);
 const paymentSortOptionValues = hooks.paymentSortOptions().map((option) => option.value);
 assertEqual(paymentSortOptionValues[0], "", "payment sort filter should start with the default priority option");
 assertTruthy(paymentSortOptionValues.includes("Revenue Made"), "payment sort filter should include revenue sorting");
