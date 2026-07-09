@@ -243,7 +243,6 @@
     paymentTier: document.getElementById("paymentTierFilter"),
     paymentStatus: document.getElementById("paymentStatusFilter"),
     paymentSort: document.getElementById("paymentSortFilter"),
-    paymentSortDirection: document.getElementById("paymentSortDirectionFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
     languageToggle: document.getElementById("languageToggle")
   };
@@ -3862,10 +3861,15 @@
     { label: "Last Checked", render: (record) => escapeHtml(record.lastCheckedDate || "-") }
   ];
 
-  const PAYMENT_STATUS_FILTER_EXCLUSIONS = new Set(["Overdue"]);
+  const PAYMENT_STATUS_FILTER_ORDER = ["Paid", "Pending", "Unpaid", "Overdue", "Partial", "Unknown"];
 
   function paymentStatusFilterValues() {
-    return uniquePaymentValues("paymentStatus").filter((status) => !PAYMENT_STATUS_FILTER_EXCLUSIONS.has(status));
+    return uniquePaymentValues("paymentStatus").sort((a, b) => {
+      const aIndex = PAYMENT_STATUS_FILTER_ORDER.indexOf(a);
+      const bIndex = PAYMENT_STATUS_FILTER_ORDER.indexOf(b);
+      if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+      return String(a).localeCompare(String(b));
+    });
   }
 
   function paymentSortOptions() {
@@ -6063,25 +6067,20 @@
   }
 
   function refreshPaymentSortOptions() {
-    if (!els.paymentSort || !els.paymentSortDirection) return;
+    if (!els.paymentSort) return;
     const options = paymentSortOptions();
     const nextKey = options.some((option) => option.value === state.paymentSort.key) ? state.paymentSort.key : "";
-    const nextDirection = state.paymentSort.direction === "desc" ? "desc" : "asc";
     state.paymentSort.key = nextKey;
-    state.paymentSort.direction = nextDirection;
+    state.paymentSort.direction = nextKey
+      ? (state.paymentSort.direction === "desc" ? "desc" : defaultReportSortDirection(nextKey))
+      : "asc";
     replaceSelectWithOptions(els.paymentSort, options, nextKey);
-    replaceSelectWithOptions(els.paymentSortDirection, [
-      { value: "asc", label: "Ascending" },
-      { value: "desc", label: "Descending" }
-    ], nextDirection);
     syncPaymentSortControls();
   }
 
   function syncPaymentSortControls() {
-    if (!els.paymentSort || !els.paymentSortDirection) return;
+    if (!els.paymentSort) return;
     els.paymentSort.value = state.paymentSort.key || "";
-    els.paymentSortDirection.value = state.paymentSort.direction || "asc";
-    els.paymentSortDirection.disabled = !state.paymentSort.key;
   }
 
   function syncPaymentControls() {
@@ -8737,10 +8736,6 @@
     els.paymentSort.addEventListener("change", () => {
       state.paymentSort.key = els.paymentSort.value;
       state.paymentSort.direction = state.paymentSort.key ? defaultReportSortDirection(state.paymentSort.key) : "asc";
-      renderPaymentsPage();
-    });
-    els.paymentSortDirection.addEventListener("change", () => {
-      state.paymentSort.direction = els.paymentSortDirection.value;
       renderPaymentsPage();
     });
     els.paymentSearch.addEventListener("input", () => { state.payments.search = els.paymentSearch.value; renderPaymentsPage(); });
