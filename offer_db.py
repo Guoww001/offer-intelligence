@@ -11,6 +11,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
 
+from browser_payloads import read_browser_payload
+
 
 ROOT = Path(__file__).resolve().parent
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
@@ -23,6 +25,9 @@ DB_ENV_KEYS = (
     "OFFER_DB_USER",
     "OFFER_DB_PASSWORD",
 )
+REPORTING_TZ = dt.timezone(dt.timedelta(hours=8))
+DEFAULT_REPORTING_DELAY_DAYS = 2
+DEFAULT_DAILY_TREND_DAYS = 14
 
 
 class OfferDbError(RuntimeError):
@@ -259,6 +264,57 @@ def normalize_compact_date(value: Any) -> str | None:
     return text
 
 
+def normalize_day(value: Any) -> str | None:
+    normalized = normalize_compact_date(value)
+    if not normalized:
+        return None
+    if re.match(r"^\d{4}-\d{2}-\d{2}", normalized):
+        return normalized[:10]
+    return None
+
+
+def parse_day(value: Any) -> dt.date | None:
+    normalized = normalize_day(value)
+    if not normalized:
+        return None
+    try:
+        return dt.date.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def reporting_today() -> dt.date:
+    return dt.datetime.now(REPORTING_TZ).date()
+
+
+def month_start(day: dt.date) -> dt.date:
+    return day.replace(day=1)
+
+
+def month_end(day: dt.date) -> dt.date:
+    if day.month == 12:
+        return day.replace(year=day.year + 1, month=1, day=1) - dt.timedelta(days=1)
+    return day.replace(month=day.month + 1, day=1) - dt.timedelta(days=1)
+
+
+def parse_month_key(value: str | None) -> dt.date | None:
+    text = str(value or "").strip()
+    if not re.match(r"^\d{4}-\d{2}$", text):
+        return None
+    try:
+        return dt.date.fromisoformat(f"{text}-01")
+    except ValueError:
+        return None
+
+
+def bounded_int_env(key: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(key, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
 def normalize_month(value: Any) -> str:
     text = str(value or "").strip()
     if re.match(r"^\d{6}$", text):
@@ -280,11 +336,10 @@ def clean_decimal(value: Any, places: int = 6) -> float:
 
 
 def read_static_chatbot_text() -> str:
-    source = ROOT / "public" / "chatbot_data.js"
-    if not source.exists():
-        source = ROOT / "chatbot_data.js"
-    if source.exists():
-        return source.read_text(encoding="utf-8")
+    try:
+        return read_browser_payload("chatbot_data.js")
+    except OSError:
+        pass
 
     candidates = []
     explicit_url = os.environ.get("OFFER_STATIC_DATA_URL", "").strip()
@@ -293,7 +348,9 @@ def read_static_chatbot_text() -> str:
     for key in ("VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"):
         host = os.environ.get(key, "").strip()
         if host:
-            candidates.append(f"https://{host.removeprefix('https://').removeprefix('http://')}/chatbot_data.js")
+            candidates.append(
+                f"https://{host.removeprefix('https://').removeprefix('http://')}/api/auth/data?file=chatbot_data.js"
+            )
 
     for url in candidates:
         try:
@@ -430,7 +487,7 @@ def recent_month_summary(conn, months: int = 3) -> dict[str, list[dict[str, Any]
             f"""
             SELECT {month_sql} AS month,
                    COUNT(*) AS clickRows,
-                   {sum_expr("c", click_cols, ["clicks", "click_num"], "clicks")},
+                   {sum_expr("c", click_cols, ["click", "clicks", "click_num"], "clicks")},
                    {sum_expr("c", click_cols, ["dpv", "dpv_num"], "dpv")},
                    {sum_expr("c", click_cols, ["atc", "atc_num"], "atc")}
             FROM {q("cnpscy_amazon_click")} c
@@ -465,6 +522,196 @@ def recent_month_summary(conn, months: int = 3) -> dict[str, list[dict[str, Any]
     return output
 
 
+def daily_status_trend(
+    conn,
+    days: int | None = None,
+    delay_days: int | None = None,
+    latest: dict[str, Any] | None = None,
+    month: str | None = None,
+) -> dict[str, Any]:
+    days = days or bounded_int_env("OFFER_DB_DAILY_TREND_DAYS", DEFAULT_DAILY_TREND_DAYS, 7, 45)
+    delay_days = DEFAULT_REPORTING_DELAY_DAYS if delay_days is None else delay_days
+    delay_days = bounded_int_env("OFFER_DB_REPORTING_DELAY_DAYS", delay_days, 0, 7)
+    today = reporting_today()
+    requested_month = parse_month_key(month)
+    if requested_month:
+        start = requested_month
+        end = min(today, month_end(requested_month)) if requested_month.year == today.year and requested_month.month == today.month else month_end(requested_month)
+    else:
+        start = max(month_start(today), today - dt.timedelta(days=days - 1))
+        end = today
+    expected_complete = min(end, today - dt.timedelta(days=delay_days)) if end >= month_start(today) else end
+    latest = latest or latest_dates(conn)
+    primary_latest = parse_day(((latest.get("aggregateOrders") or {}).get("latest"))) or parse_day(((latest.get("amazonOrders") or {}).get("latest"))) or expected_complete
+    complete_through = min(primary_latest, expected_complete)
+    bucket: dict[str, dict[str, Any]] = {}
+    start_key = start.strftime("%Y%m%d")
+    end_key = end.strftime("%Y%m%d")
+
+    aggregate_cols = table_columns(conn, "cnpscy_order_new_aggregate")
+    aggregate_date = pick_column(aggregate_cols, ["order_time_day", "time_day"])
+    if aggregate_date:
+        rows = fetch_all(
+            conn,
+            f"""
+            SELECT CAST(a.{q(aggregate_date)} AS CHAR) AS day,
+                   COUNT(*) AS aggregateRows,
+                   {sum_expr("a", aggregate_cols, ["order_num", "orders"], "orders")},
+                   {sum_expr("a", aggregate_cols, ["amount", "sales_amount", "revenue"], "revenue")},
+                   {sum_expr("a", aggregate_cols, ["payout", "commission"], "payout")},
+                   {sum_expr("a", aggregate_cols, ["aff_payout", "affiliate_payout"], "affiliatePayout")},
+                   {sum_expr("a", aggregate_cols, ["cpc_leads", "leads"], "cpcLeads")}
+            FROM {q("cnpscy_order_new_aggregate")} a
+            WHERE a.{q(aggregate_date)} BETWEEN %s AND %s
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (start_key, end_key),
+        )
+        for row in rows:
+            day = normalize_day(row.get("day"))
+            if not day:
+                continue
+            target = bucket.setdefault(day, {})
+            for key in ("aggregateRows", "orders", "revenue", "payout", "affiliatePayout", "cpcLeads"):
+                number = to_float(row.get(key))
+                target[key] = int(number) if number.is_integer() else round(number, 6)
+
+    order_cols = table_columns(conn, "cnpscy_amazon_order")
+    order_date = pick_column(order_cols, ["order_time_day"])
+    if order_date:
+        rows = fetch_all(
+            conn,
+            f"""
+            SELECT CAST(o.{q(order_date)} AS CHAR) AS day,
+                   COUNT(*) AS orders,
+                   {sum_expr("o", order_cols, ["amount", "sales_amount", "revenue"], "revenue")},
+                   {sum_expr("o", order_cols, ["payout", "commission"], "payout")},
+                   {sum_expr("o", order_cols, ["aff_payout", "affiliate_payout"], "affiliatePayout")},
+                   {sum_expr("o", order_cols, ["clicks", "click_num"], "orderClicks")},
+                   {sum_expr("o", order_cols, ["detail_page_views", "dpv", "dpv_num"], "dpv")},
+                   {sum_expr("o", order_cols, ["add_to_carts", "atc", "atc_num"], "atc")},
+                   {sum_expr("o", order_cols, ["direct_sales", "directSales", "direct_sale_amount"], "directSales")},
+                   {sum_expr("o", order_cols, ["halo_sales", "haloSales", "halo_sale_amount"], "haloSales")}
+            FROM {q("cnpscy_amazon_order")} o
+            WHERE o.{q(order_date)} BETWEEN %s AND %s
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (start_key, end_key),
+        )
+        for row in rows:
+            day = normalize_day(row.get("day"))
+            if not day:
+                continue
+            target = bucket.setdefault(day, {})
+            for key in ("orderClicks", "dpv", "atc", "directSales", "haloSales"):
+                number = to_float(row.get(key))
+                target[key] = int(number) if number.is_integer() else round(number, 6)
+
+    click_cols = table_columns(conn, "cnpscy_amazon_click")
+    click_date = pick_column(click_cols, ["time_day", "click_time_day"])
+    if click_date:
+        rows = fetch_all(
+            conn,
+            f"""
+            SELECT CAST(c.{q(click_date)} AS CHAR) AS day,
+                   COUNT(*) AS clickRows,
+                   {sum_expr("c", click_cols, ["click", "clicks", "click_num"], "clicks")},
+                   {sum_expr("c", click_cols, ["dpv", "dpv_num"], "dpv")},
+                   {sum_expr("c", click_cols, ["atc", "atc_num"], "atc")}
+            FROM {q("cnpscy_amazon_click")} c
+            WHERE c.{q(click_date)} BETWEEN %s AND %s
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (start_key, end_key),
+        )
+        for row in rows:
+            day = normalize_day(row.get("day"))
+            if not day:
+                continue
+            target = bucket.setdefault(day, {})
+            for key in ("clickRows", "clicks", "dpv", "atc"):
+                number = to_float(row.get(key))
+                if key in {"dpv", "atc"} and not number and target.get(key):
+                    continue
+                target[key] = int(number) if number.is_integer() else round(number, 6)
+            if not target.get("clicks") and target.get("clickRows"):
+                target["clicks"] = target["clickRows"]
+
+    rows: list[dict[str, Any]] = []
+    current = start
+    while current <= end:
+        key = current.isoformat()
+        values = bucket.get(key, {})
+        if current > expected_complete:
+            state = "delay"
+        elif current > complete_through:
+            state = "stale"
+        else:
+            state = "observed"
+        clicks = values.get("clicks", values.get("orderClicks", 0))
+        orders = values.get("orders", 0)
+        revenue = values.get("revenue", 0)
+        row = {
+            "date": key,
+            "state": state,
+            "isComplete": state != "delay",
+            "source": "cnpscy_order_new_aggregate",
+            "aggregateRows": values.get("aggregateRows", 0),
+            "orders": orders,
+            "revenue": revenue,
+            "clicks": clicks,
+            "payout": values.get("payout", 0),
+            "affiliatePayout": values.get("affiliatePayout", 0),
+            "dpv": values.get("dpv", 0),
+            "atc": values.get("atc", 0),
+            "directSales": values.get("directSales", 0),
+            "haloSales": values.get("haloSales", 0),
+        }
+        row["epc"] = round(to_float(revenue) / to_float(clicks), 6) if to_float(clicks) else 0
+        row["aov"] = round(to_float(revenue) / to_float(orders), 6) if to_float(orders) else 0
+        row["conversionRate"] = round(to_float(orders) / to_float(clicks), 6) if to_float(clicks) else 0
+        rows.append(row)
+        current += dt.timedelta(days=1)
+
+    latest_in_range = None
+    for row in rows:
+        if target := row.get("date"):
+            has_values = to_float(row.get("aggregateRows")) or to_float(row.get("orders")) or to_float(row.get("revenue"))
+            if has_values:
+                parsed = parse_day(target)
+                if parsed and (latest_in_range is None or parsed > latest_in_range):
+                    latest_in_range = parsed
+    if latest_in_range:
+        complete_through = min(latest_in_range, expected_complete)
+        for row in rows:
+            parsed = parse_day(row.get("date"))
+            if not parsed:
+                continue
+            if parsed > expected_complete:
+                row["state"] = "delay"
+                row["isComplete"] = False
+            elif parsed > complete_through:
+                row["state"] = "stale"
+                row["isComplete"] = True
+            else:
+                row["state"] = "observed"
+                row["isComplete"] = True
+
+    return {
+        "month": start.strftime("%Y-%m"),
+        "delayDays": delay_days,
+        "currentDate": today.isoformat(),
+        "observedThrough": complete_through.isoformat(),
+        "latestDataDate": (latest_in_range or primary_latest).isoformat(),
+        "expectedCompleteThrough": expected_complete.isoformat(),
+        "primarySource": "cnpscy_order_new_aggregate",
+        "rows": rows,
+    }
+
+
 def format_metric_row(row: dict[str, Any]) -> dict[str, Any]:
     output: dict[str, Any] = {"month": normalize_month(row.get("month"))}
     for key, value in row.items():
@@ -475,9 +722,10 @@ def format_metric_row(row: dict[str, Any]) -> dict[str, Any]:
     return output
 
 
-def status_payload() -> dict[str, Any]:
+def status_payload(month: str | None = None) -> dict[str, Any]:
     with db_connection() as conn:
         static_ids = read_static_merchant_ids()
+        latest = latest_dates(conn)
         coverage = {
             "staticNumericMerchantIds": len(static_ids),
             "cnpscy_advert": count_distinct_for_ids(conn, "cnpscy_advert", ["advert_id", "merchant_id"], static_ids),
@@ -492,8 +740,9 @@ def status_payload() -> dict[str, Any]:
                 "generatedAt": static_chatbot_generated_at(),
                 "merchantIds": len(static_ids),
             },
-            "latestDates": latest_dates(conn),
+            "latestDates": latest,
             "coverage": coverage,
+            "dailyTrend": daily_status_trend(conn, latest=latest, month=month),
             "recentMonths": recent_month_summary(conn),
         }
 
@@ -646,7 +895,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             f"""
             SELECT {month_sql} AS month,
                    COUNT(*) AS clickRows,
-                   {sum_expr("c", click_cols, ["clicks", "click_num"], "rawClicks")},
+                   {sum_expr("c", click_cols, ["click", "clicks", "click_num"], "rawClicks")},
                    {sum_expr("c", click_cols, ["dpv", "dpv_num"], "dpv")},
                    {sum_expr("c", click_cols, ["atc", "atc_num"], "atc")}
             FROM {q("cnpscy_amazon_click")} c

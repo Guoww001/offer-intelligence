@@ -16,12 +16,26 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from api.tier_moves import handle_tier_moves
+from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth
+from browser_payloads import browser_payload_path
+from offer_db import (
+    DIGITS_RE,
+    first_query_value,
+    int_query_value,
+    merchant_payload,
+    public_error_payload,
+    read_static_merchant_ids,
+    search_payload,
+    status_payload,
+)
+from protected_payloads import handle_protected_data
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "public"
-DATA_FILE = STATIC_DIR / "chatbot_data.js"
-SHEET_DATA_FILE = STATIC_DIR / "sheet_report_data.js"
+DATA_FILE = browser_payload_path("chatbot_data.js")
+SHEET_DATA_FILE = browser_payload_path("sheet_report_data.js")
+PROTECTED_STATIC_NAMES = {"chatbot_data.js", "sheet_report_data.js", "product_keywords.js"}
 LEVANTA_BASE = "https://app.levanta.io/api/creator/v1"
 DEFAULT_MONTHS = [
     ("February", 1, 2026),
@@ -747,8 +761,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/session":
+            handle_auth_session(self)
+            return
+        if parsed.path == "/api/auth/data":
+            handle_protected_data(self)
+            return
         if parsed.path == "/api/levanta/payments":
+            if not require_auth(self, allow_payment_sync_token=True):
+                return
             self.handle_payments_api(parsed)
+            return
+        if parsed.path.startswith("/api/ui/db/"):
+            if not require_auth(self):
+                return
+            self.handle_db_ui_api(parsed)
             return
         if parsed.path == "/api/tier_moves":
             handle_tier_moves(self, "GET")
@@ -757,6 +784,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/auth/"):
+            handle_auth_options(self)
+            return
+        if parsed.path.startswith("/api/ui/db/"):
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if parsed.path == "/api/tier_moves":
             handle_tier_moves(self, "OPTIONS")
             return
@@ -765,10 +802,67 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/login":
+            handle_auth_login(self)
+            return
+        if parsed.path == "/api/auth/logout":
+            handle_auth_logout(self)
+            return
         if parsed.path == "/api/tier_moves":
             handle_tier_moves(self, "POST")
             return
         self.send_error(404)
+
+    def send_db_error(self, error):
+        payload = public_error_payload(error)
+        status = int(payload.pop("status", 502))
+        self.send_json(status, payload)
+
+    def handle_db_ui_api(self, parsed):
+        query = parse_qs(parsed.query)
+        try:
+            if parsed.path == "/api/ui/db/status":
+                self.send_json(200, status_payload(month=first_query_value(query, "month")))
+                return
+
+            if parsed.path == "/api/ui/db/merchant":
+                merchant_id = first_query_value(query, "merchantId")
+                if not merchant_id:
+                    self.send_json(400, {"ok": False, "error": "merchantId is required"})
+                    return
+                if not DIGITS_RE.match(merchant_id):
+                    self.send_json(400, {"ok": False, "error": "merchantId must be numeric"})
+                    return
+                if merchant_id not in set(read_static_merchant_ids()):
+                    self.send_json(404, {"ok": False, "error": "merchantId is not in the public snapshot"})
+                    return
+                limit = int_query_value(query, "limit", 20, 1, 50)
+                months = int_query_value(query, "months", 12, 1, 24)
+                self.send_json(200, merchant_payload(merchant_id, product_limit=limit, months=months))
+                return
+
+            if parsed.path == "/api/ui/db/search":
+                text = first_query_value(query, "q")
+                limit = int_query_value(query, "limit", 15, 1, 25)
+                if len(text) < 2:
+                    self.send_json(200, {"ok": True, "query": text, "results": []})
+                    return
+                public_ids = set(read_static_merchant_ids())
+                payload = search_payload(text, limit=max(50, limit * 4))
+                payload["results"] = [
+                    row for row in payload.get("results", [])
+                    if str(row.get("merchantId") or "") in public_ids
+                ][:limit]
+                self.send_json(200, payload)
+                return
+        except ValueError as error:
+            self.send_json(400, {"ok": False, "error": str(error)})
+            return
+        except Exception as error:
+            self.send_db_error(error)
+            return
+
+        self.send_json(404, {"ok": False, "error": "Unknown DB UI endpoint"})
 
     def handle_payments_api(self, parsed):
         api_key = os.environ.get("LEVANTA_API_KEY", "").strip()
@@ -808,6 +902,9 @@ class Handler(BaseHTTPRequestHandler):
     def handle_static(self, path):
         if path in ("", "/"):
             path = "/index.html"
+        if path.lstrip("/") in PROTECTED_STATIC_NAMES:
+            self.send_error(404)
+            return
         target = (STATIC_DIR / path.lstrip("/")).resolve()
         if not str(target).startswith(str(STATIC_DIR.resolve())) or not target.is_file():
             self.send_error(404)

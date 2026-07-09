@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 
-from offer_db import first_query_value, handle_options, parse_query, require_db_token, send_db_error, send_json, status_payload
+from auth import require_auth
+from offer_db import first_query_value, handle_options, parse_query, send_db_error, send_json, status_payload
 
 
 class handler(BaseHTTPRequestHandler):
@@ -8,7 +9,7 @@ class handler(BaseHTTPRequestHandler):
         handle_options(self)
 
     def do_GET(self):
-        if not require_db_token(self):
+        if not require_auth(self):
             return
         try:
             query = parse_query(self)
