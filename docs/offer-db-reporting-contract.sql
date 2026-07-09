@@ -67,3 +67,25 @@ CREATE TABLE IF NOT EXISTS oi_tier_visual_status (
 --   SUM(COALESCE(halo_sales, 0)) AS haloSales
 -- FROM cnpscy_amazon_order
 -- GROUP BY advert_id, CONCAT(SUBSTRING(CAST(order_time_day AS CHAR), 1, 4), '-', SUBSTRING(CAST(order_time_day AS CHAR), 5, 2));
+
+
+-- 分类定义表（自引用，支持任意层级）
+CREATE TABLE IF NOT EXISTS oi_category (
+  categoryId INT AUTO_INCREMENT PRIMARY KEY,
+  categoryName VARCHAR(128) NOT NULL COMMENT '分类名称',
+  parentCategoryId INT DEFAULT NULL COMMENT '父分类ID，NULL表示一级类目',
+  level TINYINT NOT NULL DEFAULT 1 COMMENT '层级：1=主类目，2=次类目',
+  sortOrder INT DEFAULT 0 COMMENT '排序',
+  source VARCHAR(32) DEFAULT 'manual' COMMENT '数据来源',
+  updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_parent (parentCategoryId),
+  KEY idx_level (level)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 商户-分类关联表
+CREATE TABLE IF NOT EXISTS oi_merchant_category (
+  merchantId VARCHAR(32) NOT NULL,
+  categoryId INT NOT NULL COMMENT '关联到 oi_category.categoryId',
+  PRIMARY KEY (merchantId, categoryId),
+  KEY idx_category (categoryId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
