@@ -84,6 +84,8 @@
     lastOffer: null,
     lastRows: [],
     currentQuery: "",
+    llmClassifyResult: null,
+    llmParams: null,
     currentContext: { type: "default", items: [], summary: {}, filters: {} },
     payments: {
       month: "all",
@@ -147,6 +149,8 @@
     reportsOpen: true,
     language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en"
   };
+
+  const llmClassifyCache = new Map();
 
   const els = {
     dashboardNav: document.getElementById("dashboardNav"),
@@ -2668,6 +2672,38 @@
     return `Payment cycle ${filter.operator} ${Number(filter.threshold).toLocaleString()} days`;
   }
 
+  function normalizeLlmMetricFilter(filter) {
+    // Convert LLM-extracted metric filter to internal format used by applyMetricFilters
+    if (!filter || !filter.field || !filter.operator) return null;
+    var field = String(filter.field || "").toLowerCase().trim();
+    var fieldMap = {
+      aov: { field: "aov", label: "AOV", type: "money" },
+      epc: { field: "epc", label: "EPC", type: "money" },
+      conversionrate: { field: "conversionRate", label: "CVR", type: "percent" },
+      cvr: { field: "conversionRate", label: "CVR", type: "percent" },
+      affcommission: { field: "affCommission", label: "Commission made", type: "money" },
+      commissionrate: { field: "commissionRate", label: "Commission rate", type: "percent" },
+      salesamount: { field: "salesAmount", label: "Revenue", type: "money" },
+      orders: { field: "orders", label: "Orders", type: "count" },
+      clicks: { field: "clicks", label: "Clicks", type: "count" },
+      dpv: { field: "dpv", label: "DPV", type: "count" },
+      atc: { field: "atc", label: "ATC", type: "count" }
+    };
+    var meta = fieldMap[field];
+    if (!meta) return null;
+    var value = Number(filter.value || 0);
+    // Normalize percent values: LLM sends "5" for 5%, internal stores 0.05
+    if (meta.type === "percent" && value > 1) value = value / 100;
+    return {
+      field: meta.field,
+      label: meta.label,
+      type: meta.type,
+      operator: String(filter.operator),
+      threshold: value,
+      raw: ""
+    };
+  }
+
   function extractMetricFilters(prompt) {
     const filters = [];
     const text = String(prompt || "");
@@ -3006,7 +3042,757 @@
       Boolean(categoryForPrompt(text));
   }
 
+  function collectCategories() {
+    const cats = new Set();
+    for (let i = 0; i < offers.length; i++) {
+      const cat = offers[i].mainCategory || offers[i].category;
+      if (cat && cat !== "Uncategorized") cats.add(cat);
+    }
+    return Array.from(cats).sort();
+  }
+
+  // ── Analysis utility functions ──────────────────────────────────────────────
+
+  function percentileRank(value, values) {
+    if (!values || !values.length) return 0;
+    var sorted = values.slice().sort(function(a, b) { return a - b; });
+    var countLower = 0;
+    for (var i = 0; i < sorted.length; i++) {
+      if (sorted[i] < value) countLower++;
+    }
+    return Math.round((countLower / sorted.length) * 100);
+  }
+
+  function segmentedStats(offers, field) {
+    if (!offers || !offers.length) return { head: { count: 0, avg: 0 }, mid: { count: 0, avg: 0 }, tail: { count: 0, avg: 0 } };
+    var sorted = offers.slice().sort(function(a, b) { return (b[field] || 0) - (a[field] || 0); });
+    var total = sorted.length;
+    var headCount = Math.max(1, Math.round(total * 0.2));
+    var tailCount = Math.max(1, Math.round(total * 0.2));
+    var midCount = total - headCount - tailCount;
+    function avg(slice) {
+      if (!slice.length) return 0;
+      var sum = 0;
+      for (var i = 0; i < slice.length; i++) sum += (slice[i][field] || 0);
+      return sum / slice.length;
+    }
+    return {
+      head: { count: headCount, avg: avg(sorted.slice(0, headCount)) },
+      mid: { count: midCount, avg: avg(sorted.slice(headCount, headCount + midCount)) },
+      tail: { count: tailCount, avg: avg(sorted.slice(headCount + midCount)) }
+    };
+  }
+
+  function metricLabel(field) {
+    var labels = { epc: "EPC", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Commission", commissionRate: "Comm %", salesAmount: "Sales", dpv: "DPV", atc: "ATC" };
+    return labels[field] || field;
+  }
+
+  function pctDelta(selfVal, otherVal) {
+    if (otherVal == null || otherVal === 0) return "N/A";
+    var delta = ((selfVal - otherVal) / Math.abs(otherVal)) * 100;
+    var sign = delta >= 0 ? "+" : "";
+    return sign + delta.toFixed(1) + "%";
+  }
+
+  function metricValueForOffer(offer, field) {
+    if (!offer) return 0;
+    if (field === "conversionRate") return (offer.conversionRate || 0) * 100;
+    if (field === "commissionRate") return (offer.commissionRate || 0) * 100;
+    return offer[field] || 0;
+  }
+
+  function formatAnalysisMetric(value, field) {
+    if (value == null) return "N/A";
+    if (field === "conversionRate" || field === "commissionRate") return pct(value / 100);
+    if (field === "epc") return epc(value);
+    if (field === "aov" || field === "salesAmount" || field === "affCommission") return money(value);
+    if (field === "orders" || field === "clicks" || field === "dpv" || field === "atc") return number(value).toLocaleString();
+    return String(value);
+  }
+
+  async function classifyWithLLM(prompt, categories) {
+    const trimmed = String(prompt || "").trim();
+    if (!trimmed) return null;
+    if (llmClassifyCache.has(trimmed)) return llmClassifyCache.get(trimmed);
+    if (state.llmEnabled === false) return null;
+    try {
+      const response = await fetch("/api/chat/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        credentials: "same-origin",
+        body: JSON.stringify({ prompt: trimmed, categories: categories || [] }),
+        signal: AbortSignal.timeout(20000)
+      });
+      if (!response.ok) {
+        console.warn("[LLM] fallback to regex: HTTP " + response.status);
+        llmClassifyCache.set(trimmed, null);
+        return null;
+      }
+      const data = await response.json().catch(() => ({}));
+      const intent = data.intent || null;
+      const params = (data.params && typeof data.params === "object" && !Array.isArray(data.params)) ? data.params : null;
+      if (!intent) {
+        llmClassifyCache.set(trimmed, null);
+        return null;
+      }
+      const result = { intent: intent, params: params };
+      llmClassifyCache.set(trimmed, result);
+      return result;
+    } catch (error) {
+      const reason = error.name === "TimeoutError" || error.name === "AbortError" ? "timeout" : error.message || "unknown";
+      console.warn("[LLM] fallback to regex: " + reason);
+      llmClassifyCache.set(trimmed, null);
+      return null;
+    }
+  }
+
+  // ── Analysis computation functions ──────────────────────────────────────────
+
+  function findOfferByMerchantName(name) {
+    if (!name) return null;
+    var lower = name.toLowerCase().trim();
+    // Try exact match first
+    for (var i = 0; i < offers.length; i++) {
+      if ((offers[i].brand || "").toLowerCase() === lower || (offers[i].merchantName || "").toLowerCase() === lower) {
+        return offers[i];
+      }
+    }
+    // Try includes match
+    for (var i = 0; i < offers.length; i++) {
+      if ((offers[i].brand || "").toLowerCase().indexOf(lower) !== -1 || (offers[i].merchantName || "").toLowerCase().indexOf(lower) !== -1) {
+        return offers[i];
+      }
+    }
+    // Try fuzzy match via existing lookup
+    var matches = findMerchantMatches(name);
+    if (matches && matches.length) return matches[0];
+    return null;
+  }
+
+  function offersInCategory(categoryName) {
+    if (!categoryName) return [];
+    var lower = categoryName.toLowerCase().trim();
+    return offers.filter(function(o) {
+      var cat = (o.mainCategory || o.category || "").toLowerCase();
+      return cat === lower || cat.indexOf(lower) !== -1;
+    });
+  }
+
+  function offersInTier(tierName) {
+    if (!tierName) return [];
+    return offers.filter(function(o) { return o.tier === tierName; });
+  }
+
+  function globalAverages() {
+    var metrics = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
+    var result = {};
+    for (var m = 0; m < metrics.length; m++) {
+      var field = metrics[m];
+      var values = [];
+      for (var i = 0; i < offers.length; i++) {
+        var v = field === "conversionRate" ? (offers[i].conversionRate || 0) * 100 : (offers[i][field] || 0);
+        if (v > 0) values.push(v);
+      }
+      result[field] = values.length ? values.reduce(function(a, b) { return a + b; }, 0) / values.length : 0;
+    }
+    return result;
+  }
+
+  function analyzeMerchant(name) {
+    var offer = findOfferByMerchantName(name);
+    if (!offer) return null;
+
+    var category = offer.mainCategory || offer.category || "Uncategorized";
+    var tier = offer.tier || "Unknown";
+    var categoryOffers = offersInCategory(category);
+    var tierOffers = offersInTier(tier);
+    var globals = globalAverages();
+
+    var fields = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
+    var metrics = {};
+    for (var f = 0; f < fields.length; f++) {
+      metrics[fields[f]] = metricValueForOffer(offer, fields[f]);
+    }
+
+    // Percentile ranks within category
+    var ranks = {};
+    for (var f = 0; f < fields.length; f++) {
+      var field = fields[f];
+      var catValues = [];
+      for (var i = 0; i < categoryOffers.length; i++) {
+        catValues.push(metricValueForOffer(categoryOffers[i], field));
+      }
+      ranks[field] = {
+        value: metrics[field],
+        percentile: percentileRank(metrics[field], catValues),
+        totalInCategory: categoryOffers.length
+      };
+    }
+
+    // Comparisons
+    function avgField(offList, field) {
+      if (!offList.length) return 0;
+      var sum = 0;
+      for (var i = 0; i < offList.length; i++) sum += metricValueForOffer(offList[i], field);
+      return sum / offList.length;
+    }
+
+    function compare(selfVal, otherAvg) {
+      return { self: selfVal, avg: otherAvg, delta: pctDelta(selfVal, otherAvg) };
+    }
+
+    var comparisons = { vsCategory: {}, vsTier: {}, vsGlobal: {} };
+    for (var f = 0; f < fields.length; f++) {
+      var field = fields[f];
+      comparisons.vsCategory[field] = compare(metrics[field], avgField(categoryOffers, field));
+      comparisons.vsTier[field] = compare(metrics[field], avgField(tierOffers, field));
+      comparisons.vsGlobal[field] = compare(metrics[field], globals[field]);
+    }
+
+    // Strengths and weaknesses (based on category percentile)
+    var strengths = [];
+    var weaknesses = [];
+    for (var f = 0; f < fields.length; f++) {
+      if (ranks[fields[f]].percentile >= 70) strengths.push(fields[f]);
+      if (ranks[fields[f]].percentile <= 30) weaknesses.push(fields[f]);
+    }
+
+    // Payment risk
+    var paymentRisk = {
+      hasOverdue: hasOfferOverduePayment ? hasOfferOverduePayment(offer) : false,
+      riskText: paymentRiskTextForOffer ? paymentRiskTextForOffer(offer) : "N/A"
+    };
+
+    // Peers (same category + same tier, top 3 by commission)
+    var peers = categoryOffers.filter(function(o) {
+      return o.tier === tier && (o.brand || o.merchantName) !== (offer.brand || offer.merchantName);
+    }).sort(function(a, b) {
+      return (b.affCommission || 0) - (a.affCommission || 0);
+    }).slice(0, 3).map(function(o) {
+      var pm = {};
+      for (var f = 0; f < fields.length; f++) {
+        pm[fields[f]] = metricValueForOffer(o, fields[f]);
+      }
+      return { name: o.brand || o.merchantName || "Unknown", metrics: pm };
+    });
+
+    return {
+      type: "merchant",
+      target: { name: offer.brand || offer.merchantName || name, id: offer.merchantId || "", tier: tier, category: category },
+      metrics: metrics,
+      ranks: ranks,
+      comparisons: comparisons,
+      strengths: strengths,
+      weaknesses: weaknesses,
+      paymentRisk: paymentRisk,
+      peers: peers
+    };
+  }
+
+  function analyzeCategory(name) {
+    var catOffers = offersInCategory(name);
+    if (!catOffers.length) return null;
+
+    var canonicalName = catOffers[0].mainCategory || catOffers[0].category || name;
+    var globals = globalAverages();
+
+    // Tier distribution
+    var tierDist = {};
+    for (var i = 0; i < catOffers.length; i++) {
+      var t = catOffers[i].tier || "Unknown";
+      tierDist[t] = (tierDist[t] || 0) + 1;
+    }
+
+    // Aggregates
+    function sumField(list, field) {
+      var s = 0;
+      for (var i = 0; i < list.length; i++) s += metricValueForOffer(list[i], field);
+      return s;
+    }
+    function avgField(list, field) {
+      return list.length ? sumField(list, field) / list.length : 0;
+    }
+
+    var aggregates = {
+      merchantCount: catOffers.length,
+      totalRevenue: sumField(catOffers, "salesAmount"),
+      totalCommission: sumField(catOffers, "affCommission"),
+      totalOrders: sumField(catOffers, "orders"),
+      avgEpc: avgField(catOffers, "epc"),
+      avgAov: avgField(catOffers, "aov"),
+      avgCvr: avgField(catOffers, "conversionRate"),
+      avgCommissionRate: avgField(catOffers, "commissionRate")
+    };
+
+    // vs Global
+    var vsGlobal = {};
+    var compFields = ["epc", "aov", "conversionRate", "commissionRate"];
+    for (var f = 0; f < compFields.length; f++) {
+      var field = compFields[f];
+      vsGlobal[field] = { self: aggregates["avg" + field.charAt(0).toUpperCase() + field.slice(1)] || avgField(catOffers, field), global: globals[field], delta: pctDelta(avgField(catOffers, field), globals[field]) };
+    }
+
+    // Top 5 and Bottom 3 by commission
+    var byCommission = catOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
+    function briefOffer(o) {
+      return {
+        name: o.brand || o.merchantName || "Unknown",
+        tier: o.tier || "Unknown",
+        epc: o.epc || 0,
+        aov: o.aov || 0,
+        conversionRate: (o.conversionRate || 0) * 100,
+        affCommission: o.affCommission || 0
+      };
+    }
+    var topMerchants = byCommission.slice(0, 5).map(briefOffer);
+    var bottomMerchants = byCommission.slice(-3).reverse().map(briefOffer);
+
+    return {
+      type: "category",
+      target: { name: canonicalName, merchantCount: catOffers.length, tierDistribution: tierDist },
+      aggregates: aggregates,
+      vsGlobal: vsGlobal,
+      topMerchants: topMerchants,
+      bottomMerchants: bottomMerchants
+    };
+  }
+
+  function analyzeTier(name) {
+    var tierOffers = offersInTier(name);
+    if (!tierOffers.length) return null;
+
+    var allTiers = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
+    var globals = globalAverages();
+
+    function sumField(list, field) {
+      var s = 0;
+      for (var i = 0; i < list.length; i++) s += metricValueForOffer(list[i], field);
+      return s;
+    }
+    function avgField(list, field) {
+      return list.length ? sumField(list, field) / list.length : 0;
+    }
+
+    var aggregates = {
+      merchantCount: tierOffers.length,
+      totalRevenue: sumField(tierOffers, "salesAmount"),
+      totalCommission: sumField(tierOffers, "affCommission"),
+      totalOrders: sumField(tierOffers, "orders"),
+      avgEpc: avgField(tierOffers, "epc"),
+      avgAov: avgField(tierOffers, "aov"),
+      avgCvr: avgField(tierOffers, "conversionRate"),
+      avgCommissionRate: avgField(tierOffers, "commissionRate")
+    };
+
+    // vs Other Tiers
+    var vsOtherTiers = {};
+    for (var t = 0; t < allTiers.length; t++) {
+      var otherTier = allTiers[t];
+      if (otherTier === name) continue;
+      var otherOffers = offersInTier(otherTier);
+      if (!otherOffers.length) continue;
+      var comp = {};
+      var compFields = ["epc", "aov", "conversionRate", "commissionRate"];
+      for (var f = 0; f < compFields.length; f++) {
+        var field = compFields[f];
+        var selfAvg = avgField(tierOffers, field);
+        var otherAvg = avgField(otherOffers, field);
+        comp[field] = { self: selfAvg, other: otherAvg, delta: pctDelta(selfAvg, otherAvg) };
+      }
+      vsOtherTiers[otherTier] = comp;
+    }
+
+    // Segments (by commission)
+    var segments = segmentedStats(tierOffers, "affCommission");
+
+    // Outliers
+    var tierAvgEpc = aggregates.avgEpc;
+    var tierAvgCvr = aggregates.avgCvr;
+    var outliers = [];
+    for (var i = 0; i < tierOffers.length; i++) {
+      var o = tierOffers[i];
+      var oEpc = o.epc || 0;
+      var oCvr = (o.conversionRate || 0) * 100;
+      var nameO = o.brand || o.merchantName || "Unknown";
+      if (tierAvgEpc > 0 && oEpc > tierAvgEpc * 3) {
+        outliers.push({ name: nameO, reason: "EPC " + epc(oEpc) + "远超同级均值 " + epc(tierAvgEpc) });
+      }
+      if (tierAvgCvr > 0 && oCvr > tierAvgCvr * 2) {
+        outliers.push({ name: nameO, reason: "CVR " + pct(oCvr / 100) + "远超同级均值 " + pct(tierAvgCvr / 100) });
+      }
+    }
+
+    return {
+      type: "tier",
+      target: { name: name, merchantCount: tierOffers.length },
+      aggregates: aggregates,
+      vsOtherTiers: vsOtherTiers,
+      segments: segments,
+      outliers: outliers.slice(0, 5)
+    };
+  }
+
+  // ── Analysis table rendering ────────────────────────────────────────────────
+
+  function renderAnalysisTable(summary) {
+    if (!summary) return "<p>No analysis data available.</p>";
+    if (summary.type === "merchant") return renderMerchantAnalysisTable(summary);
+    if (summary.type === "category") return renderCategoryAnalysisTable(summary);
+    if (summary.type === "tier") return renderTierAnalysisTable(summary);
+    return "<p>Unknown analysis type.</p>";
+  }
+
+  function renderMerchantAnalysisTable(s) {
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var fields = ["epc", "aov", "conversionRate", "orders", "affCommission", "commissionRate"];
+    var html = "";
+
+    // Core metrics table with percentile ranks
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "核心指标" : "Core Metrics") + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "数值" : "Value") + "</th><th>" + (zh ? "品类排名" : "Category Rank") + "</th></tr></thead><tbody>";
+    for (var f = 0; f < fields.length; f++) {
+      var field = fields[f];
+      var rank = s.ranks[field];
+      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + (zh ? "前" : "Top ") + rank.percentile + "% (" + rank.totalInCategory + " " + (zh ? "个商户中" : "merchants") + ")</td></tr>";
+    }
+    html += "</tbody></table></div>";
+
+    // Comparisons
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "横向对比" : "Comparisons") + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "当前" : "Current") + "</th><th>" + (zh ? "品类均值" : "Category Avg") + "</th><th>" + (zh ? "差异" : "Delta") + "</th></tr></thead><tbody>";
+    for (var f = 0; f < fields.length; f++) {
+      var field = fields[f];
+      var comp = s.comparisons.vsCategory[field];
+      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(comp.self, field) + "</td><td>" + formatAnalysisMetric(comp.avg, field) + "</td><td>" + escapeHtml(comp.delta) + "</td></tr>";
+    }
+    html += "</tbody></table></div>";
+
+    // Strengths & Weaknesses
+    html += "<div class=\"analysis-section\">";
+    if (s.strengths.length) {
+      html += "<p><strong>" + (zh ? "亮点：" : "Strengths: ") + "</strong>";
+      var strLabels = [];
+      for (var i = 0; i < s.strengths.length; i++) strLabels.push(metricLabel(s.strengths[i]) + " (" + (zh ? "品类前" : "top ") + s.ranks[s.strengths[i]].percentile + "%)");
+      html += escapeHtml(strLabels.join(", ")) + "</p>";
+    }
+    if (s.weaknesses.length) {
+      html += "<p><strong>" + (zh ? "短板：" : "Weaknesses: ") + "</strong>";
+      var weakLabels = [];
+      for (var i = 0; i < s.weaknesses.length; i++) weakLabels.push(metricLabel(s.weaknesses[i]) + " (" + (zh ? "品类后" : "bottom ") + (100 - s.ranks[s.weaknesses[i]].percentile) + "%)");
+      html += escapeHtml(weakLabels.join(", ")) + "</p>";
+    }
+    if (!s.strengths.length && !s.weaknesses.length) {
+      html += "<p>" + (zh ? "该商户各项指标处于品类中等水平。" : "All metrics are near the category median.") + "</p>";
+    }
+    html += "<p><strong>" + (zh ? "支付状态：" : "Payment: ") + "</strong>" + escapeHtml(s.paymentRisk.riskText || (zh ? "无风险" : "No risk")) + "</p>";
+    html += "</div>";
+
+    // Peers
+    if (s.peers && s.peers.length) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "同类商户对比" : "Peer Comparison") + "</h4>";
+      html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "商户" : "Merchant") + "</th>";
+      for (var f = 0; f < fields.length; f++) html += "<th>" + metricLabel(fields[f]) + "</th>";
+      html += "</tr></thead><tbody>";
+      // Current merchant row
+      html += "<tr style=\"font-weight:bold\"><td>" + escapeHtml(s.target.name) + "</td>";
+      for (var f = 0; f < fields.length; f++) html += "<td>" + formatAnalysisMetric(s.metrics[fields[f]], fields[f]) + "</td>";
+      html += "</tr>";
+      // Peer rows
+      for (var p = 0; p < s.peers.length; p++) {
+        var peer = s.peers[p];
+        html += "<tr><td>" + escapeHtml(peer.name) + "</td>";
+        for (var f = 0; f < fields.length; f++) html += "<td>" + formatAnalysisMetric(peer.metrics[fields[f]] || 0, fields[f]) + "</td>";
+        html += "</tr>";
+      }
+      html += "</tbody></table></div>";
+    }
+
+    return html;
+  }
+
+  function renderCategoryAnalysisTable(s) {
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var html = "";
+
+    // Aggregates
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "品类概览" : "Category Overview") + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "数值" : "Value") + "</th></tr></thead><tbody>";
+    html += "<tr><td>" + (zh ? "商户数" : "Merchants") + "</td><td>" + s.aggregates.merchantCount + "</td></tr>";
+    html += "<tr><td>" + (zh ? "总收入" : "Total Revenue") + "</td><td>" + money(s.aggregates.totalRevenue) + "</td></tr>";
+    html += "<tr><td>" + (zh ? "总佣金" : "Total Commission") + "</td><td>" + money(s.aggregates.totalCommission) + "</td></tr>";
+    html += "<tr><td>" + (zh ? "总订单" : "Total Orders") + "</td><td>" + number(s.aggregates.totalOrders).toLocaleString() + "</td></tr>";
+    html += "<tr><td>Avg EPC</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
+    html += "<tr><td>Avg AOV</td><td>" + money(s.aggregates.avgAov) + "</td></tr>";
+    html += "<tr><td>Avg CVR</td><td>" + pct(s.aggregates.avgCvr / 100) + "</td></tr>";
+    html += "<tr><td>" + (zh ? "平均佣金率" : "Avg Comm Rate") + "</td><td>" + pct(s.aggregates.avgCommissionRate / 100) + "</td></tr>";
+    html += "</tbody></table></div>";
+
+    // vs Global
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "与全站均值对比" : "vs Global Average") + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "品类" : "Category") + "</th><th>" + (zh ? "全站" : "Global") + "</th><th>Delta</th></tr></thead><tbody>";
+    var keys = Object.keys(s.vsGlobal);
+    for (var i = 0; i < keys.length; i++) {
+      var v = s.vsGlobal[keys[i]];
+      html += "<tr><td>" + metricLabel(keys[i]) + "</td><td>" + formatAnalysisMetric(v.self, keys[i]) + "</td><td>" + formatAnalysisMetric(v.global, keys[i]) + "</td><td>" + escapeHtml(v.delta) + "</td></tr>";
+    }
+    html += "</tbody></table></div>";
+
+    // Top & Bottom
+    if (s.topMerchants && s.topMerchants.length) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "品类 Top 5（按佣金）" : "Top 5 by Commission") + "</h4>";
+      html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "商户" : "Merchant") + "</th><th>Tier</th><th>EPC</th><th>CVR</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+      for (var i = 0; i < s.topMerchants.length; i++) {
+        var m = s.topMerchants[i];
+        html += "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(m.name) + "</td><td>" + escapeHtml(m.tier) + "</td><td>" + epc(m.epc) + "</td><td>" + pct(m.conversionRate / 100) + "</td><td>" + money(m.affCommission) + "</td></tr>";
+      }
+      html += "</tbody></table></div>";
+    }
+
+    return html;
+  }
+
+  function renderTierAnalysisTable(s) {
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var html = "";
+
+    // Aggregates
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "层级概览" : "Tier Overview") + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "数值" : "Value") + "</th></tr></thead><tbody>";
+    html += "<tr><td>" + (zh ? "商户数" : "Merchants") + "</td><td>" + s.aggregates.merchantCount + "</td></tr>";
+    html += "<tr><td>" + (zh ? "总收入" : "Total Revenue") + "</td><td>" + money(s.aggregates.totalRevenue) + "</td></tr>";
+    html += "<tr><td>" + (zh ? "总佣金" : "Total Commission") + "</td><td>" + money(s.aggregates.totalCommission) + "</td></tr>";
+    html += "<tr><td>" + (zh ? "总订单" : "Total Orders") + "</td><td>" + number(s.aggregates.totalOrders).toLocaleString() + "</td></tr>";
+    html += "<tr><td>Avg EPC</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
+    html += "<tr><td>Avg AOV</td><td>" + money(s.aggregates.avgAov) + "</td></tr>";
+    html += "<tr><td>Avg CVR</td><td>" + pct(s.aggregates.avgCvr / 100) + "</td></tr>";
+    html += "</tbody></table></div>";
+
+    // vs Other Tiers
+    var tierKeys = Object.keys(s.vsOtherTiers);
+    if (tierKeys.length) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "跨层对比" : "Cross-Tier Comparison") + "</h4>";
+      html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + escapeHtml(s.target.name) + "</th>";
+      for (var t = 0; t < tierKeys.length; t++) html += "<th>" + escapeHtml(tierKeys[t]) + " (Delta)</th>";
+      html += "</tr></thead><tbody>";
+      var compFields = ["epc", "aov", "conversionRate", "commissionRate"];
+      for (var f = 0; f < compFields.length; f++) {
+        var field = compFields[f];
+        html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(s.vsOtherTiers[tierKeys[0]][field].self, field) + "</td>";
+        for (var t = 0; t < tierKeys.length; t++) {
+          var comp = s.vsOtherTiers[tierKeys[t]][field];
+          html += "<td>" + formatAnalysisMetric(comp.other, field) + " (" + escapeHtml(comp.delta) + ")</td>";
+        }
+        html += "</tr>";
+      }
+      html += "</tbody></table></div>";
+    }
+
+    // Segments
+    if (s.segments) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "商户分化（按佣金）" : "Segmentation (by Commission)") + "</h4>";
+      html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "分段" : "Segment") + "</th><th>" + (zh ? "商户数" : "Count") + "</th><th>" + (zh ? "平均佣金" : "Avg Commission") + "</th></tr></thead><tbody>";
+      html += "<tr><td>" + (zh ? "头部 (Top 20%)" : "Head (Top 20%)") + "</td><td>" + s.segments.head.count + "</td><td>" + money(s.segments.head.avg) + "</td></tr>";
+      html += "<tr><td>" + (zh ? "中部 (Mid 60%)" : "Mid (60%)") + "</td><td>" + s.segments.mid.count + "</td><td>" + money(s.segments.mid.avg) + "</td></tr>";
+      html += "<tr><td>" + (zh ? "尾部 (Bottom 20%)" : "Tail (Bottom 20%)") + "</td><td>" + s.segments.tail.count + "</td><td>" + money(s.segments.tail.avg) + "</td></tr>";
+      html += "</tbody></table></div>";
+    }
+
+    // Outliers
+    if (s.outliers && s.outliers.length) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "异常值" : "Outliers") + "</h4><ul>";
+      for (var i = 0; i < s.outliers.length; i++) {
+        html += "<li><strong>" + escapeHtml(s.outliers[i].name) + "</strong>: " + escapeHtml(s.outliers[i].reason) + "</li>";
+      }
+      html += "</ul></div>";
+    }
+
+    return html;
+  }
+
+  // ── LLM analysis text (async) ──────────────────────────────────────────────
+
+  async function fetchAnalysisText(summary, language) {
+    try {
+      var response = await fetch("/api/chat/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        credentials: "same-origin",
+        body: JSON.stringify({ summary: summary, language: language || "en" }),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) {
+        console.warn("[analysis] HTTP " + response.status);
+        return null;
+      }
+      var data = await response.json().catch(function() { return {}; });
+      if (data.ok && data.text) return data.text;
+      return null;
+    } catch (error) {
+      console.warn("[analysis] fetch error: " + (error.message || "unknown"));
+      return null;
+    }
+  }
+
+  function renderAnalysisNarrative(containerEl, text) {
+    if (!containerEl || !text) return;
+    var p = document.createElement("div");
+    p.className = "analysis-narrative";
+    p.innerHTML = "<p>" + escapeHtml(text).replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>") + "</p>";
+    containerEl.appendChild(p);
+  }
+
+  function fallbackAnalysisText(summary, language) {
+    var zh = language === "zh";
+    var lines = [];
+    if (summary.type === "merchant") {
+      var name = summary.target.name;
+      if (summary.strengths && summary.strengths.length) {
+        var sNames = [];
+        for (var i = 0; i < summary.strengths.length; i++) sNames.push(metricLabel(summary.strengths[i]));
+        lines.push(zh ? (escapeHtml(name) + " 的亮点是 " + sNames.join("、") + " 处于品类前列。") : (escapeHtml(name) + " stands out in " + sNames.join(", ") + " within its category."));
+      }
+      if (summary.weaknesses && summary.weaknesses.length) {
+        var wNames = [];
+        for (var i = 0; i < summary.weaknesses.length; i++) wNames.push(metricLabel(summary.weaknesses[i]));
+        lines.push(zh ? ("关注点：" + wNames.join("、") + " 低于品类均值，建议优化。") : ("Areas to watch: " + wNames.join(", ") + " are below category average."));
+      }
+      if (!lines.length) {
+        lines.push(zh ? (escapeHtml(name) + " 各项指标处于品类中等水平，表现稳定。") : (escapeHtml(name) + " metrics are near the category median — stable performance."));
+      }
+      if (summary.paymentRisk && summary.paymentRisk.hasOverdue) {
+        lines.push(zh ? "⚠ 该商户存在逾期付款风险，建议关注。" : "⚠ This merchant has overdue payment risk.");
+      }
+    } else if (summary.type === "category") {
+      var catName = summary.target.name;
+      lines.push(zh ? (escapeHtml(catName) + " 品类共 " + summary.aggregates.merchantCount + " 个商户。") : (escapeHtml(catName) + " has " + summary.aggregates.merchantCount + " merchants."));
+      var vsGlobalKeys = Object.keys(summary.vsGlobal || {});
+      for (var i = 0; i < vsGlobalKeys.length; i++) {
+        var v = summary.vsGlobal[vsGlobalKeys[i]];
+        if (v.delta && v.delta.indexOf("+") === 0) {
+          lines.push(metricLabel(vsGlobalKeys[i]) + (zh ? " 高于全站均值 " : " above global average by ") + escapeHtml(v.delta) + "。");
+        }
+      }
+      if (!lines.length) lines.push(zh ? "该品类整体表现与全站均值持平。" : "This category performs at global average levels.");
+    } else if (summary.type === "tier") {
+      var tierName = summary.target.name;
+      lines.push(zh ? (escapeHtml(tierName) + " 共 " + summary.aggregates.merchantCount + " 个商户。") : (escapeHtml(tierName) + " has " + summary.aggregates.merchantCount + " merchants."));
+      if (summary.segments) {
+        lines.push(zh ? ("头部 " + summary.segments.head.count + " 个商户贡献主要佣金，尾部 " + summary.segments.tail.count + " 个商户可能需关注。") : ("Top " + summary.segments.head.count + " merchants drive most commission; bottom " + summary.segments.tail.count + " may need attention."));
+      }
+    }
+    return lines.join("<br>");
+  }
+
+  // ── Analysis answer router ──────────────────────────────────────────────────
+
+  function analysisAnswer(prompt, params) {
+    console.log("[analysis] analysisAnswer called, prompt:", prompt, "params:", JSON.stringify(params));
+    try {
+      var language = responseLanguageFor(prompt);
+      var zh = language === "zh";
+      var analysisType = params.analysisType;
+      var analysisTarget = params.analysisTarget;
+
+      // If analysis type not specified, try to infer from prompt
+      if (!analysisType) {
+        var merchantOffer = findOfferByMerchantName(analysisTarget || prompt);
+        if (merchantOffer) {
+          analysisType = "merchant";
+          if (!analysisTarget) analysisTarget = merchantOffer.brand || merchantOffer.merchantName;
+        } else if (categoryForPrompt(analysisTarget || prompt)) {
+          analysisType = "category";
+          if (!analysisTarget) analysisTarget = categoryForPrompt(analysisTarget || prompt);
+        } else if (tierFromPrompt(analysisTarget || prompt)) {
+          analysisType = "tier";
+          if (!analysisTarget) analysisTarget = tierFromPrompt(analysisTarget || prompt);
+        } else {
+          // Default: try merchant search
+          analysisType = "merchant";
+        }
+      }
+
+      // Ensure target
+      if (!analysisTarget) analysisTarget = prompt;
+
+      console.log("[analysis] type:", analysisType, "target:", analysisTarget);
+
+      // Run analysis
+      var summary = null;
+      if (analysisType === "merchant") {
+        summary = analyzeMerchant(analysisTarget);
+      } else if (analysisType === "category") {
+        summary = analyzeCategory(analysisTarget);
+      } else if (analysisType === "tier") {
+        summary = analyzeTier(analysisTarget);
+      }
+
+      console.log("[analysis] summary:", summary ? ("type=" + summary.type + " target=" + (summary.target && summary.target.name)) : "null");
+
+      if (!summary) {
+        return zh
+          ? ("未找到 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。请检查名称是否正确，或尝试用英文名称查询。")
+          : ("No data found for <strong>" + escapeHtml(analysisTarget) + "</strong>. Please check the name and try again.");
+      }
+
+      // Set context
+      if (analysisType === "merchant") {
+        var offer = findOfferByMerchantName(analysisTarget);
+        setContext(offer ? buildMerchantContext(offer) : null);
+      } else if (analysisType === "category") {
+        var catRows = offersInCategory(analysisTarget);
+        setContext(buildCategoryContext(analysisTarget, catRows.slice(0, 80)));
+      } else if (analysisType === "tier") {
+        var tierRows = offersInTier(analysisTarget);
+        setContext(buildTierContext(analysisTarget, tierRows));
+      }
+
+      // Build table HTML immediately
+      var tableHtml = renderAnalysisTable(summary);
+      console.log("[analysis] tableHtml length:", tableHtml.length);
+
+      // Placeholder for narrative text (loaded async)
+      var narrativeId = "analysis-narrative-" + Date.now();
+      var loadingText = zh ? "正在生成分析…" : "Generating analysis…";
+      var html = tableHtml + "<div id=\"" + narrativeId + "\" class=\"analysis-narrative-placeholder\"><p><em>" + loadingText + "</em></p></div>";
+
+      // Async: fetch LLM text or fallback (deferred so DOM is ready)
+      setTimeout(function() {
+        var container = document.getElementById(narrativeId);
+        if (!container) { console.warn("[analysis] container not found:", narrativeId); return; }
+        (async function() {
+          try {
+            console.log("[analysis] fetching LLM text...");
+            var text = await fetchAnalysisText(summary, language);
+            console.log("[analysis] LLM text:", text ? ("len=" + text.length) : "null, using fallback");
+            if (!text) text = fallbackAnalysisText(summary, language);
+            container.innerHTML = "";
+            renderAnalysisNarrative(container, text);
+          } catch (e) {
+            console.error("[analysis] async narrative error:", e);
+            container.innerHTML = "<p>" + escapeHtml(fallbackAnalysisText(summary, language)) + "</p>";
+          }
+        })();
+      }, 0);
+
+      return html;
+    } catch (error) {
+      console.error("[analysis] analysisAnswer error:", error);
+      return (language === "zh"
+        ? "分析过程出错：" + escapeHtml(error.message || "unknown")
+        : "Analysis error: " + escapeHtml(error.message || "unknown"));
+    }
+  }
+
   function detectQueryIntent(userMessage) {
+    if (state.llmClassifyResult && state.llmClassifyResult.intent) {
+      const intent = state.llmClassifyResult.intent;
+      state.llmClassifyResult = null;
+      return intent;
+    }
     const lower = userMessage.toLowerCase().trim();
     if (findByAsin(userMessage)) return "asin";
     if (findByMerchantId(userMessage)) return "merchant";
@@ -3019,6 +3805,7 @@
     if (zhIntent === "recommendation") return "recommendation";
     if (metricSort) return "recommendation";
     if (/recommend|push|focus|best|should we/.test(lower) || /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(userMessage) || wantsRecommendationList(userMessage)) return "recommendation";
+    if (/分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(userMessage)) return "analysis";
     if (tierFromPrompt(userMessage)) return "tier";
     if (category || zhIntent === "category") return "category";
     if (contextFollowup(lower)) return "merchant";
@@ -4363,8 +5150,10 @@
     const lower = prompt.toLowerCase();
     const language = responseLanguageFor(prompt);
     const copy = chatCopy(language);
-    const month = monthNameFromText(prompt);
-    const tier = tierFromPrompt(prompt);
+    // LLM params take priority, regex fallback via ??
+    const p = state.llmParams || {};
+    const month = p.month || monthNameFromText(prompt);
+    const tier = p.tier || tierFromPrompt(prompt);
     const merchantMatches = findPaymentMerchantMatches(prompt);
     let rows = getPaymentRecords();
 
@@ -4450,22 +5239,42 @@
   }
 
   function answerPrompt(prompt) {
+    // Extract LLM params into state.llmParams so downstream fns (paymentAnswer) can use them.
+    // detectQueryIntent will consume state.llmClassifyResult.intent as before.
+    state.llmParams = (state.llmClassifyResult && state.llmClassifyResult.params) || {};
+    const p = state.llmParams;
+
     state.currentQuery = prompt;
     const lower = prompt.toLowerCase().trim();
     const language = responseLanguageFor(prompt);
     const copy = chatCopy(language);
-    const tierOfferPlan = parseTierOfferRequest(prompt);
+    const tierOfferPlan = (p.tierOfferPlan && p.tierOfferPlan.length)
+      ? p.tierOfferPlan
+      : parseTierOfferRequest(prompt);
     if (tierOfferPlan.length) return recommendationBundleAnswer(prompt, tierOfferPlan);
     if (isRecommendationExclusionPrompt(prompt)) return recommendationBundleExclusionAnswer(prompt);
     if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
+    // detectQueryIntent will consume state.llmClassifyResult and return LLM intent if present
     const intent = detectQueryIntent(prompt);
-    const asin = findByAsin(prompt);
+    // ASIN: LLM-extracted string or regex lookup
+    const asinFromLLM = p.asin;
+    const asin = asinFromLLM
+      ? { asin: asinFromLLM, rows: offers.filter(function(o) { return (o.topAsins || []).includes(asinFromLLM) || (o.productAsins || []).includes(asinFromLLM); }) }
+      : findByAsin(prompt);
     if (asin && intent === "asin") return asinAnswer(asin);
 
-    const exact = findByMerchantId(prompt);
+    // Merchant ID: LLM-extracted ID or regex lookup
+    const exactFromLLM = p.merchantId;
+    const exact = exactFromLLM
+      ? offers.find(function(o) { return o.merchantId === exactFromLLM; }) || null
+      : findByMerchantId(prompt);
     if (exact) return merchantOverview(exact, "", language);
 
-    const paymentCycleFilter = extractPaymentCycleFilter(prompt);
+    // Payment cycle filter: LLM-extracted or regex
+    const pcfLLM = p.paymentCycleFilter;
+    const paymentCycleFilter = (pcfLLM && pcfLLM.operator && pcfLLM.threshold != null)
+      ? { operator: pcfLLM.operator, threshold: Number(pcfLLM.threshold) }
+      : extractPaymentCycleFilter(prompt);
     if (paymentCycleFilter) return paymentCycleOfferAnswer(prompt, paymentCycleFilter);
 
     if (contextFollowup(lower)) {
@@ -4493,18 +5302,32 @@
       return merchantOverview(state.lastOffer, "", language);
     }
 
-    const category = categoryForPrompt(prompt);
-    const tier = tierFromPrompt(prompt);
-    const wantsTier4 = /tier 4|retest|第四层|第四级|四层|四级|重测|重新测试/i.test(prompt);
-    const wantsBlack = /black|blocked|黑名单|黑色|屏蔽|暂停/i.test(prompt);
+    // Parameters: LLM-extracted first, regex fallback
+    const category = p.category || categoryForPrompt(prompt);
+    const tier = p.tier || tierFromPrompt(prompt);
+    const wantsTier4 = p.includeTier4 === true || /tier 4|retest|第四层|第四级|四层|四级|重测|重新测试/i.test(prompt);
+    const wantsBlack = p.includeBlack === true || /black|blocked|黑名单|黑色|屏蔽|暂停/i.test(prompt);
     const wantsRecommendation = intent === "recommendation";
     const wantsGoogle = /google|keyword|brand keyword|search/.test(lower) || /关键词|搜索|品牌词/.test(prompt);
-    const metricFilters = extractMetricFilters(prompt);
+    const metricFilters = (p.metricFilters && p.metricFilters.length)
+      ? p.metricFilters.map(normalizeLlmMetricFilter).filter(Boolean)
+      : extractMetricFilters(prompt);
     const topMetricRequest = extractTopMetricRequest(prompt);
-    const metricSort = extractMetricSortIntent(prompt);
+    const llmSort = p.metricSort;
+    const metricSort = (llmSort && llmSort.field && llmSort.direction)
+      ? { field: llmSort.field, label: llmSort.field, type: "money", direction: llmSort.direction }
+      : extractMetricSortIntent(prompt);
     const keywordRequest = keywordSearchRequest(prompt);
 
-    if (hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
+    // When LLM params indicate a recommendation (tier, count, metricFilter, metricSort),
+    // skip keyword search — the user is asking for ranked offers, not a text search.
+    const llmIndicatesRecommendation = p.tier || p.count || (p.metricFilters && p.metricFilters.length) || p.metricSort;
+
+    if (intent === "analysis") {
+      return analysisAnswer(prompt, p);
+    }
+
+    if (!llmIndicatesRecommendation && hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
       return keywordSearchAnswer(prompt, keywordRequest, { topMetricRequest });
     }
 
@@ -4520,7 +5343,8 @@
       let pool = category ? sortedForCategory(category, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt, tier }) : offers;
       if (tier) pool = pool.filter((offer) => offer.tier === tier);
       pool = applyMetricFilters(pool, metricFilters);
-      return recommendationHtml(pool, { category, tier, google: wantsGoogle, includeTier4: wantsTier4, includeBlack: wantsBlack, metricFilters, metricSort, requestedCount: requestedRecommendationCount(prompt), prompt });
+      const reqCount = p.count || requestedRecommendationCount(prompt);
+      return recommendationHtml(pool, { category, tier, google: wantsGoogle, includeTier4: wantsTier4, includeBlack: wantsBlack, metricFilters, metricSort, requestedCount: reqCount, prompt });
     }
 
     if (tier) {
@@ -4756,10 +5580,31 @@
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
   }
 
-  function applyPrompt(prompt) {
+  async function applyPrompt(prompt) {
+    const language = responseLanguageFor(prompt);
+    if (state.llmEnabled !== false) {
+      const loadingText = language === "zh" ? "正在理解你的问题…" : "Understanding your question…";
+      const loadingMsg = document.createElement("div");
+      loadingMsg.className = "message assistant loading-indicator";
+      loadingMsg.textContent = loadingText;
+      els.chatLog.appendChild(loadingMsg);
+      els.chatLog.scrollTop = els.chatLog.scrollHeight;
+      const result = await classifyWithLLM(prompt, collectCategories());
+      loadingMsg.remove();
+      state.llmClassifyResult = result;
+    } else {
+      state.llmClassifyResult = null;
+    }
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     addMessage("user", escapeHtml(prompt));
-    addMessage("assistant", answerPrompt(prompt));
+    try {
+      addMessage("assistant", answerPrompt(prompt));
+    } catch (error) {
+      console.error("[analysis] answerPrompt error:", error);
+      addMessage("assistant", (language === "zh"
+        ? "抱歉，分析过程出错。请稍后重试。"
+        : "Sorry, an error occurred. Please try again.") + " (" + escapeHtml(error.message || "unknown") + ")");
+    }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
     else loadDbSearchInsight(prompt);
   }
@@ -8598,6 +9443,7 @@
   }
 
   function init() {
+    state.llmEnabled = window.__OI_LLM_ENABLED !== false;
     if (els.tier) fillSelect(els.tier, uniqueValues("tier"));
     if (els.network) fillSelect(els.network, uniqueValues("network"));
     if (els.category) fillSelect(els.category, uniqueCategoryValues());

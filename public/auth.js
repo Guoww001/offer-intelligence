@@ -179,7 +179,8 @@
 
   async function checkSession() {
     try {
-      await fetchJson("/api/auth/session");
+      const session = await fetchJson("/api/auth/session");
+      window.__OI_LLM_ENABLED = session.llmEnabled !== false;
       await unlockDashboard();
     } catch (error) {
       booted = false;
@@ -200,7 +201,7 @@
     setLoading(true);
     setStatus("", "");
     try {
-      await fetchJson("/api/auth/login", {
+      const loginResult = await fetchJson("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({
@@ -208,6 +209,7 @@
           password: password ? password.value : ""
         })
       });
+      window.__OI_LLM_ENABLED = loginResult.llmEnabled !== false;
       if (password) password.value = "";
       await unlockDashboard();
     } catch (error) {

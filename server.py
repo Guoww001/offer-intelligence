@@ -15,8 +15,27 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+# ---------- .env loader ----------
+def _load_dotenv(path: str = ".env") -> None:
+    env_path = Path(path)
+    if not env_path.is_file():
+        return
+    with env_path.open("r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip("\"'")  # strip optional quotes
+            if key and key not in os.environ:   # never override an already-set env var
+                os.environ[key] = value
+
+_load_dotenv()
+# ------------------------------------
+
 from api.tier_moves import handle_tier_moves
-from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth
+from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, _read_json_body
 from browser_payloads import browser_payload_path
 from offer_db import (
     DIGITS_RE,
@@ -29,6 +48,7 @@ from offer_db import (
     status_payload,
 )
 from protected_payloads import handle_protected_data
+from llm_classify import classify_intent, generate_analysis_text
 
 
 ROOT = Path(__file__).resolve().parent
@@ -757,7 +777,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            pass  # client disconnected — harmless
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -811,7 +834,63 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/tier_moves":
             handle_tier_moves(self, "POST")
             return
+        if parsed.path == "/api/chat/classify":
+            if not require_auth(self):
+                return
+            self.handle_llm_classify()
+            return
+        if parsed.path == "/api/chat/analyze":
+            if not require_auth(self):
+                return
+            self.handle_llm_analyze()
+            return
         self.send_error(404)
+
+    def handle_llm_classify(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > 2048:
+            self.send_json(400, {"ok": False, "error": "Request body is too large"})
+            return
+        try:
+            body = _read_json_body(self)
+        except (ValueError, Exception):
+            self.send_json(400, {"ok": False, "error": "Invalid JSON body"})
+            return
+        prompt = str(body.get("prompt") or "").strip()
+        if not prompt:
+            self.send_json(400, {"ok": False, "error": "prompt is required"})
+            return
+        categories = body.get("categories") or []
+        if not isinstance(categories, list):
+            categories = []
+        result = classify_intent(prompt, categories)
+        if result is None:
+            self.send_json(200, {"intent": None, "params": None})
+        else:
+            self.send_json(200, result)
+
+    def handle_llm_analyze(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > 8192:
+            self.send_json(400, {"ok": False, "error": "Request body is too large"})
+            return
+        try:
+            body = _read_json_body(self)
+        except (ValueError, Exception):
+            self.send_json(400, {"ok": False, "error": "Invalid JSON body"})
+            return
+        summary = body.get("summary")
+        if not isinstance(summary, dict):
+            self.send_json(400, {"ok": False, "error": "summary must be a JSON object"})
+            return
+        language = str(body.get("language") or "en").strip()
+        if language not in ("en", "zh"):
+            language = "en"
+        text = generate_analysis_text(summary, language)
+        if text is None:
+            self.send_json(200, {"ok": False, "error": "LLM analysis unavailable"})
+        else:
+            self.send_json(200, {"ok": True, "text": text})
 
     def send_db_error(self, error):
         payload = public_error_payload(error)
@@ -930,7 +1009,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            pass  # client disconnected — harmless
 
     def log_message(self, fmt, *args):
         return

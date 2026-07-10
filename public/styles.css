@@ -905,6 +905,7 @@ body.dashboard-mode .chat-panel {
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.45;
+  overflow: hidden;
 }
 
 .message.assistant {
@@ -1059,6 +1060,82 @@ body.dashboard-mode .chat-panel {
 .result-table small {
   color: var(--muted);
   font-size: 11px;
+}
+
+/* ── Analysis tables in chatbot ────────────────────────────────────────── */
+
+.analysis-section {
+  margin-bottom: 16px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.analysis-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.analysis-table {
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(23, 123, 115, 0.18);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.analysis-table th,
+.analysis-table td {
+  padding: 7px 10px;
+  text-align: left;
+  background: transparent;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.analysis-table th {
+  background: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.analysis-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-narrative {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: rgba(23, 123, 115, 0.06);
+  border-left: 3px solid var(--teal);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.analysis-narrative p {
+  margin: 0 0 8px 0;
+}
+
+.analysis-narrative p:last-child {
+  margin-bottom: 0;
+}
+
+.analysis-narrative-placeholder {
+  margin-top: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
 }
 
 .tier-move-control {
