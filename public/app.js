@@ -349,7 +349,7 @@
       "label.Cycle": "周期",
       "label.Available": "预计收款日期",
       "label.Expected Payment Date": "预计收款日期",
-      "label.Last Checked": "上次检查",
+      "label.Payment Made": "付款日期",
       "label.Notes": "备注",
       "label.Records": "记录",
       "label.Merchants": "商家数",
@@ -1676,11 +1676,15 @@
       remainingAmount: remaining,
       paymentCycle: resolvePaymentCycle(record, matchedOffer, network),
       lastCheckedDate: record.lastCheckedDate || data.summary.generatedAt || "",
+      paymentMadeDate: String(record.paymentMadeDate || "").slice(0, 10),
       notes: record.notes || ""
     };
     normalized.paymentAvailabilityDate = calculatePaymentAvailabilityDate(normalized) || record.paymentAvailabilityDate || "";
     normalized.expectedPaymentDate = normalized.paymentAvailabilityDate;
     normalized.paymentStatus = calculatePaymentStatus(normalized);
+    if (normalized.paymentStatus === "Paid" && !normalized.paymentMadeDate) {
+      normalized.paymentMadeDate = String(record.lastCheckedDate || data.summary?.paymentLastCheckedAt || data.summary?.generatedAt || "").slice(0, 10);
+    }
     return normalized;
   }
 
@@ -1718,6 +1722,35 @@
 
   function paymentMerchantKey(record) {
     return String(record.merchantId || normalize(record.merchantName || record.brand)).trim();
+  }
+
+  function paymentRecordKey(record) {
+    return [
+      paymentMerchantKey(record) || String(record.levantaBrandId || "").trim(),
+      record.reportMonthKey || monthKey(record),
+      normalizeRegion(record.region || record.marketplace || "")
+    ].join("::");
+  }
+
+  function mergePaymentMadeDates(records, previousRecords, checkedAt) {
+    const previousByKey = new Map((previousRecords || []).map((record) => [paymentRecordKey(record), record]));
+    const detectedDate = String(checkedAt || isoDate(PAYMENT_TODAY)).slice(0, 10);
+    return (records || []).map((record) => {
+      const previous = previousByKey.get(paymentRecordKey(record));
+      const previousDate = String((previous && previous.paymentMadeDate) || "").slice(0, 10);
+      if (record.paymentStatus === "Paid") {
+        const firstKnownDate = previous && previous.paymentStatus === "Paid"
+          ? previousDate || String(previous.lastCheckedDate || "").slice(0, 10)
+          : previousDate;
+        return { ...record, paymentMadeDate: firstKnownDate || record.paymentMadeDate || detectedDate };
+      }
+      return previousDate ? { ...record, paymentMadeDate: previousDate } : record;
+    });
+  }
+
+  function paymentMadeDateText(record) {
+    if (!record || record.paymentStatus !== "Paid") return "-";
+    return String(record.paymentMadeDate || "").slice(0, 10) || "-";
   }
 
   function createPendingPaymentRecord(source, month) {
@@ -1910,14 +1943,16 @@
       if (!response.ok) throw new Error(`Levanta API sync returned ${response.status}`);
       const payload = await response.json();
       if (!payload.records || !payload.records.length) throw new Error("Levanta API returned no payment records");
-      paymentRecords = visiblePaymentRecords(withPendingPaymentPlaceholders(payload.records.map(normalizePaymentRecord)));
+      const checkedAt = String(payload.checkedAt || "").slice(0, 10) || isoDate(PAYMENT_TODAY);
+      const incomingRecords = visiblePaymentRecords(withPendingPaymentPlaceholders(payload.records.map(normalizePaymentRecord)));
+      paymentRecords = mergePaymentMadeDates(incomingRecords, paymentRecords, checkedAt);
       rebuildPaymentIndex();
       state.paymentSource = "Levanta API";
       state.livePaymentsLoaded = true;
       if (options.auto) localStorage.setItem(AUTO_PAYMENT_SYNC_KEY, String(Date.now()));
       refreshPaymentFilterOptions();
       syncPaymentControls();
-      setPaymentStamp("live", String(payload.checkedAt || "").slice(0, 10) || isoDate(PAYMENT_TODAY));
+      setPaymentStamp("live", checkedAt);
       renderPaymentsPage();
       if (state.currentContext.type === "payment") {
         setContext(buildPaymentContext(getFilteredPayments().slice(0, 60), state.currentQuery || "Payment sync"));
@@ -4645,7 +4680,7 @@
     { label: "Commission Made", render: (record) => paymentMoney(record, record.commissionMade) },
     { label: "Cycle", render: (record) => escapeHtml(record.paymentCycle ? `${record.paymentCycle} days` : "-") },
     { label: "Expected Payment Date", render: (record) => escapeHtml(record.expectedPaymentDate || record.paymentAvailabilityDate || "-") },
-    { label: "Last Checked", render: (record) => escapeHtml(record.lastCheckedDate || "-") }
+    { label: "Payment Made", render: (record) => escapeHtml(paymentMadeDateText(record)) }
   ];
 
   const PAYMENT_STATUS_FILTER_ORDER = ["Paid", "Pending", "Unpaid", "Overdue", "Partial", "Unknown"];
@@ -4684,7 +4719,7 @@
     if (key === "Commission Made") return number(record.commissionMade);
     if (key === "Cycle") return number(record.paymentCycle);
     if (key === "Expected Payment Date") return record.expectedPaymentDate || record.paymentAvailabilityDate || "";
-    if (key === "Last Checked") return record.lastCheckedDate || "";
+    if (key === "Payment Made") return record.paymentStatus === "Paid" ? record.paymentMadeDate || "" : "";
     return record[key] || "";
   }
 
@@ -6517,7 +6552,7 @@
       ["Remaining Amount", (record) => paymentMoney(record, record.remainingAmount)],
       ["Payment Cycle Days", (record) => number(record.paymentCycle)],
       ["Expected Payment Date", (record) => record.expectedPaymentDate || record.paymentAvailabilityDate || ""],
-      ["Last Checked", (record) => record.lastCheckedDate || ""]
+      ["Payment Made", (record) => paymentMadeDateText(record)]
     ];
   }
 
