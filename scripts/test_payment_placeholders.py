@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from scripts import sync_levanta_payments as payment_sync  # noqa: E402
 from scripts import sync_levanta_payments  # noqa: E402
 
 
@@ -32,7 +33,70 @@ def load_static_payment_records():
     return load_static_payload().get("paymentRecords", [])
 
 
+def payment_date_record(status, region="US", **overrides):
+    record = {
+        "id": f"362653::2026-03::shokzofficial::{region.lower()}",
+        "merchantId": "362653",
+        "merchantName": "Shokz Official",
+        "reportMonthKey": "2026-03",
+        "region": region,
+        "paymentStatus": status,
+        "rawStatus": status.lower(),
+        "lastCheckedDate": "2026-07-10",
+    }
+    record.update(overrides)
+    return record
+
+
+def test_payment_made_dates():
+    newly_paid = payment_sync.apply_payment_made_dates(
+        [payment_date_record("Paid")],
+        [payment_date_record("Overdue", lastCheckedDate="2026-07-09")],
+        "2026-07-10T02:00:00Z",
+    )[0]
+    assert_true(newly_paid.get("paymentMadeDate") == "2026-07-10", "newly paid row should use detection date")
+
+    still_paid = payment_sync.apply_payment_made_dates(
+        [payment_date_record("Paid", lastCheckedDate="2026-07-11")],
+        [{**newly_paid, "lastCheckedDate": "2026-07-10"}],
+        "2026-07-11T02:00:00Z",
+    )[0]
+    assert_true(still_paid.get("paymentMadeDate") == "2026-07-10", "paid date should remain stable")
+
+    legacy_paid = payment_sync.apply_payment_made_dates(
+        [payment_date_record("Paid")],
+        [payment_date_record("Paid", lastCheckedDate="2026-07-08")],
+        "2026-07-10T02:00:00Z",
+    )[0]
+    assert_true(legacy_paid.get("paymentMadeDate") == "2026-07-08", "legacy paid row should use earliest saved check")
+
+    not_paid = payment_sync.apply_payment_made_dates(
+        [payment_date_record("Unpaid")],
+        [payment_date_record("Unpaid", lastCheckedDate="2026-07-09")],
+        "2026-07-10T02:00:00Z",
+    )[0]
+    assert_true(not_paid.get("paymentMadeDate") is None, "never-paid row should not get a payment date")
+
+    temporarily_unpaid = payment_sync.apply_payment_made_dates(
+        [payment_date_record("Unpaid", lastCheckedDate="2026-07-11")],
+        [still_paid],
+        "2026-07-11T02:00:00Z",
+    )[0]
+    assert_true(
+        temporarily_unpaid.get("paymentMadeDate") == "2026-07-10",
+        "first-payment history should survive a later status change",
+    )
+
+    uk_newly_paid = payment_sync.apply_payment_made_dates(
+        [payment_date_record("Paid", region="UK")],
+        [still_paid],
+        "2026-07-12T02:00:00Z",
+    )[0]
+    assert_true(uk_newly_paid.get("paymentMadeDate") == "2026-07-12", "regions should keep separate payment histories")
+
+
 def main() -> int:
+    test_payment_made_dates()
     payload = load_static_payload()
     records = payload.get("paymentRecords", [])
     offers = payload.get("offers", [])

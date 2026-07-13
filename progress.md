@@ -1,13 +1,13 @@
 # Progress
 
-> Last updated: 2026-07-09. Active feature, its status, last verification evidence, and next step.  
+> Last updated: 2026-07-09. Active feature, its status, last verification evidence, and next step.
 > Integrates with mew-spec workflow — each feature maps to a `specs/<NNN>-<slug>/` directory.
 
 ## Active feature
 
-**chatbot-data-analysis** — LLM intent classification + chatbot data analysis  
-Specs: [`specs/001-llm-intent-classifier/`](specs/001-llm-intent-classifier/), [`specs/002-chatbot-data-analysis/`](specs/002-chatbot-data-analysis/)  
-Branch: `main`  
+**chatbot-data-analysis** — LLM intent classification + chatbot data analysis
+Specs: [`specs/001-llm-intent-classifier/`](specs/001-llm-intent-classifier/), [`specs/002-chatbot-data-analysis/`](specs/002-chatbot-data-analysis/)
+Branch: `main`
 Status: **implementation done, acceptance pending**
 
 ### Last verification

@@ -4,10 +4,85 @@
   "buildCommand": null,
   "installCommand": "",
   "outputDirectory": "public",
+  "routes": [
+    {
+      "src": "^/api/db/status/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "status"
+        }
+      ]
+    },
+    {
+      "src": "^/api/db/merchant/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "merchant"
+        }
+      ]
+    },
+    {
+      "src": "^/api/db/search/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "search"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/keywords/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-keywords"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/offers/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-offers"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/tier_sheet/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-tier-sheet"
+        }
+      ]
+    }
+  ],
   "functions": {
     "api/**/*.py": {
       "includeFiles": "protected_data/**",
-      "excludeFiles": "{scripts/**,.git/**}"
+      "excludeFiles": "{scripts/**,.git/**}",
+      "maxDuration": 60
     }
   }
 }

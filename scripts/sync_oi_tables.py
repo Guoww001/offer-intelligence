@@ -311,7 +311,7 @@ def sync_categories(conn, offers: list[dict], feishu_rows: list[dict]) -> int:
     return n_main + n_sub + n_mc
 
 
-# ── visual status rules (mirrors app.js tierRowRuleHighlightKind) ──────
+# ── visual status rules (computed here, stored in the database) ──────
 
 def _first_present_in_row(row: dict, keys: list) -> str:
     for k in keys:
@@ -322,14 +322,14 @@ def _first_present_in_row(row: dict, keys: list) -> str:
 
 
 def _normalize_color(value: str | None) -> str | None:
-    """对应 normalizeVisualStatusColor。"""
+    """Normalize stored colors; ``none`` is an explicit database value."""
     if not value:
         return None
     text = str(value).strip().lower()
     if text in ("green", "yellow", "red"):
         return text
     if text in ("none", "neutral", "no color", "no-color", "clear"):
-        return ""
+        return "none"
     return None
 
 
@@ -343,28 +343,85 @@ def _explicit_color(row: dict) -> str | None:
     return _normalize_color(raw)
 
 
-def _determine_color_from_sheet(sheet_name: str, row: dict) -> tuple[str, str, str]:
-    """仅读取 Sheet 行的显式颜色标注。不做规则推断 —
-    颜色来源应为 Google Sheet 中的人工标注或后续 LLM 判断。
+def _number(value) -> float | None:
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
 
-    Returns (color, reason_code, reason_text) — color 为空字符串表示未标注。
+
+def _rule_reason(row: dict, fallback: str) -> str:
+    return _first_present_in_row(
+        row,
+        ["Tier Reason", "Reason", "tier_reason", "tierReason", "reason"],
+    ) or fallback
+
+
+def _determine_color_from_sheet(sheet_name: str, row: dict) -> tuple[str, str, str, str]:
+    """Compute the color that will be stored in ``cnpscy_oi_tier_visual_status``.
+
+    Explicit Sheet/database values win. Otherwise the former UI rules are
+    evaluated here so every consumer reads the same persisted result.
+    Returns ``(color, reason_code, reason_text, source)``.
     """
     explicit = _explicit_color(row)
-    if explicit is not None and explicit != "":
+    if explicit is not None:
         code = _first_present_in_row(row, TIER_VISUAL_STATUS_CODE_KEYS)
         reason = _first_present_in_row(row, TIER_VISUAL_STATUS_REASON_KEYS)
-        return (explicit, code or "explicit", reason or f"Explicit color={explicit}")
-    return ("", "", "")
+        return (
+            explicit,
+            code or ("explicit_none" if explicit == "none" else "explicit"),
+            reason or f"Explicit color={explicit}",
+            "manual",
+        )
+
+    reason = _rule_reason(row, "")
+    reason_lower = reason.lower()
+
+    if sheet_name == "Tier 1":
+        rank_text = _first_present_in_row(row, ["Original Rank", "originalRank"])
+        rank = _number(rank_text)
+        fallback = f"Original Rank={rank_text}" if rank_text else "Original Rank unavailable"
+        if rank is not None and rank >= 40:
+            return ("green", "tier1_online", reason or fallback, "rule")
+        return ("yellow", "tier1_not_ready", reason or fallback, "rule")
+
+    if sheet_name == "Tier 2":
+        phase = _first_present_in_row(row, ["Phase", "phase"])
+        phase_lower = phase.lower()
+        fallback = f"Phase={phase}" if phase else "Phase unavailable"
+        if "growing" in phase_lower:
+            return ("green", "tier2_growing", reason or fallback, "rule")
+        if "stable" in phase_lower:
+            return ("yellow", "tier2_stable", reason or fallback, "rule")
+        if "declining" in phase_lower:
+            return ("red", "tier2_declining", reason or fallback, "rule")
+        return ("none", "no_rule_match", reason or fallback, "rule")
+
+    if sheet_name == "Tier 3":
+        if re.search(r"new june raw offer with orders|moved from tier 4", reason_lower):
+            return ("green", "tier3_new_or_promoted", reason, "rule")
+        if re.search(r"moved from tier 2|declined|declining", reason_lower):
+            return ("red", "tier3_demoted_or_declining", reason, "rule")
+        return ("none", "tier3_default", reason or "Tier 3 — no highlight", "rule")
+
+    if sheet_name == "Tier 4":
+        if "new june raw offer" in reason_lower:
+            return ("green", "tier4_new_offer", reason, "rule")
+        if re.search(r"moved to tier 4|moved/kept in tier 4|0 orders|no june .*raw data", reason_lower):
+            return ("red", "tier4_demoted_or_inactive", reason, "rule")
+        return ("none", "no_rule_match", reason or "Tier 4 — no rule match", "rule")
+
+    return ("none", "no_rule_match", reason or f"{sheet_name} — no rule match", "rule")
 
 
 def sync_visual_status(conn, sheets: list[dict]) -> int:
-    """从 sheet_report_data.js 的各 Tier sheet 读取显式颜色标注，
-    写入 cnpscy_oi_tier_visual_status。未标注颜色的行不写入。
+    """Compute and store visual status for every row in each Tier sheet.
 
     去重：同一 merchantId 在多个 sheet 中出现时，
     按优先级保留（Tier 1 > Tier 2 > Tier 3 > Tier 4 > BLACK TIER）。
     """
-    print("[sync] cnpscy_oi_tier_visual_status (explicit sheet colors only) ...")
+    print("[sync] cnpscy_oi_tier_visual_status (stored rule results) ...")
 
     tier_sheets = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
     merchant_rows: dict[str, dict] = {}  # merchantId → row dict (+ _sheet key)
@@ -376,21 +433,18 @@ def sync_visual_status(conn, sheets: list[dict]) -> int:
         rows = sheet.get("rows", [])
         if not rows:
             continue
-        sheet_labeled = 0
+        sheet_stored = 0
         for row in rows:
             mid = str(row.get("Merchant ID", "")).strip()
             if not mid:
                 continue
 
-            color, code, text = _determine_color_from_sheet(name, row)
-            if not color:
-                continue  # 未显式标注颜色 → 跳过
+            color, code, text, source = _determine_color_from_sheet(name, row)
 
             existing = merchant_rows.get(mid)
             if existing and tier_priority(existing["_sheet"]) <= tier_priority(name):
                 continue  # 已有更高优先级的 sheet 数据
 
-            source = _first_present_in_row(row, TIER_VISUAL_STATUS_SOURCE_KEYS) or "manual"
             merchant_rows[mid] = {
                 "merchantId": mid,
                 "color": color,
@@ -400,9 +454,9 @@ def sync_visual_status(conn, sheets: list[dict]) -> int:
                 "updatedBy": "sync_oi_tables.py",
                 "_sheet": name,
             }
-            sheet_labeled += 1
+            sheet_stored += 1
 
-        print(f"  → Sheet '{name}': {len(rows)} rows, {sheet_labeled} with explicit color")
+        print(f"  → Sheet '{name}': {len(rows)} rows, {sheet_stored} stored statuses")
 
     all_rows = list(merchant_rows.values())
     for r in all_rows:
@@ -413,9 +467,8 @@ def sync_visual_status(conn, sheets: list[dict]) -> int:
 
     # 分布统计
     dist = Counter(r["color"] for r in all_rows)
-    for c in ("green", "yellow", "red"):
+    for c in ("green", "yellow", "red", "none"):
         print(f"  → {c}: {dist.get(c, 0)}")
-    print(f"  → (no color / skipped): {sum(1 for s in sheets if s['name'] in tier_sheets for _ in s.get('rows', [])) - n}")
 
     return n
 

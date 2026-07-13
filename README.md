@@ -265,13 +265,15 @@ node --check public/app.js
 node --check public/chatbot_i18n.js
 node --check public/tier2_recommendation_rules.js
 python scripts/test_auth_helpers.py
+python scripts/test_vercel_function_budget.py
+python scripts/test_vercel_db_wsgi.py
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_tier2_recommendation_rules.mjs
 node scripts/test_sheet_categories.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
-python -m py_compile auth.py browser_payloads.py protected_payloads.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
+python -m py_compile auth.py browser_payloads.py protected_payloads.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py api/db/index.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
 ```
 
 ## Security

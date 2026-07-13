@@ -28,6 +28,7 @@ DB_ENV_KEYS = (
 REPORTING_TZ = dt.timezone(dt.timedelta(hours=8))
 DEFAULT_REPORTING_DELAY_DAYS = 2
 DEFAULT_DAILY_TREND_DAYS = 14
+DEFAULT_MONTHLY_TREND_MONTHS = 6
 
 
 class OfferDbError(RuntimeError):
@@ -425,7 +426,7 @@ def count_distinct_for_ids(conn, table: str, id_candidates: list[str], ids: list
     }
 
 
-def latest_dates(conn) -> dict[str, Any]:
+def latest_dates(conn, keys: set[str] | None = None) -> dict[str, Any]:
     sources = {
         "amazonOrders": ("cnpscy_amazon_order", ["order_time_day"]),
         "amazonClicks": ("cnpscy_amazon_click", ["time_day", "click_time_day"]),
@@ -435,6 +436,8 @@ def latest_dates(conn) -> dict[str, Any]:
     }
     output = {}
     for key, (table, candidates) in sources.items():
+        if keys is not None and key not in keys:
+            continue
         columns = table_columns(conn, table)
         column = pick_column(columns, candidates)
         if not column:
@@ -450,13 +453,42 @@ def latest_dates(conn) -> dict[str, Any]:
     return output
 
 
-def recent_month_summary(conn, months: int = 3) -> dict[str, list[dict[str, Any]]]:
-    output: dict[str, list[dict[str, Any]]] = {}
+def recent_month_summary(
+    conn,
+    months: int | None = None,
+    end_month: str | None = None,
+    include_amazon_orders: bool = True,
+) -> dict[str, Any]:
+    months = bounded_int_env(
+        "OFFER_DB_MONTHLY_TREND_MONTHS",
+        months or DEFAULT_MONTHLY_TREND_MONTHS,
+        3,
+        12,
+    )
+    today = reporting_today()
+    requested_end = parse_month_key(end_month)
+    end_period = requested_end or month_start(today)
+    if end_period > month_start(today):
+        end_period = month_start(today)
+    end_day = min(today, month_end(end_period)) if end_period == month_start(today) else month_end(end_period)
+    end_index = end_period.year * 12 + end_period.month - 1
+    start_index = end_index - months + 1
+    start_period = dt.date(start_index // 12, start_index % 12 + 1, 1)
+    start_key = start_period.strftime("%Y%m%d")
+    end_key = end_day.strftime("%Y%m%d")
+    output: dict[str, Any] = {
+        "window": {
+            "startMonth": start_period.strftime("%Y-%m"),
+            "endMonth": end_period.strftime("%Y-%m"),
+            "throughDate": end_day.isoformat(),
+            "months": months,
+        }
+    }
 
-    order_cols = table_columns(conn, "cnpscy_amazon_order")
+    order_cols = table_columns(conn, "cnpscy_amazon_order") if include_amazon_orders else set()
     order_date = pick_column(order_cols, ["order_time_day"])
     order_id = pick_column(order_cols, ["advert_id", "merchant_id"])
-    if order_date and order_id:
+    if include_amazon_orders and order_date and order_id:
         month_sql = month_expr("o", order_date)
         rows = fetch_all(
             conn,
@@ -470,10 +502,12 @@ def recent_month_summary(conn, months: int = 3) -> dict[str, list[dict[str, Any]
                    {sum_expr("o", order_cols, ["direct_sales", "directSales", "direct_sale_amount"], "directSales")},
                    {sum_expr("o", order_cols, ["halo_sales", "haloSales", "halo_sale_amount"], "haloSales")}
             FROM {q("cnpscy_amazon_order")} o
+            WHERE o.{q(order_date)} BETWEEN %s AND %s
             GROUP BY month
             ORDER BY month DESC
             LIMIT {int(months)}
             """,
+            (start_key, end_key),
         )
         output["amazonOrders"] = [format_metric_row(row) for row in rows]
 
@@ -491,10 +525,12 @@ def recent_month_summary(conn, months: int = 3) -> dict[str, list[dict[str, Any]
                    {sum_expr("c", click_cols, ["dpv", "dpv_num"], "dpv")},
                    {sum_expr("c", click_cols, ["atc", "atc_num"], "atc")}
             FROM {q("cnpscy_amazon_click")} c
+            WHERE c.{q(click_date)} BETWEEN %s AND %s
             GROUP BY month
             ORDER BY month DESC
             LIMIT {int(months)}
             """,
+            (start_key, end_key),
         )
         output["amazonClicks"] = [format_metric_row(row) for row in rows]
 
@@ -508,14 +544,17 @@ def recent_month_summary(conn, months: int = 3) -> dict[str, list[dict[str, Any]
             f"""
             SELECT {month_sql} AS month,
                    COUNT(*) AS aggregateRows,
+                   COUNT(DISTINCT {qualified('a', aggregate_id)}) AS {q('activeBrands')},
                    {sum_expr("a", aggregate_cols, ["amount", "sales_amount", "revenue"], "revenue")},
                    {sum_expr("a", aggregate_cols, ["payout", "commission"], "payout")},
                    {sum_expr("a", aggregate_cols, ["order_num", "orders"], "orders")}
             FROM {q("cnpscy_order_new_aggregate")} a
+            WHERE a.{q(aggregate_date)} BETWEEN %s AND %s
             GROUP BY month
             ORDER BY month DESC
             LIMIT {int(months)}
             """,
+            (start_key, end_key),
         )
         output["aggregateOrders"] = [format_metric_row(row) for row in rows]
 
@@ -528,6 +567,7 @@ def daily_status_trend(
     delay_days: int | None = None,
     latest: dict[str, Any] | None = None,
     month: str | None = None,
+    include_amazon_details: bool = True,
 ) -> dict[str, Any]:
     days = days or bounded_int_env("OFFER_DB_DAILY_TREND_DAYS", DEFAULT_DAILY_TREND_DAYS, 7, 45)
     delay_days = DEFAULT_REPORTING_DELAY_DAYS if delay_days is None else delay_days
@@ -543,19 +583,24 @@ def daily_status_trend(
     expected_complete = min(end, today - dt.timedelta(days=delay_days)) if end >= month_start(today) else end
     latest = latest or latest_dates(conn)
     primary_latest = parse_day(((latest.get("aggregateOrders") or {}).get("latest"))) or parse_day(((latest.get("amazonOrders") or {}).get("latest"))) or expected_complete
-    complete_through = min(primary_latest, expected_complete)
+    click_latest = parse_day(((latest.get("amazonClicks") or {}).get("latest")))
+    source_complete_through = min(primary_latest, click_latest) if click_latest else primary_latest
+    complete_through = min(source_complete_through, expected_complete)
     bucket: dict[str, dict[str, Any]] = {}
     start_key = start.strftime("%Y%m%d")
     end_key = end.strftime("%Y%m%d")
 
     aggregate_cols = table_columns(conn, "cnpscy_order_new_aggregate")
     aggregate_date = pick_column(aggregate_cols, ["order_time_day", "time_day"])
+    aggregate_id = pick_column(aggregate_cols, ["advert_id", "merchant_id"])
     if aggregate_date:
+        active_brand_expr = f"COUNT(DISTINCT {qualified('a', aggregate_id)}) AS {q('activeBrands')}" if aggregate_id else f"0 AS {q('activeBrands')}"
         rows = fetch_all(
             conn,
             f"""
             SELECT CAST(a.{q(aggregate_date)} AS CHAR) AS day,
                    COUNT(*) AS aggregateRows,
+                   {active_brand_expr},
                    {sum_expr("a", aggregate_cols, ["order_num", "orders"], "orders")},
                    {sum_expr("a", aggregate_cols, ["amount", "sales_amount", "revenue"], "revenue")},
                    {sum_expr("a", aggregate_cols, ["payout", "commission"], "payout")},
@@ -573,13 +618,13 @@ def daily_status_trend(
             if not day:
                 continue
             target = bucket.setdefault(day, {})
-            for key in ("aggregateRows", "orders", "revenue", "payout", "affiliatePayout", "cpcLeads"):
+            for key in ("aggregateRows", "activeBrands", "orders", "revenue", "payout", "affiliatePayout", "cpcLeads"):
                 number = to_float(row.get(key))
                 target[key] = int(number) if number.is_integer() else round(number, 6)
 
-    order_cols = table_columns(conn, "cnpscy_amazon_order")
+    order_cols = table_columns(conn, "cnpscy_amazon_order") if include_amazon_details else set()
     order_date = pick_column(order_cols, ["order_time_day"])
-    if order_date:
+    if include_amazon_details and order_date:
         rows = fetch_all(
             conn,
             f"""
@@ -660,6 +705,7 @@ def daily_status_trend(
             "isComplete": state != "delay",
             "source": "cnpscy_order_new_aggregate",
             "aggregateRows": values.get("aggregateRows", 0),
+            "activeBrands": values.get("activeBrands", 0),
             "orders": orders,
             "revenue": revenue,
             "clicks": clicks,
@@ -685,7 +731,7 @@ def daily_status_trend(
                 if parsed and (latest_in_range is None or parsed > latest_in_range):
                     latest_in_range = parsed
     if latest_in_range:
-        complete_through = min(latest_in_range, expected_complete)
+        complete_through = min(latest_in_range, source_complete_through, expected_complete)
         for row in rows:
             parsed = parse_day(row.get("date"))
             if not parsed:
@@ -702,6 +748,8 @@ def daily_status_trend(
 
     return {
         "month": start.strftime("%Y-%m"),
+        "aggregation": "calendar_day",
+        "cumulative": False,
         "delayDays": delay_days,
         "currentDate": today.isoformat(),
         "observedThrough": complete_through.isoformat(),
@@ -722,17 +770,21 @@ def format_metric_row(row: dict[str, Any]) -> dict[str, Any]:
     return output
 
 
-def status_payload(month: str | None = None) -> dict[str, Any]:
+def status_payload(
+    month: str | None = None,
+    include_coverage: bool = False,
+) -> dict[str, Any]:
     with db_connection() as conn:
         static_ids = read_static_merchant_ids()
-        latest = latest_dates(conn)
-        coverage = {
-            "staticNumericMerchantIds": len(static_ids),
-            "cnpscy_advert": count_distinct_for_ids(conn, "cnpscy_advert", ["advert_id", "merchant_id"], static_ids),
-            "cnpscy_amazon_product": count_distinct_for_ids(conn, "cnpscy_amazon_product", ["advert_id", "merchant_id"], static_ids),
-            "cnpscy_amazon_product_extra": count_distinct_for_ids(conn, "cnpscy_amazon_product_extra", ["advert_id", "merchant_id"], static_ids),
-            "cnpscy_order_new_aggregate": count_distinct_for_ids(conn, "cnpscy_order_new_aggregate", ["advert_id", "merchant_id"], static_ids),
-        }
+        latest = latest_dates(conn, keys={"aggregateOrders", "amazonClicks"})
+        coverage = {"staticNumericMerchantIds": len(static_ids)}
+        if include_coverage:
+            coverage.update({
+                "cnpscy_advert": count_distinct_for_ids(conn, "cnpscy_advert", ["advert_id", "merchant_id"], static_ids),
+                "cnpscy_amazon_product": count_distinct_for_ids(conn, "cnpscy_amazon_product", ["advert_id", "merchant_id"], static_ids),
+                "cnpscy_amazon_product_extra": count_distinct_for_ids(conn, "cnpscy_amazon_product_extra", ["advert_id", "merchant_id"], static_ids),
+                "cnpscy_order_new_aggregate": count_distinct_for_ids(conn, "cnpscy_order_new_aggregate", ["advert_id", "merchant_id"], static_ids),
+            })
         return {
             "ok": True,
             "checkedAt": utc_now_iso(),
@@ -742,8 +794,17 @@ def status_payload(month: str | None = None) -> dict[str, Any]:
             },
             "latestDates": latest,
             "coverage": coverage,
-            "dailyTrend": daily_status_trend(conn, latest=latest, month=month),
-            "recentMonths": recent_month_summary(conn),
+            "dailyTrend": daily_status_trend(
+                conn,
+                latest=latest,
+                month=month,
+                include_amazon_details=False,
+            ),
+            "recentMonths": recent_month_summary(
+                conn,
+                end_month=month,
+                include_amazon_orders=False,
+            ),
         }
 
 

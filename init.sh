@@ -30,11 +30,12 @@ run_check "public/tier2_recommendation_rules.js" node --check public/tier2_recom
 
 echo ""
 echo "=== Python compilation checks ==="
-for f in auth.py browser_payloads.py protected_payloads.py server.py offer_db.py; do
+for f in auth.py browser_payloads.py protected_payloads.py server.py offer_db.py \
+         llm_classify.py llm_provider.py; do
   run_check "$f" python -m py_compile "$f"
 done
 for f in api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py \
-         api/db/status.py api/db/merchant.py api/db/search.py \
+         api/db/index.py \
          api/ui/db/merchant.py api/ui/db/search.py api/ui/db/status.py \
          api/levanta/payments.py api/tier_moves.py; do
   run_check "$f" python -m py_compile "$f"
@@ -43,6 +44,9 @@ done
 echo ""
 echo "=== Unit / flow tests ==="
 run_check "test_auth_helpers.py"            python scripts/test_auth_helpers.py
+run_check "test_vercel_function_budget.py" python scripts/test_vercel_function_budget.py
+run_check "test_vercel_db_wsgi.py"         python scripts/test_vercel_db_wsgi.py
+run_check "test_tier_visual_status_rules.py" python scripts/test_tier_visual_status_rules.py
 run_check "test_payment_placeholders.py"    python -m scripts.test_payment_placeholders
 run_check "test_chatbot_intent_flow.mjs"    node scripts/test_chatbot_intent_flow.mjs
 run_check "test_zh_chatbot.mjs"             node scripts/test_zh_chatbot.mjs
