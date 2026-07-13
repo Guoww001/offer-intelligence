@@ -79,7 +79,8 @@ class AnalysisIntentSkill(IntentSkill):
     def fallback_keywords(self) -> dict[str, list[str]]:
         return {
             "en": ["analyze", "analysis", "evaluate", "diagnose", "assess", "performance",
-                   "health", "trend", "promotion", "demotion"],
+                   "health", "trend", "promotion", "demotion",
+                   "how is", "status", "check", "upgrade", "downgrade"],
             "zh": ["分析", "评估", "诊断", "怎么样", "表现", "趋势", "健康度",
                    "状态", "测测", "看看", "升级", "降级", "升降级", "提升到"],
         }

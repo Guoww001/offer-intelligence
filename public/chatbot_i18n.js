@@ -79,7 +79,46 @@
       aovIs: "的 AOV 是",
       orderCountIs: "的订单数是"
     },
-    en: {}
+    en: {
+      recommendationPreview: "Recommendation preview",
+      recommendationEmpty: "I found no offers that fit this recommendation request with the current filters.",
+      showingTop: "Showing the top {count} offers for a quick preview.",
+      exportComplete: "The Excel download includes all {count} requested offers.",
+      exportPartial: "Only {count} matching offers were found in the current data.",
+      fullRecommendationFile: "Full recommendation file",
+      rankedBy: "Ranked by tier priority, EPC, CVR, revenue, ATC, DPV, and payment risk.",
+      downloadExcel: "Download Excel",
+      merchantId: "Merchant ID",
+      keyMetrics: "Key metrics",
+      whyRecommended: "Why recommended",
+      bestTrafficAngle: "Best traffic angle",
+      cautionNextStep: "Caution / next step",
+      tier2OptimizationIdea: "Tier 2 optimization idea",
+      paymentSummary: "Payment summary",
+      paymentRecords: "Payment records",
+      recordsAcross: "records across",
+      merchants: "merchants",
+      unpaid: "Unpaid",
+      pending: "Pending",
+      overdue: "Overdue",
+      paymentCycle: "Payment cycle",
+      notAvailable: "not available",
+      noMatches: "No matching records found.",
+      notFoundPrefix: "Could not find",
+      tryLookup: "Try searching by merchant ID, ASIN, or category.",
+      closeMatches: "I found multiple close merchant matches. Which one do you mean?",
+      asinBelongsTo: "This ASIN belongs to:",
+      asinNotFound: "This ASIN was not found in the current data.",
+      productAsinInfo: "Product / ASIN info",
+      merchantOverview: "Merchant overview",
+      recommendedTrafficAngle: "Recommended traffic angle",
+      tierOverview: "Tier overview and priority candidates:",
+      categoryOffers: "Offers in category, sorted by tier priority and performance:",
+      help: "You can look up merchants by name, merchant ID, ASIN, category, payment status, or ask me to recommend offers.",
+      epcIs: "EPC is",
+      aovIs: "AOV is",
+      orderCountIs: "order count is"
+    }
   };
 
   const LABELS_ZH = {
@@ -136,7 +175,9 @@
     if (/\bB[A-Z0-9]{9}\b/i.test(text)) return "asin";
     if (/\b\d{5,8}(?:\.0)?\b/.test(text)) return "merchant";
     if (/付款|未付款|没付款|已付款|逾期|到期|周期|佣金|欠款|待处理|部分付款|付款状态|付款风险/.test(text)) return "payment";
+    if (/\b(?:payment|paid|unpaid|overdue|pending|commission|payout|settlement|outstanding|partial\s+payment|payment\s+status|payment\s+cycle)\b/i.test(String(prompt || "").toLowerCase())) return "payment";
     if (/推荐|推|重点|最好|最佳|优先|选品|候选|前\s*\d+|给我\s*\d+/.test(text)) return "recommendation";
+    if (/\b(?:recommend|recommendation|top\s*\d+|best|ranking|ranked|pick|suggest|recommendation)\b/i.test(String(prompt || "").toLowerCase())) return "recommendation";
     if (/黑名单|黑层|black\s*tier|tier\s*[1-4]|[一二三四]级|第[一二三四]层/.test(text)) return "tier";
     if (categoryForPrompt(text, [])) return "category";
     return null;
@@ -153,19 +194,59 @@
     return `Tier ${map[zh[1]]}`;
   }
 
+  const MONTHS_EN = {
+    "january": "January", "jan": "January",
+    "february": "February", "feb": "February",
+    "march": "March", "mar": "March",
+    "april": "April", "apr": "April",
+    "may": "May",
+    "june": "June", "jun": "June",
+    "july": "July", "jul": "July",
+    "august": "August", "aug": "August",
+    "september": "September", "sep": "September", "sept": "September",
+    "october": "October", "oct": "October",
+    "november": "November", "nov": "November",
+    "december": "December", "dec": "December"
+  };
+
   function monthNameFromText(prompt) {
     const text = String(prompt || "");
+    // Chinese months first
     for (const [key, value] of Object.entries(MONTHS_ZH)) {
       if (text.includes(key)) return value;
+    }
+    // English months (full name or abbreviation)
+    const lower = text.toLowerCase();
+    for (const [key, value] of Object.entries(MONTHS_EN)) {
+      if (lower.includes(key)) return value;
     }
     return null;
   }
 
+  const CATEGORY_ALIASES_EN = {
+    electronics: ["tech", "gadgets", "digital", "audio", "camera", "headphone", "earbuds", "speaker", "smartwatch", "projector", "wifi"],
+    beauty: ["skincare", "skin care", "makeup", "cosmetic", "hair", "facial", "nail", "sunscreen", "serum", "moisturizer", "personal care", "anti aging"],
+    home: ["kitchen", "furniture", "bedding", "mattress", "cookware", "vacuum", "appliance", "office"],
+    pet: ["dog", "cat", "pet supplies", "pet food", "pet products"],
+    supplement: ["health", "vitamin", "nutrition", "wellness", "probiotic", "protein", "creatine", "magnesium"],
+    baby: ["kid", "kids", "stroller", "diaper", "nursery", "baby products"],
+    outdoors: ["sports", "outdoor", "patio", "lawn", "garden", "pool", "camping", "hiking", "fishing"],
+    automotive: ["car", "vehicle", "auto"],
+    tools: ["home improvement", "hardware", "diy", "repair"],
+    fashion: ["clothing", "jewelry", "apparel", "shirt", "jeans", "dress", "necklace", "shoes", "sneakers", "boots", "footwear"]
+  };
+
   function categoryForPrompt(prompt, knownCategories = []) {
     const text = String(prompt || "").toLowerCase();
+    // Chinese aliases first
     for (const [canonical, aliases] of Object.entries(CATEGORY_ALIASES_ZH)) {
       if (aliases.some((alias) => text.includes(alias))) return canonical;
     }
+    // English aliases
+    for (const [canonical, aliases] of Object.entries(CATEGORY_ALIASES_EN)) {
+      if (aliases.some((alias) => text.includes(alias))) return canonical;
+    }
+    // Exact match against known categories from data
     return knownCategories.find((category) => {
       const lower = String(category || "").toLowerCase();
       if (!lower || lower === "uncategorized") return false;
@@ -175,7 +256,7 @@
 
   function requestedRecommendationCount(prompt, fallback = 5, max = 1000) {
     const text = String(prompt || "");
-    const match = text.match(/(?:推荐|推|给我|列出|导出)?\s*(\d{1,4})\s*(?:个|条)?\s*(?:offer|品牌|商家|推荐)?/i);
+    const match = text.match(/(?:recommend|top|show|give|list|export|download|推荐|推|给我|列出|导出)?\s*(\d{1,4})\s*(?:个|条)?\s*(?:offers?|brands?|merchants?|recommendations?|品牌|商家|推荐)?/i);
     if (!match) return fallback;
     const count = Number(match[1]);
     if (!Number.isFinite(count) || count <= 0) return fallback;

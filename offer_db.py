@@ -158,8 +158,8 @@ def db_config() -> dict[str, Any]:
         "password": os.environ["OFFER_DB_PASSWORD"],
         "charset": "utf8mb4",
         "connect_timeout": int(os.environ.get("OFFER_DB_CONNECT_TIMEOUT", "10")),
-        "read_timeout": int(os.environ.get("OFFER_DB_READ_TIMEOUT", "20")),
-        "write_timeout": int(os.environ.get("OFFER_DB_WRITE_TIMEOUT", "20")),
+        "read_timeout": int(os.environ.get("OFFER_DB_READ_TIMEOUT", "60")),
+        "write_timeout": int(os.environ.get("OFFER_DB_WRITE_TIMEOUT", "60")),
         "autocommit": True,
     }
 
@@ -1038,7 +1038,7 @@ def offers_payload(month: str | None = None) -> dict[str, Any]:
             except (ValueError, IndexError):
                 pass
 
-        # ── core query: tier + advert + metrics (fast, no duplicating JOINs) ──
+        # ── core query: tier + advert + metrics ──
         core_offers = fetch_all(
             conn,
             """
@@ -1090,16 +1090,34 @@ def offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         cat_map: dict = {r["merchantId"]: r for r in cat_rows}
 
-        # Sheet metadata
-        sm_rows = fetch_all(conn, "SELECT * FROM cnpscy_oi_offer_sheet_metadata")
+        # Sheet metadata (select only needed columns, avoid TEXT bloat)
+        sm_rows = fetch_all(
+            conn,
+            """SELECT merchantId, region, paymentCycle, paymentCycleSource,
+                      reason, recommendation, recommendedLink, phase,
+                      publisherCount, successRate, publisherCountJune,
+                      successRateJune, completionRate, timeline,
+                      bestSubCategoryBsr, mainCategoryBsr, subcategoryBsr,
+                      sheetCategory, categorySource, backendMatchStatus,
+                      hasDiscount, discountInfo, dealInfo, cpc
+               FROM cnpscy_oi_offer_sheet_metadata""",
+        )
         sm_map: dict = {r["merchantId"]: r for r in sm_rows}
 
         # Product keywords
-        pk_rows = fetch_all(conn, "SELECT * FROM cnpscy_oi_product_keywords")
+        pk_rows = fetch_all(
+            conn,
+            "SELECT merchantId, productAsins, productTitles, productKeywords, "
+            "productNameCount, productAsinCount FROM cnpscy_oi_product_keywords",
+        )
         pk_map: dict = {r["merchantId"]: r for r in pk_rows}
 
         # Visual status
-        vs_rows = fetch_all(conn, "SELECT * FROM cnpscy_oi_tier_visual_status")
+        vs_rows = fetch_all(
+            conn,
+            "SELECT merchantId, color, reason_code, reason_text, source "
+            "FROM cnpscy_oi_tier_visual_status",
+        )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
         # ── merge all into offers ──

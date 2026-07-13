@@ -49,7 +49,8 @@ class TierSkill(IntentSkill):
 
     def fallback_keywords(self) -> dict[str, list[str]]:
         return {
-            "en": ["tier", "Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"],
+            "en": ["tier", "Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER",
+                   "level", "layer"],
             "zh": ["第一层", "第二层", "第三层", "第四层", "黑名单", "层级"],
         }
 
