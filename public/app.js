@@ -59,6 +59,7 @@
   const DB_STATUS_UI_API = "/api/ui/db/status";
   const DB_MERCHANT_UI_API = "/api/ui/db/merchant";
   const DB_SEARCH_UI_API = "/api/ui/db/search";
+  const DB_STATUS_AUTO_REFRESH_MS = 5 * 60 * 1000;
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const originalTierSheetRows = new Map();
   const originalTierSheetRowIndex = new Map();
@@ -8264,6 +8265,32 @@
     return record;
   }
 
+  function currentReportingMonthKey(referenceDate = new Date()) {
+    return localDateKey(referenceDate).slice(0, 7);
+  }
+
+  function ensureReportingMonthRecord(records, monthKey = currentReportingMonthKey()) {
+    const normalizedMonthKey = monthKeyFromText(monthKey);
+    const normalizedRecords = Array.isArray(records) ? records.slice() : [];
+    if (!normalizedMonthKey || normalizedRecords.some((record) => monthKeyFromText(record.__monthKey) === normalizedMonthKey)) {
+      return normalizedRecords;
+    }
+    return normalizedRecords.concat(applyTargetOverride({
+      Month: monthAxisLabel(normalizedMonthKey),
+      __monthKey: normalizedMonthKey,
+      __databaseOnly: true,
+      Tier: "Total",
+      "Brand Count": 0,
+      "Total Clicks": 0,
+      "Order Count": 0,
+      Revenue: 0,
+      "Avg Conversion": 0,
+      "New Tier Entries": 0,
+      "Tier Exits": 0,
+      Target: ""
+    }));
+  }
+
   function targetRecords() {
     const sheet = sheetByName("Tier Summary & Target");
     const grid = (sheet && sheet.grid) || [];
@@ -8294,7 +8321,7 @@
       record.__sourceTarget = record.Target || "";
       if (record.Tier) records.push(applyTargetOverride(record));
     });
-    return records.length ? records : derivedTargetRecordsFromTierSheets();
+    return ensureReportingMonthRecord(records.length ? records : derivedTargetRecordsFromTierSheets());
   }
 
   function derivedTargetRecordsFromTierSheets() {
@@ -8375,7 +8402,7 @@
 
   function targetMonthSortValue(month) {
     const match = targetRecords().find((record) => record.Month === month);
-    return match ? match.__monthKey || month : month;
+    return match ? match.__monthKey || month : monthKeyFromText(month) || month;
   }
 
   function refreshTargetFilters() {
@@ -8476,8 +8503,16 @@
   }
 
   function monthKeyFromText(value) {
-    const match = String(value || "").match(/^(\d{4})-(\d{2})/);
-    return match ? `${match[1]}-${match[2]}` : "";
+    const text = String(value || "").trim();
+    const match = text.match(/^(\d{4})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}`;
+    const labelMatch = text.match(/^([A-Za-z]+)\s+(\d{4})$/);
+    if (!labelMatch) return "";
+    const monthIndex = [
+      "january", "february", "march", "april", "may", "june",
+      "july", "august", "september", "october", "november", "december"
+    ].indexOf(labelMatch[1].toLowerCase());
+    return monthIndex >= 0 ? `${labelMatch[2]}-${String(monthIndex + 1).padStart(2, "0")}` : "";
   }
 
   function monthLabelFromKey(value) {
@@ -9922,6 +9957,11 @@
     loadSharedTierMoves({ silent: true });
     maybeAutoSyncLevantaPayments();
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
+    window.setInterval(() => {
+      if (state.page !== "sheets" || state.dbStatus.loading) return;
+      if (document.visibilityState && document.visibilityState !== "visible") return;
+      loadDbStatus(targetDbStatusMonthKey());
+    }, DB_STATUS_AUTO_REFRESH_MS);
   }
 
   cacheOriginalTierSheetRows();
@@ -9967,6 +10007,9 @@
       visualStatusForTierRow: (sheetName, row) => visualStatusForTierRow(sheetByName(sheetName) || { name: sheetName }, row || {}),
       targetRecords,
       preferredTargetMonth,
+      currentReportingMonthKey,
+      ensureReportingMonthRecord,
+      targetDbStatusMonthKey,
       targetMonthHasMetrics: (month) => targetMonthHasMetrics(targetRecords(), month),
       targetTrendHtml,
       targetTrendPlotHtml,

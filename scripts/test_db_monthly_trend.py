@@ -24,6 +24,33 @@ class RecentMonthSummaryTests(unittest.TestCase):
         self.assertEqual(result["coverage"], {"staticNumericMerchantIds": 2})
         coverage_query.assert_not_called()
 
+    def test_new_calendar_month_queries_live_rows_through_today(self) -> None:
+        columns = {
+            "cnpscy_amazon_click": {"time_day", "advert_id", "click"},
+            "cnpscy_order_new_aggregate": {"order_time_day", "advert_id", "amount", "order_num"},
+        }
+        calls: list[tuple[str, tuple[str, str]]] = []
+
+        def fake_fetch_all(_conn, sql, params=()):
+            calls.append((sql, params))
+            return []
+
+        with (
+            patch.object(offer_db, "reporting_today", return_value=dt.date(2026, 8, 13)),
+            patch.object(offer_db, "table_columns", side_effect=lambda _conn, table: columns[table]),
+            patch.object(offer_db, "fetch_all", side_effect=fake_fetch_all),
+        ):
+            result = offer_db.recent_month_summary(
+                object(),
+                end_month="2026-08",
+                include_amazon_orders=False,
+            )
+
+        self.assertEqual(result["window"]["startMonth"], "2026-03")
+        self.assertEqual(result["window"]["endMonth"], "2026-08")
+        self.assertEqual(result["window"]["throughDate"], "2026-08-13")
+        self.assertTrue(all(params == ("20260301", "20260813") for _, params in calls))
+
     def test_selected_month_defines_a_bounded_six_month_window(self) -> None:
         columns = {
             "cnpscy_amazon_order": {"order_time_day", "advert_id", "amount", "payout"},
