@@ -6,7 +6,7 @@
   const chatbotI18n = window.CHATBOT_I18N || {};
   const tier2Rules = window.TIER2_RECOMMENDATION_RULES || {};
   const TIER_MOVE_OPTIONS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
-  const TIER_VISUAL_STATUS_COLOR_KEYS = ["visualStatusColor", "visual_status_color", "Visual Status Color", "Visual Status"];
+  const TIER_VISUAL_STATUS_COLOR_KEYS = ["visualStatusColor", "visual_status_color", "Visual Status Color", "Visual Status", "Color"];
   const TIER_VISUAL_STATUS_CODE_KEYS = ["visualStatusCode", "visual_status_code", "Visual Status Code", "Reason Code"];
   const TIER_VISUAL_STATUS_REASON_KEYS = ["visualStatusReason", "visual_status_reason", "Visual Status Reason", "Reason Text"];
   const TIER_VISUAL_STATUS_SOURCE_KEYS = ["visualStatusSource", "visual_status_source", "Visual Status Source", "Source"];
@@ -2418,7 +2418,7 @@
   function findMerchantMatches(query) {
     const cleaned = query
       .replace(/\b(search|find|merchant|overview|info|information|about|for)\b/gi, " ")
-      .replace(/查找|搜索|查看|看看|商家|品牌|概览|信息|资料|关于|帮我|请|找/g, " ")
+      .replace(/查找|搜索|查看|看看|商家|品牌|概览|信息|资料|关于|帮我|请|找|分析|评估|诊断|怎么样|表现|趋势|健康度/g, " ")
       .trim();
     const scored = offers
       .map((offer) => {
@@ -2456,6 +2456,23 @@
       (offer.topAsins || []).includes(asin) ||
       (offer.productAsins || []).includes(asin)
     )) };
+  }
+
+  // Return all ASINs found in a prompt (multi-ASIN support).
+  function findAllAsins(text) {
+    const matches = String(text || "").toUpperCase().match(/\bB[A-Z0-9]{9}\b/g);
+    if (!matches || !matches.length) return [];
+    const seen = {};
+    const results = [];
+    for (var i = 0; i < matches.length; i++) {
+      var asin = matches[i];
+      if (seen[asin]) continue;
+      seen[asin] = true;
+      results.push({ asin: asin, rows: offers.filter(function(offer) {
+        return (offer.topAsins || []).includes(asin) || (offer.productAsins || []).includes(asin);
+      }) });
+    }
+    return results;
   }
 
   function metricTermPattern() {
@@ -2960,8 +2977,46 @@
     return null;
   }
 
+  // Return all categories mentioned in a prompt (supports multi-category
+  // queries like "tier2美妆和电子" or "beauty and electronics").
+  function categoriesForPrompt(text) {
+    const single = categoryForPrompt(text);
+    if (!single) return [];
+
+    // Separators that indicate multiple categories
+    const sep = /和|与|以及|还有|加上|\band\b|,|，|、/i;
+    const parts = String(text || "").split(sep).map(function(p) { return p.trim(); }).filter(Boolean);
+
+    if (parts.length <= 1) return [single];
+
+    const categories = [];
+    const seen = {};
+    for (var i = 0; i < parts.length; i++) {
+      var cat = categoryForPrompt(parts[i]);
+      if (cat && !seen[cat.toLowerCase()]) {
+        seen[cat.toLowerCase()] = true;
+        categories.push(cat);
+      }
+    }
+    return categories.length > 0 ? categories : [single];
+  }
+
+  // Normalize category input to array form (handles LLM returning string OR array,
+  // and also handles comma/和-separated strings).
+  function normalizeCategories(cat) {
+    if (!cat) return [];
+    if (Array.isArray(cat)) return cat.filter(Boolean);
+    // LLM may return comma-separated string for multiple categories
+    var parts = String(cat).split(/[,，和、]/).map(function(p) { return p.trim(); }).filter(Boolean);
+    return parts;
+  }
+
   function categoryMatches(offer, category) {
     if (!category) return true;
+    // Support array of categories — match if ANY category fits (OR logic)
+    if (Array.isArray(category)) {
+      return category.some(function(c) { return categoryMatches(offer, c); });
+    }
     const aliases = categoryAliases[category] || [category];
     const mainCategory = sheetMainCategory(offer).toLowerCase();
     if (aliases.some((alias) => textIncludesAlias(mainCategory, alias))) return true;
@@ -3024,6 +3079,28 @@
     if (!match) return null;
     const tier = { 一: "1", 二: "2", 三: "3", 四: "4" }[match[1]] || match[1];
     return `Tier ${tier}`;
+  }
+
+  // Return all tiers mentioned in a prompt (multi-tier support).
+  function tiersFromPrompt(text) {
+    const single = tierFromPrompt(text);
+    if (!single) return [];
+    const sep = /和|与|以及|还有|加上|\band\b|,|，|、/i;
+    const parts = String(text || "").split(sep).map(function(p) { return p.trim(); }).filter(Boolean);
+    if (parts.length <= 1) return [single];
+    const tiers = [];
+    const seen = {};
+    for (var i = 0; i < parts.length; i++) {
+      var t = tierFromPrompt(parts[i]);
+      if (t && !seen[t]) { seen[t] = true; tiers.push(t); }
+    }
+    return tiers.length > 0 ? tiers : [single];
+  }
+
+  function normalizeTiers(t) {
+    if (!t) return [];
+    if (Array.isArray(t)) return t.filter(Boolean);
+    return [String(t).trim()].filter(Boolean);
   }
 
   function wantsRecommendationList(text) {
@@ -3109,6 +3186,100 @@
     if (field === "aov" || field === "salesAmount" || field === "affCommission") return money(value);
     if (field === "orders" || field === "clicks" || field === "dpv" || field === "atc") return number(value).toLocaleString();
     return String(value);
+  }
+
+  // Determine whether regex alone can confidently classify this query,
+  // allowing us to skip the LLM API call entirely.
+  //
+  // We skip LLM for formulaic queries where regex is just as accurate:
+  //   ASIN, merchant ID, help/greeting, attribute filters, top-N metric,
+  //   tier offer plans, and any query with EXACTLY ONE clear intent signal
+  //   (simple tier browse, simple category browse, simple payment, simple
+  //   metric filter, simple payment-cycle filter).
+  //
+  // We keep LLM for:
+  //   - Analysis queries (better type/target extraction + narrative text)
+  //   - Recommendation queries (better multi-param disambiguation)
+  //   - Multi-signal queries (tier + category, tier + metric, etc.)
+  //   - Truly ambiguous queries (no regex signal at all)
+  function canSkipLLMClassify(prompt) {
+    var lower = String(prompt || "").toLowerCase().trim();
+    if (!lower) return true;
+
+    // ── Formulaic patterns: regex is EXACT, LLM adds ZERO value ──
+
+    // ASIN: rigid B + 9 alphanumeric format
+    if (findByAsin(prompt)) return true;
+
+    // Merchant ID: rigid 5-8 digit format that matches a known offer
+    if (findByMerchantId(prompt)) return true;
+
+    // Help / greeting / very short prompts
+    if (lower.length < 3) return true;
+    if (/^(help|hello|hi|what can you do)\??$/.test(lower)) return true;
+    if (/^帮助$|^你好$|^能做什么/.test(prompt)) return true;
+
+    // Special attribute filters — keyword matching is deterministic
+    if (/high epc|high aov|low conversion|low cvr|tracking issue|has asin|discount/.test(lower)) return true;
+    if (/高\s*epc|高\s*aov|低转化|低转换|跟踪问题|追踪问题|有\s*asin|折扣|优惠/.test(prompt)) return true;
+
+    // Top metric request — formulaic "top/highest EPC/AOV/commission" patterns
+    if (extractTopMetricRequest(prompt)) return true;
+
+    // ── Intent signals (computed early — used by checks below) ──
+
+    var tier = tierFromPrompt(prompt);
+    var category = categoryForPrompt(prompt);
+    var hasPaymentKeywords = /payment|paid|unpaid|late|issue|cycle/.test(lower) ||
+      /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(prompt);
+    var hasRecommendationKeywords = /recommend|push|focus|best|should we/.test(lower) ||
+      /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(prompt) ||
+      wantsRecommendationList(prompt);
+    var hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(prompt);
+    var hasMetricSignal = extractMetricSortIntent(prompt) || extractMetricFilters(prompt).length > 0;
+    var hasPaymentCycleFilter = !!extractPaymentCycleFilter(prompt);
+
+    // ── Keep LLM for analysis and recommendation ──
+    // These are checked FIRST because other patterns (tier offer plan, metric
+    // signals) may also match recommendation queries — but the user wants
+    // analysis and recommendation to always use LLM for better param extraction.
+    if (hasAnalysisKeywords) return false;
+    if (hasRecommendationKeywords) return false;
+
+    // ── Tier offer plan without recommendation keywords ──
+    // Formulaic "Tier 1: 5, Tier 2: 10" with no 推荐/analysis keywords →
+    // regex handles perfectly.  If recommendation keywords were present,
+    // the check above already returned false.
+    if (parseTierOfferRequest(prompt).length > 0) return true;
+
+    // ── Multi-signal queries → LLM helps disambiguate ──
+    // Count the non-merchant intent signals present in the prompt.
+    // A single signal = simple browse ("Tier 1", "beauty", "unpaid", "EPC>1").
+    // Multiple signals = complex query that benefits from LLM routing.
+    var signalCount = 0;
+    if (tier) signalCount++;
+    if (category) signalCount++;
+    if (hasPaymentKeywords) signalCount++;
+    if (hasMetricSignal) signalCount++;
+    if (hasPaymentCycleFilter) signalCount++;
+    if (signalCount >= 2) return false;
+
+    // ── Single clear signal → regex handles it perfectly ──
+    if (signalCount === 1) return true;
+
+    // ── No domain signal — check alternative regex paths ──
+
+    // Strong merchant name lookup (high-confidence fuzzy match)
+    if (hasStrongMerchantLookup(prompt, category)) return true;
+
+    // Context followup (pronouns / metric references to last viewed merchant)
+    if (contextFollowup(lower)) return true;
+
+    // Keyword search intent
+    if (hasKeywordSearchIntent(prompt, keywordSearchRequest(prompt), {})) return true;
+
+    // No clear signal — ambiguous query.  Let LLM try to disambiguate.
+    return false;
   }
 
   async function classifyWithLLM(prompt, categories) {
@@ -3697,25 +3868,28 @@
       var analysisType = params.analysisType;
       var analysisTarget = params.analysisTarget;
 
-      // If analysis type not specified, try to infer from prompt
-      if (!analysisType) {
-        var merchantOffer = findOfferByMerchantName(analysisTarget || prompt);
+      // If analysis type or target not specified, try to infer from prompt.
+      // LLMs sometimes return {analysisType:"merchant"} without analysisTarget,
+      // so we must also infer when analysisTarget is missing (not just type).
+      if (!analysisType || !analysisTarget) {
+        var searchTarget = analysisTarget || prompt;
+        var merchantOffer = findOfferByMerchantName(searchTarget);
         if (merchantOffer) {
-          analysisType = "merchant";
+          if (!analysisType) analysisType = "merchant";
           if (!analysisTarget) analysisTarget = merchantOffer.brand || merchantOffer.merchantName;
-        } else if (categoryForPrompt(analysisTarget || prompt)) {
-          analysisType = "category";
-          if (!analysisTarget) analysisTarget = categoryForPrompt(analysisTarget || prompt);
-        } else if (tierFromPrompt(analysisTarget || prompt)) {
-          analysisType = "tier";
-          if (!analysisTarget) analysisTarget = tierFromPrompt(analysisTarget || prompt);
-        } else {
-          // Default: try merchant search
+        } else if (categoryForPrompt(searchTarget)) {
+          if (!analysisType) analysisType = "category";
+          if (!analysisTarget) analysisTarget = categoryForPrompt(searchTarget);
+        } else if (tierFromPrompt(searchTarget)) {
+          if (!analysisType) analysisType = "tier";
+          if (!analysisTarget) analysisTarget = tierFromPrompt(searchTarget);
+        } else if (!analysisType) {
+          // Default: try merchant search (only when type is also missing)
           analysisType = "merchant";
         }
       }
 
-      // Ensure target
+      // Ensure target (last resort)
       if (!analysisTarget) analysisTarget = prompt;
 
       console.log("[analysis] type:", analysisType, "target:", analysisTarget);
@@ -3799,11 +3973,13 @@
     const zhIntent = chatbotI18n.detectIntent && chatbotI18n.detectIntent(userMessage);
     const category = categoryForPrompt(userMessage);
     const metricSort = extractMetricSortIntent(userMessage);
+    const metricFilters = extractMetricFilters(userMessage);
     if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category") return zhIntent;
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
     if (hasStrongMerchantLookup(userMessage, category)) return "merchant";
     if (zhIntent === "recommendation") return "recommendation";
     if (metricSort) return "recommendation";
+    if (metricFilters.length) return "recommendation";
     if (/recommend|push|focus|best|should we/.test(lower) || /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(userMessage) || wantsRecommendationList(userMessage)) return "recommendation";
     if (/分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(userMessage)) return "analysis";
     if (tierFromPrompt(userMessage)) return "tier";
@@ -3890,12 +4066,17 @@
   function sortedForCategory(category, options = {}) {
     const includeTier4 = options.includeTier4 || /tier 4|retest/i.test(options.prompt || "");
     const includeBlack = options.includeBlack || /black|blocked/i.test(options.prompt || "");
+    var tierFilter = options.tier;
     return offers
-      .filter((offer) => categoryMatches(offer, category))
-      .filter((offer) => !options.tier || offer.tier === options.tier)
-      .filter((offer) => includeTier4 || offer.tier !== "Tier 4")
-      .filter((offer) => includeBlack || offer.tier !== "BLACK TIER")
-      .sort((a, b) => compareRecommendationOffers(a, b, { includeTier4, includeBlack }));
+      .filter(function(o) { return categoryMatches(o, category); })
+      .filter(function(o) {
+        if (!tierFilter) return true;
+        if (Array.isArray(tierFilter)) return tierFilter.length ? tierFilter.indexOf(o.tier) !== -1 : true;
+        return o.tier === tierFilter;
+      })
+      .filter(function(o) { return includeTier4 || o.tier !== "Tier 4"; })
+      .filter(function(o) { return includeBlack || o.tier !== "BLACK TIER"; })
+      .sort(function(a, b) { return compareRecommendationOffers(a, b, { includeTier4, includeBlack }); });
   }
 
   function rankedRecommendations(pool, context = {}) {
@@ -4802,6 +4983,16 @@
   function parseTierOfferRequest(prompt) {
     const text = String(prompt || "");
     const plan = [];
+    // "各N个/个" pattern: "Tier1和Tier2各5个" → 5 each for Tier 1 and Tier 2
+    const eachMatch = text.match(/各\s*(\d{1,4})\s*(?:个|offers?|brands?)/i);
+    const eachCount = eachMatch ? Number(eachMatch[1]) : 0;
+    if (eachCount > 0) {
+      const tiers = tiersFromPrompt(text);
+      for (var t = 0; t < tiers.length; t++) {
+        mergeTierPlanItem(plan, tiers[t], eachCount);
+      }
+      if (plan.length) return plan;
+    }
     const countFirst = /\b(\d{1,4})\s*(?:offers?|brands?|recommendations?)?\s*(?:from|for|in|of)?\s*tier\s*([1-4])\b/gi;
     const tierFirst = /\btier\s*([1-4])\s*(?:[:=\-]|with|for|of)?\s*(\d{1,4})\s*(?:offers?|brands?|recommendations?)?/gi;
     let match;
@@ -4827,7 +5018,12 @@
 
   function tierCandidatePool(tier, context = {}) {
     const metricFilters = context.metricFilters || [];
-    const pool = applyMetricFilters(offers.filter((offer) => offer.tier === tier), metricFilters);
+    const categories = context.categories || [];
+    let pool = offers.filter(function(o) { return o.tier === tier; });
+    if (categories.length) {
+      pool = pool.filter(function(o) { return categoryMatches(o, categories); });
+    }
+    pool = applyMetricFilters(pool, metricFilters);
     return rankedRecommendations(pool, {
       ...context,
       includeTier4: true,
@@ -4935,12 +5131,19 @@
         </div>
         <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">Download Excel</button>
       </div>` +
-      resultTable(previewRows, compactColumns);
+      previewRows.map(function(offer, index) {
+        return renderRecommendationOfferHtml(offer, index, { language: "en", ...bundle.context });
+      }).join("");
   }
 
   function recommendationBundleAnswer(prompt, plan) {
+    const llmParams = state.llmParams || {};
+    const regexCategories = categoriesForPrompt(prompt);
+    const llmCat = llmParams.category;
+    const categories = llmCat ? normalizeCategories(llmCat) : regexCategories;
     const context = {
       prompt,
+      categories,
       includeTier4: true,
       includeBlack: true,
       metricFilters: extractMetricFilters(prompt),
@@ -5033,6 +5236,25 @@
     return `tier priority first, then ${metricSort.label} ${direction}`;
   }
 
+  // Shared per-offer renderer used by both recommendationHtml (single-tier)
+  // and renderRecommendationBundleHtml (multi-tier plan) so that every
+  // recommendation output includes why-recommended, caution, traffic angle, etc.
+  function renderRecommendationOfferHtml(offer, index, context) {
+    const language = context.language || "en";
+    const copy = chatCopy(language);
+    return `<div class="recommendation-answer">
+        <strong>${index + 1}. ${escapeHtml(offer.brand || "")}</strong> - ${escapeHtml(tierGroup(offer))}
+        <ul>
+          <li><strong>${escapeHtml(language === "zh" ? copy.merchantId : "Merchant ID")}:</strong> ${escapeHtml(offer.merchantId || (language === "zh" ? copy.notAvailable : "not available"))}</li>
+          <li><strong>${escapeHtml(language === "zh" ? copy.keyMetrics : "Key metrics")}:</strong> AOV ${shortMoney(offer.aov)}, EPC ${shortEpc(offer.epc)}, commission ${shortPct(offer.commissionRate)}, clicks ${number(offer.clicks).toLocaleString()}, orders ${number(offer.orders).toLocaleString()}, CVR ${shortPct(offer.conversionRate)}, revenue ${shortMoney(offer.salesAmount)}</li>
+          ${tier2RecommendationDetailsHtml(offer, language)}
+          <li><strong>${escapeHtml(language === "zh" ? copy.whyRecommended : "Why recommended")}:</strong> ${escapeHtml(whyRecommended(offer, context))}</li>
+          <li><strong>${escapeHtml(language === "zh" ? copy.bestTrafficAngle : "Best traffic angle")}:</strong> ${escapeHtml(bestAngle(offer, context))}</li>
+          <li><strong>${escapeHtml(language === "zh" ? copy.cautionNextStep : "Caution / next step")}:</strong> ${escapeHtml(caution(offer, language))}</li>
+        </ul>
+      </div>`;
+  }
+
   function recommendationHtml(rows, context = {}) {
     const language = responseLanguageFor(context.prompt || state.currentQuery);
     const copy = chatCopy(language);
@@ -5075,17 +5297,7 @@
         </div>
         <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">${escapeHtml(language === "zh" ? copy.downloadExcel : "Download Excel")}</button>
       </div>` +
-      top.map((offer, index) => `<div class="recommendation-answer">
-        <strong>${index + 1}. ${escapeHtml(offer.brand || "")}</strong> - ${escapeHtml(tierGroup(offer))}
-        <ul>
-          <li><strong>${escapeHtml(language === "zh" ? copy.merchantId : "Merchant ID")}:</strong> ${escapeHtml(offer.merchantId || (language === "zh" ? copy.notAvailable : "not available"))}</li>
-          <li><strong>${escapeHtml(language === "zh" ? copy.keyMetrics : "Key metrics")}:</strong> AOV ${shortMoney(offer.aov)}, EPC ${shortEpc(offer.epc)}, commission ${shortPct(offer.commissionRate)}, clicks ${number(offer.clicks).toLocaleString()}, orders ${number(offer.orders).toLocaleString()}, CVR ${shortPct(offer.conversionRate)}, revenue ${shortMoney(offer.salesAmount)}</li>
-          ${tier2RecommendationDetailsHtml(offer, language)}
-          <li><strong>${escapeHtml(language === "zh" ? copy.whyRecommended : "Why recommended")}:</strong> ${escapeHtml(whyRecommended(offer, localizedContext))}</li>
-          <li><strong>${escapeHtml(language === "zh" ? copy.bestTrafficAngle : "Best traffic angle")}:</strong> ${escapeHtml(bestAngle(offer, localizedContext))}</li>
-          <li><strong>${escapeHtml(language === "zh" ? copy.cautionNextStep : "Caution / next step")}:</strong> ${escapeHtml(caution(offer, language))}</li>
-        </ul>
-      </div>`).join("");
+      top.map(function(offer, index) { return renderRecommendationOfferHtml(offer, index, localizedContext); }).join("");
   }
 
   function paymentCycleOfferAnswer(prompt, filter) {
@@ -5220,22 +5432,48 @@
       resultTable(rows, paymentColumnsFor(language), language);
   }
 
-  function asinAnswer(result) {
+  function asinAnswer(results) {
+    // Support both single result (backward compat) and array (multi-ASIN)
+    if (!Array.isArray(results)) results = [results];
     const language = responseLanguageFor();
     const copy = chatCopy(language);
-    setContext(buildASINContext(result));
-    if (!result.rows.length) return language === "zh"
-      ? `ASIN <strong>${escapeHtml(result.asin)}</strong> ${escapeHtml(copy.asinNotFound)}`
-      : `ASIN <strong>${escapeHtml(result.asin)}</strong> was not found in the current data.`;
-    const primary = result.rows[0];
-    if (language === "zh") {
-      return `ASIN <strong>${escapeHtml(result.asin)}</strong> ${escapeHtml(copy.asinBelongsTo)}<br>${merchantOverviewHtml(primary, "(ASIN match)", language)}
-        <p><strong>${escapeHtml(copy.productAsinInfo)}:</strong> ${escapeHtml(primary.asinsText || result.asin)}</p>
-        <p><strong>${escapeHtml(copy.recommendedTrafficAngle)}:</strong> ${escapeHtml(bestAngle(primary, { language }))}</p>`;
+    if (!results.length || !results[0].rows.length) {
+      var notFoundAsin = results.length ? results[0].asin : "";
+      return language === "zh"
+        ? `ASIN <strong>${escapeHtml(notFoundAsin)}</strong> ${escapeHtml(copy.asinNotFound)}`
+        : `ASIN <strong>${escapeHtml(notFoundAsin)}</strong> was not found in the current data.`;
     }
-    return `ASIN <strong>${escapeHtml(result.asin)}</strong> belongs to:<br>${merchantOverviewHtml(primary, "(ASIN match)", language)}
-      <p><strong>Product/ASIN info:</strong> ${escapeHtml(primary.asinsText || result.asin)}</p>
-      <p><strong>Recommended traffic angle:</strong> ${escapeHtml(bestAngle(primary, { language }))}</p>`;
+    setContext(buildASINContext(results[0]));
+    // Render each ASIN → merchant mapping
+    var parts = [];
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      if (!r.rows.length) {
+        parts.push(language === "zh"
+          ? `<p>ASIN <strong>${escapeHtml(r.asin)}</strong> ${escapeHtml(copy.asinNotFound)}</p>`
+          : `<p>ASIN <strong>${escapeHtml(r.asin)}</strong> was not found in the current data.</p>`);
+        continue;
+      }
+      var offer = r.rows[0];
+      if (language === "zh") {
+        parts.push(`<p>ASIN <strong>${escapeHtml(r.asin)}</strong> ${escapeHtml(copy.asinBelongsTo)} <strong>${escapeHtml(offer.brand)}</strong></p>`);
+      } else {
+        parts.push(`<p>ASIN <strong>${escapeHtml(r.asin)}</strong> → <strong>${escapeHtml(offer.brand)}</strong></p>`);
+      }
+    }
+    // Show merchant overview for the first matched ASIN
+    var primary = results.find(function(r) { return r.rows.length > 0; });
+    if (primary) {
+      var offer = primary.rows[0];
+      if (language === "zh") {
+        parts.push(merchantOverviewHtml(offer, "(ASIN match)", language));
+        parts.push(`<p><strong>${escapeHtml(copy.recommendedTrafficAngle)}:</strong> ${escapeHtml(bestAngle(offer, { language }))}</p>`);
+      } else {
+        parts.push(merchantOverviewHtml(offer, "(ASIN match)", language));
+        parts.push(`<p><strong>Recommended traffic angle:</strong> ${escapeHtml(bestAngle(offer, { language }))}</p>`);
+      }
+    }
+    return parts.join("");
   }
 
   function answerPrompt(prompt) {
@@ -5256,12 +5494,14 @@
     if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
     // detectQueryIntent will consume state.llmClassifyResult and return LLM intent if present
     const intent = detectQueryIntent(prompt);
-    // ASIN: LLM-extracted string or regex lookup
-    const asinFromLLM = p.asin;
-    const asin = asinFromLLM
-      ? { asin: asinFromLLM, rows: offers.filter(function(o) { return (o.topAsins || []).includes(asinFromLLM) || (o.productAsins || []).includes(asinFromLLM); }) }
-      : findByAsin(prompt);
-    if (asin && intent === "asin") return asinAnswer(asin);
+    // ASIN: LLM-extracted array or regex lookup (multi-ASIN support)
+    const llmAsins = p.asin;
+    const asinResults = llmAsins
+      ? (Array.isArray(llmAsins) ? llmAsins : [llmAsins]).map(function(a) {
+          return { asin: a, rows: offers.filter(function(o) { return (o.topAsins || []).includes(a) || (o.productAsins || []).includes(a); }) };
+        }).filter(function(r) { return r.rows.length > 0; })
+      : findAllAsins(prompt);
+    if (asinResults.length && intent === "asin") return asinAnswer(asinResults);
 
     // Merchant ID: LLM-extracted ID or regex lookup
     const exactFromLLM = p.merchantId;
@@ -5302,9 +5542,22 @@
       return merchantOverview(state.lastOffer, "", language);
     }
 
-    // Parameters: LLM-extracted first, regex fallback
-    const category = p.category || categoryForPrompt(prompt);
-    const tier = p.tier || tierFromPrompt(prompt);
+    // Parameters: LLM-extracted first, regex fallback.
+    // Categories now support multi-value: LLM may return a string, comma-separated
+    // string, or array — normalizeCategories converts all to array.
+    // regexCategories always comes from categoriesForPrompt which splits on
+    // 和/and/、 etc. and extracts each part individually.
+    const regexCategories = categoriesForPrompt(prompt);
+    const llmCat = p.category;
+    const categories = llmCat ? normalizeCategories(llmCat) : regexCategories;
+    const category = categories[0] || null;  // primary category for backward compat
+    // Tiers now support multi-value (multi-tier support).
+    // LLM may return string/array; normalizeTiers converts to array.
+    // tiersFromPrompt splits on 和/and/、 etc. for regex extraction.
+    const regexTiers = tiersFromPrompt(prompt);
+    const llmTier = p.tier;
+    const tiers = llmTier ? normalizeTiers(llmTier) : regexTiers;
+    const tier = tiers[0] || null;  // primary tier for backward compat
     const wantsTier4 = p.includeTier4 === true || /tier 4|retest|第四层|第四级|四层|四级|重测|重新测试/i.test(prompt);
     const wantsBlack = p.includeBlack === true || /black|blocked|黑名单|黑色|屏蔽|暂停/i.test(prompt);
     const wantsRecommendation = intent === "recommendation";
@@ -5340,23 +5593,30 @@
     }
 
     if (wantsRecommendation) {
-      let pool = category ? sortedForCategory(category, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt, tier }) : offers;
-      if (tier) pool = pool.filter((offer) => offer.tier === tier);
+      let pool = categories.length ? sortedForCategory(categories, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt, tier: tiers }) : offers;
+      if (tiers.length) pool = pool.filter(function(o) { return tiers.indexOf(o.tier) !== -1; });
       pool = applyMetricFilters(pool, metricFilters);
       const reqCount = p.count || requestedRecommendationCount(prompt);
-      return recommendationHtml(pool, { category, tier, google: wantsGoogle, includeTier4: wantsTier4, includeBlack: wantsBlack, metricFilters, metricSort, requestedCount: reqCount, prompt });
+      return recommendationHtml(pool, { categories, category, tiers, tier, google: wantsGoogle, includeTier4: wantsTier4, includeBlack: wantsBlack, metricFilters, metricSort, requestedCount: reqCount, prompt });
     }
 
-    if (tier) {
-      const rows = offers
-        .filter((offer) => offer.tier === tier)
-        .filter((offer) => wantsTier4 || offer.tier !== "Tier 4" || tier === "Tier 4")
-        .filter((offer) => wantsBlack || offer.tier !== "BLACK TIER" || tier === "BLACK TIER")
-        .sort((a, b) => compareRecommendationOffers(a, b, { includeTier4: true, includeBlack: true }));
-      setContext(buildTierContext(tier, rows));
-      const topRows = topRecommendations(rows, { tier, includeTier4: true, includeBlack: true });
-      const columns = tier === "Tier 2" ? tier2CompactColumns : compactColumns;
-      const title = language === "zh" ? `${escapeHtml(tier)} ${escapeHtml(copy.tierOverview)}` : `${escapeHtml(tier)} overview and top candidates:`;
+    if (tiers.length) {
+      let rows = offers
+        .filter(function(o) { return tiers.indexOf(o.tier) !== -1; })
+        .filter(function(o) { return wantsTier4 || o.tier !== "Tier 4" || tiers.indexOf("Tier 4") !== -1; })
+        .filter(function(o) { return wantsBlack || o.tier !== "BLACK TIER" || tiers.indexOf("BLACK TIER") !== -1; })
+        .sort(function(a, b) { return compareRecommendationOffers(a, b, { includeTier4: true, includeBlack: true }); });
+      if (categories.length) {
+        rows = rows.filter(function(o) { return categoryMatches(o, categories); });
+      }
+      var tierLabel = tiers.join(" + ");
+      setContext(buildTierContext(tierLabel, rows));
+      var topRows = topRecommendations(rows, { tier: tierLabel, includeTier4: true, includeBlack: true });
+      var columns = tiers.length === 1 && tiers[0] === "Tier 2" ? tier2CompactColumns : compactColumns;
+      var catLabel = categories.length ? categories.join(" + ") : "";
+      var title = language === "zh"
+        ? `${escapeHtml(tierLabel)}${catLabel ? " " + escapeHtml(catLabel) : ""} ${escapeHtml(copy.tierOverview)}`
+        : `${escapeHtml(tierLabel)}${catLabel ? " " + escapeHtml(catLabel) : ""} overview and top candidates:`;
       return title +
         downloadCardHtml(rows, {
           downloadType: "offers",
@@ -5370,21 +5630,24 @@
         resultTable(topRows, columns, language);
     }
 
-    if (category) {
-      const rows = sortedForCategory(category, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt });
+    if (categories.length) {
+      let rows = sortedForCategory(categories, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt });
+      if (tiers.length) rows = rows.filter(function(o) { return tiers.indexOf(o.tier) !== -1; });
       const previewRows = rows.slice(0, 25);
       setContext(buildCategoryContext(category, rows.slice(0, 80)));
+      const catLabel = categories.join(" + ");
+      const tierLabel = tiers.length ? tiers.join(" + ") + " " : "";
       const title = language === "zh"
-        ? `<strong>${escapeHtml(category)}</strong> ${escapeHtml(copy.categoryOffers)}`
-        : `Relevant <strong>${escapeHtml(category)}</strong> offers, sorted by tier priority and performance:`;
+        ? `<strong>${escapeHtml(tierLabel)}${escapeHtml(catLabel)}</strong> ${escapeHtml(copy.categoryOffers)}`
+        : `Relevant <strong>${escapeHtml(tierLabel)}${escapeHtml(catLabel)}</strong> offers, sorted by tier priority and performance:`;
       return title +
         downloadCardHtml(rows, {
           downloadType: "offers",
           filePrefix: "category_offers",
-          exportScope: category,
+          exportScope: catLabel,
           sheetName: "Category Offers"
         }, {
-          title: `${category} file`,
+          title: `${catLabel} file`,
           description: `${rows.length.toLocaleString()} matching category offers.`
         }) +
         resultTable(previewRows, compactColumns, language);
@@ -5582,7 +5845,12 @@
 
   async function applyPrompt(prompt) {
     const language = responseLanguageFor(prompt);
-    if (state.llmEnabled !== false) {
+    // Skip the LLM classification call when regex alone can confidently
+    // determine intent + extract parameters (ASIN, merchant ID, tier,
+    // category, payment status, metric filters, attribute filters, etc.).
+    // The analysis narrative text (/api/chat/analyze) is a separate
+    // async call inside analysisAnswer() and is NOT affected by this.
+    if (state.llmEnabled !== false && !canSkipLLMClassify(prompt)) {
       const loadingText = language === "zh" ? "正在理解你的问题…" : "Understanding your question…";
       const loadingMsg = document.createElement("div");
       loadingMsg.className = "message assistant loading-indicator";
@@ -5594,6 +5862,9 @@
       state.llmClassifyResult = result;
     } else {
       state.llmClassifyResult = null;
+      if (state.llmEnabled !== false) {
+        console.log("[LLM] skipped — regex classification is sufficient for: " + prompt.slice(0, 60));
+      }
     }
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     addMessage("user", escapeHtml(prompt));
@@ -7548,25 +7819,7 @@
   }
 
   function tierRowRuleHighlightKind(sheet, row) {
-    if (!sheet) return "";
-    const reason = tierReasonText(row).toLowerCase();
-    const rank = parseSheetNumber(row["Original Rank"]);
-    if (sheet.name === "Tier 1") {
-      return rank >= 40 ? "green" : "";
-    }
-    if (sheet.name === "Tier 2") {
-      return tier2PhaseKind(sheet, row);
-    }
-    if (sheet.name === "Tier 3") {
-      if (/new june raw offer with orders|moved from tier 4/.test(reason)) return "green";
-      if (/moved from tier 2|declined|declining/.test(reason)) return "red";
-      return "";
-    }
-    if (sheet.name === "Tier 4") {
-      if (/new june raw offer/.test(reason)) return "green";
-      if (/moved to tier 4|moved\/kept in tier 4|0 orders|no june .*raw data/.test(reason)) return "red";
-      return "";
-    }
+    // 规则推断已移除 — 颜色现在仅来自 Sheet 显式标注（Visual Status Color 列）或 LLM。
     return "";
   }
 
@@ -7580,13 +7833,8 @@
         source: firstPresentRowValue(row, TIER_VISUAL_STATUS_SOURCE_KEYS) || "manual"
       };
     }
-    const color = tierRowRuleHighlightKind(sheet, row);
-    return {
-      color,
-      code: color ? `legacy_${sheet.name.toLowerCase().replace(/\s+/g, "_")}` : "",
-      reason: tierReasonText(row),
-      source: color ? "rule" : ""
-    };
+    // 无显式标注 → 不显示颜色（未来由 LLM 写入）
+    return { color: "", code: "", reason: "", source: "" };
   }
 
   function displayHeadersForSheet(sheet, headers) {

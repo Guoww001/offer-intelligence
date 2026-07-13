@@ -6,5 +6,5 @@
 *.pid
 __pycache__/
 .DS_Store
-
+.claude
 .vercel
