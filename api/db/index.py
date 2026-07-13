@@ -46,7 +46,15 @@ class WsgiTarget:
 
 def handle_status(target, query):
     try:
-        send_json(target, 200, status_payload(month=first_query_value(query, "month")))
+        include_coverage = first_query_value(query, "coverage").lower() in {"1", "true", "yes"}
+        send_json(
+            target,
+            200,
+            status_payload(
+                month=first_query_value(query, "month"),
+                include_coverage=include_coverage,
+            ),
+        )
     except Exception as error:
         send_db_error(target, error)
 

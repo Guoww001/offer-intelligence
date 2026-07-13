@@ -52,6 +52,10 @@
     { key: "conversion", label: "Avg Conversion" },
     { key: "brands", label: "Active Brands" }
   ];
+  const TARGET_TREND_VIEWS = [
+    { key: "month", label: "Monthly report" },
+    { key: "day", label: "Daily report" }
+  ];
   const DB_STATUS_UI_API = "/api/ui/db/status";
   const DB_MERCHANT_UI_API = "/api/ui/db/merchant";
   const DB_SEARCH_UI_API = "/api/ui/db/search";
@@ -123,6 +127,7 @@
       tier: "all"
     },
     targetMetric: "revenue",
+    targetTrendView: "month",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -8379,7 +8384,7 @@
       .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))));
     const tiers = Array.from(new Set(records.map((record) => record.Tier).filter((tier) => tier && String(tier).toLowerCase() !== "total"))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     const monthOptions = months.map((month) => ({ value: month, label: month }));
-    if ((!state.targetFilters.month || !targetMonthHasMetrics(records, state.targetFilters.month)) && monthOptions.length) {
+    if ((!state.targetFilters.month || (state.targetFilters.month !== "all" && !months.includes(state.targetFilters.month))) && monthOptions.length) {
       state.targetFilters.month = preferredTargetMonth(records);
     }
     if (!state.targetFilters.compareMonth && monthOptions.length > 1) state.targetFilters.compareMonth = monthOptions[Math.max(0, monthOptions.length - 2)].value;
@@ -8603,6 +8608,65 @@
     return normalized;
   }
 
+  function monthAxisLabel(value, options = {}) {
+    const key = monthKeyFromText(value);
+    if (!key) return String(value || "-");
+    const date = new Date(`${key}-01T00:00:00`);
+    if (Number.isNaN(date.getTime())) return key;
+    return date.toLocaleDateString("en-US", {
+      month: options.short ? "short" : "long",
+      year: "numeric"
+    });
+  }
+
+  function dbMonthlyTrendRows(payload = state.dbStatus.data) {
+    const recent = payload && payload.recentMonths ? payload.recentMonths : {};
+    const aggregateRows = Array.isArray(recent.aggregateOrders) ? recent.aggregateOrders : [];
+    const clickRows = Array.isArray(recent.amazonClicks) ? recent.amazonClicks : [];
+    const byMonth = new Map();
+    aggregateRows.forEach((row) => {
+      const monthKey = monthKeyFromText(row.month);
+      if (!monthKey) return;
+      byMonth.set(monthKey, {
+        monthKey,
+        revenue: Number(row.revenue) || 0,
+        orders: Number(row.orders) || 0,
+        activeBrands: Number(row.activeBrands) || 0,
+        aggregateRows: Number(row.aggregateRows) || 0,
+        clicks: 0
+      });
+    });
+    clickRows.forEach((row) => {
+      const monthKey = monthKeyFromText(row.month);
+      if (!monthKey) return;
+      const target = byMonth.get(monthKey) || {
+        monthKey,
+        revenue: 0,
+        orders: 0,
+        activeBrands: 0,
+        aggregateRows: 0,
+        clicks: 0
+      };
+      target.clicks = Number(row.clicks) || 0;
+      target.clickRows = Number(row.clickRows) || 0;
+      byMonth.set(monthKey, target);
+    });
+    return Array.from(byMonth.values())
+      .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+      .map((row) => ({
+        ...row,
+        conversionRate: row.clicks ? row.orders / row.clicks : 0,
+        label: monthAxisLabel(row.monthKey),
+        shortLabel: monthAxisLabel(row.monthKey, { short: true }),
+        source: "database"
+      }));
+  }
+
+  function dbMonthlyRowForKey(monthKey, payload = state.dbStatus.data) {
+    const normalized = monthKeyFromText(monthKey);
+    return dbMonthlyTrendRows(payload).find((row) => row.monthKey === normalized) || null;
+  }
+
   function dbStatusViewModel(payload = state.dbStatus.data) {
     const trend = payload && payload.dailyTrend ? payload.dailyTrend : {};
     const latestDates = payload && payload.latestDates ? payload.latestDates : {};
@@ -8656,21 +8720,61 @@
     return new URLSearchParams(search).get("dbStatusDemo") === "1";
   }
 
-  function demoDbStatusPayload() {
-    const currentDate = localDateKey(new Date());
-    const expectedCompleteThrough = addDaysToDateKey(currentDate, -2);
+  function demoDbStatusPayload(monthKey = "") {
+    const today = localDateKey(new Date());
+    const requestedMonth = monthKeyFromText(monthKey);
+    const currentMonth = today.slice(0, 7);
+    const trendMonth = requestedMonth || currentMonth;
+    const monthParts = trendMonth.match(/^(\d{4})-(\d{2})$/);
+    const monthEnd = monthParts
+      ? localDateKey(new Date(Number(monthParts[1]), Number(monthParts[2]), 0))
+      : today;
+    const currentDate = trendMonth === currentMonth ? today : monthEnd;
+    const expectedCompleteThrough = trendMonth === currentMonth ? addDaysToDateKey(currentDate, -2) : monthEnd;
     const rows = [];
-    for (let offset = 8; offset >= 0; offset -= 1) {
-      const day = addDaysToDateKey(currentDate, -offset);
+    let cursor = monthParts ? `${trendMonth}-01` : addDaysToDateKey(currentDate, -8);
+    let completeIndex = 0;
+    while (cursor && compareDateKeys(cursor, currentDate) <= 0) {
+      const day = cursor;
       const state = compareDateKeys(day, expectedCompleteThrough) > 0 ? "delay" : "observed";
-      const completeIndex = 8 - offset;
+      const orders = state === "delay" ? null : 72 + completeIndex * 9 + (completeIndex % 3) * 6;
+      const revenue = state === "delay" ? null : 3200 + completeIndex * 420;
+      const clicks = state === "delay" ? null : 820 + completeIndex * 55;
       rows.push({
         date: day,
         state,
         isComplete: state !== "delay",
-        orders: state === "delay" ? null : 72 + completeIndex * 9 + (completeIndex % 3) * 6,
-        revenue: state === "delay" ? null : 3200 + completeIndex * 420,
-        clicks: state === "delay" ? null : 820 + completeIndex * 55
+        orders,
+        revenue,
+        clicks,
+        activeBrands: state === "delay" ? null : 42 + (completeIndex % 18),
+        conversionRate: clicks ? orders / clicks : 0
+      });
+      cursor = addDaysToDateKey(cursor, 1);
+      completeIndex += 1;
+    }
+    const completedRows = rows.filter((row) => row.state !== "delay");
+    const selectedOrders = completedRows.reduce((sum, row) => sum + (Number(row.orders) || 0), 0);
+    const selectedRevenue = completedRows.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
+    const selectedClicks = completedRows.reduce((sum, row) => sum + (Number(row.clicks) || 0), 0);
+    const recentAggregate = [];
+    const recentClicks = [];
+    for (let offset = 5; offset >= 0; offset -= 1) {
+      const date = new Date(`${trendMonth}-01T00:00:00`);
+      date.setMonth(date.getMonth() - offset);
+      const key = localDateKey(date).slice(0, 7);
+      const factor = 0.72 + (5 - offset) * 0.056;
+      recentAggregate.push({
+        month: key,
+        aggregateRows: Math.round(selectedOrders * factor * 0.74),
+        activeBrands: Math.round((offers.length || 1280) * (0.15 + factor * 0.07)),
+        orders: Math.round(selectedOrders * factor),
+        revenue: Math.round(selectedRevenue * factor * 100) / 100
+      });
+      recentClicks.push({
+        month: key,
+        clickRows: Math.round(selectedClicks * factor * 0.31),
+        clicks: Math.round(selectedClicks * factor)
       });
     }
     return {
@@ -8692,12 +8796,22 @@
         cnpscy_amazon_product_extra: { matched: Math.max(0, offers.length - 304), total: offers.length, coverage: offers.length ? (offers.length - 304) / offers.length : 0 }
       },
       dailyTrend: {
-        month: currentDate.slice(0, 7),
+        month: trendMonth,
         delayDays: 2,
         currentDate,
         observedThrough: expectedCompleteThrough,
         expectedCompleteThrough,
         rows
+      },
+      recentMonths: {
+        window: {
+          startMonth: recentAggregate[0]?.month || trendMonth,
+          endMonth: trendMonth,
+          throughDate: currentDate,
+          months: recentAggregate.length
+        },
+        aggregateOrders: recentAggregate,
+        amazonClicks: recentClicks
       }
     };
   }
@@ -8772,76 +8886,28 @@
     </svg>`;
   }
 
-  function dbStatusPanelHtml() {
-    const data = state.dbStatus.data;
-    const fallbackTitle = dbStatusTitleForMonth(state.dbStatus.monthKey || targetDbStatusMonthKey());
-    if (!data && state.dbStatus.loading) {
-      return `<section class="target-report-card db-status-card target-card-enter" style="--i:0">
-        <div class="target-section-header">
-          <div><h3>${escapeHtml(fallbackTitle)}</h3><p>Loading production reporting status from the safe UI API</p></div>
-          <span>Syncing</span>
-        </div>
-        <div class="db-status-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
-      </section>`;
-    }
-    if (!data && state.dbStatus.error) {
-      return `<section class="target-report-card db-status-card db-status-error target-card-enter" style="--i:0">
-        <div class="target-section-header">
-          <div><h3>${escapeHtml(fallbackTitle)}</h3><p>${escapeHtml(state.dbStatus.error)}</p></div>
-          <span>Static fallback</span>
-        </div>
-      </section>`;
-    }
-    if (!data) return "";
-    const model = dbStatusViewModel(data);
-    const rows = dbDailyTrendRows(data);
-    const latestObserved = rows.filter((row) => row.state !== "delay" && Number.isFinite(row.orders)).slice(-1)[0];
-    const statusText = model.health === "fresh" ? "On track" : model.health === "stale" ? "Behind" : "Unknown";
-    const sourcePrefix = data.demo ? "Local demo preview. " : "";
-    return `<section class="target-report-card db-status-card target-card-enter" style="--i:0">
-      <div class="target-section-header db-status-head">
-        <div>
-          <h3>${escapeHtml(model.title)}</h3>
-          <p>${escapeHtml(sourcePrefix)}Offer aggregate complete through ${escapeHtml(shortDateLabel(model.observedThrough || model.expectedCompleteThrough))}; ${escapeHtml(model.delayWindowText)} is the normal ${model.delayDays}-day reporting lag window. Source: ${escapeHtml(model.primarySource)}.</p>
-        </div>
-        <span class="db-health-pill ${escapeHtml(model.health)}">${escapeHtml(statusText)}</span>
-      </div>
-      <div class="db-status-grid">
-        ${model.coverageCards.map((card) => `<article class="db-mini-card ${escapeHtml(card.tone)}">
-          <span>${escapeHtml(card.label)}</span>
-          <strong>${escapeHtml(card.value)}</strong>
-          <small>${escapeHtml(card.detail)}</small>
-        </article>`).join("")}
-      </div>
-      <div class="db-latest-grid">
-        ${model.latestCards.map((card) => `<div><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.detail)}</small></div>`).join("")}
-      </div>
-      <div class="db-trend-layout">
-        <div class="target-trend-plot db-trend-plot">${dbDailyTrendChartHtml(rows, model.delayDays)}</div>
-        <aside class="db-trend-aside">
-          <span>Latest complete day</span>
-          <strong>${escapeHtml(shortDateLabel(model.observedThrough || model.expectedCompleteThrough))}</strong>
-          <p>${latestObserved ? `${compactNumber(latestObserved.orders)} orders, ${compactMoney(latestObserved.revenue)} revenue` : "Waiting for DB rows"}</p>
-          <small>${latestObserved ? escapeHtml(`${deltaText(latestObserved.ordersDelta, compactNumber)} / ${compactNumber(latestObserved.clicks || 0)} clicks`) : "No daily comparison yet"}</small>
-        </aside>
-      </div>
-    </section>`;
-  }
-
   function refreshDbStatusUi() {
-    if (state.page === "sheets" && els.sheetPageNotes) renderSheetPage();
+    if (state.page !== "sheets" || !els.sheetPageNotes) return;
+    const { allRecords, rows, comparisonRows } = currentTargetPageData();
+    renderSheetSummary(rows, comparisonRows, state.targetFilters.compareMonth);
+    if (!refreshTargetTrendOnly(allRecords)) renderSheetPage();
   }
 
   function ensureDbStatusForSelectedMonth() {
     if (window.__OFFER_INTELLIGENCE_TEST__) return;
+    if (state.page !== "sheets") return;
     const desiredMonthKey = targetDbStatusMonthKey();
-    if (state.dbStatus.monthKey === desiredMonthKey || state.dbStatus.loading) return;
+    if (state.dbStatus.loading) return;
+    if (!desiredMonthKey && (state.dbStatus.data || state.dbStatus.error)) return;
+    if (desiredMonthKey && state.dbStatus.monthKey === desiredMonthKey && (state.dbStatus.data || state.dbStatus.error)) return;
     window.setTimeout(() => loadDbStatus(desiredMonthKey), 0);
   }
 
   async function loadDbStatus(monthKey = targetDbStatusMonthKey()) {
     if (typeof fetch !== "function") return;
     const normalizedMonthKey = monthKeyFromText(monthKey);
+    const existingMonthKey = monthKeyFromText(state.dbStatus.data?.dailyTrend?.month || state.dbStatus.monthKey);
+    if (normalizedMonthKey && existingMonthKey !== normalizedMonthKey) state.dbStatus.data = null;
     state.dbStatus.loading = true;
     state.dbStatus.error = "";
     state.dbStatus.monthKey = normalizedMonthKey;
@@ -8863,7 +8929,7 @@
       state.dbStatus.error = "";
     } catch (error) {
       if (dbStatusDemoEnabled()) {
-        state.dbStatus.data = demoDbStatusPayload();
+        state.dbStatus.data = demoDbStatusPayload(normalizedMonthKey);
         state.dbStatus.monthKey = monthKeyFromText(state.dbStatus.data?.dailyTrend?.month || normalizedMonthKey);
         state.dbStatus.error = "";
         return;
@@ -8924,16 +8990,39 @@
   }
 
   function renderSheetSummary(records, comparisonRecords, comparisonLabel) {
-    const totals = targetSummary(records);
-    const comparison = comparisonRecords && comparisonRecords.length ? targetSummary(comparisonRecords) : null;
-    const avgConversion = targetAvgConversion(totals);
-    const comparisonConversion = comparison ? targetAvgConversion(comparison) : null;
+    const selectedMonthKey = targetDbStatusMonthKey();
+    const useDatabase = state.targetFilters.tier === "all" && Boolean(selectedMonthKey);
+    const databaseTotals = useDatabase ? dbMonthlyRowForKey(selectedMonthKey) : null;
+    const comparisonMonthKey = monthKeyFromText(targetMonthSortValue(comparisonLabel));
+    const databaseComparison = useDatabase && comparisonMonthKey ? dbMonthlyRowForKey(comparisonMonthKey) : null;
+    const staticTotals = targetSummary(records);
+    const staticComparison = comparisonRecords && comparisonRecords.length ? targetSummary(comparisonRecords) : null;
+    const totals = databaseTotals
+      ? {
+          revenue: databaseTotals.revenue,
+          orders: databaseTotals.orders,
+          clicks: databaseTotals.clicks,
+          brands: databaseTotals.activeBrands
+        }
+      : staticTotals;
+    const comparison = databaseComparison
+      ? {
+          revenue: databaseComparison.revenue,
+          orders: databaseComparison.orders,
+          clicks: databaseComparison.clicks,
+          brands: databaseComparison.activeBrands
+        }
+      : staticComparison;
+    const avgConversion = databaseTotals ? databaseTotals.conversionRate : targetAvgConversion(totals);
+    const comparisonConversion = databaseComparison
+      ? databaseComparison.conversionRate
+      : comparison ? targetAvgConversion(comparison) : null;
     const cards = [
       { icon: "$", label: "Revenue", value: compactMoney(totals.revenue), delta: targetDeltaHtml(totals.revenue, comparison && comparison.revenue, "number", comparisonLabel), tone: "blue" },
       { icon: "#", label: "Orders", value: compactNumber(totals.orders), delta: targetDeltaHtml(totals.orders, comparison && comparison.orders, "number", comparisonLabel), tone: "green" },
       { icon: "C", label: "Clicks", value: compactNumber(totals.clicks), delta: targetDeltaHtml(totals.clicks, comparison && comparison.clicks, "number", comparisonLabel), tone: "amber" },
       { icon: "%", label: "Avg Conversion", value: shortPct(avgConversion), delta: targetDeltaHtml(avgConversion, comparisonConversion, "rate", comparisonLabel), tone: "violet" },
-      { icon: "B", label: "Active Brands", value: compactNumber(totals.brands), delta: targetDeltaHtml(totals.brands, comparison && comparison.brands, "number", comparisonLabel), tone: "slate" }
+      { icon: "B", label: databaseTotals ? "Active Merchants" : "Active Brands", value: compactNumber(totals.brands), delta: targetDeltaHtml(totals.brands, comparison && comparison.brands, "number", comparisonLabel), tone: "slate" }
     ];
     els.sheetPageSummary.innerHTML = cards.map((card, index) => (
       `<article class="target-kpi-card target-card-enter" style="--i:${index}">
@@ -9060,7 +9149,7 @@
 
   function targetProgressHtml(records) {
     const cards = targetMetricRows(records).map(targetGoalCardHtml).filter(Boolean);
-    return `<section class="target-progress-section target-card-enter" style="--i:5">
+    return `<section class="target-progress-section target-card-enter" style="--i:6">
       <div class="target-section-header">
         <div>
           <h3>Tier target progress</h3>
@@ -9072,9 +9161,26 @@
     </section>`;
   }
 
+  function targetTrendView() {
+    return state.targetTrendView === "day" ? "day" : "month";
+  }
+
   function targetTrendSubtitle(metric = targetMetricConfig()) {
+    if (targetTrendView() === "day") {
+      const monthKey = targetDbStatusMonthKey() || state.dbStatus.monthKey || monthKeyFromText(state.dbStatus.data?.dailyTrend?.month || "");
+      const monthLabel = monthLabelFromKey(monthKey);
+      const prefix = monthLabel === "Reporting" ? "Latest daily" : `${monthLabel} daily`;
+      return `${prefix} ${metric.label.toLowerCase()} by calendar day. Each bar is independent, not cumulative`;
+    }
     const tier = state.targetFilters.tier;
-    return tier === "all" ? `Total ${metric.label.toLowerCase()} trajectory` : `${tier} ${metric.label.toLowerCase()} trajectory`;
+    return tier === "all" ? `${metric.label} across the six-month window ending at the selected month` : `${tier} ${metric.label.toLowerCase()} trajectory from the tier snapshot`;
+  }
+
+  function targetTrendViewTabsHtml() {
+    const view = targetTrendView();
+    return TARGET_TREND_VIEWS.map((item) => (
+      `<button class="target-trend-view-tab${item.key === view ? " active" : ""}" type="button" data-target-trend-view="${escapeHtml(item.key)}" aria-pressed="${item.key === view ? "true" : "false"}">${escapeHtml(item.label)}</button>`
+    )).join("");
   }
 
   function targetMetricTabsHtml(metric = targetMetricConfig()) {
@@ -9083,52 +9189,183 @@
     )).join("");
   }
 
-  function targetTrendPlotHtml(allRecords) {
+  function targetMonthlyTrendRows(allRecords, metric = targetMetricConfig()) {
     const tier = state.targetFilters.tier;
-    const metric = targetMetricConfig();
-    const trendRows = Array.from(new Set(allRecords.map((record) => record.Month).filter(Boolean)))
-      .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))))
+    const selectedMonth = state.targetFilters.month;
+    const selectedMonthKey = targetDbStatusMonthKey();
+    const apiMonthKey = monthKeyFromText(state.dbStatus.data?.recentMonths?.window?.endMonth || state.dbStatus.data?.dailyTrend?.month || "");
+    const liveRows = tier === "all" && state.dbStatus.data && (!selectedMonthKey || !apiMonthKey || selectedMonthKey === apiMonthKey)
+      ? dbMonthlyTrendRows(state.dbStatus.data)
+      : [];
+    if (liveRows.length) {
+      return liveRows.map((row) => {
+        const value = targetDailyMetricValue(row, metric.key);
+        const sourceText = state.dbStatus.data?.demo ? "local preview data" : "production database";
+        return {
+          ...row,
+          value,
+          selected: Boolean(selectedMonthKey && row.monthKey === selectedMonthKey),
+          state: "month database",
+          detail: `${row.label}: ${formatTargetMetricValue(metric.key, value)} from ${sourceText}`
+        };
+      });
+    }
+    const months = Array.from(new Set(allRecords.map((record) => record.Month).filter(Boolean)))
+      .sort((a, b) => String(targetMonthSortValue(a)).localeCompare(String(targetMonthSortValue(b))));
+    const selectedIndex = selectedMonth && selectedMonth !== "all" ? months.indexOf(selectedMonth) : months.length - 1;
+    const windowEnd = selectedIndex >= 0 ? selectedIndex + 1 : months.length;
+    const windowMonths = months.slice(Math.max(0, windowEnd - 6), windowEnd);
+    return windowMonths
       .map((month) => {
         const summary = targetSummary(targetRowsForMonth(allRecords, month, tier));
-        return { month, value: targetSummaryMetricValue(summary, metric.key) };
+        const value = targetSummaryMetricValue(summary, metric.key);
+        return {
+          label: month,
+          shortLabel: monthAxisLabel(targetMonthSortValue(month), { short: true }),
+          monthKey: monthKeyFromText(targetMonthSortValue(month)),
+          value,
+          selected: month === selectedMonth,
+          state: "month snapshot",
+          detail: `${month}: ${formatTargetMetricValue(metric.key, value)}`
+        };
       });
+  }
+
+  function targetDailyMetricValue(row, key = state.targetMetric) {
+    if (key === "orders") return Number(row.orders) || 0;
+    if (key === "clicks") return Number(row.clicks) || 0;
+    if (key === "conversion") return Number(row.conversionRate) || 0;
+    if (key === "brands") return Number(row.activeBrands ?? row.brandCount ?? row.activeAdvertisers) || 0;
+    return Number(row.revenue) || 0;
+  }
+
+  function targetDailyTrendRows(metric = targetMetricConfig()) {
+    return dbDailyTrendRows(state.dbStatus.data).map((row) => {
+      const rawValue = targetDailyMetricValue(row, metric.key);
+      const hasPartialValue = row.state === "delay" && Math.abs(rawValue) > 0.000001;
+      const hasValue = row.state !== "delay" || hasPartialValue;
+      const value = hasValue ? rawValue : null;
+      return {
+        label: shortDateLabel(row.date),
+        shortLabel: axisDateLabel(row.date),
+        value,
+        state: row.state || "observed",
+        detail: `${shortDateLabel(row.date)}: ${hasValue ? formatTargetMetricValue(metric.key, rawValue) : "Pending"}${row.state === "delay" ? " (partial)" : ""}`
+      };
+    });
+  }
+
+  function targetTrendSvgHtml(trendRows, metric, viewLabel) {
     const values = trendRows.map((row) => row.value);
-    const max = Math.max(...values, 0);
-    const min = Math.min(...values, 0);
-    const width = 620;
-    const height = 170;
-    const padX = 44;
-    const padY = 24;
-    const innerWidth = width - padX * 2;
-    const innerHeight = height - padY * 2;
+    const numericValues = values.filter((value) => Number.isFinite(value));
+    if (!numericValues.length) {
+      return `<div class="target-empty-state">${viewLabel === "Day" ? "Daily trend data is still loading." : "No trend data is available for this selection."}</div>`;
+    }
+    const max = Math.max(...numericValues, 1);
+    const min = 0;
+    const width = 760;
+    const height = 240;
+    const pad = { left: 68, right: 24, top: 34, bottom: 42 };
+    const innerWidth = width - pad.left - pad.right;
+    const innerHeight = height - pad.top - pad.bottom;
     const range = max - min || 1;
     const points = trendRows.map((row, index) => {
-      const x = padX + (trendRows.length <= 1 ? innerWidth / 2 : (index / (trendRows.length - 1)) * innerWidth);
-      const y = padY + innerHeight - ((row.value - min) / range) * innerHeight;
-      return { ...row, x, y };
+      const x = pad.left + (trendRows.length <= 1 ? innerWidth / 2 : (index / (trendRows.length - 1)) * innerWidth);
+      const hasValue = Number.isFinite(row.value);
+      const y = hasValue ? pad.top + innerHeight - ((row.value - min) / range) * innerHeight : height - pad.bottom;
+      return { ...row, x, y, hasValue };
     });
-    const polyline = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
-    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly ${escapeHtml(metric.label)} trend">
-      <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" class="trend-axis"></line>
-      <polyline points="${polyline}" class="trend-line"></polyline>
-      ${points.map((point) => `<g>
-        <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4.5" class="trend-dot"></circle>
-        <text x="${point.x.toFixed(2)}" y="${Math.max(14, point.y - 12).toFixed(2)}" text-anchor="middle">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>
-        <text x="${point.x.toFixed(2)}" y="${height - 6}" text-anchor="middle" class="trend-month">${escapeHtml(point.month)}</text>
+    const isDaily = viewLabel === "Day";
+    const polyline = points.filter((point) => point.hasValue).map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const labelEvery = viewLabel === "Day" && points.length > 14 ? Math.ceil(points.length / 9) : 1;
+    const gridTicks = [0, 0.25, 0.5, 0.75, 1];
+    const dailyStep = points.length > 1 ? innerWidth / (points.length - 1) : innerWidth;
+    const dailyBarWidth = Math.max(5, Math.min(18, dailyStep * 0.58));
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(viewLabel)} ${escapeHtml(metric.label)} trend" data-trend-aggregation="${isDaily ? "daily-independent" : "monthly"}">
+      ${gridTicks.map((ratio) => {
+        const y = pad.top + innerHeight - ratio * innerHeight;
+        const value = min + ratio * range;
+        return `<g class="trend-grid"><line x1="${pad.left}" y1="${y.toFixed(2)}" x2="${width - pad.right}" y2="${y.toFixed(2)}"></line><text x="${pad.left - 12}" y="${(y + 4).toFixed(2)}" text-anchor="end">${escapeHtml(formatTargetMetricValue(metric.key, value))}</text></g>`;
+      }).join("")}
+      ${isDaily ? "" : `<polyline points="${polyline}" class="trend-line"></polyline>`}
+      ${points.map((point, index) => `<g class="target-trend-point ${escapeHtml(point.state || "")}${point.selected ? " selected" : ""}" tabindex="0" role="img" aria-label="${escapeHtml(point.detail || point.label)}">
+        <title>${escapeHtml(point.detail || point.label)}</title>
+        ${isDaily
+          ? `<rect x="${(point.x - dailyBarWidth / 2).toFixed(2)}" y="${point.hasValue ? point.y.toFixed(2) : (height - pad.bottom - 4).toFixed(2)}" width="${dailyBarWidth.toFixed(2)}" height="${point.hasValue ? Math.max(4, height - pad.bottom - point.y).toFixed(2) : "4"}" rx="2.5" class="target-daily-bar ${point.hasValue ? "" : "muted"} ${escapeHtml(point.state || "")}"></rect>`
+          : `<circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${point.selected ? "6" : "4.5"}" class="trend-dot ${point.hasValue ? "" : "muted"} ${escapeHtml(point.state || "")}"></circle>`}
+        ${point.hasValue && (point.selected || (viewLabel === "Day" && index === points.length - 1)) ? `<text x="${point.x.toFixed(2)}" y="${Math.max(18, point.y - 14).toFixed(2)}" text-anchor="middle" class="trend-value-label">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>` : ""}
+        ${(index === 0 || index === points.length - 1 || index % labelEvery === 0) ? `<text x="${point.x.toFixed(2)}" y="${height - 12}" text-anchor="middle" class="trend-month">${escapeHtml(point.shortLabel || point.label)}</text>` : ""}
       </g>`).join("")}
     </svg>`;
   }
 
+  function targetTrendPlotHtml(allRecords) {
+    const metric = targetMetricConfig();
+    if (targetTrendView() === "day") {
+      const desiredMonth = targetDbStatusMonthKey();
+      const dataMonth = monthKeyFromText(state.dbStatus.data?.dailyTrend?.month || "");
+      if (desiredMonth && dataMonth && dataMonth !== desiredMonth) {
+        return `<div class="target-empty-state">Loading ${escapeHtml(monthLabelFromKey(desiredMonth))} daily trend data.</div>`;
+      }
+      if (!state.dbStatus.data && state.dbStatus.loading) {
+        return `<div class="target-empty-state">Loading daily trend data.</div>`;
+      }
+      if (!state.dbStatus.data && state.dbStatus.error) {
+        return `<div class="target-empty-state">${escapeHtml(state.dbStatus.error)}</div>`;
+      }
+      return targetTrendSvgHtml(targetDailyTrendRows(metric), metric, "Day");
+    }
+    const desiredMonth = targetDbStatusMonthKey();
+    const dataMonth = monthKeyFromText(state.dbStatus.data?.recentMonths?.window?.endMonth || state.dbStatus.data?.dailyTrend?.month || "");
+    if (state.targetFilters.tier === "all" && desiredMonth && state.dbStatus.loading && dataMonth !== desiredMonth) {
+      return `<div class="target-empty-state">Loading the six-month database window ending ${escapeHtml(monthAxisLabel(desiredMonth))}.</div>`;
+    }
+    return targetTrendSvgHtml(targetMonthlyTrendRows(allRecords, metric), metric, "Monthly");
+  }
+
+  function targetTrendHeading() {
+    return targetTrendView() === "day" ? "Daily trend" : "Monthly trend";
+  }
+
+  function targetTrendSourceHtml() {
+    const tierIsDatabaseEligible = state.targetFilters.tier === "all";
+    const desiredMonth = targetDbStatusMonthKey();
+    const dataMonth = monthKeyFromText(state.dbStatus.data?.dailyTrend?.month || state.dbStatus.data?.recentMonths?.window?.endMonth || "");
+    if (tierIsDatabaseEligible && state.dbStatus.data && (!desiredMonth || !dataMonth || desiredMonth === dataMonth)) {
+      const model = dbStatusViewModel(state.dbStatus.data);
+      const completeThrough = model.observedThrough || model.expectedCompleteThrough || state.dbStatus.data?.recentMonths?.window?.throughDate;
+      const status = state.dbStatus.data.demo
+        ? "Local preview"
+        : model.health === "stale" ? "Database delayed" : "Production database";
+      return `<span class="target-source-status ${escapeHtml(model.health)}"><i aria-hidden="true"></i>${escapeHtml(status)}</span>
+        <span>Orders and revenue: cnpscy_order_new_aggregate</span>
+        <span>Clicks: cnpscy_amazon_click</span>
+        <span>Complete through ${escapeHtml(shortDateLabel(completeThrough))}</span>
+        ${targetTrendView() === "day" ? `<span>One bar equals one calendar day</span>` : ""}`;
+    }
+    if (tierIsDatabaseEligible && state.dbStatus.loading) {
+      return `<span class="target-source-status syncing"><i aria-hidden="true"></i>Syncing database</span><span>Loading verified monthly and daily totals</span>`;
+    }
+    if (tierIsDatabaseEligible && state.dbStatus.error) {
+      return `<span class="target-source-status fallback"><i aria-hidden="true"></i>Sheet fallback</span><span>${escapeHtml(state.dbStatus.error)}</span>`;
+    }
+    return `<span class="target-source-status snapshot"><i aria-hidden="true"></i>Tier snapshot</span><span>Tier filtering uses the reporting sheet because the production tables do not contain a verified tier mapping</span>`;
+  }
+
   function targetTrendHtml(allRecords) {
     const metric = targetMetricConfig();
-    return `<section class="target-report-card target-trend-card target-card-enter" style="--i:6">
+    return `<section class="target-report-card target-trend-card target-card-enter" style="--i:5">
       <div class="target-section-header">
         <div>
-          <h3>Monthly trend</h3>
+          <h3 data-target-trend-heading>${escapeHtml(targetTrendHeading())}</h3>
           <p data-target-trend-subtitle>${escapeHtml(targetTrendSubtitle(metric))}</p>
         </div>
-        <div class="target-metric-tabs" aria-label="Trend metric">${targetMetricTabsHtml(metric)}</div>
+        <div class="target-trend-controls">
+          <div class="target-trend-view-tabs" aria-label="Trend view">${targetTrendViewTabsHtml()}</div>
+          <div class="target-metric-tabs" aria-label="Trend metric">${targetMetricTabsHtml(metric)}</div>
+        </div>
       </div>
+      <div class="target-trend-source" data-target-trend-source>${targetTrendSourceHtml()}</div>
       <div class="target-trend-plot">
         ${targetTrendPlotHtml(allRecords)}
       </div>
@@ -9319,11 +9556,10 @@
       els.sheetPageTitle.textContent = "Report Overview";
       els.sheetPageSubtitle.textContent = t("sheet.noTargets", "No target rows found in the current sheet export");
       els.sheetPageSummary.innerHTML = "";
-      els.sheetPageNotes.innerHTML = `${dbStatusPanelHtml()}<p>${escapeHtml(t("sheet.noTargetMatch", "No target data matched the selected filters."))}</p>`;
+      els.sheetPageNotes.innerHTML = `<p>${escapeHtml(t("sheet.noTargetMatch", "No target data matched the selected filters."))}</p>`;
       if (els.sheetGridHead) els.sheetGridHead.innerHTML = "";
       if (els.sheetGridRows) els.sheetGridRows.innerHTML = "";
       if (els.sheetTableCount) els.sheetTableCount.textContent = "";
-      ensureDbStatusForSelectedMonth();
       return;
     }
     const monthText = state.targetFilters.month === "all" ? optionText("All months") : state.targetFilters.month;
@@ -9331,7 +9567,7 @@
     els.sheetPageTitle.textContent = "Report Overview";
     els.sheetPageSubtitle.textContent = `${monthText} performance summary for ${tierText}`;
     renderSheetSummary(rows, comparisonRows, state.targetFilters.compareMonth);
-    els.sheetPageNotes.innerHTML = `${dbStatusPanelHtml()}${targetProgressHtml(rows)}${targetTrendHtml(allRecords)}${targetMatrixHtml(rows, comparisonRows)}`;
+    els.sheetPageNotes.innerHTML = `${targetTrendHtml(allRecords)}${targetProgressHtml(rows)}${targetMatrixHtml(rows, comparisonRows)}`;
     ensureDbStatusForSelectedMonth();
   }
 
@@ -9344,19 +9580,39 @@
     return { allRecords, rows, comparisonRows };
   }
 
+  function animateTargetTrendPlot(plot) {
+    if (!plot || !window.gsap || typeof window.gsap.fromTo !== "function") return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    window.gsap.fromTo(
+      plot,
+      { autoAlpha: 0.35, y: 8 },
+      { autoAlpha: 1, y: 0, duration: 0.32, ease: "power2.out", overwrite: "auto", clearProps: "transform,opacity,visibility" }
+    );
+  }
+
   function refreshTargetTrendOnly(allRecords) {
     const trendCard = els.sheetPageNotes && els.sheetPageNotes.querySelector(".target-trend-card");
     if (!trendCard) return false;
     const metric = targetMetricConfig();
+    const heading = trendCard.querySelector("[data-target-trend-heading]");
     const subtitle = trendCard.querySelector("[data-target-trend-subtitle]");
+    const source = trendCard.querySelector("[data-target-trend-source]");
     const plot = trendCard.querySelector(".target-trend-plot");
+    if (heading) heading.textContent = targetTrendHeading();
     if (subtitle) subtitle.textContent = targetTrendSubtitle(metric);
+    if (source) source.innerHTML = targetTrendSourceHtml();
     if (plot) plot.innerHTML = targetTrendPlotHtml(allRecords);
+    trendCard.querySelectorAll("[data-target-trend-view]").forEach((button) => {
+      const active = button.dataset.targetTrendView === targetTrendView();
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
     trendCard.querySelectorAll("[data-target-metric]").forEach((button) => {
       const active = button.dataset.targetMetric === metric.key;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
+    animateTargetTrendPlot(plot);
     return true;
   }
 
@@ -9392,6 +9648,14 @@
     if (metricButton) {
       state.targetMetric = metricButton.dataset.targetMetric || "revenue";
       refreshTargetMetricViews();
+      return;
+    }
+    const trendViewButton = event.target.closest("[data-target-trend-view]");
+    if (trendViewButton) {
+      state.targetTrendView = trendViewButton.dataset.targetTrendView === "day" ? "day" : "month";
+      const { allRecords } = currentTargetPageData();
+      refreshTargetTrendOnly(allRecords);
+      ensureDbStatusForSelectedMonth();
       return;
     }
     const editButton = event.target.closest(".target-edit-button[data-target-edit-key]");
@@ -9655,7 +9919,6 @@
     renderAll();
     renderPaymentsPage();
     rerenderForLanguage();
-    loadDbStatus(targetDbStatusMonthKey());
     loadSharedTierMoves({ silent: true });
     maybeAutoSyncLevantaPayments();
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
@@ -9705,6 +9968,16 @@
       targetRecords,
       preferredTargetMonth,
       targetMonthHasMetrics: (month) => targetMonthHasMetrics(targetRecords(), month),
+      targetTrendHtml,
+      targetTrendPlotHtml,
+      targetMonthlyTrendRows,
+      targetDailyTrendRows,
+      dbMonthlyTrendRows,
+      dbMonthlyRowForKey,
+      setTargetFilters: (filters = {}) => { state.targetFilters = { ...state.targetFilters, ...filters }; },
+      setTargetTrendView: (view) => { state.targetTrendView = view === "day" ? "day" : "month"; },
+      setDbStatusData: (payload) => { state.dbStatus.data = payload; state.dbStatus.error = ""; state.dbStatus.loading = false; state.dbStatus.monthKey = monthKeyFromText(payload?.dailyTrend?.month || ""); },
+      demoDbStatusPayload,
       dbStatusViewModel,
       dbDailyTrendRows,
       dbDailyTrendChartHtml
