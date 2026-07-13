@@ -34,6 +34,30 @@ jobs:
       - name: Validate payment placeholders
         run: python scripts/test_payment_placeholders.py
 
+      - name: Install PyMySQL for DB sync
+        if: ${{ vars.OFFER_DB_HOST != '' }}
+        run: pip install PyMySQL==1.1.1
+
+      - name: Ensure cnpscy_oi schema (tables + views)
+        if: ${{ vars.OFFER_DB_HOST != '' }}
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+        run: python scripts/ensure_oi_schema.py
+
+      - name: Sync data to cnpscy_oi_* tables
+        if: ${{ vars.OFFER_DB_HOST != '' }}
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+        run: python scripts/sync_oi_tables.py
+
       - name: Commit updated payment data
         run: |
           if git diff --quiet -- protected_data/chatbot_data.js; then

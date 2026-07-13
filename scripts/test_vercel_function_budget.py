@@ -31,6 +31,9 @@ def main():
         "^/api/db/status/?$": "status",
         "^/api/db/merchant/?$": "merchant",
         "^/api/db/search/?$": "search",
+        "^/api/ui/db/keywords/?$": "ui-keywords",
+        "^/api/ui/db/offers/?$": "ui-offers",
+        "^/api/ui/db/tier_sheet/?$": "ui-tier-sheet",
     }
     configured_routes = config.get("routes", [])
     for source, route_name in expected_routes.items():
