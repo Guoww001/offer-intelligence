@@ -123,6 +123,62 @@ def validate_payment_records(records: list[dict], months: list[tuple[str, int, i
     }
 
 
+def payment_record_key(record: dict) -> str:
+    merchant_key = str(
+        record.get("merchantId")
+        or record.get("levantaBrandId")
+        or server.normalize(record.get("merchantName") or record.get("brand"))
+        or ""
+    ).strip()
+    report_month_key = str(record.get("reportMonthKey") or "").strip()
+    if not merchant_key or not report_month_key:
+        return ""
+    region = server.normalize_region(record.get("region") or record.get("marketplace") or "")
+    return "::".join((merchant_key, report_month_key, region))
+
+
+def is_paid_payment_record(record: dict | None) -> bool:
+    if not record:
+        return False
+    return str(record.get("paymentStatus") or record.get("rawStatus") or "").strip().lower() == "paid"
+
+
+def payment_date(value: object) -> str:
+    text = str(value or "").strip()
+    return text[:10] if len(text) >= 10 else text
+
+
+def apply_payment_made_dates(records: list[dict], previous_records: list[dict], checked_at: str) -> list[dict]:
+    previous_by_key = {
+        payment_record_key(record): record
+        for record in previous_records
+        if payment_record_key(record)
+    }
+    detected_date = payment_date(checked_at) or dt.date.today().isoformat()
+    stamped_records = []
+
+    for source_record in records:
+        record = dict(source_record)
+        previous = previous_by_key.get(payment_record_key(record))
+        previous_payment_date = payment_date((previous or {}).get("paymentMadeDate"))
+
+        if is_paid_payment_record(record):
+            if is_paid_payment_record(previous):
+                first_known_date = previous_payment_date or payment_date(previous.get("lastCheckedDate"))
+            else:
+                first_known_date = previous_payment_date
+            record["paymentMadeDate"] = first_known_date or payment_date(record.get("paymentMadeDate")) or detected_date
+        elif previous_payment_date:
+            # Preserve first-payment history; the UI only displays this field while status is Paid.
+            record["paymentMadeDate"] = previous_payment_date
+        else:
+            record.pop("paymentMadeDate", None)
+
+        stamped_records.append(record)
+
+    return stamped_records
+
+
 def source_payment_record_id(record: dict, merchant_id: str) -> str:
     month_key = str(record.get("reportMonthKey") or "").strip()
     merchant_name = str(record.get("merchantName") or record.get("brand") or "").strip()
@@ -220,13 +276,14 @@ def main() -> int:
             return 2
         raw_records = fetch_payment_records(months, api_key)
 
+    checked_at = checked_at or dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
     records = [
         record
         for record in server.with_pending_placeholders(raw_records, months)
         if server.is_trackable_payment_record(record)
     ]
+    records = apply_payment_made_dates(records, payload.get("paymentRecords") or [], checked_at)
     validation = validate_payment_records(records, months)
-    checked_at = checked_at or dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
 
     payload["paymentRecords"] = records
     payload.setdefault("summary", {})["paymentSummary"] = server.payment_summary(records)
