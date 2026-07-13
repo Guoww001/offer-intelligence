@@ -45,7 +45,8 @@
   "functions": {
     "api/**/*.py": {
       "includeFiles": "protected_data/**",
-      "excludeFiles": "{scripts/**,.git/**}"
+      "excludeFiles": "{scripts/**,.git/**}",
+      "maxDuration": 60
     }
   }
 }

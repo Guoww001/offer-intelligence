@@ -50,7 +50,11 @@ def main():
     old_token = os.environ.get("OFFER_DB_API_TOKEN")
     os.environ["OFFER_DB_API_TOKEN"] = "unit-test-token"
     try:
-        module.status_payload = lambda month=None: {"route": "status", "month": month}
+        module.status_payload = lambda month=None, include_coverage=False: {
+            "route": "status",
+            "month": month,
+            "includeCoverage": include_coverage,
+        }
         module.merchant_payload = lambda merchant_id, product_limit, months: {
             "route": "merchant",
             "merchantId": merchant_id,
@@ -66,6 +70,10 @@ def main():
         status = request(module.app, "status", "action=search&month=202607")
         assert_equal(status["status"], 200, "status response code")
         assert b'"route":"status"' in status["body"], status["body"]
+
+        diagnostic_status = request(module.app, "status", "month=202607&coverage=1")
+        assert_equal(diagnostic_status["status"], 200, "diagnostic status response code")
+        assert b'"includeCoverage":true' in diagnostic_status["body"], diagnostic_status["body"]
 
         merchant = request(
             module.app,

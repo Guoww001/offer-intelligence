@@ -66,9 +66,18 @@ const hooks = sandbox.window.OFFER_INTELLIGENCE_TEST_HOOKS;
 assertTruthy(hooks, "app should expose test hooks in test mode");
 assertTruthy(hooks.targetRecords, "targetRecords hook should be exposed");
 assertTruthy(hooks.preferredTargetMonth, "preferredTargetMonth hook should be exposed");
+assertTruthy(hooks.targetMonthlyTrendRows, "targetMonthlyTrendRows hook should be exposed");
+assertTruthy(hooks.setTargetFilters, "setTargetFilters hook should be exposed");
 
 const records = hooks.targetRecords();
 const months = Array.from(new Set(records.map((row) => row.Month).filter(Boolean)));
 assertTruthy(months.includes("July 2026"), "July target template should remain available");
 assertEqual(hooks.targetMonthHasMetrics("July 2026"), false, "July target template should be recognized as metric-empty");
 assertEqual(hooks.preferredTargetMonth(records), "June 2026", "target matrix should default to the latest month with real summary metrics");
+
+hooks.setTargetFilters({ month: "July 2026", tier: "all" });
+const julyRows = hooks.targetMonthlyTrendRows(records);
+assertEqual(julyRows.length, 3, "monthly trend should retain historical context through a manually selected July month");
+assertEqual(julyRows[julyRows.length - 1].label, "July 2026", "monthly trend should end at the selected July month");
+assertEqual(julyRows[julyRows.length - 1].selected, true, "monthly trend should highlight the selected July month");
+assertEqual(julyRows[julyRows.length - 1].value, 0, "July template month should render as zero-valued monthly trend data");

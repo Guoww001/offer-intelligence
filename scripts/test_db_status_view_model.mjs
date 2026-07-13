@@ -21,6 +21,12 @@ function assertMatch(actual, pattern, label) {
   }
 }
 
+function assertNoMatch(actual, pattern, label) {
+  if (pattern.test(actual)) {
+    throw new Error(`${label}: expected ${JSON.stringify(actual).slice(0, 300)} not to match ${pattern}`);
+  }
+}
+
 const elementStub = {
   addEventListener() {},
   classList: { add() {}, remove() {}, toggle() {} },
@@ -95,10 +101,23 @@ const sampleStatus = {
     expectedCompleteThrough: "2026-07-06",
     rows: [
       { date: "2026-07-04", orders: 94, revenue: 4120, clicks: 940, state: "observed", isComplete: true },
-      { date: "2026-07-05", orders: 100, revenue: 4300, clicks: 960, state: "observed", isComplete: true },
-      { date: "2026-07-06", orders: 115, revenue: 4890, clicks: 1010, state: "observed", isComplete: true },
+      { date: "2026-07-05", orders: 100, revenue: 4300, clicks: 960, activeBrands: 38, state: "observed", isComplete: true },
+      { date: "2026-07-06", orders: 115, revenue: 4890, clicks: 1010, activeBrands: 42, state: "observed", isComplete: true },
       { date: "2026-07-07", orders: null, revenue: null, clicks: null, state: "delay", isComplete: false },
       { date: "2026-07-08", orders: null, revenue: null, clicks: null, state: "delay", isComplete: false }
+    ]
+  },
+  recentMonths: {
+    window: { startMonth: "2026-05", endMonth: "2026-07", throughDate: "2026-07-08", months: 3 },
+    aggregateOrders: [
+      { month: "2026-05", orders: 69922, revenue: 11233862.95, activeBrands: 1241, aggregateRows: 31218 },
+      { month: "2026-06", orders: 58328, revenue: 10877607.62, activeBrands: 1362, aggregateRows: 29442 },
+      { month: "2026-07", orders: 13946, revenue: 2407355.03, activeBrands: 974, aggregateRows: 8032 }
+    ],
+    amazonClicks: [
+      { month: "2026-05", clicks: 782161, clickRows: 87120 },
+      { month: "2026-06", clicks: 1101264, clickRows: 99610 },
+      { month: "2026-07", clicks: 238926, clickRows: 24140 }
     ]
   }
 };
@@ -133,6 +152,7 @@ assertEqual(rows.length, 5, "daily trend rows should preserve chart rows");
 assertEqual(rows[2].date, "2026-07-06", "latest complete trend date");
 assertEqual(rows[2].state, "observed", "latest complete row should be observed");
 assertEqual(rows[2].ordersDelta, 15, "daily order delta should compare with previous observed day");
+assertEqual(rows[2].activeBrands, 42, "daily trend rows should preserve API active brand counts");
 assertEqual(rows[3].state, "delay", "first post-complete day should be delay");
 assertEqual(rows[4].isDelay, true, "current day should be marked as delay");
 
@@ -141,3 +161,51 @@ assertMatch(chartHtml, /db-trend-tooltip/, "daily bar chart should render hover 
 assertMatch(chartHtml, /tabindex="0"/, "daily bars should be keyboard-focusable");
 assertMatch(chartHtml, /115 orders/, "tooltip should include order count");
 assertMatch(chartHtml, /orders \//, "tooltip separators should remain ASCII-safe");
+
+assertTruthy(hooks.targetTrendHtml, "targetTrendHtml hook should be exposed");
+assertTruthy(hooks.targetTrendPlotHtml, "targetTrendPlotHtml hook should be exposed");
+assertTruthy(hooks.setTargetFilters, "target filter setter hook should be exposed");
+assertTruthy(hooks.setTargetTrendView, "trend view setter hook should be exposed");
+assertTruthy(hooks.setDbStatusData, "DB status data setter hook should be exposed");
+assertTruthy(hooks.demoDbStatusPayload, "demo DB status payload hook should be exposed");
+assertTruthy(hooks.dbMonthlyTrendRows, "monthly database trend hook should be exposed");
+
+const monthlyRows = hooks.dbMonthlyTrendRows(sampleStatus);
+assertEqual(monthlyRows.length, 3, "monthly database rows should merge aggregate and click sources");
+assertEqual(monthlyRows[1].monthKey, "2026-06", "monthly database rows should normalize month keys");
+assertEqual(monthlyRows[1].orders, 58328, "monthly database rows should use aggregate order totals");
+assertEqual(monthlyRows[1].clicks, 1101264, "monthly database rows should use click totals");
+assertEqual(monthlyRows[1].activeBrands, 1362, "monthly database rows should preserve active merchant counts");
+
+const targetTrend = hooks.targetTrendHtml(hooks.targetRecords());
+assertMatch(targetTrend, /data-target-trend-view="month"/, "trend card should include a month view option");
+assertMatch(targetTrend, /data-target-trend-view="day"/, "trend card should include a day view option");
+assertNoMatch(targetTrend, /db-status-card/, "target trend should not reintroduce the removed reporting coverage panel");
+
+hooks.setDbStatusData(sampleStatus);
+hooks.setTargetFilters({ month: "July 2026", tier: "all" });
+hooks.setTargetTrendView("month");
+const monthlyTargetTrend = hooks.targetTrendPlotHtml(hooks.targetRecords());
+assertMatch(monthlyTargetTrend, /Monthly Revenue trend/, "monthly trend plot should use monthly aria labeling");
+assertMatch(monthlyTargetTrend, /July 2026: .*production database/, "selected month should use the database total");
+assertMatch(monthlyTargetTrend, /May 2026/, "monthly trend should retain historical context before the selected month");
+
+hooks.setTargetTrendView("day");
+const dailyTargetTrend = hooks.targetTrendPlotHtml(hooks.targetRecords());
+assertMatch(dailyTargetTrend, /Day Revenue trend/, "daily trend plot should use day-view aria labeling");
+assertMatch(dailyTargetTrend, /data-trend-aggregation="daily-independent"/, "daily trend should explicitly declare independent calendar-day aggregation");
+assertMatch(dailyTargetTrend, /target-daily-bar/, "daily trend should use independent bars instead of an accumulating line");
+assertMatch(dailyTargetTrend, /Jul 6: \$4\.9K/, "daily trend plot should show API revenue data");
+assertMatch(dailyTargetTrend, /Pending/, "daily trend plot should mark delay-window values as pending");
+
+hooks.setTargetFilters({ month: "June 2026", tier: "all" });
+const staleMonthTrend = hooks.targetTrendPlotHtml(hooks.targetRecords());
+assertMatch(staleMonthTrend, /Loading June daily trend data/, "daily trend should not show stale July data when June is selected");
+assertNoMatch(staleMonthTrend, /Jul 6/, "daily trend should hide stale July labels while selected month data loads");
+
+const juneDemo = hooks.demoDbStatusPayload("2026-06");
+assertEqual(juneDemo.dailyTrend.month, "2026-06", "demo DB status payload should respect the requested June month");
+assertEqual(juneDemo.dailyTrend.rows[0].date, "2026-06-01", "June demo trend should start on June 1");
+assertEqual(juneDemo.dailyTrend.rows[juneDemo.dailyTrend.rows.length - 1].date, "2026-06-30", "June demo trend should end on June 30");
+assertEqual(juneDemo.recentMonths.window.endMonth, "2026-06", "demo monthly trend should end at the requested month");
+assertEqual(juneDemo.recentMonths.aggregateOrders.length, 6, "demo monthly trend should preserve a six-month window");
