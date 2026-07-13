@@ -108,8 +108,8 @@ end
 
 def tier_visual_status(tier, row, sheet_block)
   manual_color = normalize_visual_status_color(
-    first_present_hash(sheet_block, ["Visual Status Color", "visualStatusColor", "Visual Status"]) ||
-      first_present_hash(row, ["visual_status_color", "visualStatusColor", "Visual Status Color"])
+    first_present_hash(sheet_block, ["Color", "Visual Status Color", "visualStatusColor", "Visual Status"]) ||
+      first_present_hash(row, ["Color", "visual_status_color", "visualStatusColor", "Visual Status Color"])
   )
   if manual_color
     return {
@@ -120,55 +120,12 @@ def tier_visual_status(tier, row, sheet_block)
     }
   end
 
-  reason = (
-    first_present_hash(row, ["tier_reason_or_black_reason", "reason", "recommendation"]) ||
-    first_present_hash(sheet_block, ["Tier Reason", "Reason", "Recommendation"]) ||
-    ""
-  ).downcase
-  phase = first_present_hash(sheet_block, ["Phase"]).to_s.downcase
-  rank = (num(row["original_rank"]) || num(sheet_block["Original Rank"]) || 0).to_f
-  color = "none"
-  code = "no_rule_match"
-
-  if tier == "Tier 1" && rank >= 40
-    color = "green"
-    code = "tier1_rank_40_plus"
-  elsif tier == "Tier 2"
-    if phase.include?("growing")
-      color = "green"
-      code = "tier2_phase_growing"
-    elsif phase.include?("stable")
-      color = "yellow"
-      code = "tier2_phase_stable"
-    elsif phase.include?("declining")
-      color = "red"
-      code = "tier2_phase_declining"
-    end
-  elsif tier == "Tier 3"
-    if reason.match?(/new june raw offer with orders|moved from tier 4/)
-      color = "green"
-      code = "tier3_new_or_recovered"
-    elsif reason.match?(/moved from tier 2|declined|declining/)
-      color = "red"
-      code = "tier3_declining"
-    end
-  elsif tier == "Tier 4"
-    if reason.match?(/new june raw offer/)
-      color = "green"
-      code = "tier4_new_raw_offer"
-    elsif reason.match?(/moved to tier 4|moved\/kept in tier 4|0 orders|no june .*raw data/)
-      color = "red"
-      code = "tier4_zero_or_missing_orders"
-    end
-  end
-
+  # 无显式标注 → 不生成颜色（未来由 Sheet 人工标注或 LLM 写入）
   {
-    "visualStatusColor" => color,
-    "visualStatusCode" => code,
-    "visualStatusReason" => first_present_hash(sheet_block, ["Visual Status Reason", "Reason Text"]) ||
-      first_present_hash(row, ["tier_reason_or_black_reason", "reason", "recommendation"]) ||
-      first_present_hash(sheet_block, ["Tier Reason", "Reason", "Recommendation"]),
-    "visualStatusSource" => "rule"
+    "visualStatusColor" => "none",
+    "visualStatusCode" => "",
+    "visualStatusReason" => nil,
+    "visualStatusSource" => nil
   }
 end
 

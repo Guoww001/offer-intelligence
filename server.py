@@ -42,12 +42,16 @@ from offer_db import (
     first_query_value,
     int_query_value,
     merchant_payload,
+    offers_payload,
+    product_keywords_payload,
     public_error_payload,
     read_static_merchant_ids,
     search_payload,
     status_payload,
+    tier_sheet_payload,
 )
 from protected_payloads import handle_protected_data
+import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
 
 
@@ -933,6 +937,22 @@ class Handler(BaseHTTPRequestHandler):
                     if str(row.get("merchantId") or "") in public_ids
                 ][:limit]
                 self.send_json(200, payload)
+                return
+
+            if parsed.path == "/api/ui/db/offers":
+                self.send_json(200, offers_payload(month=first_query_value(query, "month") or None))
+                return
+
+            if parsed.path == "/api/ui/db/tier-sheet":
+                tier = first_query_value(query, "tier")
+                if not tier:
+                    self.send_json(400, {"ok": False, "error": "tier is required (e.g. Tier+1, Tier+2, ...)"})
+                    return
+                self.send_json(200, tier_sheet_payload(tier, month=first_query_value(query, "month") or None))
+                return
+
+            if parsed.path == "/api/ui/db/keywords":
+                self.send_json(200, product_keywords_payload())
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})

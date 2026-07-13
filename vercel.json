@@ -40,6 +40,42 @@
           "args": "search"
         }
       ]
+    },
+    {
+      "src": "^/api/ui/db/keywords/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-keywords"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/offers/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-offers"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/tier_sheet/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-tier-sheet"
+        }
+      ]
     }
   ],
   "functions": {

@@ -3,10 +3,11 @@ import os
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "api" / "db" / "index.py"
 sys.path.insert(0, str(ROOT))
+
+import auth
 
 
 def assert_equal(actual, expected, label):
@@ -23,7 +24,7 @@ def load_app_module():
     return module
 
 
-def request(app, route, query="", method="GET", token="unit-test-token"):
+def request(app, route, query="", method="GET", token="unit-test-token", cookie=""):
     environ = {
         "REQUEST_METHOD": method,
         "PATH_INFO": "/api/db/index",
@@ -35,6 +36,8 @@ def request(app, route, query="", method="GET", token="unit-test-token"):
     }
     if token:
         environ["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+    if cookie:
+        environ["HTTP_COOKIE"] = cookie
     response = {}
 
     def start_response(status, headers):
@@ -47,8 +50,16 @@ def request(app, route, query="", method="GET", token="unit-test-token"):
 
 def main():
     module = load_app_module()
-    old_token = os.environ.get("OFFER_DB_API_TOKEN")
+    env_keys = (
+        "OFFER_DB_API_TOKEN",
+        "OI_AUTH_ENABLED",
+        "OI_ADMIN_PASSWORD",
+        "OI_ADMIN_PASSWORD_HASH",
+        "OI_SESSION_SECRET",
+    )
+    old_env = {key: os.environ.get(key) for key in env_keys}
     os.environ["OFFER_DB_API_TOKEN"] = "unit-test-token"
+    os.environ["OI_AUTH_ENABLED"] = "0"
     try:
         module.status_payload = lambda month=None, include_coverage=False: {
             "route": "status",
@@ -65,6 +76,16 @@ def main():
             "route": "search",
             "q": text,
             "limit": limit,
+        }
+        module.product_keywords_payload = lambda: {"route": "ui-keywords"}
+        module.offers_payload = lambda month=None: {
+            "route": "ui-offers",
+            "month": month,
+        }
+        module.tier_sheet_payload = lambda tier, month=None: {
+            "route": "ui-tier-sheet",
+            "tier": tier,
+            "month": month,
         }
 
         status = request(module.app, "status", "action=search&month=202607")
@@ -87,6 +108,43 @@ def main():
         assert_equal(search["status"], 200, "search response code")
         assert b'"route":"search"' in search["body"], search["body"]
 
+        keywords = request(module.app, "ui-keywords", token="")
+        assert_equal(keywords["status"], 200, "UI keywords response code")
+        assert b'"route":"ui-keywords"' in keywords["body"], keywords["body"]
+
+        offers = request(module.app, "ui-offers", "month=2026-07", token="")
+        assert_equal(offers["status"], 200, "UI offers response code")
+        assert b'"month":"2026-07"' in offers["body"], offers["body"]
+
+        tier_sheet = request(
+            module.app,
+            "ui-tier-sheet",
+            "tier=Tier+2&month=2026-07",
+            token="",
+        )
+        assert_equal(tier_sheet["status"], 200, "UI tier sheet response code")
+        assert b'"tier":"Tier 2"' in tier_sheet["body"], tier_sheet["body"]
+
+        missing_tier = request(module.app, "ui-tier-sheet", token="")
+        assert_equal(missing_tier["status"], 400, "missing tier response code")
+
+        os.environ["OI_AUTH_ENABLED"] = "1"
+        os.environ["OI_ADMIN_PASSWORD"] = "unit-test-password"
+        os.environ.pop("OI_ADMIN_PASSWORD_HASH", None)
+        os.environ["OI_SESSION_SECRET"] = "unit-test-session-secret"
+
+        ui_unauthorized = request(module.app, "ui-keywords", token="")
+        assert_equal(ui_unauthorized["status"], 401, "missing UI session response code")
+
+        session, _ = auth.create_session("admin")
+        ui_authenticated = request(
+            module.app,
+            "ui-keywords",
+            token="",
+            cookie=f"{auth.SESSION_COOKIE}={session}",
+        )
+        assert_equal(ui_authenticated["status"], 200, "authenticated UI response code")
+
         unauthorized = request(module.app, "status", token="")
         assert_equal(unauthorized["status"], 401, "missing token response code")
 
@@ -95,10 +153,11 @@ def main():
 
         print("Vercel DB WSGI route checks passed")
     finally:
-        if old_token is None:
-            os.environ.pop("OFFER_DB_API_TOKEN", None)
-        else:
-            os.environ["OFFER_DB_API_TOKEN"] = old_token
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 if __name__ == "__main__":

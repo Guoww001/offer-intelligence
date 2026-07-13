@@ -1,17 +1,21 @@
 from http import HTTPStatus
 from io import BytesIO
 
+from auth import require_auth
 from offer_db import (
     first_query_value,
     handle_options,
     int_query_value,
     merchant_payload,
+    offers_payload,
     parse_query,
+    product_keywords_payload,
     require_db_token,
     search_payload,
     send_db_error,
     send_json,
     status_payload,
+    tier_sheet_payload,
 )
 
 
@@ -87,17 +91,69 @@ def handle_search(target, query):
         send_db_error(target, error)
 
 
+def handle_ui_keywords(target):
+    try:
+        send_json(target, 200, product_keywords_payload())
+    except Exception as error:
+        send_db_error(target, error)
+
+
+def handle_ui_offers(target, query):
+    try:
+        send_json(
+            target,
+            200,
+            offers_payload(month=first_query_value(query, "month") or None),
+        )
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except Exception as error:
+        send_db_error(target, error)
+
+
+def handle_ui_tier_sheet(target, query):
+    tier = first_query_value(query, "tier")
+    if not tier:
+        send_json(
+            target,
+            400,
+            {"ok": False, "error": "tier is required (e.g. Tier+1, Tier+2, ...)"},
+        )
+        return
+    try:
+        send_json(
+            target,
+            200,
+            tier_sheet_payload(
+                tier,
+                month=first_query_value(query, "month") or None,
+            ),
+        )
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def app(environ, start_response):
     target = WsgiTarget(environ)
     method = str(environ.get("REQUEST_METHOD") or "GET").upper()
+    route = str(target.headers.get("X-Oi-Db-Route") or "").strip()
+    query = parse_query(target)
 
     if method == "OPTIONS":
         handle_options(target)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
+    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet"}:
+        if require_auth(target):
+            if route == "ui-keywords":
+                handle_ui_keywords(target)
+            elif route == "ui-offers":
+                handle_ui_offers(target, query)
+            else:
+                handle_ui_tier_sheet(target, query)
     elif require_db_token(target):
-        route = str(target.headers.get("X-Oi-Db-Route") or "").strip()
-        query = parse_query(target)
         if route == "status":
             handle_status(target, query)
         elif route == "merchant":
