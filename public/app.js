@@ -1290,22 +1290,12 @@
     };
   }
 
-  function hasStrongTier3KeywordSignals(offer) {
-    return offer.tier === "Tier 3" && (
-      number(offer.salesAmount) >= 5000 ||
-      number(offer.orders) >= 25 ||
-      (number(offer.orders) >= 5 && number(offer.conversionRate) >= 0.01) ||
-      (number(offer.orders) >= 5 && number(offer.epc) >= 0.25)
-    );
-  }
-
   function keywordTierPriority(offer, includeTier4 = false, includeBlack = false) {
     if (offer.tier === "Tier 1") return 1;
-    if (hasStrongTier3KeywordSignals(offer)) return 2;
-    if (offer.tier === "Tier 2") return 3;
-    if (offer.tier === "Tier 3") return 4;
-    if (offer.tier === "Tier 4") return includeTier4 ? 5 : 99;
-    if (offer.tier === "BLACK TIER") return includeBlack ? 6 : 100;
+    if (offer.tier === "Tier 2") return 2;
+    if (offer.tier === "Tier 3") return 3;
+    if (offer.tier === "Tier 4") return includeTier4 ? 4 : 99;
+    if (offer.tier === "BLACK TIER") return includeBlack ? 5 : 100;
     return 50;
   }
 
@@ -4754,7 +4744,7 @@
     }, safeCount);
     const rankingText = topMetricRequest
       ? `ranked by ${topMetricRequest.sortDescription}`
-      : "ranked by keyword match, Tier 1 priority, strong Tier 3 signals, Tier 2, then performance";
+      : "ranked by keyword match, Tier 1, Tier 2, Tier 3 priority, then performance";
     const exportNote = exportRows.length < matches.length
       ? `${exportRows.length.toLocaleString()} of ${matches.length.toLocaleString()} matching offers are included in the file.`
       : `${exportRows.length.toLocaleString()} matching offers are included in the file.`;
