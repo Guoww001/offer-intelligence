@@ -86,6 +86,7 @@
     categoryReportSearch: "",
     categoryReportSort: "revenue",
     categoryReportDirection: "desc",
+    expandedCategoryKey: null,
     lastOffer: null,
     lastRows: [],
     currentQuery: "",
@@ -1289,22 +1290,12 @@
     };
   }
 
-  function hasStrongTier3KeywordSignals(offer) {
-    return offer.tier === "Tier 3" && (
-      number(offer.salesAmount) >= 5000 ||
-      number(offer.orders) >= 25 ||
-      (number(offer.orders) >= 5 && number(offer.conversionRate) >= 0.01) ||
-      (number(offer.orders) >= 5 && number(offer.epc) >= 0.25)
-    );
-  }
-
   function keywordTierPriority(offer, includeTier4 = false, includeBlack = false) {
     if (offer.tier === "Tier 1") return 1;
-    if (hasStrongTier3KeywordSignals(offer)) return 2;
-    if (offer.tier === "Tier 2") return 3;
-    if (offer.tier === "Tier 3") return 4;
-    if (offer.tier === "Tier 4") return includeTier4 ? 5 : 99;
-    if (offer.tier === "BLACK TIER") return includeBlack ? 6 : 100;
+    if (offer.tier === "Tier 2") return 2;
+    if (offer.tier === "Tier 3") return 3;
+    if (offer.tier === "Tier 4") return includeTier4 ? 4 : 99;
+    if (offer.tier === "BLACK TIER") return includeBlack ? 5 : 100;
     return 50;
   }
 
@@ -4753,7 +4744,7 @@
     }, safeCount);
     const rankingText = topMetricRequest
       ? `ranked by ${topMetricRequest.sortDescription}`
-      : "ranked by keyword match, Tier 1 priority, strong Tier 3 signals, Tier 2, then performance";
+      : "ranked by keyword match, Tier 1, Tier 2, Tier 3 priority, then performance";
     const exportNote = exportRows.length < matches.length
       ? `${exportRows.length.toLocaleString()} of ${matches.length.toLocaleString()} matching offers are included in the file.`
       : `${exportRows.length.toLocaleString()} matching offers are included in the file.`;
@@ -6061,6 +6052,7 @@
       state.categoryReportTiers = normalizeCategoryReportTiers(Array.from(selected));
     }
     syncDashboardCategoryTierControls();
+    state.expandedCategoryKey = null;
     renderDashboardCategoryReport();
   }
 
@@ -6188,6 +6180,13 @@
       downloadFocusedCategoryRows(exportButton);
       return;
     }
+    const categoryRow = event.target.closest(".dashboard-category-row");
+    if (categoryRow) {
+      const key = categoryRow.dataset.categoryHighlight || "";
+      state.expandedCategoryKey = state.expandedCategoryKey === key ? null : key;
+      renderDashboardCategoryReport();
+      return;
+    }
     const button = event.target.closest("[data-dashboard-category-sort-key]");
     if (!button) return;
     const key = button.dataset.dashboardCategorySortKey || "revenue";
@@ -6249,7 +6248,8 @@
       const palette = categoryPalette(group.category);
       const categoryKey = categoryReportKey(group.category);
       const metricValue = number(dashboardCategorySortValue(group, metricKey));
-      return `<tr class="dashboard-category-row" data-category-highlight="${escapeHtml(categoryKey)}"
+      const isExpanded = state.expandedCategoryKey === categoryKey;
+      const summaryRow = `<tr class="dashboard-category-row${isExpanded ? " category-expanded" : ""}" data-category-highlight="${escapeHtml(categoryKey)}"
         data-category-color="${escapeHtml(palette.color)}" data-category-tint="${escapeHtml(palette.tint)}"
         data-category-title="${escapeHtml(group.category)}" data-category-value="${escapeHtml(categoryReportMetricText(metricKey, metricValue))}"
         data-category-share="${escapeHtml(metricTotal ? shortPct(metricValue / metricTotal) : "-")}"
@@ -6257,6 +6257,7 @@
         data-category-orders="${escapeHtml(number(group.orders).toLocaleString())}"
         data-category-top="${escapeHtml(group.previewMerchants || group.topMerchant || "-")}" tabindex="0">
       <td>
+        <span class="category-expand-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M4 2L8 6L4 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <strong class="category-name-chip" style="--category-color: ${palette.color}; --category-tint: ${palette.tint};">
           <span class="category-dot" aria-hidden="true"></span>
           ${escapeHtml(group.category)}
@@ -6273,6 +6274,52 @@
       <td>${escapeHtml(group.previewMerchants || group.topMerchant || "-")}</td>
       <td>${categoryTierMixHtml(group)}</td>
     </tr>`;
+      if (!isExpanded) return summaryRow;
+      const merchantRows = (group.rows || []).map((row) => {
+        const merchantName = tierRowMerchantName(row);
+        const merchantId = tierRowMerchantId(row);
+        const tier = row.__tierName || "";
+        const revenue = tierRowRevenue(row);
+        const orders = tierRowOrders(row);
+        const clicks = tierRowClicks(row);
+        const epc = tierRowEpc(row);
+        const cvr = clicks ? orders / clicks : null;
+        const aov = orders ? revenue / orders : null;
+        return `<tr>
+          <td><strong>${escapeHtml(merchantName || "-")}</strong></td>
+          <td><small>${escapeHtml(merchantId || "-")}</small></td>
+          <td>${escapeHtml(tier)}</td>
+          <td>${shortMoney(revenue)}</td>
+          <td>${number(orders).toLocaleString()}</td>
+          <td>${number(clicks).toLocaleString()}</td>
+          <td>${shortEpc(epc)}</td>
+          <td>${shortPct(cvr)}</td>
+          <td>${shortMoney(aov)}</td>
+        </tr>`;
+      }).join("");
+      const detailRow = `<tr class="category-expanded-detail">
+        <td colspan="10">
+          <div class="category-detail-wrap">
+            <table class="category-detail-table tier-category-table">
+              <thead>
+                <tr>
+                  <th>Merchant</th>
+                  <th>Merchant ID</th>
+                  <th>Tier</th>
+                  <th>Revenue</th>
+                  <th>Orders</th>
+                  <th>Clicks</th>
+                  <th>EPC</th>
+                  <th>CVR</th>
+                  <th>AOV</th>
+                </tr>
+              </thead>
+              <tbody>${merchantRows}</tbody>
+            </table>
+          </div>
+        </td>
+      </tr>`;
+      return summaryRow + detailRow;
     }).join("");
   }
 
@@ -10060,6 +10107,7 @@
     els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
     els.dashboardCategorySearch.addEventListener("input", () => {
       state.categoryReportSearch = els.dashboardCategorySearch.value;
+      state.expandedCategoryKey = null;
       renderDashboardCategoryReport();
     });
     els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategorySortClick);
