@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import re
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -774,6 +775,11 @@ def status_payload(
     month: str | None = None,
     include_coverage: bool = False,
 ) -> dict[str, Any]:
+    cache_key = f"status:{month or ''}:{include_coverage}"
+    now = time.time()
+    cached = _status_cache.get(cache_key)
+    if cached is not None and now - cached[0] < STATUS_CACHE_TTL:
+        return cached[1]
     with db_connection() as conn:
         static_ids = read_static_merchant_ids()
         latest = latest_dates(conn, keys={"aggregateOrders", "amazonClicks"})
@@ -785,7 +791,7 @@ def status_payload(
                 "cnpscy_amazon_product_extra": count_distinct_for_ids(conn, "cnpscy_amazon_product_extra", ["advert_id", "merchant_id"], static_ids),
                 "cnpscy_order_new_aggregate": count_distinct_for_ids(conn, "cnpscy_order_new_aggregate", ["advert_id", "merchant_id"], static_ids),
             })
-        return {
+        payload = {
             "ok": True,
             "checkedAt": utc_now_iso(),
             "staticSnapshot": {
@@ -806,6 +812,8 @@ def status_payload(
                 include_amazon_orders=False,
             ),
         }
+    _status_cache[cache_key] = (now, payload)
+    return payload
 
 
 def static_chatbot_generated_at() -> str | None:
@@ -1015,9 +1023,14 @@ def merchant_aggregate_metrics(conn, merchant_id: str, months: int = 12) -> list
 def merchant_payload(merchant_id: str, product_limit: int = 50, months: int = 12) -> dict[str, Any]:
     if not DIGITS_RE.match(merchant_id):
         raise ValueError("merchantId must be numeric")
+    cache_key = f"{merchant_id}:{product_limit}:{months}"
+    now = time.time()
+    cached = _merchant_cache.get(cache_key)
+    if cached is not None and now - cached[0] < MERCHANT_CACHE_TTL:
+        return cached[1]
     with db_connection() as conn:
         merchant = merchant_base(conn, merchant_id)
-        return {
+        payload = {
             "ok": True,
             "checkedAt": utc_now_iso(),
             "merchantId": merchant_id,
@@ -1026,12 +1039,19 @@ def merchant_payload(merchant_id: str, product_limit: int = 50, months: int = 12
             "monthlyAmazonMetrics": merchant_amazon_metrics(conn, merchant_id, months),
             "monthlyAggregateMetrics": merchant_aggregate_metrics(conn, merchant_id, months),
         }
+    _merchant_cache[cache_key] = (now, payload)
+    return payload
 
 
 def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
     query_text = query_text.strip()
     if len(query_text) < 2:
         return {"ok": True, "checkedAt": utc_now_iso(), "query": query_text, "results": []}
+    cache_key = f"search:{query_text}:{limit}"
+    now = time.time()
+    cached = _search_cache.get(cache_key)
+    if cached is not None and now - cached[0] < SEARCH_CACHE_TTL:
+        return cached[1]
     with db_connection() as conn:
         columns = table_columns(conn, "cnpscy_advert")
         id_column = pick_column(columns, ["advert_id", "merchant_id"])
@@ -1073,12 +1093,80 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
             "query": query_text,
             "results": [compact_api_row(row) for row in rows],
         }
+    _search_cache[cache_key] = (now, result)
+    return result
 
 
-def offers_payload(month: str | None = None) -> dict[str, Any]:
+# ── payload cache ────────────────────────────────────────────────────
+
+CACHE_DIR = ROOT / "protected_data"
+OFFERS_CACHE_FILE = CACHE_DIR / "db_offers_cache.json"
+KEYWORDS_CACHE_FILE = CACHE_DIR / "db_keywords_cache.json"
+CACHE_TTL_SECONDS = int(os.environ.get("OFFER_DB_CACHE_TTL", "21600"))  # 6 hours
+MERCHANT_CACHE_TTL = int(os.environ.get("OFFER_DB_MERCHANT_CACHE_TTL", "3600"))  # 1 hour
+SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1 hour
+STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
+TIER_SHEET_CACHE_TTL = int(os.environ.get("OFFER_DB_CACHE_TTL", "21600"))    # 6 hours
+_bg_refresh_running: dict[str, bool] = {}
+_merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _cache_age(path: Path) -> float | None:
+    try:
+        return time.time() - path.stat().st_mtime
+    except FileNotFoundError:
+        return None
+
+
+def _load_any_cache(path: Path) -> dict[str, Any] | None:
+    """Load cache file regardless of freshness. Returns None only if file missing or corrupt."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, FileNotFoundError):
+        return None
+
+
+def _save_cache(path: Path, payload: dict[str, Any]) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass  # cache write failure is non-fatal
+
+
+def offers_payload(month: str | None = None, force_refresh: bool = False) -> dict[str, Any]:
     """从 cnpscy_oi_* 视图/表返回全量 offer 列表 + 月度指标 + 汇总统计。
-    与 chatbot_data.js 的 shape 兼容 — 包含 sheet 元数据、产品关键词、支付风险等。
+
+    结果缓存到 protected_data/db_offers_cache.json（TTL 6 小时）。
+    缓存过期后先返回旧数据（毫秒级），后台异步刷新。
+    传 force_refresh=True 可跳过缓存同步重建。
     """
+    if not force_refresh:
+        cached = _load_any_cache(OFFERS_CACHE_FILE)
+        if cached is not None:
+            age = _cache_age(OFFERS_CACHE_FILE)
+            if age is not None and age < CACHE_TTL_SECONDS:
+                return cached  # fresh
+            # Stale: return immediately, trigger background refresh
+            if not _bg_refresh_running.get("offers"):
+                _bg_refresh_running["offers"] = True
+                import threading as _th
+                _th.Thread(target=lambda: (
+                    _save_cache(OFFERS_CACHE_FILE, _build_offers_payload(month)),
+                    _bg_refresh_running.__setitem__("offers", False)
+                ), daemon=True).start()
+            return cached
+
+    return _build_offers_payload(month)
+
+
+def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
+    """Internal: heavy DB query to build an offers payload from scratch."""
     with db_connection() as conn:
         if month is None:
             row = fetch_one(conn, "SELECT MAX(month) AS m FROM cnpscy_oi_offer_monthly_amazon_metrics")
@@ -1450,9 +1538,10 @@ def offers_payload(month: str | None = None) -> dict[str, Any]:
         tier_rows = fetch_all(conn,
             "SELECT tier, COUNT(*) AS cnt FROM cnpscy_oi_tier_assignments GROUP BY tier ORDER BY cnt DESC")
         network_rows = fetch_all(conn,
-            "SELECT network, COUNT(*) AS cnt FROM cnpscy_advert a "
+            "SELECT COALESCE(a.advert_lianmeng_id, 'Unknown') AS network, COUNT(*) AS cnt "
+            "FROM cnpscy_advert a "
             "INNER JOIN cnpscy_oi_tier_assignments t ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
-            "GROUP BY network ORDER BY cnt DESC")
+            "GROUP BY a.advert_lianmeng_id ORDER BY cnt DESC")
         cat_rows = fetch_all(conn,
             "SELECT c_main.categoryName, COUNT(DISTINCT mc.merchantId) AS cnt "
             "FROM cnpscy_oi_merchant_category mc "
@@ -1470,14 +1559,85 @@ def offers_payload(month: str | None = None) -> dict[str, Any]:
             "paymentSummary": _payment_summary(payment_records),
         }
 
-        return {
+        # ── build tier sheets from offers data ──
+        TIER_ORDER = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
+        SHEET_COLUMNS = [
+            ("merchantId", "Merchant ID"),
+            ("merchantName", "Merchant Name"),
+            ("brand", "Brand"),
+            ("network", "Network"),
+            ("commissionRate", "Commission Rate"),
+            ("orders", "Order count"),
+            ("salesAmount", "Revenue"),
+            ("epc", "Backend EPC"),
+            ("aov", "AOV"),
+            ("conversionRate", "Conversion"),
+            ("clicks", "Clicks"),
+            ("dpv", "DPV"),
+            ("atc", "ATC"),
+            ("visualStatusColor", "Color"),
+            ("visualStatusCode", "Visual Status Code"),
+            ("visualStatusReason", "Visual Status Reason"),
+            ("visualStatusSource", "Visual Status Source"),
+            ("category", "Category"),
+            ("region", "COUNTRY"),
+            ("reason", "Tier Reason"),
+            ("recommendation", "Recommendation"),
+            ("phase", "Phase"),
+            ("publisherCount", "Publisher Count"),
+            ("successRate", "Success Rate"),
+            ("publisherCountJune", "Publisher Count June"),
+            ("successRateJune", "Success Rate June"),
+            ("paymentCycle", "Payment Cycle"),
+            ("completionRate", "Completion Rate"),
+            ("recommendedLink", "Recommended Link"),
+            ("bestSubCategoryBsr", "Best Sub Category BSR"),
+            ("mayRevenue", "May Revenue"),
+            ("juneRevenue", "June Revenue"),
+            ("hasDiscount", "Has Discount"),
+            ("discountInfo", "Discount Info"),
+            ("dealInfo", "Deal Info"),
+            ("cpc", "CPC"),
+            ("backendMatchStatus", "Backend Match Status"),
+            ("timeline", "Timeline"),
+            ("payout", "Payout"),
+            ("affiliatePayout", "Affiliate Payout"),
+        ]
+        sheet_headers = [col_name for _, col_name in SHEET_COLUMNS]
+
+        def _fmt(val: Any) -> str:
+            if val is None:
+                return ""
+            if isinstance(val, float):
+                return f"{val:.2f}"
+            return str(val)
+
+        sheets = []
+        for tier_name in TIER_ORDER:
+            tier_offers = [o for o in offers if o.get("tier") == tier_name]
+            if not tier_offers:
+                continue
+            tier_rows = []
+            for o in tier_offers:
+                row = {col_name: _fmt(o.get(field)) for field, col_name in SHEET_COLUMNS}
+                tier_rows.append(row)
+            sheets.append({
+                "name": tier_name,
+                "headers": sheet_headers,
+                "rows": tier_rows,
+            })
+
+        result = {
             "ok": True,
             "checkedAt": utc_now_iso(),
             "month": month,
             "offers": [compact_api_row(o) for o in offers],
             "paymentRecords": [compact_api_row(r) for r in payment_records],
+            "sheets": sheets,
             "summary": summary,
         }
+        _save_cache(OFFERS_CACHE_FILE, result)
+        return result
 
 
 def tier_sheet_payload(tier_name: str, month: str | None = None) -> dict[str, Any]:
@@ -1487,6 +1647,11 @@ def tier_sheet_payload(tier_name: str, month: str | None = None) -> dict[str, An
     valid_tiers = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
     if tier_name not in valid_tiers:
         raise ValueError(f"Invalid tier: {tier_name}. Must be one of {sorted(valid_tiers)}")
+    cache_key = f"tiersheet:{tier_name}:{month or ''}"
+    now = time.time()
+    cached = _tier_sheet_cache.get(cache_key)
+    if cached is not None and now - cached[0] < TIER_SHEET_CACHE_TTL:
+        return cached[1]
 
     with db_connection() as conn:
         if month is None:
@@ -1595,12 +1760,34 @@ def tier_sheet_payload(tier_name: str, month: str | None = None) -> dict[str, An
             "headers": headers,
             "rows": [{k: str(v) if v is not None else "" for k, v in r.items()} for r in rows],
         }
+    _tier_sheet_cache[cache_key] = (now, result)
+    return result
 
 
-def product_keywords_payload() -> dict[str, Any]:
+def product_keywords_payload(force_refresh: bool = False) -> dict[str, Any]:
     """从 cnpscy_oi_product_keywords 返回产品关键词数据，
-    兼容 window.PRODUCT_KEYWORDS 的 shape。
+    兼容 window.PRODUCT_KEYWORDS 的 shape。结果缓存在 db_keywords_cache.json。
     """
+    if not force_refresh:
+        cached = _load_any_cache(KEYWORDS_CACHE_FILE)
+        if cached is not None:
+            age = _cache_age(KEYWORDS_CACHE_FILE)
+            if age is not None and age < CACHE_TTL_SECONDS:
+                return cached
+            if not _bg_refresh_running.get("keywords"):
+                _bg_refresh_running["keywords"] = True
+                import threading as _th
+                _th.Thread(target=lambda: (
+                    _save_cache(KEYWORDS_CACHE_FILE, _build_keywords_payload()),
+                    _bg_refresh_running.__setitem__("keywords", False)
+                ), daemon=True).start()
+            return cached
+
+    return _build_keywords_payload()
+
+
+def _build_keywords_payload() -> dict[str, Any]:
+    """Internal: heavy DB query to build keywords payload from scratch."""
     with db_connection() as conn:
         rows = fetch_all(
             conn,
@@ -1622,7 +1809,6 @@ def product_keywords_payload() -> dict[str, Any]:
             text = str(value).strip()
             if not text:
                 return []
-            # 管道分隔 (ASINs, titles) 或逗号分隔 (keywords)
             if "|" in text:
                 return [item.strip() for item in text.split("|") if item.strip()]
             return [item.strip() for item in text.split(",") if item.strip()]
@@ -1638,7 +1824,7 @@ def product_keywords_payload() -> dict[str, Any]:
             "productKeywords": _split(r.get("productKeywords")),
         })
 
-    return {
+    result = {
         "ok": True,
         "checkedAt": utc_now_iso(),
         "summary": {
@@ -1647,6 +1833,8 @@ def product_keywords_payload() -> dict[str, Any]:
         },
         "merchants": merchants,
     }
+    _save_cache(KEYWORDS_CACHE_FILE, result)
+    return result
 
 
 def compact_api_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
