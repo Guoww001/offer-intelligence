@@ -3,7 +3,6 @@
   const APP_SCRIPT = "./app.js?v=20260708-auth1";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
-  let booted = false;
 
   const authShell = document.getElementById("authShell");
   const appShell = document.getElementById("appShell");
@@ -142,10 +141,41 @@
     });
   }
 
+  let _dataLoading = false;
+
   async function loadDashboardAssets() {
-    for (const name of DATA_FILES) {
-      await loadProtectedData(name);
+    if (_dataLoading) return;  // already loading
+    _dataLoading = true;
+    setStatus("Loading offer data from database", "muted");
+    try {
+      const [offersResp, kwResp] = await Promise.all([
+        fetchJson("/api/ui/db/offers"),
+        fetchJson("/api/ui/db/keywords")
+      ]);
+
+      window.CHATBOT_DATA = {
+        summary: offersResp.summary || {},
+        offers: offersResp.offers || [],
+        paymentRecords: offersResp.paymentRecords || [],
+        sources: { mode: "db", month: offersResp.month }
+      };
+
+      window.SHEET_REPORT_DATA = {
+        sheets: offersResp.sheets || [],
+        tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
+      };
+
+      window.PRODUCT_KEYWORDS = {
+        summary: kwResp.summary || {},
+        merchants: kwResp.merchants || []
+      };
+    } catch (_err) {
+      // Fallback: empty data
+      window.CHATBOT_DATA = { summary: {}, offers: [] };
+      window.SHEET_REPORT_DATA = { sheets: [], tierSheets: [] };
+      window.PRODUCT_KEYWORDS = { merchants: [] };
     }
+    setStatus("", "");
     await loadScript(APP_SCRIPT);
   }
 
@@ -164,17 +194,17 @@
   }
 
   async function unlockDashboard() {
-    if (booted) return;
-    booted = true;
-    setStatus("Loading protected data", "muted");
-    await loadDashboardAssets();
-    bindLogout();
+    // Immediately reveal the app shell — don't wait for data
     hideAuthThen(() => {
       if (authShell) authShell.classList.add("hidden");
       if (appShell) appShell.classList.remove("hidden");
       document.body.classList.remove("auth-pending");
       setStatus("", "");
     });
+
+    // Always kick off data loading (guarded against double-load)
+    await loadDashboardAssets();
+    bindLogout();
   }
 
   async function checkSession() {
@@ -183,7 +213,6 @@
       window.__OI_LLM_ENABLED = session.llmEnabled !== false;
       await unlockDashboard();
     } catch (error) {
-      booted = false;
       if (error.status === 503) {
         setStatus("Login environment variables are missing on this server.", "error");
       } else {
@@ -213,7 +242,6 @@
       if (password) password.value = "";
       await unlockDashboard();
     } catch (error) {
-      booted = false;
       setStatus(error.message || "Access check failed", "error");
       animateError();
       if (password) password.select();
@@ -226,7 +254,7 @@
     if (form) form.addEventListener("submit", handleSubmit);
     await waitForGsap(700);
     animateIntro();
-    checkSession();
+    await checkSession();
   }
 
   if (document.readyState === "loading") {

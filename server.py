@@ -1038,8 +1038,22 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
+def _warm_cache():
+    """Pre-warm the offers + keywords cache in background on startup."""
+    try:
+        print("Pre-warming offer cache from DB ...", flush=True)
+        offers_payload()
+        print("Offers cache ready.", flush=True)
+        product_keywords_payload()
+        print("Keywords cache ready.", flush=True)
+    except Exception as exc:
+        print(f"Cache warm skipped (DB not available): {exc}", flush=True)
+
+
 def main():
     port = int(os.environ.get("PORT", "8765"))
+    import threading
+    threading.Thread(target=_warm_cache, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"Offer chatbot server listening on http://127.0.0.1:{port}", flush=True)
     server.serve_forever()

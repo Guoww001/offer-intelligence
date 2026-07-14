@@ -168,16 +168,19 @@ Output ONLY a JSON object: {"intent": "<intent>"}
 No explanation, no markdown fences.
 
 PRIORITY RULES (apply in order):
-1. If the query asks for "推荐" (recommend/rank/top/best), it is ALWAYS
-   "recommendation", even if it mentions a tier or category name.
-2. If the query asks to "分析/评估/诊断" (analyze/evaluate/diagnose) or asks
-   "怎么样/表现/趋势" (how is/performance/trend), it is ALWAYS "analysis",
-   even if it mentions a tier or merchant name.
+1. If the query asks for recommendations (recommend/rank/top/best/pick, or
+   "推荐"/"排行"/"最好"/"最佳"), it is ALWAYS "recommendation", even if it
+   mentions a tier or category name.
+2. If the query asks to analyze/evaluate/diagnose/assess (or "分析"/"评估"/
+   "诊断"/"怎么样"/"表现"/"趋势") or asks "how is"/"how are"/"how about"/
+   "performance"/"health check"/"trend"/"upgrade"/"downgrade", it is ALWAYS
+   "analysis", even if it mentions a tier or merchant name.
 3. "tier" intent is ONLY for queries that browse/view/filter tier contents
    WITHOUT recommendation or analysis keywords (e.g. "Show Tier 1",
-   "Tier 2有哪些", "黑名单").
+   "Tier 2有哪些", "Tier 2", "黑名单").
 4. If the query does NOT clearly match any specific intent (greetings like
-   "hello", gibberish, or very short ambiguous text), default to "merchant".
+   "hello"/"hi", gibberish, or very short ambiguous text), default to
+   "merchant".
 
 Intent labels:
 """

@@ -211,7 +211,8 @@ class RecommendationSkill(IntentSkill):
 
     def fallback_keywords(self) -> dict[str, list[str]]:
         return {
-            "en": ["top", "best", "recommend", "ranking", "recommendation"],
+            "en": ["top", "best", "recommend", "ranking", "recommendation",
+                   "priority", "select", "push", "focus", "pick"],
             "zh": ["推荐", "排行", "最好", "最佳", "优先", "选品", "主推"],
         }
 

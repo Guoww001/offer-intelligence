@@ -62,7 +62,8 @@ class PaymentSkill(IntentSkill):
 
     def fallback_keywords(self) -> dict[str, list[str]]:
         return {
-            "en": ["payment", "paid", "unpaid", "overdue", "pending", "commission"],
+            "en": ["payment", "paid", "unpaid", "overdue", "pending", "commission",
+                   "due", "settlement", "collection", "pay", "partial"],
             "zh": [
                 "付款", "未付款", "已付款", "逾期", "到期", "待处理",
                 "佣金", "结算", "收款", "支付",

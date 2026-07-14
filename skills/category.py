@@ -56,7 +56,8 @@ class CategorySkill(IntentSkill):
 
     def fallback_keywords(self) -> dict[str, list[str]]:
         return {
-            "en": ["category", "products in"],
+            "en": ["category", "products in",
+                   "beauty", "electronics", "pet", "home", "supplement", "outdoors"],
             "zh": ["品类", "分类", "美妆", "电子", "宠物"],
         }
 
