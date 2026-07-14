@@ -3277,7 +3277,7 @@
       /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(prompt) ||
       wantsRecommendationList(prompt);
     var hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(prompt) ||
-      /\b(?:analyze|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade)\b/i.test(lower);
+      /\b(?:analyze|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade)\b/i.test(lower);
     var hasMetricSignal = extractMetricSortIntent(prompt) || extractMetricFilters(prompt).length > 0;
     var hasPaymentCycleFilter = !!extractPaymentCycleFilter(prompt);
 
@@ -4024,7 +4024,7 @@
     if (metricFilters.length) return "recommendation";
     if (/recommend|push|focus|best|should we/.test(lower) || /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(userMessage) || wantsRecommendationList(userMessage)) return "recommendation";
     if (/分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(userMessage)) return "analysis";
-    if (/\b(?:analyze|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade)\b/i.test(lower)) return "analysis";
+    if (/\b(?:analyze|analyse|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade)\b/i.test(lower)) return "analysis";
     if (tierFromPrompt(userMessage)) return "tier";
     if (category || zhIntent === "category") return "category";
     if (contextFollowup(lower)) return "merchant";

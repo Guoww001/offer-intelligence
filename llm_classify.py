@@ -172,9 +172,9 @@ PRIORITY RULES (apply in order):
    "推荐"/"排行"/"最好"/"最佳"), it is ALWAYS "recommendation", even if it
    mentions a tier or category name.
 2. If the query asks to analyze/evaluate/diagnose/assess (or "分析"/"评估"/
-   "诊断"/"怎么样"/"表现"/"趋势") or asks "how is"/"how are"/"performance"/
-   "health check"/"trend"/"upgrade"/"downgrade", it is ALWAYS "analysis",
-   even if it mentions a tier or merchant name.
+   "诊断"/"怎么样"/"表现"/"趋势") or asks "how is"/"how are"/"how about"/
+   "performance"/"health check"/"trend"/"upgrade"/"downgrade", it is ALWAYS
+   "analysis", even if it mentions a tier or merchant name.
 3. "tier" intent is ONLY for queries that browse/view/filter tier contents
    WITHOUT recommendation or analysis keywords (e.g. "Show Tier 1",
    "Tier 2有哪些", "Tier 2", "黑名单").
