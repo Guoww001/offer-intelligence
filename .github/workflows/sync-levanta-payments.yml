@@ -59,6 +59,7 @@ jobs:
         run: python scripts/sync_oi_tables.py
 
       - name: Rebuild API caches from DB
+        if: ${{ vars.OFFER_DB_HOST != '' }}
         env:
           OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
           OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
