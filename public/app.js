@@ -5768,6 +5768,11 @@
   function mediaAnswer(prompt, mediaId, mediaName) {
     var language = responseLanguageFor(prompt);
     var copy = chatCopy(language);
+    if (!mediaId && !mediaName) {
+        var errMsg = language === "zh" ? "请指定要查询的媒体名称或ID，例如「查媒体Ofelia」" : "Please specify a media name or ID, e.g. 'media ofelia'";
+        addMessage("assistant", '<section class="db-chat-card db-chat-card-muted"><p>' + errMsg + '</p></section>');
+        return "";
+    }
     var loadingMsg = language === "zh" ? "正在查询媒体信息..." : "Querying media info...";
     addMessage("assistant", "<em>" + escapeHtml(loadingMsg) + "</em>");
     setTimeout(function() { loadDbMediaInsight(mediaId, mediaName, language); }, 0);

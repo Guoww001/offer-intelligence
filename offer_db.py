@@ -1097,6 +1097,10 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
     return result
 
 
+MEDIA_CACHE_TTL = int(os.environ.get("OFFER_DB_MEDIA_CACHE_TTL", "3600"))  # 1 hour
+_media_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
 def _last_month_key() -> str:
     """返回上一个完整日历月的 key，格式 YYYYMM（如 202606）。"""
     today = reporting_today()
@@ -1110,8 +1114,8 @@ def _current_month_key() -> str:
     return reporting_today().strftime("%Y%m")
 
 
-def _month_start_end_iso(year_month: str) -> tuple[str, str]:
-    """根据 YYYYMM 返回该月的起始和下月起始 ISO 日期字符串（半开区间用）。"""
+def _month_range_yyyymmdd(year_month: str) -> tuple[str, str]:
+    """根据 YYYYMM 返回该月的起始和下月起始日期字符串（YYYYMMDD格式，半开区间用）。"""
     year = int(year_month[:4])
     month = int(year_month[4:6])
     start = dt.date(year, month, 1)
@@ -1119,7 +1123,7 @@ def _month_start_end_iso(year_month: str) -> tuple[str, str]:
         end = dt.date(year + 1, 1, 1)
     else:
         end = dt.date(year, month + 1, 1)
-    return (start.isoformat(), end.isoformat())
+    return (start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
 
 
 def media_payload(media_id: str = None, media_name: str = None) -> dict[str, Any]:
@@ -1237,7 +1241,7 @@ def media_payload(media_id: str = None, media_name: str = None) -> dict[str, Any
         click_date_col = pick_column(click_cols, ["time_day", "click_time_day", "day"])
         click_count_col = pick_column(click_cols, ["click", "clicks", "click_num"])
         if click_user_id_col and click_date_col:
-            lm_start, lm_end = _month_start_end_iso(last_month)
+            lm_start, lm_end = _month_range_yyyymmdd(last_month)
             click_expr = f"SUM(COALESCE({q(click_count_col)}, 0))" if click_count_col else "COUNT(*)"
             click_row = fetch_one(
                 conn,
@@ -1373,7 +1377,7 @@ def media_payload(media_id: str = None, media_name: str = None) -> dict[str, Any
             )
             for r in offer_rows:
                 offers.append({
-                    "advertId": str(r.get("advertId") or ""),
+                    "advertId": int(r["advertId"]) if r.get("advertId") is not None else 0,
                     "advertName": str(r.get("advertName") or ""),
                     "status": r.get("status"),
                 })
@@ -1410,13 +1414,11 @@ KEYWORDS_CACHE_FILE = CACHE_DIR / "db_keywords_cache.json"
 CACHE_TTL_SECONDS = int(os.environ.get("OFFER_DB_CACHE_TTL", "86400"))  # 24 hours
 MERCHANT_CACHE_TTL = int(os.environ.get("OFFER_DB_MERCHANT_CACHE_TTL", "3600"))  # 1 hour
 SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1 hour
-MEDIA_CACHE_TTL = int(os.environ.get("OFFER_DB_MEDIA_CACHE_TTL", "3600"))  # 1 hour
 STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
 TIER_SHEET_CACHE_TTL = int(os.environ.get("OFFER_DB_CACHE_TTL", "21600"))    # 6 hours
 _bg_refresh_running: dict[str, bool] = {}
 _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-_media_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
