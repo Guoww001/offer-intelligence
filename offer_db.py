@@ -1111,14 +1111,14 @@ def _current_month_key() -> str:
 
 
 def _month_start_end_iso(year_month: str) -> tuple[str, str]:
-    """根据 YYYYMM 返回该月的起始和结束 ISO 日期字符串。"""
+    """根据 YYYYMM 返回该月的起始和下月起始 ISO 日期字符串（半开区间用）。"""
     year = int(year_month[:4])
     month = int(year_month[4:6])
     start = dt.date(year, month, 1)
     if month == 12:
-        end = dt.date(year + 1, 1, 1) - dt.timedelta(days=1)
+        end = dt.date(year + 1, 1, 1)
     else:
-        end = dt.date(year, month + 1, 1) - dt.timedelta(days=1)
+        end = dt.date(year, month + 1, 1)
     return (start.isoformat(), end.isoformat())
 
 
@@ -1177,7 +1177,7 @@ def media_payload(media_id: str = None, media_name: str = None) -> dict[str, Any
         )
 
         if not user_row:
-            result: dict[str, Any] = {"ok": True, "checkedAt": utc_now_iso(), "found": False}
+            result: dict[str, Any] = {"ok": False, "error": "Media not found"}
             _media_cache[cache_key] = (now, result)
             return result
 
@@ -1244,7 +1244,7 @@ def media_payload(media_id: str = None, media_name: str = None) -> dict[str, Any
                 f"""
                 SELECT {click_expr} AS totalClicks
                 FROM {q("cnpscy_amazon_click")}
-                WHERE {q(click_user_id_col)} = %s AND {q(click_date_col)} BETWEEN %s AND %s
+                WHERE {q(click_user_id_col)} = %s AND {q(click_date_col)} >= %s AND {q(click_date_col)} < %s
                 """,
                 (resolved_media_id, lm_start, lm_end),
             )
