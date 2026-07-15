@@ -67,6 +67,9 @@
   const dbMerchantLoading = new Set();
   const dbSearchCache = new Map();
   const dbSearchLoading = new Set();
+  const DB_MEDIA_API = "/api/db";
+  const dbMediaCache = new Map();
+  const dbMediaLoading = new Set();
   let paymentRecords = visiblePaymentRecords(withPendingPaymentPlaceholders((data.paymentRecords || []).map(normalizePaymentRecord)));
   const paymentRecordsByMerchant = new Map();
   rebuildPaymentIndex();
@@ -4009,6 +4012,7 @@
     const metricFilters = extractMetricFilters(userMessage);
     if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category") return zhIntent;
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
+    if (/media|publisher|媒体|媒介/.test(lower)) return "media";
     if (hasStrongMerchantLookup(userMessage, category)) return "merchant";
     if (zhIntent === "recommendation") return "recommendation";
     if (metricSort) return "recommendation";
@@ -5626,6 +5630,12 @@
       return paymentAnswer(prompt);
     }
 
+    if (intent === "media") {
+        const mediaId = p.mediaId || null;
+        const mediaName = p.mediaName || null;
+        return mediaAnswer(prompt, mediaId, mediaName);
+    }
+
     if (wantsRecommendation) {
       let pool = categories.length ? sortedForCategory(categories, { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt, tier: tiers }) : offers;
       if (tiers.length) pool = pool.filter(function(o) { return tiers.indexOf(o.tier) !== -1; });
@@ -5753,6 +5763,134 @@
       </div>
       ${products.length ? `<ul class="db-chat-products">${dbMerchantProductRows(products)}</ul>` : `<p>No product rows returned by DB for this merchant.</p>`}
     </section>`;
+  }
+
+  function mediaAnswer(prompt, mediaId, mediaName) {
+    var language = responseLanguageFor(prompt);
+    var copy = chatCopy(language);
+    var loadingMsg = language === "zh" ? "正在查询媒体信息..." : "Querying media info...";
+    addMessage("assistant", "<em>" + escapeHtml(loadingMsg) + "</em>");
+    setTimeout(function() { loadDbMediaInsight(mediaId, mediaName, language); }, 0);
+    return "";
+  }
+
+  async function loadDbMediaInsight(mediaId, mediaName, language) {
+    if (typeof fetch !== "function") return;
+    var cacheKey = mediaId || mediaName;
+    if (!cacheKey || dbMediaLoading.has(cacheKey)) return;
+    if (dbMediaCache.has(cacheKey)) {
+        var cached = renderMediaStats(dbMediaCache.get(cacheKey), language);
+        if (cached) {
+            removeLastAssistantIfLoading();
+            addMessage("assistant", cached);
+        }
+        return;
+    }
+    dbMediaLoading.add(cacheKey);
+    try {
+        var params = new URLSearchParams();
+        if (mediaId) params.set("mediaId", mediaId);
+        else if (mediaName) params.set("mediaName", mediaName);
+        var response = await fetch(DB_MEDIA_API + "?" + params.toString(), {
+            headers: { "X-Oi-Db-Route": "ui-media" },
+            cache: "no-store"
+        });
+        var payload = null;
+        try { payload = await response.json(); } catch (e) { payload = null; }
+        if (!response.ok || (payload && payload.ok === false)) {
+            throw new Error((payload && payload.error) || "HTTP " + response.status);
+        }
+        dbMediaCache.set(cacheKey, payload);
+        var html = renderMediaStats(payload, language);
+        if (html) {
+            removeLastAssistantIfLoading();
+            addMessage("assistant", html);
+        }
+    } catch (error) {
+        removeLastAssistantIfLoading();
+        var errMsg = (language === "zh" ? "媒体信息查询失败: " : "Media info query failed: ") + escapeHtml(error.message || "");
+        addMessage("assistant", '<section class="db-chat-card db-chat-card-muted"><p>' + errMsg + '</p></section>');
+    } finally {
+        dbMediaLoading.delete(cacheKey);
+    }
+  }
+
+  function removeLastAssistantIfLoading() {
+    var chat = document.getElementById("chat-messages");
+    if (!chat) return;
+    var last = chat.lastElementChild;
+    if (last && last.classList.contains("assistant")) {
+        var text = (last.textContent || "").trim().toLowerCase();
+        if (text === "正在查询媒体信息..." || text === "querying media info..." || text === "") {
+            last.remove();
+        }
+    }
+  }
+
+  function renderMediaStats(payload, language) {
+    if (!payload || payload.ok === false) {
+        return (language === "zh"
+            ? '<section class="db-chat-card db-chat-card-muted"><p>未找到该媒体信息</p></section>'
+            : '<section class="db-chat-card db-chat-card-muted"><p>Media not found</p></section>');
+    }
+    var m = payload;
+    var zh = language === "zh";
+    var header = zh
+        ? "<strong>\u{1F4CA} 媒体信息:</strong> " + escapeHtml(m.mediaName || "") + " (ID: " + escapeHtml(String(m.mediaId || "")) + ")"
+        : "<strong>\u{1F4CA} Media:</strong> " + escapeHtml(m.mediaName || "") + " (ID: " + escapeHtml(String(m.mediaId || "")) + ")";
+
+    var targetText = m.monthlyTarget ? "$" + Number(m.monthlyTarget).toLocaleString() : (zh ? "未设置" : "Not set");
+    var achievedText = m.monthlyAchieved ? "$" + Number(m.monthlyAchieved).toLocaleString() : "$0";
+    var completionText = m.completionRate != null ? m.completionRate + "%" : (zh ? "暂无数据" : "N/A");
+
+    var cardsHtml = statCards([
+        [zh ? "上月AFF佣金" : "Last mo. commission", m.lastMonthCommission != null ? "$" + Number(m.lastMonthCommission).toLocaleString() : "$0"],
+        [zh ? "上月点击" : "Last mo. clicks", m.lastMonthClicks != null ? Number(m.lastMonthClicks).toLocaleString() : "0"],
+        [zh ? "月目标" : "Monthly target", targetText],
+        [zh ? "月完成" : "Monthly achieved", achievedText],
+        [zh ? "完成率" : "Completion rate", completionText],
+    ]);
+
+    var detailsHtml = '<div class="context-note">';
+    if (m.managerName) detailsHtml += "<strong>" + (zh ? "媒介经理: " : "Manager: ") + "</strong>" + escapeHtml(m.managerName) + "<br>";
+    if (m.companyName) detailsHtml += "<strong>" + (zh ? "公司: " : "Company: ") + "</strong>" + escapeHtml(m.companyName) + "<br>";
+    if (m.publisherType) detailsHtml += "<strong>" + (zh ? "类型: " : "Type: ") + "</strong>" + escapeHtml(m.publisherType) + "<br>";
+    if (m.offers && m.offers.length) {
+        detailsHtml += "<strong>" + (zh ? "Offer偏好 (" : "Offers (") + m.offers.length + "):</strong> ";
+        detailsHtml += m.offers.slice(0, 10).map(function(o) { return escapeHtml(o.advertName); }).join(", ");
+        if (m.offers.length > 10) detailsHtml += " ...";
+        detailsHtml += "<br>";
+    }
+    if (m.violationRecords && m.violationRecords.length) {
+        detailsHtml += '<strong style="color:#d32f2f;">' + (zh ? "违规记录 (" : "Violations (") + m.violationRecords.length + "):</strong><br>";
+        detailsHtml += m.violationRecords.slice(0, 3).map(function(v) {
+            return "  • " + escapeHtml(v.note || "") + ' <small>(' + escapeHtml(v.createdAt || "") + ')</small>';
+        }).join("<br>");
+        if (m.violationRecords.length > 3) detailsHtml += "<br>  ...";
+        detailsHtml += "<br>";
+    }
+    if (m.notes && m.notes.length) {
+        detailsHtml += "<strong>" + (zh ? "备注: " : "Notes: ") + "</strong>";
+        detailsHtml += m.notes.slice(0, 2).map(function(n) { return escapeHtml(n.note || ""); }).join(" | ");
+        if (m.notes.length > 2) detailsHtml += " ...";
+        detailsHtml += "<br>";
+    }
+    detailsHtml += "</div>";
+
+    var offerTable = "";
+    if (m.offers && m.offers.length) {
+        var statusLabels = zh ? {1: "推广中", 2: "暂停", 3: "推广中"} : {1: "Active", 2: "Paused", 3: "Active"};
+        offerTable = "<p><strong>" + (zh ? "推广的 Offer:" : "Promoted Offers:") + "</strong></p>"
+            + miniTable(m.offers.slice(0, 20), [
+                { label: zh ? "Offer" : "Offer", render: function(o) { return escapeHtml(o.advertName || ""); } },
+                { label: "ID", render: function(o) { return String(o.advertId || ""); } },
+                { label: zh ? "状态" : "Status", render: function(o) { return statusLabels[o.status] || String(o.status); } }
+            ]);
+    } else {
+        offerTable = "<p><small>" + (zh ? "暂无推广的 Offer" : "No promoted offers") + "</small></p>";
+    }
+
+    return '<section class="db-chat-card">' + header + cardsHtml + detailsHtml + offerTable + "</section>";
   }
 
   async function loadDbMerchantInsight(offer) {
