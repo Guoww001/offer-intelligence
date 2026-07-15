@@ -19,6 +19,7 @@ from skills.tier import tier_skill
 from skills.category import category_skill
 from skills.analysis import analysis_intent_skill
 from skills.analysis_text import analysis_text_skill
+from skills.media import media_skill
 
 # Register all intent-classification skills.
 registry.register(asin_skill)
@@ -27,6 +28,7 @@ registry.register(payment_skill)
 registry.register(recommendation_skill)
 registry.register(tier_skill)
 registry.register(category_skill)
+registry.register(media_skill)
 registry.register(analysis_intent_skill)
 
 # Register the analysis text-generation skill.
