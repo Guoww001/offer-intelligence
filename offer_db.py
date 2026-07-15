@@ -1097,6 +1097,311 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
     return result
 
 
+def _last_month_key() -> str:
+    """返回上一个完整日历月的 key，格式 YYYYMM（如 202606）。"""
+    today = reporting_today()
+    first_of_month = today.replace(day=1)
+    last_month_start = first_of_month - dt.timedelta(days=1)
+    return last_month_start.strftime("%Y%m")
+
+
+def _current_month_key() -> str:
+    """返回当前月的 key，格式 YYYYMM（如 202607）。"""
+    return reporting_today().strftime("%Y%m")
+
+
+def _month_start_end_iso(year_month: str) -> tuple[str, str]:
+    """根据 YYYYMM 返回该月的起始和结束 ISO 日期字符串。"""
+    year = int(year_month[:4])
+    month = int(year_month[4:6])
+    start = dt.date(year, month, 1)
+    if month == 12:
+        end = dt.date(year + 1, 1, 1) - dt.timedelta(days=1)
+    else:
+        end = dt.date(year, month + 1, 1) - dt.timedelta(days=1)
+    return (start.isoformat(), end.isoformat())
+
+
+def media_payload(media_id: str = None, media_name: str = None) -> dict[str, Any]:
+    """跨表聚合联属媒体（Affiliate Publisher）的信息。
+
+    参数 media_id 和 media_name 是 OR 关系，ID 优先。
+    返回 dict 包含媒体基本信息、媒介经理、上月佣金/点击、月目标及完成率、
+    Offer 偏好、违规记录和媒体备注。
+    """
+    if not media_id and not media_name:
+        raise ValueError("media_id or media_name is required")
+
+    cache_key = f"id:{media_id}" if media_id else f"name:{media_name}"
+    now = time.time()
+    cached = _media_cache.get(cache_key)
+    if cached is not None and now - cached[0] < MEDIA_CACHE_TTL:
+        return cached[1]
+
+    with db_connection() as conn:
+        # ── 1. 主查询 cnpscy_user ──
+        user_cols = table_columns(conn, "cnpscy_user")
+        user_id_col = pick_column(user_cols, ["user_id", "id"])
+        user_name_col = pick_column(user_cols, ["user_name", "name", "username"])
+        if not user_id_col:
+            raise OfferDbError("cnpscy_user is missing a user id column")
+
+        user_selects = [
+            f"CAST(u.{q(user_id_col)} AS CHAR) AS {q('userId')}",
+            first_expr([("u", user_cols)], ["user_name", "name", "username"], "userName"),
+            first_expr([("u", user_cols)], ["company_name", "company", "companyName"], "companyName"),
+            first_expr([("u", user_cols)], ["PublisherType", "publisher_type", "publisherType"], "publisherType"),
+            first_expr([("u", user_cols)], ["user_state", "state", "status"], "state"),
+            first_expr([("u", user_cols)], ["is_elite", "elite", "isElite"], "isElite"),
+        ]
+
+        params: list[Any] = []
+        if media_id:
+            predicates = [f"u.{q(user_id_col)} = %s"]
+            params.append(media_id)
+        elif media_name and user_name_col:
+            predicates = [f"u.{q(user_name_col)} LIKE %s"]
+            params.append(f"%{media_name}%")
+        else:
+            predicates = ["1 = 0"]
+
+        user_row = fetch_one(
+            conn,
+            f"""
+            SELECT {', '.join(user_selects)}
+            FROM {q("cnpscy_user")} u
+            WHERE {' OR '.join(predicates)}
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+
+        if not user_row:
+            result: dict[str, Any] = {"ok": True, "checkedAt": utc_now_iso(), "found": False}
+            _media_cache[cache_key] = (now, result)
+            return result
+
+        resolved_media_id = str(user_row.get("userId") or "")
+
+        # ── 2. 管理员关联（媒介经理） ──
+        manager_name = None
+        awu_cols = table_columns(conn, "cnpscy_advert_with_user")
+        admin_id_col = pick_column(awu_cols, ["with_admin_id", "admin_id"])
+        awu_user_id_col = pick_column(awu_cols, ["user_id", "userid", "id"])
+        if admin_id_col and awu_user_id_col:
+            awu_row = fetch_one(
+                conn,
+                f"SELECT {q(admin_id_col)} AS adminId FROM {q('cnpscy_advert_with_user')} WHERE {q(awu_user_id_col)} = %s LIMIT 1",
+                (resolved_media_id,),
+            )
+            if awu_row and awu_row.get("adminId"):
+                admin_cols = table_columns(conn, "cnpscy_admins")
+                admin_name_col = pick_column(admin_cols, ["admin_name", "name", "adminName"])
+                admin_id_col2 = pick_column(admin_cols, ["admin_id", "id"])
+                if admin_name_col and admin_id_col2:
+                    admin_row = fetch_one(
+                        conn,
+                        f"SELECT {q(admin_name_col)} AS adminName FROM {q('cnpscy_admins')} WHERE {q(admin_id_col2)} = %s LIMIT 1",
+                        (awu_row["adminId"],),
+                    )
+                    if admin_row:
+                        manager_name = admin_row.get("adminName")
+
+        # ── 日期辅助 ──
+        last_month = _last_month_key()
+        current_month = _current_month_key()
+
+        # ── 3. 上月 AFF 佣金 ──
+        last_month_commission = 0.0
+        order_cols = table_columns(conn, "cnpscy_order_new")
+        order_user_id_col = pick_column(order_cols, ["user_id", "userid", "id"])
+        order_month_col = pick_column(order_cols, ["order_time_mon", "order_month", "month"])
+        aff_payout_col = pick_column(order_cols, ["aff_payout", "affiliate_payout", "commission", "payout"])
+        if order_user_id_col and order_month_col and aff_payout_col:
+            cm_row = fetch_one(
+                conn,
+                f"""
+                SELECT SUM(COALESCE({q(aff_payout_col)}, 0)) AS totalCommission
+                FROM {q("cnpscy_order_new")}
+                WHERE {q(order_user_id_col)} = %s AND {q(order_month_col)} = %s
+                """,
+                (resolved_media_id, last_month),
+            )
+            if cm_row:
+                last_month_commission = clean_decimal(cm_row.get("totalCommission"))
+
+        # ── 4. 上月点击 ──
+        last_month_clicks = 0
+        click_cols = table_columns(conn, "cnpscy_amazon_click")
+        click_user_id_col = pick_column(click_cols, ["user_id", "userid", "id"])
+        click_date_col = pick_column(click_cols, ["time_day", "click_time_day", "day"])
+        click_count_col = pick_column(click_cols, ["click", "clicks", "click_num"])
+        if click_user_id_col and click_date_col:
+            lm_start, lm_end = _month_start_end_iso(last_month)
+            click_expr = f"SUM(COALESCE({q(click_count_col)}, 0))" if click_count_col else "COUNT(*)"
+            click_row = fetch_one(
+                conn,
+                f"""
+                SELECT {click_expr} AS totalClicks
+                FROM {q("cnpscy_amazon_click")}
+                WHERE {q(click_user_id_col)} = %s AND {q(click_date_col)} BETWEEN %s AND %s
+                """,
+                (resolved_media_id, lm_start, lm_end),
+            )
+            if click_row:
+                last_month_clicks = int(click_row.get("totalClicks") or 0)
+
+        # ── 5. 月目标 ──
+        monthly_target = 0.0
+        target_cols = table_columns(conn, "cnpscy_advert_month_payout_target")
+        target_user_id_col = pick_column(target_cols, ["user_id", "userid", "id"])
+        target_year_month_col = pick_column(target_cols, ["year_month", "month", "target_month"])
+        target_amount_col = pick_column(target_cols, ["payout_target", "target", "target_amount", "monthly_target"])
+        if target_user_id_col and target_year_month_col and target_amount_col:
+            target_row = fetch_one(
+                conn,
+                f"""
+                SELECT SUM(COALESCE({q(target_amount_col)}, 0)) AS totalTarget
+                FROM {q("cnpscy_advert_month_payout_target")}
+                WHERE {q(target_user_id_col)} = %s AND {q(target_year_month_col)} = %s
+                """,
+                (resolved_media_id, current_month),
+            )
+            if target_row:
+                monthly_target = clean_decimal(target_row.get("totalTarget"))
+
+        # ── 6. 当月佣金（月目标完成） ──
+        current_month_commission = 0.0
+        if order_user_id_col and order_month_col and aff_payout_col:
+            ca_row = fetch_one(
+                conn,
+                f"""
+                SELECT SUM(COALESCE({q(aff_payout_col)}, 0)) AS totalCommission
+                FROM {q("cnpscy_order_new")}
+                WHERE {q(order_user_id_col)} = %s AND {q(order_month_col)} = %s
+                """,
+                (resolved_media_id, current_month),
+            )
+            if ca_row:
+                current_month_commission = clean_decimal(ca_row.get("totalCommission"))
+
+        completion_rate = round(current_month_commission / monthly_target * 100, 1) if monthly_target else 0.0
+
+        # ── 7. 违规记录 ──
+        violation_records: list[dict[str, Any]] = []
+        viol_cols = table_columns(conn, "cnpscy_violation_log")
+        viol_user_id_col = pick_column(viol_cols, ["user_id", "userid", "id"])
+        viol_note_col = pick_column(viol_cols, ["note", "violation_note", "content", "description"])
+        viol_created_col = pick_column(viol_cols, ["created_at", "create_time", "createdAt", "violation_time"])
+        if viol_user_id_col and viol_note_col:
+            order_col_name = viol_created_col or viol_user_id_col
+            viol_rows = fetch_all(
+                conn,
+                f"""
+                SELECT {q(viol_note_col)} AS note, {q(order_col_name)} AS createdAt
+                FROM {q("cnpscy_violation_log")}
+                WHERE {q(viol_user_id_col)} = %s
+                ORDER BY {q(order_col_name)} DESC
+                LIMIT 10
+                """,
+                (resolved_media_id,),
+            )
+            for r in viol_rows:
+                violation_records.append({
+                    "note": str(r.get("note") or ""),
+                    "createdAt": normalize_compact_date(r.get("createdAt")),
+                })
+
+        # ── 8. 媒体备注 ──
+        notes: list[dict[str, Any]] = []
+        note_cols = table_columns(conn, "cnpscy_user_note")
+        note_user_id_col = pick_column(note_cols, ["user_id", "userid", "id"])
+        note_content_col = pick_column(note_cols, ["note", "content", "description", "user_note"])
+        note_created_col = pick_column(note_cols, ["created_at", "create_time", "createdAt"])
+        if note_user_id_col and note_content_col:
+            order_col_name2 = note_created_col or note_user_id_col
+            note_rows = fetch_all(
+                conn,
+                f"""
+                SELECT {q(note_content_col)} AS note, {q(order_col_name2)} AS createdAt
+                FROM {q("cnpscy_user_note")}
+                WHERE {q(note_user_id_col)} = %s
+                ORDER BY {q(order_col_name2)} DESC
+                LIMIT 5
+                """,
+                (resolved_media_id,),
+            )
+            for r in note_rows:
+                notes.append({
+                    "note": str(r.get("note") or ""),
+                    "createdAt": normalize_compact_date(r.get("createdAt")),
+                })
+
+        # ── 9. Offer 偏好（媒体推广的 Offer 列表） ──
+        offers: list[dict[str, Any]] = []
+        advert_cols = table_columns(conn, "cnpscy_advert")
+        advert_mcuserid_col = pick_column(advert_cols, ["advert_mcuserid", "mcuserid", "mc_user_id"])
+        advert_id_col = pick_column(advert_cols, ["advert_id", "id", "offer_id"])
+        advert_name_col = pick_column(advert_cols, ["advert_name", "name", "offer_name", "title"])
+        advert_status_col = pick_column(advert_cols, ["advert_status", "status", "offer_status"])
+        isdel_col = pick_column(advert_cols, ["advert_isdel", "isdel", "is_del", "is_deleted"])
+
+        if advert_mcuserid_col and advert_id_col:
+            offer_selects = [f"CAST(a.{q(advert_id_col)} AS CHAR) AS advertId"]
+            if advert_name_col:
+                offer_selects.append(f"a.{q(advert_name_col)} AS advertName")
+            else:
+                offer_selects.append("NULL AS advertName")
+            if advert_status_col:
+                offer_selects.append(f"a.{q(advert_status_col)} AS status")
+            else:
+                offer_selects.append("NULL AS status")
+
+            where_clause = f"a.{q(advert_mcuserid_col)} = %s"
+            if isdel_col:
+                where_clause += f" AND a.{q(isdel_col)} = 0"
+
+            offer_rows = fetch_all(
+                conn,
+                f"""
+                SELECT {', '.join(offer_selects)}
+                FROM {q("cnpscy_advert")} a
+                WHERE {where_clause}
+                LIMIT 200
+                """,
+                (resolved_media_id,),
+            )
+            for r in offer_rows:
+                offers.append({
+                    "advertId": str(r.get("advertId") or ""),
+                    "advertName": str(r.get("advertName") or ""),
+                    "status": r.get("status"),
+                })
+
+        payload = {
+            "ok": True,
+            "checkedAt": utc_now_iso(),
+            "mediaId": int(resolved_media_id) if DIGITS_RE.match(str(resolved_media_id)) else resolved_media_id,
+            "mediaName": user_row.get("userName") or "",
+            "companyName": user_row.get("companyName") or "",
+            "publisherType": user_row.get("publisherType"),
+            "state": user_row.get("state"),
+            "isElite": bool(user_row.get("isElite") or False),
+            "managerName": manager_name or "",
+            "lastMonthCommission": last_month_commission,
+            "lastMonthClicks": last_month_clicks,
+            "monthlyTarget": monthly_target,
+            "monthlyAchieved": current_month_commission,
+            "completionRate": completion_rate,
+            "offers": offers,
+            "violationRecords": violation_records,
+            "notes": notes,
+        }
+
+    _media_cache[cache_key] = (now, payload)
+    return payload
+
+
 # ── payload cache ────────────────────────────────────────────────────
 
 CACHE_DIR = ROOT / "protected_data"
@@ -1105,11 +1410,13 @@ KEYWORDS_CACHE_FILE = CACHE_DIR / "db_keywords_cache.json"
 CACHE_TTL_SECONDS = int(os.environ.get("OFFER_DB_CACHE_TTL", "86400"))  # 24 hours
 MERCHANT_CACHE_TTL = int(os.environ.get("OFFER_DB_MERCHANT_CACHE_TTL", "3600"))  # 1 hour
 SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1 hour
+MEDIA_CACHE_TTL = int(os.environ.get("OFFER_DB_MEDIA_CACHE_TTL", "3600"))  # 1 hour
 STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
 TIER_SHEET_CACHE_TTL = int(os.environ.get("OFFER_DB_CACHE_TTL", "21600"))    # 6 hours
 _bg_refresh_running: dict[str, bool] = {}
 _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_media_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
