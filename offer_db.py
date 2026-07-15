@@ -843,7 +843,7 @@ def merchant_base(conn, merchant_id: str) -> dict[str, Any] | None:
         f"CAST(a.{q(id_column)} AS CHAR) AS {q('merchantId')}",
         first_expr(sources, ["advert_name", "merchant_name", "brand_name", "name"], "merchantName"),
         first_expr(sources, ["m_id", "levanta_brand_id", "brand_id"], "levantaBrandId"),
-        first_expr(sources, ["network", "agency", "platform", "source"], "network"),
+        first_expr(sources, ["advert_lianmeng_id", "network", "agency", "platform", "source"], "network"),
         first_expr(sources, ["status", "advert_status", "online_status", "state"], "status"),
         first_expr(sources, ["is_publish", "publish_status", "enabled"], "publishStatus"),
         first_expr(sources, ["advert_money", "commission_rate", "rate", "cps_rate"], "commissionRate"),
@@ -1063,7 +1063,7 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
             f"CAST(a.{q(id_column)} AS CHAR) AS {q('merchantId')}",
             first_expr(sources, ["advert_name", "merchant_name", "brand_name", "name"], "merchantName"),
             first_expr(sources, ["m_id", "levanta_brand_id", "brand_id"], "levantaBrandId"),
-            first_expr(sources, ["network", "agency", "platform", "source"], "network"),
+            first_expr(sources, ["advert_lianmeng_id", "network", "agency", "platform", "source"], "network"),
             first_expr(sources, ["status", "advert_status", "online_status", "state"], "status"),
             first_expr(sources, ["advert_money", "commission_rate", "rate", "cps_rate"], "commissionRate"),
         ]
@@ -1205,7 +1205,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 MAX(CONCAT(t.tier, '::', t.merchantId, '::',
                     COALESCE(a.advert_name, ''))) AS id,
                 MAX(a.m_id) AS levantaBrandId,
-                MAX(COALESCE(a.advert_lianmeng_id, 'Unknown')) AS network,
+                MAX(COALESCE(pr_net.network, 'Unknown')) AS network,
                 MAX(a.advert_money) AS commissionRate,
                 NULL AS productCount,
                 MAX(m.clicks) AS clicks, MAX(m.orders) AS orders,
@@ -1222,6 +1222,11 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
             LEFT JOIN cnpscy_oi_offer_monthly_amazon_metrics m
                 ON t.merchantId = m.merchantId AND m.month = %s
+            LEFT JOIN (
+                SELECT merchantId, MAX(network) AS network
+                FROM cnpscy_oi_payment_records
+                GROUP BY merchantId
+            ) pr_net ON t.merchantId = pr_net.merchantId
             GROUP BY t.merchantId
             """,
             (month,),
@@ -1277,6 +1282,57 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
+        # Network from cnpscy_advertiser_performance_daily_view (primary source)
+        # Joins via advert_id = offer_id — covers ~4,000 tier merchants
+        net_perf_rows = fetch_all(
+            conn,
+            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, "
+            "       TRIM(v.advertiser_network_name) AS network "
+            "FROM cnpscy_oi_tier_assignments t "
+            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+            "INNER JOIN cnpscy_advertiser_performance_daily_view v ON a.advert_id = v.offer_id "
+            "WHERE v.advertiser_network_name IS NOT NULL AND v.advertiser_network_name != ''",
+        )
+        network_map: dict[str, str] = {}
+        for r in net_perf_rows:
+            mid = r["merchantId"]
+            net = (r.get("network") or "").strip()
+            if mid and net and mid not in network_map:
+                network_map[mid] = net
+
+        # Fallback: ad_name = AdvertiserName in cnpscy_advert_lianmeng
+        net_name_rows = fetch_all(
+            conn,
+            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, al.lianmeng AS network "
+            "FROM cnpscy_oi_tier_assignments t "
+            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+            "INNER JOIN cnpscy_advert_lianmeng al ON a.advert_name = al.AdvertiserName "
+            "WHERE al.lianmeng IS NOT NULL AND al.lianmeng != ''",
+        )
+        for r in net_name_rows:
+            mid = r["merchantId"]
+            net = (r.get("network") or "").strip()
+            if mid and net and mid not in network_map:
+                network_map[mid] = net
+
+        # Fallback 2: advert_type via cnpscy_advert.advert_advertiser (parent_id = 53 = 广告联盟)
+        # Covers all merchants that have a network type assigned — ~6,279 tier merchants
+        net_type_rows = fetch_all(
+            conn,
+            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, "
+            "       TRIM(at.advert_type_name) AS network "
+            "FROM cnpscy_oi_tier_assignments t "
+            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+            "INNER JOIN cnpscy_advert_type at ON a.advert_advertiser = at.advert_type_id "
+            "WHERE at.advert_type_parent_id = 53 "
+            "AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''",
+        )
+        for r in net_type_rows:
+            mid = r["merchantId"]
+            net = (r.get("network") or "").strip()
+            if mid and net and mid not in network_map:
+                network_map[mid] = net
+
         # ── merge all into offers ──
         offers = []
         for o in core_offers:
@@ -1288,6 +1344,11 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             o["visualStatusCode"] = vs["reason_code"] if vs else None
             o["visualStatusReason"] = vs["reason_text"] if vs else None
             o["visualStatusSource"] = vs["source"] if vs else None
+
+            # network from performance view / advert_lianmeng / advert_type (overrides DB default)
+            nm = network_map.get(mid)
+            if nm and o.get("network") in (None, "Unknown", ""):
+                o["network"] = nm
 
             # categories
             cat = cat_map.get(mid)
@@ -1545,11 +1606,10 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         # ── summary ──
         tier_rows = fetch_all(conn,
             "SELECT tier, COUNT(*) AS cnt FROM cnpscy_oi_tier_assignments GROUP BY tier ORDER BY cnt DESC")
-        network_rows = fetch_all(conn,
-            "SELECT COALESCE(a.advert_lianmeng_id, 'Unknown') AS network, COUNT(*) AS cnt "
-            "FROM cnpscy_advert a "
-            "INNER JOIN cnpscy_oi_tier_assignments t ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
-            "GROUP BY a.advert_lianmeng_id ORDER BY cnt DESC")
+        # Build network summary from already-merged offers (includes advert_lianmeng + payment_records)
+        from collections import Counter as _Counter
+        _net_counts = _Counter(o.get("network") or "Unknown" for o in offers)
+        network_rows = [{"network": k, "cnt": v} for k, v in _net_counts.most_common()]
         cat_rows = fetch_all(conn,
             "SELECT c_main.categoryName, COUNT(DISTINCT mc.merchantId) AS cnt "
             "FROM cnpscy_oi_merchant_category mc "
@@ -1700,7 +1760,7 @@ def tier_sheet_payload(tier_name: str, month: str | None = None) -> dict[str, An
                 MAX(CAST(a.advert_id AS CHAR)) AS `Merchant ID`,
                 MAX(a.advert_name)    AS `Merchant Name`,
                 MAX(a.advert_name)    AS `Brand`,
-                MAX(COALESCE(a.advert_lianmeng_id, 'Unknown')) AS `Network`,
+                MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), pr_net.network, 'Unknown')) AS `Network`,
                 MAX(a.advert_money)   AS `Commission Rate`,
                 MAX(m.orders)          AS `Order count`,
                 MAX(m.revenue)         AS `Revenue`,
@@ -1729,6 +1789,13 @@ def tier_sheet_payload(tier_name: str, month: str | None = None) -> dict[str, An
             FROM cnpscy_oi_tier_assignments t
             LEFT JOIN cnpscy_advert a
                 ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
+            LEFT JOIN (
+                SELECT merchantId, MAX(network) AS network
+                FROM cnpscy_oi_payment_records
+                GROUP BY merchantId
+            ) pr_net ON t.merchantId = pr_net.merchantId
+            LEFT JOIN cnpscy_advert_type at
+                ON a.advert_advertiser = at.advert_type_id AND at.advert_type_parent_id = 53
             LEFT JOIN cnpscy_oi_tier_visual_status vs ON t.merchantId = vs.merchantId
             LEFT JOIN cnpscy_oi_offer_monthly_amazon_metrics m
                 ON t.merchantId = m.merchantId AND m.month = %s
