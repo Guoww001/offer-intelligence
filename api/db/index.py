@@ -6,6 +6,7 @@ from offer_db import (
     first_query_value,
     handle_options,
     int_query_value,
+    media_payload,
     merchant_payload,
     offers_payload,
     parse_query,
@@ -135,6 +136,20 @@ def handle_ui_tier_sheet(target, query):
         send_db_error(target, error)
 
 
+def handle_ui_media(target, query):
+    media_id = first_query_value(query, "mediaId")
+    media_name = first_query_value(query, "mediaName")
+    if not media_id and not media_name:
+        send_json(target, 400, {"ok": False, "error": "mediaId or mediaName is required"})
+        return
+    try:
+        send_json(target, 200, media_payload(media_id=media_id, media_name=media_name))
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def app(environ, start_response):
     target = WsgiTarget(environ)
     method = str(environ.get("REQUEST_METHOD") or "GET").upper()
@@ -145,14 +160,16 @@ def app(environ, start_response):
         handle_options(target)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
-    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet"}:
+    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-media"}:
         if require_auth(target):
             if route == "ui-keywords":
                 handle_ui_keywords(target)
             elif route == "ui-offers":
                 handle_ui_offers(target, query)
-            else:
+            elif route == "ui-tier-sheet":
                 handle_ui_tier_sheet(target, query)
+            elif route == "ui-media":
+                handle_ui_media(target, query)
     elif require_db_token(target):
         if route == "status":
             handle_status(target, query)
