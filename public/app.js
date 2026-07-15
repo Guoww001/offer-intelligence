@@ -6633,6 +6633,9 @@
       els.dashboardCategoryReportSubtitle.textContent = `${tierText} / ${rows.length.toLocaleString()} rows / ${groups.length.toLocaleString()} of ${allGroups.length.toLocaleString()} categories`;
     }
     if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearch;
+    const prevTableWrap = els.dashboardCategoryReportBody.querySelector(".table-wrap");
+    const prevScrollTop = prevTableWrap ? prevTableWrap.scrollTop : 0;
+    const prevWindowScrollY = window.scrollY;
     els.dashboardCategoryReportBody.innerHTML = `<dl class="dashboard-category-report-totals">
       <div><dt>${escapeHtml(labelText("Merchants"))}</dt><dd>${merchantCount.toLocaleString()}</dd></div>
       <div><dt>${escapeHtml(labelText("Revenue"))}</dt><dd>${shortMoney(totalRevenue)}</dd></div>
@@ -6660,6 +6663,11 @@
         <tbody>${groups.length ? dashboardCategoryReportTableRows(groups) : `<tr><td colspan="10">No category rows match the selected tiers or category search.</td></tr>`}</tbody>
       </table>
     </div>`;
+    requestAnimationFrame(() => {
+      const tableWrap = els.dashboardCategoryReportBody.querySelector(".table-wrap");
+      if (tableWrap) tableWrap.scrollTop = prevScrollTop;
+      window.scrollTo(0, prevWindowScrollY);
+    });
     animateDashboardCategoryRefresh();
     syncDashboardCategoryTierControls();
   }

@@ -165,3 +165,22 @@ A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs d
 - `data/feishu_merchant_categories.csv` — Feishu category mappings
 - `data/product_name_keywords_t1_t3.csv` — product name keywords for Tier 1-3
 - `api/static_merchant_ids.json` — known merchant ID list for DB search
+
+## MCP 服务器配置
+
+项目 `.claude/settings.json` 中配置了以下 MCP 服务器，用于提升 Claude Code 工作效率：
+
+### MySQL 数据库直连 (`mysql-db`)
+
+- **包**: `@morris131/mysql-mcp-server` (npx, 支持 Windows)
+- **用途**: 直接查询数据库、查看表结构、调试 `offer_db.py` 的动态列映射
+- **环境变量**: 从 `.env` 读取数据库凭据 (`DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_PORT`/`DB_NAME`)
+- **数据库**: `yg_ht_test` @ `43.153.38.91:3306`
+- **安全**: `.claude/` 在 `.gitignore` 中，凭据不提交到仓库
+
+### 浏览器自动化 (`playwright`)
+
+- **包**: `@playwright/mcp` (Microsoft 官方, npx)
+- **用途**: 前端 SPA 截图验证、交互测试、调试 UI 渲染
+- **浏览器**: Chromium (已安装在 `C:\Users\yg\AppData\Local\ms-playwright`)
+- **参数**: `--headless --browser chrome --viewport-size 1280x720`
