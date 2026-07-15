@@ -1102,7 +1102,7 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
 CACHE_DIR = ROOT / "protected_data"
 OFFERS_CACHE_FILE = CACHE_DIR / "db_offers_cache.json"
 KEYWORDS_CACHE_FILE = CACHE_DIR / "db_keywords_cache.json"
-CACHE_TTL_SECONDS = int(os.environ.get("OFFER_DB_CACHE_TTL", "21600"))  # 6 hours
+CACHE_TTL_SECONDS = int(os.environ.get("OFFER_DB_CACHE_TTL", "86400"))  # 24 hours
 MERCHANT_CACHE_TTL = int(os.environ.get("OFFER_DB_MERCHANT_CACHE_TTL", "3600"))  # 1 hour
 SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1 hour
 STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
@@ -1137,6 +1137,14 @@ def _save_cache(path: Path, payload: dict[str, Any]) -> None:
         tmp.replace(path)
     except OSError:
         pass  # cache write failure is non-fatal
+    finally:
+        # Clean up stale tmp file from interrupted writes
+        try:
+            tmp_path = path.with_suffix(".tmp")
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
 
 
 def offers_payload(month: str | None = None, force_refresh: bool = False) -> dict[str, Any]:

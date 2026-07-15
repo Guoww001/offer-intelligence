@@ -58,14 +58,25 @@ jobs:
           OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
         run: python scripts/sync_oi_tables.py
 
-      - name: Commit updated payment data
+      - name: Rebuild API caches from DB
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+          OFFER_DB_READ_TIMEOUT: "300"
+        run: python scripts/refresh_api_caches.py
+
+      - name: Commit updated data and caches
         run: |
-          if git diff --quiet -- protected_data/chatbot_data.js; then
-            echo "No payment data changes to commit."
+          git add protected_data/db_offers_cache.json protected_data/db_keywords_cache.json 2>/dev/null || true
+          if git diff --cached --quiet && git diff --quiet -- protected_data/chatbot_data.js; then
+            echo "No changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add protected_data/chatbot_data.js
-          git commit -m "Update Levanta payment data"
+          git commit -m "Update DB caches and payment data"
           git push
