@@ -48,6 +48,7 @@ from offer_db import (
     read_static_merchant_ids,
     search_payload,
     status_payload,
+    media_payload,
     tier_sheet_payload,
 )
 from protected_payloads import handle_protected_data
@@ -804,6 +805,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.handle_db_ui_api(parsed)
             return
+        if parsed.path == "/api/db":
+            if not require_auth(self):
+                return
+            db_route = self.headers.get("X-Oi-Db-Route", "").strip()
+            query = parse_qs(parsed.query)
+            if db_route == "ui-media":
+                media_id = first_query_value(query, "mediaId")
+                media_name = first_query_value(query, "mediaName")
+                try:
+                    self.send_json(200, media_payload(media_id=media_id, media_name=media_name))
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                except Exception as error:
+                    self.send_db_error(error)
+                return
+            self.send_json(404, {"ok": False, "error": "Unknown DB route"})
+            return
         if parsed.path == "/api/tier_moves":
             handle_tier_moves(self, "GET")
             return
@@ -818,6 +836,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if parsed.path == "/api/db":
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Oi-Db-Route")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
