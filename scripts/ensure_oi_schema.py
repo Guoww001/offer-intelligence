@@ -190,7 +190,10 @@ def main():
                   CAST(a.advert_id AS CHAR)     AS merchantId,
                   a.advert_name                 AS merchantName,
                   a.m_id                        AS levantaBrandId,
-                  a.advert_lianmeng_id          AS network,
+                  COALESCE(al.lianmeng,
+                    (SELECT MAX(pr.network) FROM cnpscy_oi_payment_records pr
+                     WHERE pr.merchantId = CAST(a.advert_id AS CHAR))
+                  )                             AS network,
                   NULL                          AS category,
                   a.advert_money                AS commissionRate,
                   NULL                          AS paymentCycle,
@@ -202,6 +205,7 @@ def main():
                   NULL                          AS region,
                   NULL                          AS updatedAt
                 FROM cnpscy_advert a
+                LEFT JOIN cnpscy_advert_lianmeng al ON a.advert_id = al.advert_all_id
                 WHERE a.advert_isdel = 1
             """)
         print("  → view recreated")
