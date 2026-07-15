@@ -940,7 +940,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if parsed.path == "/api/ui/db/offers":
-                self.send_json(200, offers_payload(month=first_query_value(query, "month") or None))
+                force = first_query_value(query, "refresh") == "1"
+                self.send_json(200, offers_payload(month=first_query_value(query, "month") or None, force_refresh=force))
                 return
 
             if parsed.path == "/api/ui/db/tier-sheet":
@@ -952,7 +953,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if parsed.path == "/api/ui/db/keywords":
-                self.send_json(200, product_keywords_payload())
+                force = first_query_value(query, "refresh") == "1"
+                self.send_json(200, product_keywords_payload(force_refresh=force))
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})
