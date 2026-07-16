@@ -59,6 +59,7 @@
   const DB_STATUS_UI_API = "/api/ui/db/status";
   const DB_MERCHANT_UI_API = "/api/ui/db/merchant";
   const DB_SEARCH_UI_API = "/api/ui/db/search";
+  const DB_TIER_SUMMARY_API = "/api/ui/db/tier-summary";
   const DB_STATUS_AUTO_REFRESH_MS = 5 * 60 * 1000;
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const originalTierSheetRows = new Map();
@@ -140,6 +141,11 @@
       data: null,
       loading: false,
       error: "",
+      monthKey: ""
+    },
+    dbTierSummary: {
+      data: null,
+      loading: false,
       monthKey: ""
     },
     tierSheetSort: {
@@ -8587,7 +8593,56 @@
     }));
   }
 
+  function dbTargetRecordsFromTierSummary() {
+    const dbData = state.dbTierSummary && state.dbTierSummary.data;
+    if (!dbData || !dbData.ok || !dbData.month || !dbData.tiers || !dbData.tiers.length) return null;
+    const monthKey = dbData.month;
+    const date = new Date(`${monthKey}-01T00:00:00`);
+    const month = Number.isNaN(date.getTime())
+      ? monthKey
+      : date.toLocaleString("en-US", { month: "long", year: "numeric" });
+    const records = dbData.tiers.map((t) =>
+      applyTargetOverride({
+        Month: month,
+        __monthKey: monthKey,
+        __databaseOnly: true,
+        __source: "database",
+        Tier: t.tier,
+        "Brand Count": t.brandCount,
+        "Total Clicks": t.clicks,
+        "Order Count": t.orders,
+        Revenue: t.revenue,
+        "Avg Conversion": t.conversionRate,
+        "New Tier Entries": 0,
+        "Tier Exits": 0,
+        Target: ""
+      })
+    );
+    const total = dbData.total;
+    if (total) {
+      records.push(applyTargetOverride({
+        Month: month,
+        __monthKey: monthKey,
+        __databaseOnly: true,
+        __source: "database",
+        Tier: "Total",
+        "Brand Count": total.brandCount,
+        "Total Clicks": total.clicks,
+        "Order Count": total.orders,
+        Revenue: total.revenue,
+        "Avg Conversion": total.conversionRate,
+        "New Tier Entries": 0,
+        "Tier Exits": 0,
+        Target: ""
+      }));
+    }
+    return ensureReportingMonthRecord(records);
+  }
+
   function targetRecords() {
+    const dbRecords = dbTargetRecordsFromTierSummary();
+    if (dbRecords) return dbRecords;
+
     const sheet = sheetByName("Tier Summary & Target");
     const grid = (sheet && sheet.grid) || [];
     const records = [];
@@ -9272,6 +9327,29 @@
     }
   }
 
+  async function loadDbTierSummary(monthKey) {
+    if (typeof fetch !== "function") return;
+    const normalizedMonthKey = monthKeyFromText(monthKey);
+    if (!normalizedMonthKey) return;
+    if (state.dbTierSummary.monthKey === normalizedMonthKey && state.dbTierSummary.data) return;
+    state.dbTierSummary.loading = true;
+    state.dbTierSummary.monthKey = normalizedMonthKey;
+    try {
+      const url = `${DB_TIER_SUMMARY_API}?month=${encodeURIComponent(normalizedMonthKey)}`;
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || (payload && payload.ok === false)) {
+        throw new Error((payload && payload.error) || `HTTP ${response.status}`);
+      }
+      state.dbTierSummary.data = payload;
+    } catch (error) {
+      state.dbTierSummary.data = null;
+    } finally {
+      state.dbTierSummary.loading = false;
+      renderSheetPage();
+    }
+  }
+
   function targetMetricConfig(key = state.targetMetric) {
     return TARGET_METRICS.find((metric) => metric.key === key) || TARGET_METRICS[0];
   }
@@ -9900,6 +9978,10 @@
     renderSheetSummary(rows, comparisonRows, state.targetFilters.compareMonth);
     els.sheetPageNotes.innerHTML = `${targetTrendHtml(allRecords)}${targetProgressHtml(rows)}${targetMatrixHtml(rows, comparisonRows)}`;
     ensureDbStatusForSelectedMonth();
+    const tierSummaryMonthKey = targetDbStatusMonthKey();
+    if (tierSummaryMonthKey && !state.dbTierSummary.data && !state.dbTierSummary.loading) {
+      window.setTimeout(() => loadDbTierSummary(tierSummaryMonthKey), 0);
+    }
   }
 
   function currentTargetPageData() {

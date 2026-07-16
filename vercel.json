@@ -76,6 +76,18 @@
           "args": "ui-tier-sheet"
         }
       ]
+    },
+    {
+      "src": "^/api/ui/db/tier-summary/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-tier-summary"
+        }
+      ]
     }
   ],
   "functions": {

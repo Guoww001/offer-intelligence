@@ -49,6 +49,7 @@ from offer_db import (
     search_payload,
     status_payload,
     tier_sheet_payload,
+    tier_summary_payload,
 )
 from protected_payloads import handle_protected_data
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
@@ -961,6 +962,12 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/ui/db/keywords":
                 force = first_query_value(query, "refresh") == "1"
                 self.send_json(200, product_keywords_payload(force_refresh=force))
+                return
+
+            if parsed.path == "/api/ui/db/tier-summary":
+                self.send_json(200, tier_summary_payload(
+                    month=first_query_value(query, "month") or None,
+                ))
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})
