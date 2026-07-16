@@ -148,10 +148,9 @@
     _dataLoading = true;
     setStatus("Loading offer data from database", "muted");
     try {
-      const [offersResp, kwResp] = await Promise.all([
-        fetchJson("/api/ui/db/offers"),
-        fetchJson("/api/ui/db/keywords")
-      ]);
+      const offersResp = await fetchJson("/api/ui/db/offers");
+      // product keyword data (productTitles / productKeywords) loaded lazily
+      // in background after the dashboard renders — see loadOfferKeywords()
 
       window.CHATBOT_DATA = {
         summary: offersResp.summary || {},
@@ -165,10 +164,7 @@
         tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
       };
 
-      window.PRODUCT_KEYWORDS = {
-        summary: kwResp.summary || {},
-        merchants: kwResp.merchants || []
-      };
+      window.PRODUCT_KEYWORDS = { merchants: [] };  // loaded lazily
     } catch (_err) {
       // Fallback: empty data
       window.CHATBOT_DATA = { summary: {}, offers: [] };
@@ -177,6 +173,27 @@
     }
     setStatus("", "");
     await loadScript(APP_SCRIPT);
+
+    // Background: load keyword data after dashboard renders
+    // (not awaited — non-blocking)
+    loadOfferKeywords().catch(function () {});
+  }
+
+  /** Lazy-load product keyword data for chatbot keyword search. */
+  async function loadOfferKeywords() {
+    if (window.__OFFER_KEYWORDS_LOADED) return;
+    try {
+      const kwResp = await fetchJson("/api/ui/db/keywords");
+      window.PRODUCT_KEYWORDS = kwResp;
+      window.__OFFER_KEYWORDS_LOADED = true;
+      // Notify app.js to merge keyword data into offers
+      if (typeof window.__onOfferKeywordsLoaded === "function") {
+        window.__onOfferKeywordsLoaded(kwResp);
+      }
+    } catch (_err) {
+      // Keywords unavailable — attempt to be non-fatal;
+      // chatbot keyword search will degrade gracefully.
+    }
   }
 
   function bindLogout() {

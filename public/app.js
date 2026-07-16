@@ -10251,6 +10251,7 @@
     renderAll();
     renderPaymentsPage();
     rerenderForLanguage();
+    document.body.classList.remove("app-loading");
     loadSharedTierMoves({ silent: true });
     maybeAutoSyncLevantaPayments();
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
@@ -10325,4 +10326,10 @@
   } else {
     init();
   }
+
+  // Register callback for lazy-loaded keyword data (from auth.js)
+  window.__onOfferKeywordsLoaded = function (kwResp) {
+    if (!kwResp || !Array.isArray(kwResp.merchants)) return;
+    mergeProductKeywordsIntoOffers(offers, kwResp);
+  };
 })();
