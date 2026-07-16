@@ -42,6 +42,8 @@ jobs:
           python scripts/test_vercel_function_budget.py
           python scripts/test_vercel_db_wsgi.py
           python scripts/test_tier_visual_status_rules.py
+          python scripts/test_offer_network_lookup.py
+          python scripts/test_workflow_cache_split.py
           node scripts/test_chatbot_intent_flow.mjs
           node scripts/test_tier2_recommendation_rules.mjs
           node scripts/test_sheet_categories.mjs

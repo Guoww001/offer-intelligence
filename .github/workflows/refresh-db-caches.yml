@@ -1,0 +1,62 @@
+name: Refresh DB caches
+
+on:
+  workflow_run:
+    workflows:
+      - Sync Levanta payments
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-db-caches-main
+  cancel-in-progress: false
+
+jobs:
+  refresh-caches:
+    name: Rebuild API caches from DB
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyMySQL
+        run: pip install PyMySQL==1.1.1
+
+      - name: Rebuild API caches from DB
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+          OFFER_DB_READ_TIMEOUT: "300"
+        run: python scripts/refresh_api_caches.py
+
+      - name: Commit updated caches
+        run: |
+          git add protected_data/db_offers_cache.json protected_data/db_keywords_cache.json
+          if git diff --cached --quiet; then
+            echo "No cache changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Refresh DB API caches"
+          git push origin HEAD:main

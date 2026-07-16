@@ -214,6 +214,81 @@ def fetch_one(conn, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | 
         return cursor.fetchone()
 
 
+def _network_rows_map(rows: list[dict[str, Any]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    normalized_rows = sorted(
+        (
+            str(row.get("merchantId") or "").strip(),
+            str(row.get("network") or "").strip(),
+        )
+        for row in rows
+    )
+    for merchant_id, network in normalized_rows:
+        if merchant_id and network and merchant_id not in result:
+            result[merchant_id] = network
+    return result
+
+
+def direct_network_map(conn) -> dict[str, str]:
+    """Return network mappings from small indexed advertiser tables.
+
+    Do not query ``cnpscy_advertiser_performance_daily_view`` here. MySQL 5.6
+    materializes that view before applying merchant filters, and the resulting
+    DISTINCT temporary table can exhaust the server's ``/tmp`` filesystem.
+    """
+    type_rows = fetch_all(
+        conn,
+        "SELECT CAST(t.merchantId AS CHAR) AS merchantId, "
+        "       TRIM(at.advert_type_name) AS network "
+        "FROM cnpscy_oi_tier_assignments t "
+        "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+        "INNER JOIN cnpscy_advert_type at ON a.advert_advertiser = at.advert_type_id "
+        "WHERE at.advert_type_parent_id = 53 "
+        "AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''",
+    )
+    lianmeng_rows = fetch_all(
+        conn,
+        "SELECT CAST(t.merchantId AS CHAR) AS merchantId, "
+        "       TRIM(al.lianmeng) AS network "
+        "FROM cnpscy_oi_tier_assignments t "
+        "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+        "INNER JOIN cnpscy_advert_lianmeng al ON a.advert_name = al.AdvertiserName "
+        "WHERE al.lianmeng IS NOT NULL AND TRIM(al.lianmeng) != ''",
+    )
+    result = _network_rows_map(type_rows)
+    result.update(_network_rows_map(lianmeng_rows))
+    return result
+
+
+def offer_network_fallback_map(
+    conn,
+    merchant_ids: list[Any],
+    previous_cache: dict[str, Any] | None,
+) -> dict[str, str]:
+    requested = {
+        str(int(str(merchant_id).strip()))
+        for merchant_id in merchant_ids
+        if DIGITS_RE.match(str(merchant_id).strip())
+    }
+    if not requested:
+        return {}
+
+    result: dict[str, str] = {}
+    for row in (previous_cache or {}).get("offers", []):
+        merchant_id = str(row.get("merchantId") or "").strip()
+        network = str(row.get("network") or "").strip()
+        if merchant_id in requested and network not in ("", "Unknown"):
+            result[merchant_id] = network
+
+    unresolved = requested - set(result)
+    if unresolved:
+        direct = direct_network_map(conn)
+        for merchant_id in unresolved:
+            if direct.get(merchant_id):
+                result[merchant_id] = direct[merchant_id]
+    return result
+
+
 def table_columns(conn, table: str) -> set[str]:
     if table in TABLE_COLUMNS_CACHE:
         return TABLE_COLUMNS_CACHE[table]
@@ -1453,56 +1528,20 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
-        # Network from cnpscy_advertiser_performance_daily_view (primary source)
-        # Joins via advert_id = offer_id — covers ~4,000 tier merchants
-        net_perf_rows = fetch_all(
+        # Keep the last known network for merchants without payment-derived
+        # data. New merchants fall back to small advertiser lookup tables.
+        # Avoid the performance daily view: MySQL 5.6 materializes it into
+        # /tmp even when the outer query supplies a small merchant filter.
+        missing_network_ids = [
+            row.get("merchantId")
+            for row in core_offers
+            if row.get("network") in (None, "Unknown", "")
+        ]
+        network_map = offer_network_fallback_map(
             conn,
-            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, "
-            "       TRIM(v.advertiser_network_name) AS network "
-            "FROM cnpscy_oi_tier_assignments t "
-            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
-            "INNER JOIN cnpscy_advertiser_performance_daily_view v ON a.advert_id = v.offer_id "
-            "WHERE v.advertiser_network_name IS NOT NULL AND v.advertiser_network_name != ''",
+            missing_network_ids,
+            _load_any_cache(OFFERS_CACHE_FILE),
         )
-        network_map: dict[str, str] = {}
-        for r in net_perf_rows:
-            mid = r["merchantId"]
-            net = (r.get("network") or "").strip()
-            if mid and net and mid not in network_map:
-                network_map[mid] = net
-
-        # Fallback: ad_name = AdvertiserName in cnpscy_advert_lianmeng
-        net_name_rows = fetch_all(
-            conn,
-            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, al.lianmeng AS network "
-            "FROM cnpscy_oi_tier_assignments t "
-            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
-            "INNER JOIN cnpscy_advert_lianmeng al ON a.advert_name = al.AdvertiserName "
-            "WHERE al.lianmeng IS NOT NULL AND al.lianmeng != ''",
-        )
-        for r in net_name_rows:
-            mid = r["merchantId"]
-            net = (r.get("network") or "").strip()
-            if mid and net and mid not in network_map:
-                network_map[mid] = net
-
-        # Fallback 2: advert_type via cnpscy_advert.advert_advertiser (parent_id = 53 = 广告联盟)
-        # Covers all merchants that have a network type assigned — ~6,279 tier merchants
-        net_type_rows = fetch_all(
-            conn,
-            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, "
-            "       TRIM(at.advert_type_name) AS network "
-            "FROM cnpscy_oi_tier_assignments t "
-            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
-            "INNER JOIN cnpscy_advert_type at ON a.advert_advertiser = at.advert_type_id "
-            "WHERE at.advert_type_parent_id = 53 "
-            "AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''",
-        )
-        for r in net_type_rows:
-            mid = r["merchantId"]
-            net = (r.get("network") or "").strip()
-            if mid and net and mid not in network_map:
-                network_map[mid] = net
 
         # ── merge all into offers ──
         offers = []
