@@ -45,5 +45,6 @@ jobs:
           node scripts/test_chatbot_intent_flow.mjs
           node scripts/test_tier2_recommendation_rules.mjs
           node scripts/test_sheet_categories.mjs
+          node scripts/test_category_drilldown.mjs
           node scripts/test_zh_chatbot.mjs
           python scripts/test_payment_placeholders.py

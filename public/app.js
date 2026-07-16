@@ -87,6 +87,7 @@
     categoryReportSearch: "",
     categoryReportSort: "revenue",
     categoryReportDirection: "desc",
+    categoryReportFocusKey: "",
     expandedCategoryKey: null,
     lastOffer: null,
     lastRows: [],
@@ -6058,6 +6059,7 @@
       state.categoryReportTiers = normalizeCategoryReportTiers(Array.from(selected));
     }
     syncDashboardCategoryTierControls();
+    state.categoryReportFocusKey = "";
     state.expandedCategoryKey = null;
     renderDashboardCategoryReport();
   }
@@ -6180,7 +6182,43 @@
     </button></th>`;
   }
 
-  function handleDashboardCategorySortClick(event) {
+  function focusDashboardCategoryReport(key) {
+    const nextKey = String(key || "");
+    if (!nextKey || nextKey === state.categoryReportFocusKey) return;
+    state.categoryReportFocusKey = nextKey;
+    state.expandedCategoryKey = null;
+    renderDashboardCategoryReport();
+    const focusBackButton = () => els.dashboardCategoryReportBody?.querySelector("[data-category-focus-back]")?.focus({ preventScroll: true });
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(focusBackButton);
+    else focusBackButton();
+  }
+
+  function clearDashboardCategoryReportFocus() {
+    const previousKey = state.categoryReportFocusKey;
+    if (!previousKey) return;
+    state.categoryReportFocusKey = "";
+    state.expandedCategoryKey = null;
+    renderDashboardCategoryReport();
+    const restoreCategoryFocus = () => {
+      const target = Array.from(els.dashboardCategoryReportBody?.querySelectorAll("[data-category-focus]") || [])
+        .find((item) => item.dataset.categoryFocus === previousKey);
+      target?.focus({ preventScroll: true });
+    };
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(restoreCategoryFocus);
+    else restoreCategoryFocus();
+  }
+
+  function handleDashboardCategoryReportClick(event) {
+    const backButton = event.target.closest("[data-category-focus-back]");
+    if (backButton && els.dashboardCategoryReportBody.contains(backButton)) {
+      clearDashboardCategoryReportFocus();
+      return;
+    }
+    const focusTarget = event.target.closest("[data-category-focus]");
+    if (focusTarget && els.dashboardCategoryReportBody.contains(focusTarget)) {
+      focusDashboardCategoryReport(focusTarget.dataset.categoryFocus || "");
+      return;
+    }
     const exportButton = event.target.closest("[data-category-export]");
     if (exportButton && els.dashboardCategoryReportBody.contains(exportButton)) {
       downloadFocusedCategoryRows(exportButton);
@@ -6203,6 +6241,14 @@
       state.categoryReportDirection = dashboardCategoryDefaultSortDirection(key);
     }
     renderDashboardCategoryReport();
+  }
+
+  function handleDashboardCategoryReportKeydown(event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const focusTarget = event.target.closest("[data-category-focus]");
+    if (!focusTarget || !els.dashboardCategoryReportBody.contains(focusTarget)) return;
+    event.preventDefault();
+    focusDashboardCategoryReport(focusTarget.dataset.categoryFocus || "");
   }
 
   function dashboardCategorySortValue(group, key) {
@@ -6243,6 +6289,20 @@
       })
       : groups.slice();
     return filtered.sort(compareDashboardCategoryReportGroups);
+  }
+
+  function dashboardCategoryFocusedGroups(groups, focusKey = state.categoryReportFocusKey) {
+    const key = String(focusKey || "");
+    if (!key) return groups;
+    if (key === "other-categories") {
+      const metricKey = dashboardCategoryPieMetricKey();
+      const overflowKeys = new Set(groups
+        .filter((group) => number(dashboardCategorySortValue(group, metricKey)) > 0)
+        .slice(7)
+        .map((group) => categoryReportKey(group.category)));
+      return groups.filter((group) => overflowKeys.has(categoryReportKey(group.category)));
+    }
+    return groups.filter((group) => categoryReportKey(group.category) === key);
   }
 
   function dashboardCategoryReportTableRows(groups) {
@@ -6368,7 +6428,8 @@
       </section>`;
     }
 
-    const shouldGroupOverflow = isDashboardCategoryGlobalOverview();
+    const isFocused = Boolean(state.categoryReportFocusKey);
+    const shouldGroupOverflow = isDashboardCategoryGlobalOverview() && !isFocused;
     const visibleSlices = shouldGroupOverflow ? slices.slice(0, 7) : slices.slice();
     const overflowSlices = shouldGroupOverflow ? slices.slice(7) : [];
     const otherValue = overflowSlices.reduce((sum, slice) => sum + slice.value, 0);
@@ -6397,21 +6458,28 @@
       const tooltip = categoryReportTooltipText(slice.group, metricKey, slice.value, total);
       return `<circle class="category-pie-slice" cx="50" cy="50" r="40" pathLength="100"
         stroke="${slice.color}" stroke-dasharray="${dash.toFixed(4)} ${(100 - dash).toFixed(4)}"
-        stroke-dashoffset="${dashOffset.toFixed(4)}" data-category-highlight="${escapeHtml(slice.key)}"
+        stroke-dashoffset="${dashOffset.toFixed(4)}" data-category-highlight="${escapeHtml(slice.key)}" data-category-focus="${escapeHtml(slice.key)}"
         data-category-color="${escapeHtml(slice.color)}" data-category-tint="${escapeHtml(slice.tint)}"
         data-category-title="${escapeHtml(slice.label)}" data-category-value="${escapeHtml(categoryReportMetricText(metricKey, slice.value))}"
         data-category-share="${escapeHtml(shortPct(pct))}" data-category-merchants="${escapeHtml(number(slice.group.merchantCount).toLocaleString())}"
         data-category-orders="${escapeHtml(number(slice.group.orders).toLocaleString())}" data-category-top="${escapeHtml(slice.group.previewMerchants || slice.group.topMerchant || "-")}"
-        data-category-tooltip="${escapeHtml(tooltip)}" tabindex="0" role="button" aria-label="${escapeHtml(tooltip)}">
+        data-category-tooltip="${escapeHtml(tooltip)}" tabindex="0" role="button" aria-label="${escapeHtml(`Show only ${slice.label}. ${tooltip}`)}">
         <title>${escapeHtml(tooltip)}</title>
       </circle>`;
     }).join("");
     const leader = visibleSlices[0];
     const selectionText = dashboardCategoryPieSelectionText();
-    const segmentText = shouldGroupOverflow && otherValue > 0
-      ? `${visibleSlices.length} visible segments from ${groups.length.toLocaleString()} ${selectionText} categories.`
-      : `${visibleSlices.length.toLocaleString()} categories from ${selectionText}.`;
-    return `<section class="dashboard-category-pie" aria-label="Category pie chart">
+    const segmentText = isFocused
+      ? `${visibleSlices.length === 1 ? visibleSlices[0].label : `${visibleSlices.length.toLocaleString()} grouped categories`} from ${selectionText}.`
+      : shouldGroupOverflow && otherValue > 0
+        ? `${visibleSlices.length} visible segments from ${groups.length.toLocaleString()} ${selectionText} categories.`
+        : `${visibleSlices.length.toLocaleString()} categories from ${selectionText}.`;
+    const backButton = isFocused ? `<button class="category-focus-back" type="button" data-category-focus-back aria-label="Back to all categories">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.75 3.25 5 8l4.75 4.75M5.5 8h6"></path></svg>
+      <span>All categories</span>
+    </button>` : "";
+    return `<section class="dashboard-category-pie${isFocused ? " category-pie-focused" : ""}" aria-label="Category pie chart">
+      ${backButton}
       <div class="category-pie-visual" style="--leader-color: ${leader.color};">
         <svg class="category-pie-svg" viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(metricLabel)} mix by category">
           <circle class="category-pie-track" cx="50" cy="50" r="40"></circle>
@@ -6431,7 +6499,7 @@
           ${visibleSlices.map((slice) => {
             const pct = total ? slice.value / total : 0;
             const value = categoryReportMetricText(metricKey, slice.value);
-            return `<li data-category-highlight="${escapeHtml(slice.key)}" tabindex="0" style="--category-color: ${slice.color}; --category-tint: ${slice.tint};"
+            return `<li data-category-highlight="${escapeHtml(slice.key)}" data-category-focus="${escapeHtml(slice.key)}" tabindex="0" role="button" aria-label="${escapeHtml(`Show only ${slice.label}`)}" style="--category-color: ${slice.color}; --category-tint: ${slice.tint};"
               data-category-color="${escapeHtml(slice.color)}" data-category-tint="${escapeHtml(slice.tint)}"
               data-category-title="${escapeHtml(slice.label)}" data-category-value="${escapeHtml(value)}"
               data-category-share="${escapeHtml(shortPct(pct))}" data-category-merchants="${escapeHtml(number(slice.group.merchantCount).toLocaleString())}"
@@ -6628,7 +6696,12 @@
     if (!els.dashboardCategoryReportBody) return;
     const rows = dashboardCategoryReportRows();
     const allGroups = tierCategorySummaryRows(null, rows);
-    const groups = filterDashboardCategoryReportGroups(allGroups);
+    const filteredGroups = filterDashboardCategoryReportGroups(allGroups);
+    let groups = dashboardCategoryFocusedGroups(filteredGroups);
+    if (state.categoryReportFocusKey && !groups.length) {
+      state.categoryReportFocusKey = "";
+      groups = filteredGroups;
+    }
     const totalRevenue = groups.reduce((sum, group) => sum + number(group.revenue), 0);
     const totalOrders = groups.reduce((sum, group) => sum + number(group.orders), 0);
     const totalClicks = groups.reduce((sum, group) => sum + number(group.clicks), 0);
@@ -10189,10 +10262,12 @@
     els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
     els.dashboardCategorySearch.addEventListener("input", () => {
       state.categoryReportSearch = els.dashboardCategorySearch.value;
+      state.categoryReportFocusKey = "";
       state.expandedCategoryKey = null;
       renderDashboardCategoryReport();
     });
-    els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategorySortClick);
+    els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategoryReportClick);
+    els.dashboardCategoryReportBody.addEventListener("keydown", handleDashboardCategoryReportKeydown);
     els.dashboardCategoryReportBody.addEventListener("pointermove", handleCategoryPointerMove);
     els.dashboardCategoryReportBody.addEventListener("pointerleave", clearCategoryHighlight);
     els.dashboardCategoryReportBody.addEventListener("focusin", handleCategoryFocus);
@@ -10382,6 +10457,10 @@
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       displayCategory,
       dashboardCategoryGroups,
+      dashboardCategoryFocusedGroups,
+      dashboardCategoryPieHtml,
+      setCategoryReportFocusKey: (key) => { state.categoryReportFocusKey = String(key || ""); },
+      categoryReportFocusKey: () => state.categoryReportFocusKey,
       tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName)),
       tierRowHighlightKind: (sheetName, row) => tierRowHighlightKind(sheetByName(sheetName) || { name: sheetName }, row || {}),
       visualStatusForTierRow: (sheetName, row) => visualStatusForTierRow(sheetByName(sheetName) || { name: sheetName }, row || {}),
