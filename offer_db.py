@@ -1360,6 +1360,62 @@ def offers_payload(month: str | None = None, force_refresh: bool = False) -> dic
     return payload
 
 
+def offer_network_fallback_map(
+    conn,
+    merchant_ids: list[str],
+    cached_payload: dict[str, Any] | None,
+) -> dict[str, str]:
+    """仅对 network 缺失的商户回查 network 来源。
+
+    优先从缓存恢复历史已知的 network，再对缓存中找不到的商户
+    通过 cnpscy_advert_type 查漏（避免物化 cnpscy_advertiser_performance_daily_view 视图）。
+    """
+    network_map: dict[str, str] = {}
+
+    # 1) 从旧缓存恢复已知 network
+    if cached_payload and isinstance(cached_payload, dict):
+        cached_offers = cached_payload.get("offers", [])
+        if isinstance(cached_offers, list):
+            cache_by_id: dict[str, str] = {}
+            for o in cached_offers:
+                mid = o.get("merchantId")
+                net = o.get("network")
+                if mid and net and net not in (None, "", "Unknown"):
+                    cache_by_id[mid] = net
+            for mid in merchant_ids:
+                if mid in cache_by_id:
+                    network_map[mid] = cache_by_id[mid]
+
+    # 2) 缓存未命中 → 查 advert_type（避免视图物化）
+    db_ids = [mid for mid in merchant_ids if mid not in network_map]
+    if db_ids:
+        for batch in chunks(db_ids, 500):
+            placeholders = ", ".join(["%s"] * len(batch))
+            rows = fetch_all(
+                conn,
+                f"""
+                SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId,
+                       TRIM(at.advert_type_name) AS network
+                FROM cnpscy_oi_tier_assignments t
+                INNER JOIN cnpscy_advert a
+                    ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
+                INNER JOIN cnpscy_advert_type at
+                    ON a.advert_advertiser = at.advert_type_id
+                WHERE at.advert_type_parent_id = 53
+                  AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''
+                  AND t.merchantId IN ({placeholders})
+                """,
+                tuple(batch),
+            )
+            for r in rows:
+                mid = r["merchantId"]
+                net = (r.get("network") or "").strip()
+                if mid and net and mid not in network_map:
+                    network_map[mid] = net
+
+    return network_map
+
+
 def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
     """Internal: heavy DB query to build an offers payload from scratch."""
     with db_connection() as conn:
@@ -1481,26 +1537,17 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
-        # Network from cnpscy_advert_type (parent_id = 53 = 广告联盟)
-        # Covers all merchants that have a network type assigned — ~6,279 tier merchants.
-        # Replaces the previous cnpscy_advertiser_performance_daily_view (MySQL 视图物化导致 /tmp 写满)
-        # and cnpscy_advert_lianmeng 查询，避免视图物化和重复全表扫描。
-        net_type_rows = fetch_all(
+        # Network fallback: 只查 network 缺失的商户，避免全量扫描和视图物化
+        missing_network_ids = [
+            row.get("merchantId")
+            for row in core_offers
+            if row.get("network") in (None, "Unknown", "")
+        ]
+        network_map = offer_network_fallback_map(
             conn,
-            "SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId, "
-            "       TRIM(at.advert_type_name) AS network "
-            "FROM cnpscy_oi_tier_assignments t "
-            "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
-            "INNER JOIN cnpscy_advert_type at ON a.advert_advertiser = at.advert_type_id "
-            "WHERE at.advert_type_parent_id = 53 "
-            "AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''",
+            missing_network_ids,
+            _load_any_cache(OFFERS_CACHE_FILE),
         )
-        network_map: dict[str, str] = {}
-        for r in net_type_rows:
-            mid = r["merchantId"]
-            net = (r.get("network") or "").strip()
-            if mid and net and mid not in network_map:
-                network_map[mid] = net
 
         # ── merge all into offers ──
         offers = []
