@@ -4046,58 +4046,79 @@ th {
   border-bottom: 1px solid #e2e8f0;
 }
 
-.category-detail-wrap {
-  animation: category-detail-slide-in 240ms ease;
-  max-height: 600px;
-  overflow: auto;
-  padding: 4px 8px 12px 8px;
+.category-detail-merchant-row {
+  background: #fafcff;
 }
 
-@keyframes category-detail-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.category-detail-merchant-row:hover {
+  background: rgba(47, 128, 255, 0.045);
 }
 
-.category-detail-table {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  min-width: 900px;
-  overflow: hidden;
-  width: 100%;
-}
-
-.category-detail-table th {
-  background: #f1f5f9;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 8px 12px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.category-detail-table td {
-  border-top: 1px solid #f1f5f9;
-  padding: 8px 12px;
+.category-detail-merchant-row td {
+  padding: 6px 4px;
   vertical-align: middle;
   white-space: nowrap;
 }
 
-.category-detail-table tbody tr:hover {
-  background: rgba(47, 128, 255, 0.03);
+.category-detail-merchant-row td:first-child {
+  padding-left: 28px;
 }
 
-.category-detail-table tbody tr:first-child td {
+.category-detail-merchant-row small {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.category-expanded-detail td {
+  padding: 0;
+}
+
+.category-detail-scroll {
+  max-height: 540px;
+  overflow: auto;
+}
+
+.category-detail-inner-table {
+  border-collapse: collapse;
+  font-size: inherit;
+  width: 100%;
+}
+
+.category-detail-inner-table th {
+  background: #edf2f7;
+  border-bottom: 1px solid #dce2ea;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 7px 4px;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.category-detail-inner-table th:first-child {
+  padding-left: 28px;
+}
+
+.category-detail-inner-table th:empty {
+  border-bottom: 1px solid #dce2ea;
+}
+
+.category-detail-inner-table td {
+  border-top: 1px solid #f1f5f9;
+}
+
+.category-detail-inner-table tbody tr:first-child td {
   border-top: none;
+}
+
+.category-detail-merchant-indent {
+  display: inline-block;
+  flex-shrink: 0;
+  margin-right: 6px;
 }
 
 .table-sort-button {
