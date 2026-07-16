@@ -743,6 +743,7 @@ p {
 }
 
 .workspace {
+  position: relative;
   padding: 18px;
   display: flex;
   flex-direction: column;
@@ -4723,4 +4724,98 @@ td strong {
   .target-report-card {
     padding: 14px;
   }
+}
+
+/* ── Loading skeleton (light theme, uses app :root variables) ── */
+.app-loading-skeleton {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: var(--bg, #f5f7f8);
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+.app-loading .app-loading-skeleton {
+  opacity: 1;
+  visibility: visible;
+}
+
+.app-loading-skeleton {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  width: min(92%, 720px);
+}
+
+.skeleton-section {
+  background: var(--panel, #ffffff);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow, 0 18px 45px rgba(37, 48, 56, 0.08));
+}
+
+.skeleton-heading {
+  height: 18px;
+  width: 55%;
+  border-radius: 6px;
+  background: var(--line, #dce3e7);
+}
+
+.skeleton-row {
+  height: 14px;
+  width: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--line, #dce3e7) 25%, var(--panel, #ffffff) 50%, var(--line, #dce3e7) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton-row-short {
+  width: 65%;
+}
+
+.skeleton-message {
+  height: 46px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--line, #dce3e7) 25%, var(--panel, #ffffff) 50%, var(--line, #dce3e7) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton-message-alt {
+  width: 75%;
+  align-self: flex-end;
+}
+
+.skeleton-input {
+  height: 40px;
+  border-radius: 8px;
+  background: var(--line, #dce3e7);
+  margin-top: 6px;
+}
+
+.skeleton-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #687277);
+  letter-spacing: 0.3px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

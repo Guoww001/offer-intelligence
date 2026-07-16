@@ -1401,19 +1401,14 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 o["cpc"] = None
                 o["trackingIssue"] = 0
 
-            # product keywords
+            # product keywords — only productAsins kept in core payload for ASIN search;
+            # productTitles / productKeywords / productNameCount / productAsinCount
+            # are loaded lazily via /api/ui/db/keywords when chatbot needs them.
             pk = pk_map.get(mid)
             if pk:
                 o["productAsins"] = pk.get("productAsins")
-                o["productTitles"] = pk.get("productTitles")
-                o["productKeywords"] = pk.get("productKeywords")
-                o["productNameCount"] = pk.get("productNameCount")
-                o["productAsinCount"] = pk.get("productAsinCount")
             else:
-                for key in ("productAsins", "productTitles", "productKeywords"):
-                    o[key] = None
-                o["productNameCount"] = None
-                o["productAsinCount"] = None
+                o["productAsins"] = None
 
             offers.append(o)
 
@@ -1511,11 +1506,9 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             if asin_data and asin_data.get("topAsins"):
                 o["topAsins"] = [a.strip() for a in str(asin_data["topAsins"]).split(",") if a.strip()]
                 o["hasAsin"] = True
-                o["asinsText"] = asin_data["topAsins"]
             else:
                 o["topAsins"] = []
                 o["hasAsin"] = False
-                o["asinsText"] = None
 
             # payment risk
             pr = payment_risk_map.get(mid)
@@ -1558,8 +1551,9 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 o["paymentState"] = "not_available"
                 o["paymentStatus"] = "No payment issue found"
 
-            # split pipe-delimited product keyword fields
-            for field in ("productAsins", "productTitles", "productKeywords"):
+            # split pipe-delimited product keyword fields (productAsins only;
+            # productTitles/productKeywords are lazy-loaded via /api/ui/db/keywords)
+            for field in ("productAsins",):
                 val = o.get(field)
                 if isinstance(val, str) and val.strip():
                     o[field] = [item.strip() for item in val.split("|") if item.strip()]

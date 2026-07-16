@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./styles.css?v=20260707-category-redesign2" />
   </head>
-  <body class="auth-pending">
+  <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
       <div class="auth-bg" aria-hidden="true">
         <span class="auth-beam auth-beam-one"></span>
@@ -156,6 +156,26 @@
       </aside>
 
       <main class="workspace">
+
+        <div class="app-loading-skeleton" id="appLoadingSkeleton" aria-label="Loading dashboard data">
+          <div class="skeleton-grid">
+            <div class="skeleton-section skeleton-chart">
+              <div class="skeleton-heading"></div>
+              <div class="skeleton-row"></div>
+              <div class="skeleton-row skeleton-row-short"></div>
+              <div class="skeleton-row"></div>
+            </div>
+            <div class="skeleton-section skeleton-chat">
+              <div class="skeleton-heading"></div>
+              <div class="skeleton-message"></div>
+              <div class="skeleton-message skeleton-message-alt"></div>
+              <div class="skeleton-message"></div>
+              <div class="skeleton-input"></div>
+            </div>
+          </div>
+          <p class="skeleton-status">Loading offer data…</p>
+        </div>
+
         <section class="topbar dashboard-page">
           <div>
             <h2 data-i18n="dashboard.title">Recommendation Chatbot</h2>
