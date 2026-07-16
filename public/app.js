@@ -3214,7 +3214,7 @@
   function metricValueForOffer(offer, field) {
     if (!offer) return 0;
     if (field === "conversionRate") return (offer.conversionRate || 0) * 100;
-    if (field === "commissionRate") return (offer.commissionRate || 0) * 100;
+    if (field === "commissionRate") return (offer.commissionRate || 0);
     return offer[field] || 0;
   }
 
@@ -3662,11 +3662,13 @@
 
     // Core metrics table with percentile ranks
     html += "<div class=\"analysis-section\"><h4>" + (zh ? "核心指标" : "Core Metrics") + "</h4>";
-    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "数值" : "Value") + "</th><th>" + (zh ? "品类排名" : "Category Rank") + "</th></tr></thead><tbody>";
+    var firstRank = s.ranks[fields[0]];
+    var totalCat = firstRank ? firstRank.totalInCategory : 0;
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th><th>" + (zh ? "数值" : "Value") + "</th><th>" + (zh ? "品类排名" : "Category Rank") + (totalCat ? " (" + totalCat + " " + (zh ? "个商户" : "merchants") + ")" : "") + "</th></tr></thead><tbody>";
     for (var f = 0; f < fields.length; f++) {
       var field = fields[f];
       var rank = s.ranks[field];
-      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + (zh ? "前" : "Top ") + rank.percentile + "% (" + rank.totalInCategory + " " + (zh ? "个商户中" : "merchants") + ")</td></tr>";
+      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + (zh ? "前" : "Top ") + (100 - rank.percentile) + "%</td></tr>";
     }
     html += "</tbody></table></div>";
 
@@ -3685,7 +3687,7 @@
     if (s.strengths.length) {
       html += "<p><strong>" + (zh ? "亮点：" : "Strengths: ") + "</strong>";
       var strLabels = [];
-      for (var i = 0; i < s.strengths.length; i++) strLabels.push(metricLabel(s.strengths[i]) + " (" + (zh ? "品类前" : "top ") + s.ranks[s.strengths[i]].percentile + "%)");
+      for (var i = 0; i < s.strengths.length; i++) strLabels.push(metricLabel(s.strengths[i]) + " (" + (zh ? "品类前" : "top ") + (100 - s.ranks[s.strengths[i]].percentile) + "%)");
       html += escapeHtml(strLabels.join(", ")) + "</p>";
     }
     if (s.weaknesses.length) {
@@ -4104,6 +4106,131 @@
     );
   }
 
+  // ── Category ranking functions ─────────────────────────────────────────────
+
+  function categoryRankingScore(category) {
+    // Compute a composite score for a category, used to rank categories
+    // in the "recommended categories" feature.  Heavily weighted toward
+    // revenue and commission, with secondary weights for scale and efficiency.
+    var rows = offers.filter(function(o) { return categoryMatches(o, category); });
+    if (!rows.length) return 0;
+    var s = aggregateRows(rows);
+    var totalRevenue = s.totalRevenue || 0;
+    var totalCommission = s.totalCommission || 0;
+    var totalOrders = s.totalOrders || 0;
+    var offerCount = rows.length;
+    var avgAov = s.avgAov || 0;
+    var blendedEpc = s.blendedEpc || 0;
+    var tier1Count = rows.filter(function(o) { return o.tier === "Tier 1"; }).length;
+    var coreTier2Count = rows.filter(function(o) { return o.tier === "Tier 2" && highlightStatus(o) !== "Optimization only"; }).length;
+    var paymentRiskCount = rows.filter(hasPaymentRisk).length;
+    var score = 0;
+    score += Math.log10(totalRevenue + 1) * 25;
+    score += Math.log10(totalCommission + 1) * 20;
+    score += Math.log10(offerCount + 1) * 10;
+    score += Math.log10(totalOrders + 1) * 8;
+    score += Math.min(avgAov, 500) / 15;
+    score += Math.min(blendedEpc, 5) * 20;
+    score += (tier1Count + coreTier2Count) * 3;
+    score -= (paymentRiskCount / Math.max(offerCount, 1)) * 15;
+    return Math.round(score);
+  }
+
+  function computeCategoryRankings() {
+    var cats = uniqueCategoryValues();
+    return cats
+      .map(function(cat) { return { category: cat, score: categoryRankingScore(cat) }; })
+      .sort(function(a, b) {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.category.localeCompare(b.category);
+      });
+  }
+
+  function renderCategoryOfferRow(offer, index, language) {
+    return '<div class="recommendation-answer" style="margin-left:1em;border-left:3px solid var(--accent-color,#4a90d9);padding-left:12px">' +
+      '<strong>' + (index + 1) + '. ' + escapeHtml(offer.brand || "") + '</strong> - ' + escapeHtml(tierGroup(offer)) +
+      '<ul>' +
+      '<li><strong>' + (language === "zh" ? "关键指标" : "Key metrics") + ':</strong> AOV ' + shortMoney(offer.aov) + ', EPC ' + shortEpc(offer.epc) + ', CVR ' + shortPct(offer.conversionRate) + ', Orders ' + number(offer.orders).toLocaleString() + ', Revenue ' + shortMoney(offer.salesAmount) + '</li>' +
+      '<li><strong>' + (language === "zh" ? "推荐理由" : "Why recommended") + ':</strong> ' + escapeHtml(whyRecommended(offer, { language: language })) + '</li>' +
+      '<li><strong>' + (language === "zh" ? "最佳导流角度" : "Best traffic angle") + ':</strong> ' + escapeHtml(bestAngle(offer, { language: language })) + '</li>' +
+      '</ul></div>';
+  }
+
+  function renderCategoryRankingHtml(rankings, language) {
+    if (!rankings.length) {
+      return language === "zh"
+        ? "<p>当前数据中没有找到品类信息。</p>"
+        : "<p>No category data found in the current dataset.</p>";
+    }
+    var medalEmoji = ["🏆", "🥈", "🥉", "4️⃣", "5️⃣"];
+    var topRankings = rankings.slice(0, 5);
+    var parts = [];
+    if (language === "zh") {
+      parts.push('<h3 style="margin-bottom:12px">📊 推荐品类排名 Top 5</h3>');
+    } else {
+      parts.push('<h3 style="margin-bottom:12px">📊 Top 5 Recommended Categories</h3>');
+    }
+    topRankings.forEach(function(ranking, rankIndex) {
+      var cat = ranking.category;
+      var rows = offers.filter(function(o) { return categoryMatches(o, cat); });
+      var s = aggregateRows(rows);
+      var top5 = rankedRecommendations(rows, { includeTier4: false, includeBlack: false }).slice(0, 5);
+      if (language === "zh") {
+        parts.push('<div class="recommendation-answer" style="margin-top:16px">' +
+          '<h4>' + (medalEmoji[rankIndex] || "") + ' ' + (rankIndex + 1) + '. ' + escapeHtml(cat) + '（综合分: ' + ranking.score + '）</h4>' +
+          '<p style="color:var(--text-secondary,#666);font-size:0.9em">' +
+          'Offer数: ' + rows.length.toLocaleString() + ' | 总营收: ' + shortMoney(s.totalRevenue) + ' | 总佣金: ' + shortMoney(s.totalCommission) + ' | 平均AOV: ' + shortMoney(s.avgAov) + ' | Blended EPC: ' + shortEpc(s.blendedEpc) +
+          '</p>' +
+          '<p><strong>Top 5 推荐:</strong></p>');
+      } else {
+        parts.push('<div class="recommendation-answer" style="margin-top:16px">' +
+          '<h4>' + (medalEmoji[rankIndex] || "") + ' ' + (rankIndex + 1) + '. ' + escapeHtml(cat) + ' (Score: ' + ranking.score + ')</h4>' +
+          '<p style="color:var(--text-secondary,#666);font-size:0.9em">' +
+          'Offers: ' + rows.length.toLocaleString() + ' | Revenue: ' + shortMoney(s.totalRevenue) + ' | Commission: ' + shortMoney(s.totalCommission) + ' | Avg AOV: ' + shortMoney(s.avgAov) + ' | Blended EPC: ' + shortEpc(s.blendedEpc) +
+          '</p>' +
+          '<p><strong>Top 5 offers:</strong></p>');
+      }
+      top5.forEach(function(offer, i) {
+        parts.push(renderCategoryOfferRow(offer, i, language));
+      });
+      parts.push('</div>');
+    });
+    if (language === "zh") {
+      parts.push('<p style="margin-top:16px;color:var(--text-secondary,#666);font-style:italic">💡 输入品类名（如 "beauty 推荐"）查看该品类的详细推荐。</p>');
+    } else {
+      parts.push('<p style="margin-top:16px;color:var(--text-secondary,#666);font-style:italic">💡 Type a category name (e.g. "beauty offers") to see detailed recommendations for that category.</p>');
+    }
+    return parts.join("");
+  }
+
+  function recommendedCategoriesAnswer(prompt) {
+    var language = responseLanguageFor(prompt);
+    var rankings = computeCategoryRankings();
+    var topRankings = rankings.slice(0, 5);
+
+    // Store for follow-up queries
+    var offersByCat = {};
+    topRankings.forEach(function(r) {
+      offersByCat[r.category] = offers.filter(function(o) { return categoryMatches(o, r.category); });
+    });
+    state.lastCategoryRanking = {
+      rankings: rankings,
+      topCategories: topRankings.map(function(r) { return r.category; }),
+      offersByCategory: offersByCat
+    };
+
+    // Set context panel with all top-category offers
+    var allRows = [];
+    topRankings.forEach(function(r) {
+      offersByCat[r.category].forEach(function(o) { allRows.push(o); });
+    });
+    var contextSummary = aggregateRows(allRows);
+    var contextFilters = { exportCount: allRows.length, requestedCount: allRows.length, includeTier4: true, includeBlack: true };
+    setContext({ type: "recommendation", items: allRows, summary: contextSummary, filters: contextFilters });
+
+    return renderCategoryRankingHtml(rankings, language);
+  }
+
   function sortedForCategory(category, options = {}) {
     const includeTier4 = options.includeTier4 || /tier 4|retest/i.test(options.prompt || "");
     const includeBlack = options.includeBlack || /black|blocked/i.test(options.prompt || "");
@@ -4340,7 +4467,7 @@
         ["Clicks", countValue(offer.clicks)],
         ["DPV", countValue(offer.dpv)],
         ["ATC", countValue(offer.atc)],
-        ["Commission rate", pct(offer.commissionRate)],
+        ["Commission rate", (Number(offer.commissionRate) || 0).toFixed(2) + "%"],
         ["Payment", textValue(offer.paymentStatus)],
         ["Link status", textValue(offer.linkStatus || offer.recommendedLink)]
       ])}
@@ -4494,7 +4621,7 @@
       ["Tier", textValue(tierGroup(offer))],
       ["Category", textValue(displayCategory(offer))],
       ["Region", textValue(offer.region)],
-      ["Commission rate", pct(offer.commissionRate)],
+      ["Commission rate", (Number(offer.commissionRate) || 0).toFixed(2) + "%"],
       ["Payment cycle", paymentCycleText(offer, notAvailable)],
       ["AOV", money(offer.aov)]
     ];
@@ -5287,7 +5414,7 @@
         <strong>${index + 1}. ${escapeHtml(offer.brand || "")}</strong> - ${escapeHtml(tierGroup(offer))}
         <ul>
           <li><strong>${escapeHtml(language === "zh" ? copy.merchantId : "Merchant ID")}:</strong> ${escapeHtml(offer.merchantId || (language === "zh" ? copy.notAvailable : "not available"))}</li>
-          <li><strong>${escapeHtml(language === "zh" ? copy.keyMetrics : "Key metrics")}:</strong> AOV ${shortMoney(offer.aov)}, EPC ${shortEpc(offer.epc)}, commission ${shortPct(offer.commissionRate)}, clicks ${number(offer.clicks).toLocaleString()}, orders ${number(offer.orders).toLocaleString()}, CVR ${shortPct(offer.conversionRate)}, revenue ${shortMoney(offer.salesAmount)}</li>
+          <li><strong>${escapeHtml(language === "zh" ? copy.keyMetrics : "Key metrics")}:</strong> AOV ${shortMoney(offer.aov)}, EPC ${shortEpc(offer.epc)}, commission ${(Number(offer.commissionRate) || 0).toFixed(2)}%, clicks ${number(offer.clicks).toLocaleString()}, orders ${number(offer.orders).toLocaleString()}, CVR ${shortPct(offer.conversionRate)}, revenue ${shortMoney(offer.salesAmount)}</li>
           ${tier2RecommendationDetailsHtml(offer, language)}
           <li><strong>${escapeHtml(language === "zh" ? copy.whyRecommended : "Why recommended")}:</strong> ${escapeHtml(whyRecommended(offer, context))}</li>
           <li><strong>${escapeHtml(language === "zh" ? copy.bestTrafficAngle : "Best traffic angle")}:</strong> ${escapeHtml(bestAngle(offer, context))}</li>
@@ -5617,6 +5744,11 @@
     // skip keyword search — the user is asking for ranked offers, not a text search.
     const llmIndicatesRecommendation = p.tier || p.count || (p.metricFilters && p.metricFilters.length) || p.metricSort;
 
+    // LLM-param route: user asked for category-level ranking
+    if (p.recommendCategories === true) {
+      return recommendedCategoriesAnswer(prompt);
+    }
+
     if (intent === "analysis") {
       return analysisAnswer(prompt, p);
     }
@@ -5631,6 +5763,13 @@
 
     if (intent === "payment") {
       return paymentAnswer(prompt);
+    }
+
+    // Regex fallback: detect category-ranking intent when LLM didn't return recommendCategories
+    // Trigger when user asks for "recommended categories" / "category ranking" / "品类推荐"
+    // without specifying a concrete category, tier, count, or metric filter/sort.
+    if (wantsRecommendation && !categories.length && !tiers.length && !p.count && !metricFilters.length && !metricSort && hasCategoryIntentText(prompt) && !keywordRequest) {
+      return recommendedCategoriesAnswer(prompt);
     }
 
     if (wantsRecommendation) {
@@ -5692,6 +5831,36 @@
           description: `${rows.length.toLocaleString()} matching category offers.`
         }) +
         resultTable(previewRows, compactColumns, language);
+    }
+
+    // Category ranking follow-up: user drills into a specific category after seeing rankings
+    if (state.lastCategoryRanking && categories.length && !tiers.length && !wantsRecommendation) {
+      var targetCat = categories[0];
+      var rankInfo = state.lastCategoryRanking.rankings.find(function(r) {
+        return categoryMatches({ category: r.category }, targetCat);
+      });
+      if (rankInfo) {
+        var rows2 = sortedForCategory([targetCat], { includeTier4: wantsTier4, includeBlack: wantsBlack, prompt: prompt });
+        var preview2 = rows2.slice(0, 25);
+        setContext(buildCategoryContext(targetCat, rows2.slice(0, 80)));
+        var rankNote = language === "zh"
+          ? '（品类排名第' + (state.lastCategoryRanking.rankings.indexOf(rankInfo) + 1) + '，综合分: ' + rankInfo.score + '）'
+          : ' (Rank #' + (state.lastCategoryRanking.rankings.indexOf(rankInfo) + 1) + ', Score: ' + rankInfo.score + ')';
+        var title2 = language === "zh"
+          ? '<h3>' + escapeHtml(targetCat) + ' 品类详情' + rankNote + '</h3>'
+          : '<h3>' + escapeHtml(targetCat) + ' category details' + rankNote + '</h3>';
+        return title2 +
+          resultTable(preview2, compactColumns, language) +
+          downloadCardHtml(rows2, {
+            downloadType: "offers",
+            filePrefix: "category_offers",
+            exportScope: targetCat,
+            sheetName: "Category Offers"
+          }, {
+            title: targetCat + ' file',
+            description: rows2.length.toLocaleString() + ' matching offers.'
+          });
+      }
     }
 
     if (/high epc|high aov|low conversion|low cvr|tracking issue|has asin|discount/.test(lower) || /高\s*epc|高\s*aov|低转化|低转换|跟踪问题|追踪问题|有\s*asin|折扣|优惠/.test(prompt)) {
@@ -6712,6 +6881,9 @@
       els.dashboardCategoryReportSubtitle.textContent = `${tierText} / ${rows.length.toLocaleString()} rows / ${groups.length.toLocaleString()} of ${allGroups.length.toLocaleString()} categories`;
     }
     if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearch;
+    const prevScrollEl = els.dashboardCategoryReportBody.querySelector(".table-wrap");
+    const prevTableScroll = prevScrollEl ? prevScrollEl.scrollTop : 0;
+    const prevDocScroll = window.scrollY;
     els.dashboardCategoryReportBody.innerHTML = `<dl class="dashboard-category-report-totals">
       <div><dt>${escapeHtml(labelText("Merchants"))}</dt><dd>${merchantCount.toLocaleString()}</dd></div>
       <div><dt>${escapeHtml(labelText("Revenue"))}</dt><dd>${shortMoney(totalRevenue)}</dd></div>
@@ -6739,6 +6911,11 @@
         <tbody>${groups.length ? dashboardCategoryReportTableRows(groups) : `<tr><td colspan="10">No category rows match the selected tiers or category search.</td></tr>`}</tbody>
       </table>
     </div>`;
+    requestAnimationFrame(() => {
+      const wrap = els.dashboardCategoryReportBody.querySelector(".table-wrap");
+      if (wrap) wrap.scrollTop = prevTableScroll;
+      window.scrollTo(0, prevDocScroll);
+    });
     animateDashboardCategoryRefresh();
     syncDashboardCategoryTierControls();
   }
@@ -6932,7 +7109,7 @@
       ["Merchant ID", (offer) => offer.merchantId || ""],
       ["Name", (offer) => offer.brand || offer.merchantName || ""],
       ["AOV", (offer) => number(offer.aov)],
-      ["Commission Rate", (offer) => shortPct(offer.commissionRate)],
+      ["Commission Rate", (offer) => (Number(offer.commissionRate) || 0).toFixed(2) + "%"],
       ["Payment Cycle", (offer) => offer.paymentCycle || ""],
       ["Main Category", (offer) => offer.mainCategory || ""],
       ["Subcategory", (offer) => offer.subCategory || ""]

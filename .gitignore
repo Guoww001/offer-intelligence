@@ -10,3 +10,4 @@ __pycache__/
 .vercel
 specs/
 tests/
+.playwright-mcp

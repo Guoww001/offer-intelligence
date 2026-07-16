@@ -998,6 +998,8 @@ body.dashboard-mode .chat-panel {
   margin: 0;
   padding: 0;
   list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .db-chat-products li {

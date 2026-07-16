@@ -95,6 +95,15 @@ class RecommendationSkill(IntentSkill):
                 },
                 description="Sort specification",
             ),
+            "recommendCategories": ParamDef(
+                type="bool",
+                description="Set to true when the user asks for category-level recommendations "
+                "or wants to see which categories are best/ranked (e.g. 'recommended categories', "
+                "'推荐品类排名', 'category ranking', 'best categories', '品类推荐'). "
+                "IMPORTANT: Only set this when the query asks about categories/品类 in GENERAL "
+                "without specifying a concrete category name. If a specific category is named, "
+                "use the 'category' param instead.",
+            ),
             "keywordSearch": ParamDef(
                 type="str",
                 description="Keyword/phrase to search for",
@@ -126,6 +135,27 @@ class RecommendationSkill(IntentSkill):
 
     def examples(self) -> list[ExamplePair]:
         return [
+            ExamplePair(
+                query="recommended categories",
+                output={
+                    "intent": "recommendation",
+                    "params": {"recommendCategories": True},
+                },
+            ),
+            ExamplePair(
+                query="推荐品类排名",
+                output={
+                    "intent": "recommendation",
+                    "params": {"recommendCategories": True},
+                },
+            ),
+            ExamplePair(
+                query="which categories are best",
+                output={
+                    "intent": "recommendation",
+                    "params": {"recommendCategories": True},
+                },
+            ),
             ExamplePair(
                 query="Show me top 5 electronics offers with aov above 100",
                 output={
