@@ -215,6 +215,81 @@ def fetch_one(conn, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | 
         return cursor.fetchone()
 
 
+def _network_rows_map(rows: list[dict[str, Any]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    normalized_rows = sorted(
+        (
+            str(row.get("merchantId") or "").strip(),
+            str(row.get("network") or "").strip(),
+        )
+        for row in rows
+    )
+    for merchant_id, network in normalized_rows:
+        if merchant_id and network and merchant_id not in result:
+            result[merchant_id] = network
+    return result
+
+
+def direct_network_map(conn) -> dict[str, str]:
+    """Return network mappings from small indexed advertiser tables.
+
+    Do not query ``cnpscy_advertiser_performance_daily_view`` here. MySQL 5.6
+    materializes that view before applying merchant filters, and the resulting
+    DISTINCT temporary table can exhaust the server's ``/tmp`` filesystem.
+    """
+    type_rows = fetch_all(
+        conn,
+        "SELECT CAST(t.merchantId AS CHAR) AS merchantId, "
+        "       TRIM(at.advert_type_name) AS network "
+        "FROM cnpscy_oi_tier_assignments t "
+        "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+        "INNER JOIN cnpscy_advert_type at ON a.advert_advertiser = at.advert_type_id "
+        "WHERE at.advert_type_parent_id = 53 "
+        "AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''",
+    )
+    lianmeng_rows = fetch_all(
+        conn,
+        "SELECT CAST(t.merchantId AS CHAR) AS merchantId, "
+        "       TRIM(al.lianmeng) AS network "
+        "FROM cnpscy_oi_tier_assignments t "
+        "INNER JOIN cnpscy_advert a ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1 "
+        "INNER JOIN cnpscy_advert_lianmeng al ON a.advert_name = al.AdvertiserName "
+        "WHERE al.lianmeng IS NOT NULL AND TRIM(al.lianmeng) != ''",
+    )
+    result = _network_rows_map(type_rows)
+    result.update(_network_rows_map(lianmeng_rows))
+    return result
+
+
+def offer_network_fallback_map(
+    conn,
+    merchant_ids: list[Any],
+    previous_cache: dict[str, Any] | None,
+) -> dict[str, str]:
+    requested = {
+        str(int(str(merchant_id).strip()))
+        for merchant_id in merchant_ids
+        if DIGITS_RE.match(str(merchant_id).strip())
+    }
+    if not requested:
+        return {}
+
+    result: dict[str, str] = {}
+    for row in (previous_cache or {}).get("offers", []):
+        merchant_id = str(row.get("merchantId") or "").strip()
+        network = str(row.get("network") or "").strip()
+        if merchant_id in requested and network not in ("", "Unknown"):
+            result[merchant_id] = network
+
+    unresolved = requested - set(result)
+    if unresolved:
+        direct = direct_network_map(conn)
+        for merchant_id in unresolved:
+            if direct.get(merchant_id):
+                result[merchant_id] = direct[merchant_id]
+    return result
+
+
 def table_columns(conn, table: str) -> set[str]:
     if table in TABLE_COLUMNS_CACHE:
         return TABLE_COLUMNS_CACHE[table]

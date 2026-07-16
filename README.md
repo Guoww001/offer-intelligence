@@ -96,6 +96,7 @@ The dashboard renders a standalone category-wise report from the tier sheet rows
 - `All Tier 1-4` selects `Tier 1`, `Tier 2`, `Tier 3`, and `Tier 4` only.
 - `BLACK TIER` is available as a separate checkbox and is not included in the all-tier shortcut.
 - The report groups selected tier merchants by displayed category and shows merchants, revenue, orders, conversion, EPC, AOV, top merchants, and tier mix.
+- Click a donut segment or category legend item to focus every report metric, chart, and table on that category; use the compact `All categories` control in the chart's upper-right corner to return to the overview.
 
 Manual test case:
 
