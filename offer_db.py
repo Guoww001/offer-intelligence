@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import re
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -1334,6 +1335,8 @@ _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
+# 防止 ThreadingHTTPServer 多线程同时重建 offers 缓存导致 MySQL /tmp 写满
+_offers_rebuild_lock = threading.Lock()
 
 
 def _cache_age(path: Path) -> float | None:
@@ -1395,28 +1398,97 @@ def offers_payload(month: str | None = None, force_refresh: bool = False) -> dic
             if age is not None and age < CACHE_TTL_SECONDS:
                 _offers_memory_cache = (now, cached)
                 return cached  # fresh from disk
-            # Stale: return immediately, trigger background refresh
+            # Stale: return immediately, trigger background refresh (with lock)
             _offers_memory_cache = (now, cached)
             if not _bg_refresh_running.get("offers"):
                 _bg_refresh_running["offers"] = True
-                import threading as _th
 
                 def _refresh_offers():
                     global _offers_memory_cache
                     try:
-                        payload = _build_offers_payload(month)
-                        _save_cache(OFFERS_CACHE_FILE, payload)
-                        _offers_memory_cache = (time.time(), payload)
+                        with _offers_rebuild_lock:
+                            # 二次检查：另一个线程可能已经刷新过了
+                            if _offers_memory_cache is not None:
+                                ts, curr = _offers_memory_cache
+                                if time.time() - ts < 60:  # 60秒内已经刷过则跳过
+                                    return
+                            payload = _build_offers_payload(month)
+                            _save_cache(OFFERS_CACHE_FILE, payload)
+                            _offers_memory_cache = (time.time(), payload)
                     finally:
                         _bg_refresh_running["offers"] = False
 
-                _th.Thread(target=_refresh_offers, daemon=True).start()
+                threading.Thread(target=_refresh_offers, daemon=True).start()
             return cached
 
     # No cache available at all: build from DB
-    payload = _build_offers_payload(month)
-    _offers_memory_cache = (now, payload)
+    # 使用锁防止 ThreadingHTTPServer 多线程并发重建导致 MySQL /tmp 写满
+    with _offers_rebuild_lock:
+        # Double-check: 另一个线程可能已经重建好了
+        if not force_refresh and _offers_memory_cache is not None:
+            ts, cached = _offers_memory_cache
+            if now - ts < CACHE_TTL_SECONDS:
+                return cached
+        payload = _build_offers_payload(month)
+        _save_cache(OFFERS_CACHE_FILE, payload)
+        _offers_memory_cache = (now, payload)
     return payload
+
+
+def offer_network_fallback_map(
+    conn,
+    merchant_ids: list[str],
+    cached_payload: dict[str, Any] | None,
+) -> dict[str, str]:
+    """仅对 network 缺失的商户回查 network 来源。
+
+    优先从缓存恢复历史已知的 network，再对缓存中找不到的商户
+    通过 cnpscy_advert_type 查漏（避免物化 cnpscy_advertiser_performance_daily_view 视图）。
+    """
+    network_map: dict[str, str] = {}
+
+    # 1) 从旧缓存恢复已知 network
+    if cached_payload and isinstance(cached_payload, dict):
+        cached_offers = cached_payload.get("offers", [])
+        if isinstance(cached_offers, list):
+            cache_by_id: dict[str, str] = {}
+            for o in cached_offers:
+                mid = o.get("merchantId")
+                net = o.get("network")
+                if mid and net and net not in (None, "", "Unknown"):
+                    cache_by_id[mid] = net
+            for mid in merchant_ids:
+                if mid in cache_by_id:
+                    network_map[mid] = cache_by_id[mid]
+
+    # 2) 缓存未命中 → 查 advert_type（避免视图物化）
+    db_ids = [mid for mid in merchant_ids if mid not in network_map]
+    if db_ids:
+        for batch in chunks(db_ids, 500):
+            placeholders = ", ".join(["%s"] * len(batch))
+            rows = fetch_all(
+                conn,
+                f"""
+                SELECT DISTINCT CAST(t.merchantId AS CHAR) AS merchantId,
+                       TRIM(at.advert_type_name) AS network
+                FROM cnpscy_oi_tier_assignments t
+                INNER JOIN cnpscy_advert a
+                    ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
+                INNER JOIN cnpscy_advert_type at
+                    ON a.advert_advertiser = at.advert_type_id
+                WHERE at.advert_type_parent_id = 53
+                  AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''
+                  AND t.merchantId IN ({placeholders})
+                """,
+                tuple(batch),
+            )
+            for r in rows:
+                mid = r["merchantId"]
+                net = (r.get("network") or "").strip()
+                if mid and net and mid not in network_map:
+                    network_map[mid] = net
+
+    return network_map
 
 
 def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
@@ -1438,6 +1510,18 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                     prev_month1 = f"{y}-01"; prev_month2 = f"{y-1}-12"
                 else:
                     prev_month1 = f"{y}-{m_val-1:02d}"; prev_month2 = f"{y}-{m_val-2:02d}"
+            except (ValueError, IndexError):
+                pass
+
+        # Payment records start month (24 个月前，避免全表扫描写满 /tmp)
+        payment_start_month = ""
+        if month and len(month) == 7 and month[4] == "-":
+            try:
+                y, m_val = int(month[:4]), int(month[5:7])
+                total = y * 12 + m_val - 1 - 23  # 24 months back
+                py = total // 12
+                pm = total % 12 + 1
+                payment_start_month = f"{py}-{pm:02d}"
             except (ValueError, IndexError):
                 pass
 
@@ -1528,10 +1612,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
-        # Keep the last known network for merchants without payment-derived
-        # data. New merchants fall back to small advertiser lookup tables.
-        # Avoid the performance daily view: MySQL 5.6 materializes it into
-        # /tmp even when the outer query supplies a small merchant filter.
+        # Network fallback: 只查 network 缺失的商户，避免全量扫描和视图物化
         missing_network_ids = [
             row.get("merchantId")
             for row in core_offers
@@ -1555,7 +1636,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             o["visualStatusReason"] = vs["reason_text"] if vs else None
             o["visualStatusSource"] = vs["source"] if vs else None
 
-            # network from performance view / advert_lianmeng / advert_type (overrides DB default)
+            # network from advert_type (覆盖 pr_net 的 'Unknown' 默认值)
             nm = network_map.get(mid)
             if nm and o.get("network") in (None, "Unknown", ""):
                 o["network"] = nm
@@ -1635,7 +1716,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         asin_map: dict[str, dict] = {r["merchantId"]: r for r in asin_rows}
 
-        # ── payment records ──
+        # ── payment records (限定 24 个月，避免全表扫描写满 /tmp) ──
         payment_records_raw = fetch_all(
             conn,
             """
@@ -1649,11 +1730,13 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                    paymentStatus, rawStatus, lastCheckedDate,
                    currency, isPlaceholder, notes
             FROM cnpscy_oi_payment_records
+            WHERE reportMonthKey >= %s
             ORDER BY reportMonthKey DESC, merchantId
             """,
+            (payment_start_month,),
         )
 
-        # ── payment risk per merchant ──
+        # ── payment risk per merchant (限定 24 个月) ──
         payment_risk_rows = fetch_all(
             conn,
             """
@@ -1670,8 +1753,10 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 SUM(CASE WHEN paymentStatus IN ('Unpaid', 'Overdue', 'Partial')
                     THEN revenueMade ELSE 0 END) AS unpaidSales
             FROM cnpscy_oi_payment_records
+            WHERE reportMonthKey >= %s
             GROUP BY merchantId
             """,
+            (payment_start_month,),
         )
         payment_risk_map: dict[str, dict] = {r["merchantId"]: r for r in payment_risk_rows}
 
@@ -1810,7 +1895,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         # ── summary ──
         tier_rows = fetch_all(conn,
             "SELECT tier, COUNT(*) AS cnt FROM cnpscy_oi_tier_assignments GROUP BY tier ORDER BY cnt DESC")
-        # Build network summary from already-merged offers (includes advert_lianmeng + payment_records)
+        # Build network summary from already-merged offers
         from collections import Counter as _Counter
         _net_counts = _Counter(o.get("network") or "Unknown" for o in offers)
         network_rows = [{"network": k, "cnt": v} for k, v in _net_counts.most_common()]

@@ -107,6 +107,18 @@ def call_llm(
     if timeout is None:
         timeout = _default_timeout()
 
+    # Rough token estimate: ~4 chars per token for English/Chinese mix
+    system_len = len(system_prompt)
+    user_len = len(user_message)
+    est_input_tokens = (system_len + user_len) // 3
+    print(
+        f"[llm_provider] → {provider} {_model_name()} "
+        f"est_input={est_input_tokens}tok "
+        f"(sys={system_len}chars + user={user_len}chars) "
+        f"max_output={max_tokens}tok",
+        file=sys.stderr,
+    )
+
     try:
         if provider == "deepseek":
             from openai import OpenAI
@@ -120,6 +132,17 @@ def call_llm(
                     {"role": "user", "content": user_message},
                 ],
             )
+            usage = getattr(response, "usage", None)
+            if usage:
+                print(
+                    f"[llm_provider] ← {provider} "
+                    f"prompt_tokens={usage.prompt_tokens} "
+                    f"completion_tokens={usage.completion_tokens} "
+                    f"total_tokens={usage.total_tokens}",
+                    file=sys.stderr,
+                )
+            else:
+                print(f"[llm_provider] ← {provider} (no usage data)", file=sys.stderr)
             return response.choices[0].message.content or ""
         else:
             import anthropic
@@ -132,6 +155,16 @@ def call_llm(
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
             )
+            usage = getattr(message, "usage", None)
+            if usage:
+                print(
+                    f"[llm_provider] ← {provider} "
+                    f"input_tokens={usage.input_tokens} "
+                    f"output_tokens={usage.output_tokens}",
+                    file=sys.stderr,
+                )
+            else:
+                print(f"[llm_provider] ← {provider} (no usage data)", file=sys.stderr)
             return "".join(
                 block.text for block in message.content if getattr(block, "type", None) == "text"
             )

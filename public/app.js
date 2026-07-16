@@ -6520,9 +6520,8 @@
         const epc = tierRowEpc(row);
         const cvr = clicks ? orders / clicks : null;
         const aov = orders ? revenue / orders : null;
-        return `<tr>
-          <td><strong>${escapeHtml(merchantName || "-")}</strong></td>
-          <td><small>${escapeHtml(merchantId || "-")}</small></td>
+        return `<tr class="category-detail-merchant-row">
+          <td><span class="category-detail-merchant-indent"></span><strong>${escapeHtml(merchantName || "-")}</strong><br><small>${escapeHtml(merchantId || "-")}</small></td>
           <td>${escapeHtml(tier)}</td>
           <td>${shortMoney(revenue)}</td>
           <td>${number(orders).toLocaleString()}</td>
@@ -6530,16 +6529,17 @@
           <td>${shortEpc(epc)}</td>
           <td>${shortPct(cvr)}</td>
           <td>${shortMoney(aov)}</td>
+          <td></td>
+          <td></td>
         </tr>`;
       }).join("");
-      const detailRow = `<tr class="category-expanded-detail">
+      return summaryRow + `<tr class="category-expanded-detail">
         <td colspan="10">
-          <div class="category-detail-wrap">
-            <table class="category-detail-table tier-category-table">
+          <div class="category-detail-scroll">
+            <table class="category-detail-inner-table">
               <thead>
                 <tr>
-                  <th>Merchant</th>
-                  <th>Merchant ID</th>
+                  <th>Merchant / ID</th>
                   <th>Tier</th>
                   <th>Revenue</th>
                   <th>Orders</th>
@@ -6547,6 +6547,8 @@
                   <th>EPC</th>
                   <th>CVR</th>
                   <th>AOV</th>
+                  <th></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>${merchantRows}</tbody>
@@ -6554,7 +6556,6 @@
           </div>
         </td>
       </tr>`;
-      return summaryRow + detailRow;
     }).join("");
   }
 
