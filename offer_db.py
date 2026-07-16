@@ -1112,6 +1112,8 @@ _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+# In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
+_offers_memory_cache: tuple[float, dict[str, Any]] | None = None
 
 
 def _cache_age(path: Path) -> float | None:
@@ -1150,27 +1152,51 @@ def _save_cache(path: Path, payload: dict[str, Any]) -> None:
 def offers_payload(month: str | None = None, force_refresh: bool = False) -> dict[str, Any]:
     """从 cnpscy_oi_* 视图/表返回全量 offer 列表 + 月度指标 + 汇总统计。
 
-    结果缓存到 protected_data/db_offers_cache.json（TTL 6 小时）。
+    结果缓存到 protected_data/db_offers_cache.json（TTL 6 小时），
+    同时保持进程内内存缓存避免重复的 23MB json.loads。
     缓存过期后先返回旧数据（毫秒级），后台异步刷新。
     传 force_refresh=True 可跳过缓存同步重建。
     """
+    global _offers_memory_cache
+    now = time.time()
+
+    # Memory cache — avoid 23MB file read + json.loads on warm requests
+    if not force_refresh and _offers_memory_cache is not None:
+        ts, payload = _offers_memory_cache
+        if now - ts < CACHE_TTL_SECONDS:
+            return payload
+        # TTL expired: fall through to file cache
+
+    # File cache — shared across Vercel instances
     if not force_refresh:
         cached = _load_any_cache(OFFERS_CACHE_FILE)
         if cached is not None:
             age = _cache_age(OFFERS_CACHE_FILE)
             if age is not None and age < CACHE_TTL_SECONDS:
-                return cached  # fresh
+                _offers_memory_cache = (now, cached)
+                return cached  # fresh from disk
             # Stale: return immediately, trigger background refresh
+            _offers_memory_cache = (now, cached)
             if not _bg_refresh_running.get("offers"):
                 _bg_refresh_running["offers"] = True
                 import threading as _th
-                _th.Thread(target=lambda: (
-                    _save_cache(OFFERS_CACHE_FILE, _build_offers_payload(month)),
-                    _bg_refresh_running.__setitem__("offers", False)
-                ), daemon=True).start()
+
+                def _refresh_offers():
+                    global _offers_memory_cache
+                    try:
+                        payload = _build_offers_payload(month)
+                        _save_cache(OFFERS_CACHE_FILE, payload)
+                        _offers_memory_cache = (time.time(), payload)
+                    finally:
+                        _bg_refresh_running["offers"] = False
+
+                _th.Thread(target=_refresh_offers, daemon=True).start()
             return cached
 
-    return _build_offers_payload(month)
+    # No cache available at all: build from DB
+    payload = _build_offers_payload(month)
+    _offers_memory_cache = (now, payload)
+    return payload
 
 
 def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
