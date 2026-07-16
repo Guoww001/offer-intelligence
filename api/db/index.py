@@ -16,6 +16,7 @@ from offer_db import (
     send_json,
     status_payload,
     tier_sheet_payload,
+    tier_summary_payload,
 )
 
 
@@ -111,6 +112,19 @@ def handle_ui_offers(target, query):
         send_db_error(target, error)
 
 
+def handle_ui_tier_summary(target, query):
+    try:
+        send_json(
+            target,
+            200,
+            tier_summary_payload(month=first_query_value(query, "month") or None),
+        )
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def handle_ui_tier_sheet(target, query):
     tier = first_query_value(query, "tier")
     if not tier:
@@ -145,14 +159,16 @@ def app(environ, start_response):
         handle_options(target)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
-    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet"}:
+    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-tier-summary"}:
         if require_auth(target):
             if route == "ui-keywords":
                 handle_ui_keywords(target)
             elif route == "ui-offers":
                 handle_ui_offers(target, query)
-            else:
+            elif route == "ui-tier-sheet":
                 handle_ui_tier_sheet(target, query)
+            else:
+                handle_ui_tier_summary(target, query)
     elif require_db_token(target):
         if route == "status":
             handle_status(target, query)

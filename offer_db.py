@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import gzip
 import hmac
 import json
 import os
@@ -52,12 +53,21 @@ def _json_bytes(payload: Any) -> bytes:
 
 def send_json(target, status: int, payload: Any, methods: str = "GET, OPTIONS") -> None:
     body = b"" if status == 204 else _json_bytes(payload)
+    # Gzip compression for large payloads (>1KB) when client supports it
+    accepts_gzip = "gzip" in (getattr(target, "headers", None) or {}).get("Accept-Encoding", "")
+    did_compress = False
+    if accepts_gzip and len(body) > 1024:
+        body = gzip.compress(body, compresslevel=6)
+        did_compress = True
     target.send_response(status)
     target.send_header("Access-Control-Allow-Origin", "*")
     target.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Offer-Db-Token")
     target.send_header("Access-Control-Allow-Methods", methods)
     target.send_header("Cache-Control", "no-store")
     target.send_header("Content-Type", "application/json; charset=utf-8")
+    if did_compress:
+        target.send_header("Content-Encoding", "gzip")
+        target.send_header("Vary", "Accept-Encoding")
     target.send_header("Content-Length", str(len(body)))
     target.end_headers()
     if body:
@@ -812,6 +822,141 @@ def status_payload(
                 include_amazon_orders=False,
             ),
         }
+    _status_cache[cache_key] = (now, payload)
+    return payload
+
+
+def tier_summary_payload(month: str | None = None) -> dict[str, Any]:
+    """Return per-tier aggregated metrics for a given month.
+
+    Queries cnpscy_oi_tier_assignments joined with
+    cnpscy_oi_offer_monthly_amazon_metrics to produce per-tier
+    brand count, orders, revenue, clicks, payout, and conversion rate.
+    Falls back to cnpscy_order_new_aggregate if the monthly metrics
+    view is unavailable.
+    """
+    cache_key = f"tier_summary:{month or ''}"
+    now = time.time()
+    cached = _status_cache.get(cache_key)
+    if cached is not None and now - cached[0] < STATUS_CACHE_TTL:
+        return cached[1]
+
+    with db_connection() as conn:
+        if month is None:
+            row = fetch_one(conn, "SELECT MAX(month) AS m FROM cnpscy_oi_offer_monthly_amazon_metrics")
+            month = str(row["m"]) if row and row.get("m") else ""
+
+        metrics_columns = table_columns(conn, "cnpscy_oi_offer_monthly_amazon_metrics")
+        has_metrics = bool(pick_column(metrics_columns, ["merchantId"]))
+
+        if has_metrics:
+            rows = fetch_all(
+                conn,
+                f"""
+                SELECT
+                    t.tier,
+                    COUNT(DISTINCT t.merchantId) AS brandCount,
+                    COALESCE(SUM(m.orders), 0) AS orders,
+                    COALESCE(SUM(m.revenue), 0) AS revenue,
+                    COALESCE(SUM(m.clicks), 0) AS clicks,
+                    COALESCE(SUM(m.payout), 0) AS payout
+                FROM cnpscy_oi_tier_assignments t
+                LEFT JOIN cnpscy_oi_offer_monthly_amazon_metrics m
+                    ON t.merchantId = m.merchantId AND m.month = %s
+                GROUP BY t.tier
+                ORDER BY FIELD(t.tier, 'Tier 1', 'Tier 2', 'Tier 3', 'Tier 4', 'BLACK TIER')
+                """,
+                (month,),
+            )
+        else:
+            # Fallback: use cnpscy_order_new_aggregate
+            agg_cols = table_columns(conn, "cnpscy_order_new_aggregate")
+            agg_id = pick_column(agg_cols, ["advert_id", "merchant_id"])
+            if not agg_id:
+                _status_cache[cache_key] = (now, {"ok": False, "month": month, "tiers": [], "total": None})
+                return _status_cache[cache_key][1]
+
+            agg_month_col = pick_column(agg_cols, ["order_time_day", "time_day"])
+            month_cond = ""
+            agg_params: tuple[Any, ...] = ()
+            if agg_month_col and month:
+                month_start_key = month.replace("-", "") + "01"
+                month_end = parse_month_key(month)
+                if month_end:
+                    import calendar
+                    last_day = calendar.monthrange(month_end.year, month_end.month)[1]
+                    month_end_key = month.replace("-", "") + str(last_day)
+                    month_cond = f"AND a.{q(agg_month_col)} BETWEEN %s AND %s"
+                    agg_params = (month_start_key, month_end_key)
+
+            rows = fetch_all(
+                conn,
+                f"""
+                SELECT
+                    t.tier,
+                    COUNT(DISTINCT CAST(t.merchantId AS UNSIGNED)) AS brandCount,
+                    COALESCE(SUM(a.{q(pick_column(agg_cols, ['order_num', 'orders']))}), 0) AS orders,
+                    COALESCE(SUM(a.{q(pick_column(agg_cols, ['amount', 'sales_amount', 'revenue']))}), 0) AS revenue,
+                    0 AS clicks,
+                    COALESCE(SUM(a.{q(pick_column(agg_cols, ['payout', 'commission']))}), 0) AS payout
+                FROM cnpscy_oi_tier_assignments t
+                INNER JOIN cnpscy_order_new_aggregate a
+                    ON CAST(t.merchantId AS UNSIGNED) = a.{q(agg_id)}
+                    {month_cond}
+                GROUP BY t.tier
+                ORDER BY FIELD(t.tier, 'Tier 1', 'Tier 2', 'Tier 3', 'Tier 4', 'BLACK TIER')
+                """,
+                agg_params,
+            )
+
+        tiers = []
+        total_brands = 0
+        total_orders = 0
+        total_revenue = 0.0
+        total_clicks = 0.0
+        total_payout = 0.0
+
+        for row in rows:
+            brands = int(to_float(row.get("brandCount")))
+            orders = int(to_float(row.get("orders")))
+            revenue = to_float(row.get("revenue"))
+            clicks = to_float(row.get("clicks"))
+            payout = to_float(row.get("payout"))
+            conversion = orders / clicks if clicks > 0 else 0.0
+
+            tiers.append({
+                "tier": str(row["tier"]),
+                "brandCount": brands,
+                "orders": orders,
+                "revenue": round(revenue, 2),
+                "clicks": int(clicks),
+                "payout": round(payout, 2),
+                "conversionRate": round(conversion, 6),
+            })
+            total_brands += brands
+            total_orders += orders
+            total_revenue += revenue
+            total_clicks += clicks
+            total_payout += payout
+
+        total_conversion = total_orders / total_clicks if total_clicks > 0 else 0.0
+        total = {
+            "brandCount": total_brands,
+            "orders": total_orders,
+            "revenue": round(total_revenue, 2),
+            "clicks": int(total_clicks),
+            "payout": round(total_payout, 2),
+            "conversionRate": round(total_conversion, 6),
+        }
+
+        payload = {
+            "ok": True,
+            "checkedAt": utc_now_iso(),
+            "month": month,
+            "tiers": tiers,
+            "total": total,
+        }
+
     _status_cache[cache_key] = (now, payload)
     return payload
 
