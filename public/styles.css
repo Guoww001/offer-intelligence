@@ -3541,6 +3541,59 @@ th {
   margin: 0 18px;
   overflow: visible;
   padding: 18px;
+  position: relative;
+}
+
+.dashboard-category-pie.category-pie-focused {
+  padding-top: 50px;
+}
+
+.category-focus-back {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(71, 85, 105, 0.22);
+  border-radius: 7px;
+  box-shadow: 0 8px 20px rgba(47, 95, 159, 0.08);
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+  z-index: 5;
+}
+
+.category-focus-back svg {
+  fill: none;
+  height: 14px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  width: 14px;
+}
+
+.category-focus-back:hover,
+.category-focus-back:focus-visible {
+  background: #fff;
+  border-color: rgba(47, 128, 255, 0.42);
+  color: #1d5fbf;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.category-focus-back:focus-visible {
+  box-shadow: 0 0 0 3px rgba(47, 128, 255, 0.16), 0 8px 20px rgba(47, 95, 159, 0.08);
+}
+
+.category-focus-back:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .category-pie-visual {
