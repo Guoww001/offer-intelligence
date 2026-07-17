@@ -1462,7 +1462,7 @@ def offer_network_fallback_map(
                     network_map[mid] = cache_by_id[mid]
 
     # 2) 缓存未命中 → 查 advert_type（避免视图物化）
-    db_ids = [mid for mid in merchant_ids if mid not in network_map]
+    db_ids = [mid for mid in merchant_ids if mid and mid not in network_map]
     if db_ids:
         for batch in chunks(db_ids, 500):
             placeholders = ", ".join(["%s"] * len(batch))

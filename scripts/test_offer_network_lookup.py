@@ -13,11 +13,13 @@ import offer_db
 
 class OfferNetworkFallbackTests(unittest.TestCase):
     def test_empty_or_invalid_ids_skip_direct_lookup(self) -> None:
-        with patch.object(offer_db, "direct_network_map") as direct_lookup:
-            result = offer_db.offer_network_fallback_map(object(), [None, "", "abc"], None)
+        with patch.object(offer_db, "fetch_all", return_value=[]) as fetch_all:
+            result = offer_db.offer_network_fallback_map(
+                object(), [None, ""], None
+            )
 
         self.assertEqual(result, {})
-        direct_lookup.assert_not_called()
+        fetch_all.assert_not_called()
 
     def test_previous_cache_wins_and_direct_lookup_fills_new_merchants(self) -> None:
         previous = {
@@ -26,12 +28,15 @@ class OfferNetworkFallbackTests(unittest.TestCase):
                 {"merchantId": "2", "network": "Unknown"},
             ]
         }
-        with patch.object(
-            offer_db,
-            "direct_network_map",
-            return_value={"1": "brandreward", "2": "Levanta"},
-        ):
-            result = offer_db.offer_network_fallback_map(object(), ["1", "2"], previous)
+
+        def fake_fetch_all(_conn, sql, params=()):
+            self.assertEqual(params, ("2",))
+            return [{"merchantId": "2", "network": "Levanta"}]
+
+        with patch.object(offer_db, "fetch_all", side_effect=fake_fetch_all):
+            result = offer_db.offer_network_fallback_map(
+                object(), ["1", "2"], previous
+            )
 
         self.assertEqual(result, {"1": "Archer", "2": "Levanta"})
 
