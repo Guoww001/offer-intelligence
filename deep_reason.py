@@ -331,6 +331,13 @@ def _execute_from_db(entity_type: str, entities: list, metrics: list,
             "warning": "数据库模块不可用。"
         }
 
+    # Fix 1: Handle non-merchant entity types — fall back to cache
+    if entity_type != "merchant":
+        warning = "品类/Tier 的历史趋势数据暂不支持，已降级使用当前快照数据。"
+        data = _execute_from_cache(entity_type, entities, metrics, comparison_type, plan)
+        data["warning"] = warning
+        return data
+
     results = {
         "entityType": entity_type,
         "entities": entities,
@@ -339,11 +346,13 @@ def _execute_from_db(entity_type: str, entities: list, metrics: list,
         "warning": None,
     }
 
+    # Fix 3: Load cache once before the loop
+    cache = _load_cache(OFFERS_CACHE_PATH)
+    cache_offers = cache.get("offers", [])
+
     if entity_type == "merchant":
         for entity_name in entities[:5]:  # Limit to 5 merchants for DB queries
             # Try to find merchant ID from cache
-            cache = _load_cache(OFFERS_CACHE_PATH)
-            cache_offers = cache.get("offers", [])
             match = None
             elower = entity_name.lower().strip()
             for o in cache_offers:
@@ -532,9 +541,15 @@ def _data_only_report(data: dict, plan: dict, language: str) -> dict:
         for o in offers[:8]
     ]
 
+    # Fix 2: Preserve Stage 2 warning in summary
+    warning = data.get("warning")
+    summary_text = f"共 {data.get('totalOffers', 0)} 条数据，{data.get('entityCount', 0)} 个实体。LLM 分析暂不可用。"
+    if warning:
+        summary_text += f"- 注意：{warning}"
+
     return {
         "title": f"{' vs '.join(plan.get('entities', []))} 数据分析",
-        "summary": f"共 {data.get('totalOffers', 0)} 条数据，{data.get('entityCount', 0)} 个实体。LLM 分析暂不可用。",
+        "summary": summary_text,
         "sections": [
             {
                 "type": "overview",
