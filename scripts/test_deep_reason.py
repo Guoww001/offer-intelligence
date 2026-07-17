@@ -2,24 +2,87 @@
 import json
 import sys
 import os
+from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from deep_reason import parse_query, SUPPORTED_METRICS, ANALYSIS_TYPES, ENTITY_TYPES
 
+# ── Mock data ──────────────────────────────────────────────────────────────────
 
-def test_parse_query_valid_output():
-    """parse_query() should return a dict with all required fields.
+MOCK_OFFER = {
+    "merchantId": "12345",
+    "brand": "TestBrand",
+    "tier": "Tier 2",
+    "epc": 1.5,
+    "aov": 45.0,
+    "orders": 100,
+    "clicks": 500,
+    "salesAmount": 4500.0,
+    "conversionRate": 0.2,
+    "category": "Beauty",
+    "mainCategory": "Beauty",
+    "paymentCycle": 60,
+    "paymentStatus": "Paid",
+}
 
-    NOTE: Without LLM API key, this test checks that parse_query
-    either succeeds (all fields present) or gracefully returns an error.
-    """
+MOCK_CACHE_DATA = {
+    "offers": [MOCK_OFFER],
+    "paymentRecords": [],
+    "summary": {},
+}
+
+MOCK_QUERY_PLAN = json.dumps({
+    "analysisType": "comparison",
+    "entityType": "merchant",
+    "entities": ["anker", "shokz"],
+    "metrics": ["epc"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "对比 Anker 和 Shokz 的 EPC",
+})
+
+MOCK_QUERY_PLAN_MAX_ENTITIES = json.dumps({
+    "analysisType": "overview",
+    "entityType": "merchant",
+    "entities": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"],
+    "metrics": ["epc"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "测试",
+})
+
+MOCK_QUERY_PLAN_FULL = json.dumps({
+    "analysisType": "ranking",
+    "entityType": "category",
+    "entities": ["Beauty"],
+    "metrics": ["epc", "aov", "orders", "salesAmount", "conversionRate"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "显示 Beauty 品类中 EPC 最高的 3 个商户",
+})
+
+MOCK_QUERY_PLAN_TIER = json.dumps({
+    "analysisType": "ranking",
+    "entityType": "tier",
+    "entities": ["Tier 2"],
+    "metrics": ["epc", "aov", "orders", "salesAmount", "conversionRate"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "Tier 2 中 EPC 最高的商户",
+})
+
+
+# ── Tests ──────────────────────────────────────────────────────────────────────
+
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN)
+def test_parse_query_valid_output(mock_llm):
+    """parse_query() should return a dict with all required fields."""
     result = parse_query("对比 Anker 和 Shokz 的 EPC")
     assert isinstance(result, dict), f"Expected dict, got {type(result)}"
-    # When LLM is available, we expect a full plan; otherwise an error response
-    if "error" in result:
-        # Graceful degradation when LLM is unavailable
-        assert len(result["error"]) > 0, "Error message should not be empty"
-        return
     assert "analysisType" in result, f"Missing analysisType in {result}"
     assert "entityType" in result, f"Missing entityType in {result}"
     assert "entities" in result, f"Missing entities in {result}"
@@ -36,13 +99,15 @@ def test_parse_query_short_prompt():
     assert "error" in result, f"Short prompt should error: {result}"
 
 
-def test_parse_query_max_entities():
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN_MAX_ENTITIES)
+def test_parse_query_max_entities(mock_llm):
     """parse_query should cap entities at 10."""
     result = parse_query("对比 A, B, C, D, E, F, G, H, I, J, K 的数据")
     assert len(result.get("entities", [])) <= 10, f"Too many entities: {result}"
 
 
-def test_execute_from_cache_merchant():
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_execute_from_cache_merchant(mock_cache):
     """execute_query_plan should return summary for known merchants."""
     from deep_reason import execute_query_plan
     result = execute_query_plan({
@@ -62,7 +127,8 @@ def test_execute_from_cache_merchant():
     assert "warning" not in result or result["warning"] is None, f"Unexpected warning: {result.get('warning')}"
 
 
-def test_execute_from_cache_category():
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_execute_from_cache_category(mock_cache):
     """execute_query_plan should aggregate by category."""
     from deep_reason import execute_query_plan
     result = execute_query_plan({
@@ -79,7 +145,8 @@ def test_execute_from_cache_category():
     assert result.get("totalOffers", 0) >= 0
 
 
-def test_execute_from_cache_tier():
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_execute_from_cache_tier(mock_cache):
     """execute_query_plan should filter by tier."""
     from deep_reason import execute_query_plan
     result = execute_query_plan({
@@ -128,7 +195,9 @@ def test_data_only_report_fallback():
     assert len(report["sections"][0]["findings"]) > 0, "No findings in first section"
 
 
-def test_full_pipeline():
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN_FULL)
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_full_pipeline(mock_cache, mock_llm):
     """Full pipeline should produce a valid report structure without LLM."""
     from deep_reason import run_deep_reasoning
     result = run_deep_reasoning("显示 Beauty 品类中 EPC 最高的 3 个商户", "zh")
@@ -140,7 +209,9 @@ def test_full_pipeline():
     assert result.get("stages", {}).get("report") in ("ok", "fallback")
 
 
-def test_analyze_endpoint_deep_mode():
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN_TIER)
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_analyze_endpoint_deep_mode(mock_cache, mock_llm):
     """Test server's handle_llm_analyze with mode=deep."""
     from deep_reason import run_deep_reasoning
 
@@ -157,7 +228,8 @@ def test_analyze_endpoint_deep_mode():
     assert "report" in payload
 
 
-def test_empty_cache_fallback():
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_empty_cache_fallback(mock_cache):
     """Test behavior when cache files are missing or empty."""
     from deep_reason import _execute_from_cache
 

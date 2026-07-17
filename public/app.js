@@ -6069,14 +6069,25 @@
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
   }
 
+  function updateDeepSkeleton(activeStep) {
+    // activeStep: 1, 2, or 3 — drives skeleton steps based on real progress
+    document.querySelectorAll(".deep-skeleton-step").forEach((el, i) => {
+      el.classList.remove("active", "done");
+      if (i + 1 < activeStep) el.classList.add("done");
+      if (i + 1 === activeStep) el.classList.add("active");
+    });
+  }
+
   async function submitDeepReasoning(prompt) {
     const language = responseLanguageFor(prompt);
 
     // 1. 打开覆盖层，显示骨架屏
     openDeepOverlay();
+    updateDeepSkeleton(1); // 理解问题中
 
     // 2. 发送请求
     try {
+      updateDeepSkeleton(2); // 查询数据中
       const response = await fetch("/api/chat/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -6095,7 +6106,10 @@
         return;
       }
 
-      // 3. 渲染报告
+      // 3. 生成报告
+      updateDeepSkeleton(3);
+
+      // 4. 渲染报告
       renderDeepReport(data.report);
 
       // 4. 插入聊天摘要
@@ -6114,26 +6128,14 @@
     els.deepOverlayError.classList.add("hidden");
     document.body.style.overflow = "hidden";
 
-    // Reset skeleton steps
+    // Reset skeleton steps (step 1 active by default)
     document.querySelectorAll(".deep-skeleton-step").forEach((el, i) => {
       el.classList.remove("active", "done");
       if (i === 0) el.classList.add("active");
     });
 
-    // Animate through stages
-    setTimeout(() => {
-      const step1 = document.getElementById("deepSkeletonStep1");
-      if (step1) { step1.classList.remove("active"); step1.classList.add("done"); }
-      const step2 = document.getElementById("deepSkeletonStep2");
-      if (step2) step2.classList.add("active");
-    }, 1500);
-
-    setTimeout(() => {
-      const step2 = document.getElementById("deepSkeletonStep2");
-      if (step2) { step2.classList.remove("active"); step2.classList.add("done"); }
-      const step3 = document.getElementById("deepSkeletonStep3");
-      if (step3) step3.classList.add("active");
-    }, 4000);
+    // Skeleton steps are now driven by real pipeline progress
+    // via updateDeepSkeleton() calls in submitDeepReasoning().
   }
 
   function closeDeepOverlay() {
