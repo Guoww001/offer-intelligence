@@ -161,7 +161,10 @@
     recommendationDownloads: {},
     downloadSequence: 0,
     reportsOpen: true,
-    language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en"
+    language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en",
+    deepMode: false,
+    deepReport: null,
+    deepHistory: []
   };
 
   const llmClassifyCache = new Map();
@@ -262,7 +265,20 @@
     paymentStatus: document.getElementById("paymentStatusFilter"),
     paymentSort: document.getElementById("paymentSortFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
-    languageToggle: document.getElementById("languageToggle")
+    languageToggle: document.getElementById("languageToggle"),
+    deepOverlay: null,
+    deepOverlayBody: null,
+    deepOverlayContent: null,
+    deepOverlaySkeleton: null,
+    deepOverlayError: null,
+    deepReportTitle: null,
+    deepReportSummary: null,
+    deepReportSections: null,
+    deepOverlayClose: null,
+    deepOverlayExport: null,
+    chatModeToggle: null,
+    modeFastBtn: null,
+    modeDeepBtn: null
   };
 
   const quickPrompts = [
@@ -2268,7 +2284,7 @@
 
   function isRateColumn(header) {
     const lower = String(header || "").toLowerCase();
-    return /(success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b)/.test(lower) && !/count/.test(lower);
+    return /(success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b|commission\s*rate)/.test(lower) && !/count/.test(lower);
   }
 
   function percentageNumberForHeader(header, value) {
@@ -6053,7 +6069,136 @@
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
   }
 
+  async function submitDeepReasoning(prompt) {
+    const language = responseLanguageFor(prompt);
+
+    // 1. 打开覆盖层，显示骨架屏
+    openDeepOverlay();
+
+    // 2. 发送请求
+    try {
+      const response = await fetch("/api/chat/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, mode: "deep", language }),
+      });
+
+      if (!response.ok) {
+        showDeepOverlayError("分析请求失败（" + response.status + "），请稍后重试。");
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!data.ok || !data.report) {
+        showDeepOverlayError("分析返回异常，请稍后重试。");
+        return;
+      }
+
+      // 3. 渲染报告
+      renderDeepReport(data.report);
+
+      // 4. 插入聊天摘要
+      addMessage("assistant", deepSummaryHtml(data.report, prompt));
+
+    } catch (error) {
+      console.error("[deep] reasoning error:", error);
+      showDeepOverlayError("网络请求失败，请检查连接后重试。");
+    }
+  }
+
+  function openDeepOverlay() {
+    els.deepOverlay.classList.remove("hidden");
+    els.deepOverlaySkeleton.classList.remove("hidden");
+    els.deepOverlayContent.classList.add("hidden");
+    els.deepOverlayError.classList.add("hidden");
+    document.body.style.overflow = "hidden";
+
+    // Reset skeleton steps
+    document.querySelectorAll(".deep-skeleton-step").forEach((el, i) => {
+      el.classList.remove("active", "done");
+      if (i === 0) el.classList.add("active");
+    });
+
+    // Animate through stages
+    setTimeout(() => {
+      const step1 = document.getElementById("deepSkeletonStep1");
+      if (step1) { step1.classList.remove("active"); step1.classList.add("done"); }
+      const step2 = document.getElementById("deepSkeletonStep2");
+      if (step2) step2.classList.add("active");
+    }, 1500);
+
+    setTimeout(() => {
+      const step2 = document.getElementById("deepSkeletonStep2");
+      if (step2) { step2.classList.remove("active"); step2.classList.add("done"); }
+      const step3 = document.getElementById("deepSkeletonStep3");
+      if (step3) step3.classList.add("active");
+    }, 4000);
+  }
+
+  function closeDeepOverlay() {
+    els.deepOverlay.classList.add("hidden");
+    document.body.style.overflow = "";
+  }
+
+  function showDeepOverlayError(message) {
+    els.deepOverlaySkeleton.classList.add("hidden");
+    els.deepOverlayContent.classList.add("hidden");
+    els.deepOverlayError.classList.remove("hidden");
+    els.deepOverlayError.innerHTML = "<p>" + escapeHtml(message) + "</p>";
+    // Still insert a message in chat
+    addMessage("assistant", "📊 深度分析失败：" + escapeHtml(message));
+  }
+
+  function renderDeepReport(report) {
+    els.deepOverlaySkeleton.classList.add("hidden");
+    els.deepOverlayContent.classList.remove("hidden");
+
+    els.deepReportTitle.textContent = report.title || "分析报告";
+    els.deepReportSummary.textContent = report.summary || "";
+
+    els.deepReportSections.innerHTML = (report.sections || []).map((section) => {
+      const severityClass = section.severity ? " severity-" + section.severity : "";
+      const tableHtml = section.table
+        ? `<table class="deep-report-table">
+             <thead><tr>${section.table.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+             <tbody>${section.table.rows.map((row) => `<tr>${row.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+           </table>`
+        : "";
+
+      return `<section class="deep-report-section${severityClass}">
+        <h3>${escapeHtml(section.title)}</h3>
+        ${section.findings ? `<ul class="deep-report-findings">${section.findings.map((f) => `<li>${escapeHtml(f)}</li>`).join("")}</ul>` : ""}
+        ${tableHtml}
+      </section>`;
+    }).join("");
+  }
+
+  function deepSummaryHtml(report, prompt) {
+    const escapedTitle = escapeHtml(report.title || "分析报告");
+    const escapedSummary = escapeHtml(report.summary || "");
+    const promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
+    return `<div class="deep-summary-card" onclick="(function(){
+      var o = document.getElementById('deepOverlay');
+      if (o) {
+        o.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      }
+    })()">
+      <h4>📊 深度分析：${escapedTitle}</h4>
+      <p>${escapedSummary}</p>
+      <small style="color:var(--muted);font-size:11px">${promptPreview}</small>
+    </div>`;
+  }
+
   async function applyPrompt(prompt) {
+    // ★ Deep reasoning mode routing
+    if (state.deepMode) {
+      addMessage("user", escapeHtml(prompt));
+      await submitDeepReasoning(prompt);
+      return;
+    }
+
     const language = responseLanguageFor(prompt);
     // Skip the LLM classification call when regex alone can confidently
     // determine intent + extract parameters (ASIN, merchant ID, tier,
@@ -10407,6 +10552,22 @@
 
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
+
+    // Deep overlay DOM refs
+    els.deepOverlay = document.getElementById("deepOverlay");
+    els.deepOverlayBody = document.getElementById("deepOverlayBody");
+    els.deepOverlayContent = document.getElementById("deepOverlayContent");
+    els.deepOverlaySkeleton = document.getElementById("deepOverlaySkeleton");
+    els.deepOverlayError = document.getElementById("deepOverlayError");
+    els.deepReportTitle = document.getElementById("deepReportTitle");
+    els.deepReportSummary = document.getElementById("deepReportSummary");
+    els.deepReportSections = document.getElementById("deepReportSections");
+    els.deepOverlayClose = document.getElementById("deepOverlayClose");
+    els.deepOverlayExport = document.getElementById("deepOverlayExport");
+    els.chatModeToggle = document.getElementById("chatModeToggle");
+    els.modeFastBtn = els.chatModeToggle?.querySelector('[data-mode="fast"]');
+    els.modeDeepBtn = els.chatModeToggle?.querySelector('[data-mode="deep"]');
+
     if (els.tier) fillSelect(els.tier, uniqueValues("tier"));
     if (els.network) fillSelect(els.network, uniqueValues("network"));
     if (els.category) fillSelect(els.category, uniqueCategoryValues());
@@ -10578,6 +10739,34 @@
       const button = event.target.closest("[data-download-id]");
       if (!button) return;
       downloadRecommendationXlsx(button.dataset.downloadId);
+    });
+
+    // 模式切换
+    els.modeFastBtn?.addEventListener("click", () => {
+      state.deepMode = false;
+      els.modeFastBtn.classList.add("active");
+      els.modeDeepBtn.classList.remove("active");
+      els.chatInput.placeholder = chatbotI18n[state.language]?.chat?.placeholder || "Ask about EPC, tiers, AOV, conversion, unpaid offers...";
+    });
+
+    els.modeDeepBtn?.addEventListener("click", () => {
+      state.deepMode = true;
+      els.modeDeepBtn.classList.add("active");
+      els.modeFastBtn.classList.remove("active");
+      els.chatInput.placeholder = "输入复杂分析问题（支持对比、趋势、多维分析…）";
+    });
+
+    // 覆盖层关闭
+    els.deepOverlayClose?.addEventListener("click", closeDeepOverlay);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !els.deepOverlay?.classList.contains("hidden")) {
+        closeDeepOverlay();
+      }
+    });
+
+    // 导出
+    els.deepOverlayExport?.addEventListener("click", () => {
+      window.print();
     });
 
     addMessage("assistant", `Loaded <strong>${offers.length.toLocaleString()}</strong> internal offers. Search merchant name, merchant ID, ASIN, category, payment status, or ask for recommendations.`);

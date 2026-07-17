@@ -200,6 +200,16 @@
 
           <section class="chat-panel" aria-label="Chat">
             <div class="chat-log" id="chatLog"></div>
+            <div class="chat-mode-toggle" id="chatModeToggle">
+              <button class="mode-btn mode-fast active" data-mode="fast" type="button">
+                <span class="mode-indicator"></span>
+                快速模式
+              </button>
+              <button class="mode-btn mode-deep" data-mode="deep" type="button">
+                <span class="mode-indicator"></span>
+                深度推理
+              </button>
+            </div>
             <form class="chat-input" id="chatForm">
               <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
               <button type="submit" aria-label="Send">
@@ -422,6 +432,45 @@
             </div>
           </section>
         </section>
+      <!-- 深度推理覆盖层 -->
+      <div class="deep-overlay hidden" id="deepOverlay" role="dialog" aria-modal="true" aria-labelledby="deepOverlayTitle">
+        <div class="deep-overlay-backdrop"></div>
+        <div class="deep-overlay-panel">
+          <div class="deep-overlay-header">
+            <h2 id="deepOverlayTitle">深度分析</h2>
+            <div class="deep-overlay-actions">
+              <button class="deep-overlay-export" id="deepOverlayExport" type="button">导出</button>
+              <button class="deep-overlay-close" id="deepOverlayClose" type="button" aria-label="关闭">
+                <span aria-hidden="true">✕</span>
+              </button>
+            </div>
+          </div>
+          <div class="deep-overlay-body" id="deepOverlayBody">
+            <div class="deep-overlay-skeleton" id="deepOverlaySkeleton">
+              <div class="deep-skeleton-step" id="deepSkeletonStep1">
+                <div class="deep-skeleton-spinner"></div>
+                <span>正在理解你的问题…</span>
+              </div>
+              <div class="deep-skeleton-step" id="deepSkeletonStep2">
+                <div class="deep-skeleton-spinner"></div>
+                <span>正在查询数据…</span>
+              </div>
+              <div class="deep-skeleton-step" id="deepSkeletonStep3">
+                <div class="deep-skeleton-spinner"></div>
+                <span>正在生成分析报告…</span>
+              </div>
+            </div>
+            <div class="deep-overlay-content hidden" id="deepOverlayContent">
+              <div class="deep-report-title" id="deepReportTitle"></div>
+              <div class="deep-report-summary" id="deepReportSummary"></div>
+              <div class="deep-report-sections" id="deepReportSections"></div>
+            </div>
+            <div class="deep-overlay-error hidden" id="deepOverlayError">
+              <p>分析失败，请稍后重试。</p>
+            </div>
+          </div>
+        </div>
+      </div>
       </main>
     </div>
     <div class="sheet-expanded-backdrop" id="sheetExpandedBackdrop" aria-hidden="true"></div>
