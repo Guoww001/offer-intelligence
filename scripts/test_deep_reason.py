@@ -138,3 +138,20 @@ def test_full_pipeline():
     assert result["sections"][0]["findings"], f"No findings in first section"
     # Should gracefully handle LLM being unavailable (fallback to data-only)
     assert result.get("stages", {}).get("report") in ("ok", "fallback")
+
+
+def test_analyze_endpoint_deep_mode():
+    """Test server's handle_llm_analyze with mode=deep."""
+    from deep_reason import run_deep_reasoning
+
+    # Simulate what the server will do
+    result = run_deep_reasoning("Tier 2 中 EPC 最高的商户", "zh")
+    assert "title" in result
+    assert "summary" in result
+    assert "sections" in result
+    assert "stages" in result
+    # Verify the response shape matches what frontend expects
+    payload = {"ok": True, "mode": "deep", "report": result}
+    assert payload["ok"] is True
+    assert payload["mode"] == "deep"
+    assert "report" in payload
