@@ -155,3 +155,42 @@ def test_analyze_endpoint_deep_mode():
     assert payload["ok"] is True
     assert payload["mode"] == "deep"
     assert "report" in payload
+
+
+def test_empty_cache_fallback():
+    """Test behavior when cache files are missing or empty."""
+    from deep_reason import _execute_from_cache
+
+    # Case 1: non-existent entity with full cache — should return 0 matches
+    result = _execute_from_cache("merchant", ["__nonexistent_merchant__"], ["epc"], None, {})
+    assert isinstance(result, dict)
+    # Should have either a warning about unavailable data, or totalOffers=0
+    assert "warning" in result or "totalOffers" in result
+
+    # Case 2: category lookup with no match
+    result = _execute_from_cache("category", ["__nonexistent_category__"], ["epc", "orders"], None, {})
+    assert isinstance(result, dict)
+    assert "warning" in result or "totalOffers" in result
+
+
+def test_plan_validation():
+    """Test parse_query returns proper error for invalid input."""
+    from deep_reason import parse_query
+
+    # Empty string — should return error immediately (no LLM call)
+    result = parse_query("")
+    assert "error" in result, f"Empty prompt should error: {result}"
+
+    # Very short (< 4 chars) — should return error immediately
+    result = parse_query("ab")
+    assert "error" in result, f"Short prompt should error: {result}"
+
+    # White-space-only — should return error immediately
+    result = parse_query("   ")
+    assert "error" in result, f"Whitespace-only prompt should error: {result}"
+
+    # Long text with no valid query structure — LLM likely returns None (no API key)
+    # so parse_query should return an error dict gracefully
+    result = parse_query("这是完全不符合格式的超级长文测试数据")
+    # Should still return a dict — either valid or error (no crashes)
+    assert isinstance(result, dict), f"Expected dict, got {type(result)}"
