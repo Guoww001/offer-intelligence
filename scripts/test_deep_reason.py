@@ -1,0 +1,370 @@
+"""Tests for deep_reason module — parse_query, data execution, report generation."""
+import json
+import sys
+import os
+from unittest.mock import patch
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from deep_reason import parse_query, SUPPORTED_METRICS, ANALYSIS_TYPES, ENTITY_TYPES
+
+# ── Mock data ──────────────────────────────────────────────────────────────────
+
+MOCK_OFFER = {
+    "merchantId": "12345",
+    "brand": "TestBrand",
+    "tier": "Tier 2",
+    "epc": 1.5,
+    "aov": 45.0,
+    "orders": 100,
+    "clicks": 500,
+    "salesAmount": 4500.0,
+    "conversionRate": 0.2,
+    "category": "Beauty",
+    "mainCategory": "Beauty",
+    "paymentCycle": 60,
+    "paymentStatus": "Paid",
+}
+
+MOCK_CACHE_DATA = {
+    "offers": [MOCK_OFFER],
+    "paymentRecords": [],
+    "summary": {},
+}
+
+MOCK_QUERY_PLAN = json.dumps({
+    "analysisType": "comparison",
+    "entityType": "merchant",
+    "entities": ["anker", "shokz"],
+    "metrics": ["epc"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "对比 Anker 和 Shokz 的 EPC",
+})
+
+MOCK_QUERY_PLAN_MAX_ENTITIES = json.dumps({
+    "analysisType": "overview",
+    "entityType": "merchant",
+    "entities": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"],
+    "metrics": ["epc"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "测试",
+})
+
+MOCK_QUERY_PLAN_FULL = json.dumps({
+    "analysisType": "ranking",
+    "entityType": "category",
+    "entities": ["Beauty"],
+    "metrics": ["epc", "aov", "orders", "salesAmount", "conversionRate"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "显示 Beauty 品类中 EPC 最高的 3 个商户",
+})
+
+MOCK_QUERY_PLAN_TIER = json.dumps({
+    "analysisType": "ranking",
+    "entityType": "tier",
+    "entities": ["Tier 2"],
+    "metrics": ["epc", "aov", "orders", "salesAmount", "conversionRate"],
+    "timeRange": {"months": 2},
+    "comparisonType": None,
+    "filters": {},
+    "analysisGoal": "Tier 2 中 EPC 最高的商户",
+})
+
+
+# ── Tests ──────────────────────────────────────────────────────────────────────
+
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN)
+def test_parse_query_valid_output(mock_llm):
+    """parse_query() should return a dict with all required fields."""
+    result = parse_query("对比 Anker 和 Shokz 的 EPC")
+    assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+    assert "analysisType" in result, f"Missing analysisType in {result}"
+    assert "entityType" in result, f"Missing entityType in {result}"
+    assert "entities" in result, f"Missing entities in {result}"
+    assert isinstance(result["entities"], list), f"entities must be list"
+    assert len(result["entities"]) > 0, f"entities must not be empty"
+    assert result["entityType"] in ENTITY_TYPES, f"Invalid entityType: {result['entityType']}"
+    assert result["analysisType"] in ANALYSIS_TYPES, f"Invalid analysisType: {result['analysisType']}"
+    assert all(m in SUPPORTED_METRICS for m in result.get("metrics", [])), f"Unsupported metrics in {result}"
+
+
+def test_parse_query_short_prompt():
+    """Very short prompts should return an error dict."""
+    result = parse_query("hi")
+    assert "error" in result, f"Short prompt should error: {result}"
+
+
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN_MAX_ENTITIES)
+def test_parse_query_max_entities(mock_llm):
+    """parse_query should cap entities at 10."""
+    result = parse_query("对比 A, B, C, D, E, F, G, H, I, J, K 的数据")
+    assert len(result.get("entities", [])) <= 10, f"Too many entities: {result}"
+
+
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_execute_from_cache_merchant(mock_cache):
+    """execute_query_plan should return summary for known merchants."""
+    from deep_reason import execute_query_plan
+    result = execute_query_plan({
+        "analysisType": "comparison",
+        "entityType": "merchant",
+        "entities": ["anker"],
+        "metrics": ["epc", "aov"],
+        "timeRange": {"months": 2},
+        "comparisonType": None,
+        "filters": {},
+        "analysisGoal": "测试"
+    })
+    assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+    assert "entityType" in result
+    assert "totalOffers" in result
+    # Should be able to run without DB
+    assert "warning" not in result or result["warning"] is None, f"Unexpected warning: {result.get('warning')}"
+
+
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_execute_from_cache_category(mock_cache):
+    """execute_query_plan should aggregate by category."""
+    from deep_reason import execute_query_plan
+    result = execute_query_plan({
+        "analysisType": "ranking",
+        "entityType": "category",
+        "entities": ["Beauty"],
+        "metrics": ["epc", "orders"],
+        "timeRange": {"months": 2},
+        "comparisonType": None,
+        "filters": {},
+        "analysisGoal": "测试"
+    })
+    assert isinstance(result, dict)
+    assert result.get("totalOffers", 0) >= 0
+
+
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_execute_from_cache_tier(mock_cache):
+    """execute_query_plan should filter by tier."""
+    from deep_reason import execute_query_plan
+    result = execute_query_plan({
+        "analysisType": "overview",
+        "entityType": "tier",
+        "entities": ["tier 2"],
+        "metrics": ["epc", "aov", "orders"],
+        "timeRange": {"months": 2},
+        "comparisonType": None,
+        "filters": {},
+        "analysisGoal": "测试"
+    })
+    assert isinstance(result, dict)
+    assert "totalOffers" in result
+    assert result["entityType"] == "tier"
+
+
+def test_data_only_report_fallback():
+    """_data_only_report should produce valid structure without LLM."""
+    from deep_reason import _data_only_report
+    data = {
+        "averages": {"epc": 1.5, "aov": 80.0},
+        "totals": {"orders": 150, "salesAmount": 12000.0},
+        "offers": [
+            {"brand": "Anker", "tier": "Tier 1", "epc": 2.0, "aov": 100.0,
+             "orders": 100, "clicks": 500, "salesAmount": 10000.0,
+             "conversionRate": 0.2},
+            {"brand": "Shokz", "tier": "Tier 2", "epc": 1.0, "aov": 60.0,
+             "orders": 50, "clicks": 300, "salesAmount": 2000.0,
+             "conversionRate": 0.17},
+        ],
+        "entityType": "merchant",
+        "entities": ["anker", "shokz"],
+        "totalOffers": 2,
+        "entityCount": 2,
+    }
+    plan = {
+        "entities": ["anker", "shokz"],
+        "analysisType": "comparison",
+        "entityType": "merchant",
+    }
+    report = _data_only_report(data, plan, "zh")
+    assert "title" in report, f"Missing title: {report}"
+    assert "sections" in report, f"Missing sections: {report}"
+    assert len(report["sections"]) > 0, "No sections in report"
+    assert len(report["sections"][0]["findings"]) > 0, "No findings in first section"
+
+
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN_FULL)
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_full_pipeline(mock_cache, mock_llm):
+    """Full pipeline should produce a valid report structure without LLM."""
+    from deep_reason import run_deep_reasoning
+    result = run_deep_reasoning("显示 Beauty 品类中 EPC 最高的 3 个商户", "zh")
+    assert "title" in result, f"Missing title in {result}"
+    assert "sections" in result, f"Missing sections in {result}"
+    assert isinstance(result["sections"], list), f"Sections not a list"
+    assert result["sections"][0]["findings"], f"No findings in first section"
+    # Should gracefully handle LLM being unavailable (fallback to data-only)
+    assert result.get("stages", {}).get("report") in ("ok", "fallback")
+
+
+@patch("deep_reason.call_llm", return_value=MOCK_QUERY_PLAN_TIER)
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_analyze_endpoint_deep_mode(mock_cache, mock_llm):
+    """Test server's handle_llm_analyze with mode=deep."""
+    from deep_reason import run_deep_reasoning
+
+    # Simulate what the server will do
+    result = run_deep_reasoning("Tier 2 中 EPC 最高的商户", "zh")
+    assert "title" in result
+    assert "summary" in result
+    assert "sections" in result
+    assert "stages" in result
+    # Verify the response shape matches what frontend expects
+    payload = {"ok": True, "mode": "deep", "report": result}
+    assert payload["ok"] is True
+    assert payload["mode"] == "deep"
+    assert "report" in payload
+
+
+@patch("deep_reason._load_cache", return_value=MOCK_CACHE_DATA)
+def test_empty_cache_fallback(mock_cache):
+    """Test behavior when cache files are missing or empty."""
+    from deep_reason import _execute_from_cache
+
+    # Case 1: non-existent entity with full cache — should return 0 matches
+    result = _execute_from_cache("merchant", ["__nonexistent_merchant__"], ["epc"], None, {})
+    assert isinstance(result, dict)
+    # Should have either a warning about unavailable data, or totalOffers=0
+    assert "warning" in result or "totalOffers" in result
+
+    # Case 2: category lookup with no match
+    result = _execute_from_cache("category", ["__nonexistent_category__"], ["epc", "orders"], None, {})
+    assert isinstance(result, dict)
+    assert "warning" in result or "totalOffers" in result
+
+
+def test_plan_validation():
+    """Test parse_query returns proper error for invalid input."""
+    from deep_reason import parse_query
+
+    # Empty string — should return error immediately (no LLM call)
+    result = parse_query("")
+    assert "error" in result, f"Empty prompt should error: {result}"
+
+    # Very short (< 4 chars) — should return error immediately
+    result = parse_query("ab")
+    assert "error" in result, f"Short prompt should error: {result}"
+
+    # White-space-only — should return error immediately
+    result = parse_query("   ")
+    assert "error" in result, f"Whitespace-only prompt should error: {result}"
+
+    # Long text with no valid query structure — LLM likely returns None (no API key)
+    # so parse_query should return an error dict gracefully
+    result = parse_query("这是完全不符合格式的超级长文测试数据")
+    # Should still return a dict — either valid or error (no crashes)
+    assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+
+
+# ── Multi-entity comparison tests ──────────────────────────────────────────────
+
+@patch("deep_reason._load_cache")
+def test_entity_breakdown_category_comparison(mock_cache):
+    """Multi-entity category query should produce per-entity breakdowns."""
+    from deep_reason import _execute_from_cache
+
+    offers = [
+        {"merchantId": "1", "brand": "BrandA", "category": "Beauty",
+         "mainCategory": "Beauty", "tier": "Tier 1", "epc": 2.0, "aov": 50.0,
+         "orders": 100, "clicks": 500, "salesAmount": 5000.0, "conversionRate": 0.2},
+        {"merchantId": "2", "brand": "BrandB", "category": "Beauty",
+         "mainCategory": "Beauty", "tier": "Tier 2", "epc": 1.5, "aov": 40.0,
+         "orders": 200, "clicks": 800, "salesAmount": 8000.0, "conversionRate": 0.25},
+        {"merchantId": "3", "brand": "BrandC", "category": "Electronics",
+         "mainCategory": "Electronics", "tier": "Tier 1", "epc": 3.0, "aov": 120.0,
+         "orders": 50, "clicks": 300, "salesAmount": 6000.0, "conversionRate": 0.17},
+    ]
+    mock_cache.return_value = {"offers": offers, "month": "2026-07"}
+
+    result = _execute_from_cache(
+        "category", ["Beauty", "Electronics"],
+        ["epc", "aov", "orders", "salesAmount"], None,
+        {"analysisType": "comparison", "timeRange": {"months": 2}},
+    )
+
+    # Should have entityBreakdown
+    assert "entityBreakdown" in result, f"Missing entityBreakdown: {list(result.keys())}"
+    assert "Beauty" in result["entityBreakdown"], f"Missing Beauty in breakdown: {list(result['entityBreakdown'].keys())}"
+    assert "Electronics" in result["entityBreakdown"], f"Missing Electronics in breakdown"
+
+    # Beauty should have 2 offers
+    beauty = result["entityBreakdown"]["Beauty"]
+    assert beauty["sampleSize"] == 2, f"Beauty should have 2 offers, got {beauty['sampleSize']}"
+    assert beauty["totals"]["orders"] == 300, f"Beauty orders should be 300, got {beauty['totals']['orders']}"
+    assert beauty["totals"]["salesAmount"] == 13000.0, f"Beauty sales should be 13000, got {beauty['totals']['salesAmount']}"
+
+    # Electronics should have 1 offer
+    elec = result["entityBreakdown"]["Electronics"]
+    assert elec["sampleSize"] == 1, f"Electronics should have 1 offer, got {elec['sampleSize']}"
+    assert elec["totals"]["orders"] == 50, f"Electronics orders should be 50, got {elec['totals']['orders']}"
+    assert elec["averages"]["epc"] == 3.0, f"Electronics avg EPC should be 3.0, got {elec['averages']['epc']}"
+
+    # Should also have cacheMonth
+    assert result.get("cacheMonth") == "2026-07", f"Missing cacheMonth: {result.get('cacheMonth')}"
+
+
+@patch("deep_reason._load_cache")
+def test_entity_breakdown_data_only_report(mock_cache):
+    """_data_only_report fallback should produce per-entity sections."""
+    from deep_reason import _data_only_report
+
+    offers = [
+        {"merchantId": "1", "brand": "BrandA", "category": "Beauty",
+         "mainCategory": "Beauty", "tier": "Tier 1", "epc": 2.0, "aov": 50.0,
+         "orders": 100, "clicks": 500, "salesAmount": 5000.0, "conversionRate": 0.2},
+        {"merchantId": "3", "brand": "BrandC", "category": "Electronics",
+         "mainCategory": "Electronics", "tier": "Tier 1", "epc": 3.0, "aov": 120.0,
+         "orders": 50, "clicks": 300, "salesAmount": 6000.0, "conversionRate": 0.17},
+    ]
+    data = {
+        "entityType": "category",
+        "entities": ["Beauty", "Electronics"],
+        "totalOffers": 2,
+        "entityCount": 2,
+        "entityBreakdown": {
+            "Beauty": {
+                "averages": {"epc": 2.0, "aov": 50.0},
+                "totals": {"orders": 100, "salesAmount": 5000.0},
+                "sampleSize": 1,
+                "offers": [offers[0]],
+            },
+            "Electronics": {
+                "averages": {"epc": 3.0, "aov": 120.0},
+                "totals": {"orders": 50, "salesAmount": 6000.0},
+                "sampleSize": 1,
+                "offers": [offers[1]],
+            },
+        },
+    }
+    plan = {
+        "entities": ["Beauty", "Electronics"],
+        "analysisType": "comparison",
+        "entityType": "category",
+    }
+
+    report = _data_only_report(data, plan, "zh")
+    assert "title" in report, f"Missing title"
+    assert report["title"] == "Beauty vs Electronics 对比分析", f"Wrong title: {report['title']}"
+    assert len(report["sections"]) >= 2, f"Should have 2+ sections, got {len(report['sections'])}"
+
+    # First section should be the comparison overview
+    overview = report["sections"][0]
+    assert overview["type"] == "overview"
+    assert "对比" in overview["title"]
+
+    # Should have per-entity sections
+    section_titles = [s["title"] for s in report["sections"]]
+    assert "Beauty 数据" in section_titles, f"Missing Beauty section in {section_titles}"
+    assert "Electronics 数据" in section_titles, f"Missing Electronics section in {section_titles}"

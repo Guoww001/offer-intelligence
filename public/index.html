@@ -200,6 +200,16 @@
 
           <section class="chat-panel" aria-label="Chat">
             <div class="chat-log" id="chatLog"></div>
+            <div class="chat-mode-toggle" id="chatModeToggle">
+              <button class="mode-btn mode-fast active" data-mode="fast" type="button">
+                <span class="mode-indicator"></span>
+                <span data-i18n="deep.mode.fast">Quick Mode</span>
+              </button>
+              <button class="mode-btn mode-deep" data-mode="deep" type="button">
+                <span class="mode-indicator"></span>
+                <span data-i18n="deep.mode.deep">Deep Reasoning</span>
+              </button>
+            </div>
             <form class="chat-input" id="chatForm">
               <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
               <button type="submit" aria-label="Send">
@@ -422,6 +432,7 @@
             </div>
           </section>
         </section>
+      <button class="deep-analysis-fab hidden" id="deepAnalysisFab" type="button" aria-label="Deep Analysis" data-i18n="deep.fab">🔬</button>
       </main>
     </div>
     <div class="sheet-expanded-backdrop" id="sheetExpandedBackdrop" aria-hidden="true"></div>
