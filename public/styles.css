@@ -4950,99 +4950,153 @@ td strong {
   box-shadow: 0 0 4px currentColor;
 }
 
-/* === 深度推理覆盖层 === */
-.deep-overlay {
+/* === 深度推理覆盖层（非模态浮窗）=== */
+/* === 深度分析浮窗（多重实例）=== */
+.deep-window {
   position: fixed;
-  inset: 0;
   z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.deep-overlay-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.deep-overlay-panel {
-  position: relative;
-  width: min(800px, 92vw);
-  max-height: 85vh;
+  width: min(760px, 88vw);
+  max-height: 80vh;
   background: var(--panel);
-  border-radius: 16px;
-  box-shadow: var(--shadow), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.15),
+    0 6px 20px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  pointer-events: auto;
+  transition: box-shadow 0.25s ease;
 }
 
-.deep-overlay-header {
+.deep-window.dragging {
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, 0.2),
+    0 8px 28px rgba(0, 0, 0, 0.12);
+  transition: none;
+}
+
+.deep-window-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--panel);
+  cursor: grab;
+  user-select: none;
+}
+.deep-window-header:active {
+  cursor: grabbing;
 }
 
-.deep-overlay-header h2 {
+/* 顶部装饰线 */
+.deep-window-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 3px;
+  background: var(--line);
+  border-radius: 0 0 3px 3px;
+}
+
+.deep-window-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
+  color: #1a1f22;
+  letter-spacing: -0.01em;
 }
 
-.deep-overlay-actions {
+.deep-window-header::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  background: var(--muted);
+  border-radius: 2px;
+  margin-right: 10px;
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+.deep-window-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
-.deep-overlay-export,
-.deep-overlay-close {
-  padding: 6px 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+.deep-window-export,
+.deep-window-close,
+.deep-window-minimize {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
   background: transparent;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   color: var(--muted);
   transition: all 0.15s ease;
+  line-height: 1.4;
 }
 
-.deep-overlay-export:hover,
-.deep-overlay-close:hover {
-  border-color: var(--blue);
-  color: var(--ink);
+.deep-window-minimize {
+  font-size: 18px;
+  padding: 3px 10px;
 }
 
-.deep-overlay-body {
+.deep-window-export:hover,
+.deep-window-minimize:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.deep-window-close:hover {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+.deep-window.generating .deep-window-minimize {
+  display: none;
+}
+
+.deep-window-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 24px;
+  scroll-behavior: smooth;
 }
 
 /* 骨架屏 */
-.deep-overlay-skeleton {
+.deep-window-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 0;
+  gap: 12px;
+  padding: 24px 0;
 }
 
 .deep-skeleton-step {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 10px 16px;
   color: var(--muted);
   font-size: 14px;
   transition: all 0.3s ease;
+  border-radius: 8px;
 }
 
 .deep-skeleton-step.active {
   color: var(--blue);
   font-weight: 600;
+  background: color-mix(in srgb, var(--blue) 4%, transparent);
 }
 
 .deep-skeleton-step.done {
@@ -5056,15 +5110,27 @@ td strong {
   border-top-color: var(--blue);
   border-radius: 50%;
   animation: deep-spin 0.8s linear infinite;
+  flex-shrink: 0;
 }
 
 .deep-skeleton-step.done .deep-skeleton-spinner {
   border-color: var(--teal);
   animation: none;
+  position: relative;
 }
 
 .deep-skeleton-step.done .deep-skeleton-spinner::after {
   content: "✓";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--teal);
+  position: absolute;
+  inset: 0;
 }
 
 @keyframes deep-spin {
@@ -5072,85 +5138,212 @@ td strong {
 }
 
 /* 报告内容 */
-.deep-overlay-content {
-  animation: deep-fade-in 0.3s ease;
+.deep-window-content {
+  animation: deep-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.deep-window-content.hidden,
+.deep-window-error.hidden,
+.deep-window-skeleton.hidden {
+  display: none;
 }
 
 @keyframes deep-fade-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes deep-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .deep-report-title {
   font-size: 20px;
   font-weight: 700;
-  margin-bottom: 8px;
-  color: var(--ink);
+  margin-bottom: 4px;
+  padding-bottom: 12px;
+  color: #1a1f22;
+  border-bottom: 1px solid var(--line);
+  letter-spacing: -0.01em;
 }
 
 .deep-report-summary {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--muted);
-  margin-bottom: 24px;
-  padding: 12px 16px;
-  background: var(--blue-soft);
-  border-radius: 10px;
-  line-height: 1.5;
+  margin-bottom: 28px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: var(--bg);
+  border-radius: 8px;
+  line-height: 1.6;
+  border-left: 3px solid var(--line);
 }
 
 .deep-report-section {
-  margin-bottom: 20px;
-  padding: 16px;
+  margin-bottom: 24px;
+  padding: 20px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fbfcfc;
+  border-radius: 10px;
+  background: var(--panel);
+  overflow-x: auto;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: box-shadow 0.2s ease;
+}
+
+.deep-report-section:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .deep-report-section h3 {
-  margin: 0 0 10px;
-  font-size: 15px;
+  margin: 0 0 12px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deep-report-section h3::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  background: var(--muted);
+  border-radius: 2px;
+  opacity: 0.3;
+  flex-shrink: 0;
 }
 
 .deep-report-findings {
   list-style: none;
   padding: 0;
-  margin: 0 0 12px;
+  margin: 0 0 16px;
 }
 
 .deep-report-findings li {
   padding: 5px 0;
   font-size: 13px;
-  line-height: 1.5;
-  color: #3a464b;
+  line-height: 1.6;
+  color: var(--ink);
+  padding-left: 18px;
+  position: relative;
 }
 
 .deep-report-findings li::before {
-  content: "•";
-  color: var(--blue);
-  font-weight: 700;
-  margin-right: 8px;
+  content: "▸";
+  color: var(--muted);
+  font-size: 9px;
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  opacity: 0.5;
 }
 
+/* ── Deep Analysis 表格 — 专业数据分析风格 ── */
+/* 设计原则：干净、精确、层次分明。放弃蓝色模板和交替行色，
+   用间距、字重和微妙分隔线建立视觉层次。 */
+
 .deep-report-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
+  width: auto;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  table-layout: auto;
+  white-space: nowrap;
+}
+
+/* 表头：深灰背景，白色文字，不转大写，保持清晰 */
+.deep-report-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .deep-report-table th {
   text-align: left;
-  padding: 6px 10px;
-  border-bottom: 2px solid var(--line);
-  font-weight: 700;
+  padding: 11px 16px;
+  font-weight: 600;
+  font-size: 11px;
   color: var(--muted);
+  background: var(--bg);
+  border-bottom: 1.5px solid var(--line);
   white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
+.deep-report-table th:first-child {
+  border-radius: 6px 0 0 0;
+}
+
+.deep-report-table th:last-child {
+  border-radius: 0 6px 0 0;
+}
+
+/* 数据单元格：干净的行分隔线，不显眼 */
 .deep-report-table td {
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 10px 16px;
+  border-bottom: 1px solid #eef1f3;
+  line-height: 1.5;
+  vertical-align: middle;
+  color: #1e2528;
+  font-size: 13px;
+  background: #fff;
+  transition: background 0.12s ease;
+}
+
+/* 首列：品牌/实体名。th 保持白色文字（深灰背景上），td 半粗体 */
+.deep-report-table th:first-child {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.deep-report-table td:first-child {
+  font-weight: 600;
+  color: #1a1f22;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* 数字列：右对齐，等宽数字 */
+.deep-report-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 500;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 行悬停：浅灰高亮 */
+.deep-report-table tbody tr:hover td {
+  background: #f4f5f6;
+}
+
+/* 每行独立圆角，无交错色 */
+.deep-report-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* 首行无上方边框 */
+.deep-report-table tbody tr:first-child td {
+  border-top: none;
+}
+
+/* 外容器 */
+.deep-table-wrap {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 200px;
+  overflow-x: auto;
+  border-radius: 6px;
+  margin-top: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 .severity-high {
@@ -5167,29 +5360,185 @@ td strong {
 
 /* 摘要消息（聊天流中） */
 .deep-summary-card {
-  padding: 10px 14px;
-  border: 1px solid var(--amber-soft);
-  border-radius: 10px;
-  background: var(--amber-soft);
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafbfc;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.deep-summary-card:hover {
+  background: #f4f5f6;
+  border-color: #c8d0d5;
+}
+
+.deep-summary-card::before {
+  content: "📊";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 28px;
+  opacity: 0.15;
 }
 
 .deep-summary-card:hover {
   border-color: var(--amber);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
 }
 
 .deep-summary-card h4 {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
+  padding-right: 36px;
 }
 
 .deep-summary-card p {
   margin: 0;
   font-size: 12px;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.5;
+  padding-right: 36px;
+}
+
+/* === 深度推理停止按钮 === */
+.deep-window-stop {
+  padding: 6px 16px;
+  border: 1px solid var(--rose);
+  border-radius: 8px;
+  background: var(--rose-soft, #fff0f0);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--rose, #e53e3e);
+  transition: all 0.15s ease;
+  display: none;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.deep-window-stop::before {
+  content: "■";
+  font-size: 10px;
+}
+
+.deep-window-stop:hover {
+  background: var(--rose, #e53e3e);
+  color: #fff;
+  border-color: var(--rose, #e53e3e);
+}
+
+.deep-window-stop:not(.hidden) {
+  display: inline-flex;
+}
+
+/* 生成中状态——隐藏关闭和导出按钮 */
+.deep-window.generating .deep-window-close {
+  display: none;
+}
+
+.deep-window.generating .deep-window-export {
+  display: none;
+}
+
+/* === 最小化浮窗（独立可拖拽药丸）=== */
+.deep-window.minimized {
+  width: auto !important;
+  min-width: 160px;
+  max-width: 280px;
+  height: auto !important;
+  border-radius: 100px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, border-radius 0.2s ease;
+  overflow: visible;
+}
+.deep-window.minimized:hover {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+.deep-window.minimized .deep-window-body {
+  display: none !important;
+}
+.deep-window.minimized .deep-window-header {
+  padding: 5px 6px 5px 18px;
+  border-bottom: none;
+  border-radius: 100px;
+  cursor: grab;
+  background: var(--panel);
+}
+.deep-window.minimized .deep-window-header:active {
+  cursor: grabbing;
+}
+.deep-window.minimized .deep-window-header h2 {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+  margin: 0;
+}
+.deep-window.minimized .deep-window-header::before,
+.deep-window.minimized .deep-window-header::after {
+  display: none;
+}
+.deep-window.minimized .deep-window-export,
+.deep-window.minimized .deep-window-stop {
+  display: none !important;
+}
+.deep-window.minimized .deep-window-actions {
+  gap: 0;
+}
+
+/* === 浮动深度分析按钮（FAB）=== */
+.deep-analysis-fab {
+  position: fixed;
+  bottom: 120px;
+  right: 32px;
+  z-index: 999;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, var(--blue), #4f7cff);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 102, 255, 0.35);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.deep-analysis-fab:hover {
+  transform: scale(1.12);
+  box-shadow: 0 6px 24px rgba(0, 102, 255, 0.5);
+}
+
+.deep-analysis-fab:active {
+  transform: scale(0.95);
+}
+
+.deep-analysis-fab.hidden {
+  display: none;
+}
+
+/* 小屏适配 */
+@media (max-width: 640px) {
+  .deep-analysis-fab {
+    bottom: 100px;
+    right: 20px;
+    width: 52px;
+    height: 52px;
+    font-size: 20px;
+  }
 }

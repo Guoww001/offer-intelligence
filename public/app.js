@@ -266,20 +266,17 @@
     paymentSort: document.getElementById("paymentSortFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
     languageToggle: document.getElementById("languageToggle"),
-    deepOverlay: null,
-    deepOverlayBody: null,
-    deepOverlayContent: null,
-    deepOverlaySkeleton: null,
-    deepOverlayError: null,
-    deepReportTitle: null,
-    deepReportSummary: null,
-    deepReportSections: null,
-    deepOverlayClose: null,
-    deepOverlayExport: null,
+    deepAnalysisFab: null,
     chatModeToggle: null,
     modeFastBtn: null,
     modeDeepBtn: null
   };
+
+  var _deepPanelIdCounter = 0;
+  var _deepPanels = [];
+  var _deepMaxZIndex = 1000;
+  var _deepCardKeyCounter = 0;
+  var _deepReportCache = {};
 
   const quickPrompts = [
     { key: "quick.aiper", prompt: "Aiper" },
@@ -495,7 +492,27 @@
       "tier.coreColumns": "核心",
       "tier.allColumns": "全部",
       "language.button.zh": "中文简体",
-      "language.button.en": "English"
+      "language.button.en": "English",
+      "deep.title": "深度分析",
+      "deep.export": "导出",
+      "deep.close": "关闭",
+      "deep.skeleton.step1": "正在理解你的问题…",
+      "deep.skeleton.step2": "正在查询数据…",
+      "deep.skeleton.step3": "正在生成分析报告…",
+      "deep.error": "分析失败，请稍后重试。",
+      "deep.mode.fast": "快速模式",
+      "deep.mode.deep": "深度推理",
+      "deep.placeholder": "输入复杂分析问题（支持对比、趋势、多维分析…）",
+      "deep.fast.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer…",
+      "deep.report.defaultTitle": "分析报告",
+      "deep.chat.summaryPrefix": "📊 深度分析：",
+      "deep.chat.errorPrefix": "📊 深度分析失败：",
+      "deep.error.http": "分析请求失败（{status}），请稍后重试。",
+      "deep.error.return": "分析返回异常，请稍后重试。",
+      "deep.error.network": "网络请求失败，请检查连接后重试。",
+      "deep.stop": "停止",
+      "deep.stopAborted": "分析已取消。",
+      "deep.fab": "🔬"
     }
   };
 
@@ -6071,127 +6088,420 @@
 
   function updateDeepSkeleton(activeStep) {
     // activeStep: 1, 2, or 3 — drives skeleton steps based on real progress
-    document.querySelectorAll(".deep-skeleton-step").forEach((el, i) => {
+    document.querySelectorAll(".deep-skeleton-step").forEach(function (el, i) {
       el.classList.remove("active", "done");
       if (i + 1 < activeStep) el.classList.add("done");
       if (i + 1 === activeStep) el.classList.add("active");
     });
   }
 
-  async function submitDeepReasoning(prompt) {
-    const language = responseLanguageFor(prompt);
+  // === 多重浮窗面板管理器 ===
 
-    // 1. 打开覆盖层，显示骨架屏
-    openDeepOverlay();
-    updateDeepSkeleton(1); // 理解问题中
-
-    // 2. 发送请求
-    try {
-      updateDeepSkeleton(2); // 查询数据中
-      const response = await fetch("/api/chat/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, mode: "deep", language }),
-      });
-
-      if (!response.ok) {
-        showDeepOverlayError("分析请求失败（" + response.status + "），请稍后重试。");
-        return;
-      }
-
-      const data = await response.json();
-
-      if (!data.ok || !data.report) {
-        showDeepOverlayError("分析返回异常，请稍后重试。");
-        return;
-      }
-
-      // 3. 生成报告
-      updateDeepSkeleton(3);
-
-      // 4. 渲染报告
-      renderDeepReport(data.report);
-
-      // 4. 插入聊天摘要
-      addMessage("assistant", deepSummaryHtml(data.report, prompt));
-
-    } catch (error) {
-      console.error("[deep] reasoning error:", error);
-      showDeepOverlayError("网络请求失败，请检查连接后重试。");
-    }
+  function _deepPanelTemplate() {
+    return '<div class="deep-window-header">' +
+      '<h2 class="deep-window-title">' + t("deep.title", "Deep Analysis") + '</h2>' +
+      '<div class="deep-window-actions">' +
+        '<button class="deep-window-stop hidden" type="button">' + t("deep.stop", "Stop") + '</button>' +
+        '<button class="deep-window-export" type="button">' + t("deep.export", "Export") + '</button>' +
+        '<button class="deep-window-minimize" type="button" aria-label="Minimize" title="Minimize">─</button>' +
+        '<button class="deep-window-close" type="button" aria-label="Close">✕</button>' +
+      '</div></div>' +
+      '<div class="deep-window-body">' +
+        '<div class="deep-window-skeleton">' +
+          '<div class="deep-skeleton-step active"><div class="deep-skeleton-spinner"></div><span>' + t("deep.skeleton.step1", "Understanding your question…") + '</span></div>' +
+          '<div class="deep-skeleton-step"><div class="deep-skeleton-spinner"></div><span>' + t("deep.skeleton.step2", "Querying data…") + '</span></div>' +
+          '<div class="deep-skeleton-step"><div class="deep-skeleton-spinner"></div><span>' + t("deep.skeleton.step3", "Generating report…") + '</span></div>' +
+        '</div>' +
+        '<div class="deep-window-content hidden">' +
+          '<div class="deep-report-title"></div>' +
+          '<div class="deep-report-summary"></div>' +
+          '<div class="deep-report-sections"></div>' +
+        '</div>' +
+        '<div class="deep-window-error hidden"><p></p></div>' +
+      '</div>';
   }
 
-  function openDeepOverlay() {
-    els.deepOverlay.classList.remove("hidden");
-    els.deepOverlaySkeleton.classList.remove("hidden");
-    els.deepOverlayContent.classList.add("hidden");
-    els.deepOverlayError.classList.add("hidden");
-    document.body.style.overflow = "hidden";
+  function _createDeepPanel(prompt) {
+    var id = "deep-panel-" + (++_deepPanelIdCounter);
+    var zIndex = ++_deepMaxZIndex;
+    // 层叠偏移：新面板依次偏移
+    var baseIdx = _deepPanels.length;
+    var left = Math.max(12, (window.innerWidth - 760) / 2 + baseIdx * 30);
+    var top = Math.max(12, (window.innerHeight - 720) / 2 + baseIdx * 30);
+    left = Math.min(left, window.innerWidth - 300);
+    top = Math.min(top, window.innerHeight - 200);
 
-    // Reset skeleton steps (step 1 active by default)
-    document.querySelectorAll(".deep-skeleton-step").forEach((el, i) => {
+    var div = document.createElement("div");
+    div.className = "deep-window";
+    div.id = id;
+    div.style.zIndex = zIndex;
+    div.style.left = left + "px";
+    div.style.top = top + "px";
+    div.innerHTML = _deepPanelTemplate();
+    document.body.appendChild(div);
+
+    var panel = {
+      id: id,
+      el: div,
+      prompt: prompt,
+      abortController: null,
+      state: "loading",
+      minimized: false,
+      zIndex: zIndex,
+      dragState: null,
+      title: t("deep.report.defaultTitle", "Analysis Report"),
+      skeletonEl: div.querySelector(".deep-window-skeleton"),
+      contentEl: div.querySelector(".deep-window-content"),
+      errorEl: div.querySelector(".deep-window-error"),
+      titleEl: div.querySelector(".deep-window-title"),
+      summaryEl: div.querySelector(".deep-report-summary"),
+      sectionsEl: div.querySelector(".deep-report-sections")
+    };
+
+    _bindPanelEvents(panel);
+    _initPanelDrag(panel);
+    _bringPanelToFront(panel);
+    _deepPanels.push(panel);
+    return panel;
+  }
+
+  function _bindPanelEvents(panel) {
+    var el = panel.el;
+    el.querySelector(".deep-window-close").addEventListener("click", function () {
+      _removeDeepPanel(panel.id);
+    });
+    el.querySelector(".deep-window-minimize").addEventListener("click", function () {
+      if (panel.minimized) {
+        _expandDeepPanel(panel.id);
+      } else {
+        _minimizeDeepPanel(panel.id);
+      }
+    });
+    el.querySelector(".deep-window-export").addEventListener("click", function () {
+      window.print();
+    });
+    el.querySelector(".deep-window-stop").addEventListener("click", function () {
+      _cancelDeepPanel(panel.id);
+    });
+    // 点击 header 置顶（最低优先，让 drag 先处理）
+    el.querySelector(".deep-window-header").addEventListener("mousedown", function () {
+      if (!panel.dragState) _bringPanelToFront(panel);
+    });
+  }
+
+  // === 拖拽（每个面板独立）===
+
+  function _initPanelDrag(panel) {
+    var header = panel.el.querySelector(".deep-window-header");
+    header.addEventListener("mousedown", function (e) {
+      if (e.target.closest("button, input, select, textarea, .deep-window-actions")) return;
+      e.preventDefault();
+      var rect = panel.el.getBoundingClientRect();
+      panel.dragState = {
+        startX: e.clientX,
+        startY: e.clientY,
+        panelLeft: rect.left,
+        panelTop: rect.top,
+        moved: false
+      };
+      panel.el.classList.add("dragging");
+      _bringPanelToFront(panel);
+      document.addEventListener("mousemove", _onPanelDragMove);
+      document.addEventListener("mouseup", _onPanelDragEnd);
+    });
+  }
+
+  function _onPanelDragMove(e) {
+    var panel = _deepPanels.find(function (p) { return p.dragState; });
+    if (!panel || !panel.dragState) return;
+    var ds = panel.dragState;
+    ds.moved = true;
+    var newLeft = ds.panelLeft + e.clientX - ds.startX;
+    var newTop = ds.panelTop + e.clientY - ds.startY;
+    newLeft = Math.max(-panel.el.offsetWidth * 0.5, Math.min(newLeft, window.innerWidth - 40));
+    newTop = Math.max(0, Math.min(newTop, window.innerHeight - 60));
+    panel.el.style.left = newLeft + "px";
+    panel.el.style.top = newTop + "px";
+  }
+
+  function _onPanelDragEnd() {
+    var panel = _deepPanels.find(function (p) { return p.dragState; });
+    if (panel) {
+      var wasMinClick = panel.minimized && !panel.dragState.moved;
+      panel.dragState = null;
+      panel.el.classList.remove("dragging");
+      // 点击最小化药丸（未拖动）→ 展开
+      if (wasMinClick) {
+        _expandDeepPanel(panel.id);
+        return;
+      }
+    }
+    document.removeEventListener("mousemove", _onPanelDragMove);
+    document.removeEventListener("mouseup", _onPanelDragEnd);
+  }
+
+  function _bringPanelToFront(panel) {
+    _deepMaxZIndex++;
+    panel.zIndex = _deepMaxZIndex;
+    panel.el.style.zIndex = panel.zIndex;
+  }
+
+  // === 最小化 / 展开 ===
+
+  function _minimizeDeepPanel(id) {
+    var panel = _deepPanels.find(function (p) { return p.id === id; });
+    if (!panel || panel.state === "loading" || panel.minimized) return;
+    panel.minimized = true;
+    panel.el.classList.add("minimized");
+    // 切换最小化按钮为展开图标
+    var minBtn = panel.el.querySelector(".deep-window-minimize");
+    if (minBtn) { minBtn.textContent = "▢"; minBtn.title = "Expand"; }
+    _bringPanelToFront(panel);
+  }
+
+  function _expandDeepPanel(id) {
+    var panel = _deepPanels.find(function (p) { return p.id === id; });
+    if (!panel) return;
+    panel.minimized = false;
+    panel.el.classList.remove("minimized");
+    // 恢复最小化按钮图标
+    var minBtn = panel.el.querySelector(".deep-window-minimize");
+    if (minBtn) { minBtn.textContent = "─"; minBtn.title = "Minimize"; }
+    _bringPanelToFront(panel);
+  }
+
+  function _removeDeepPanel(id) {
+    var idx = _deepPanels.findIndex(function (p) { return p.id === id; });
+    if (idx === -1) return;
+    var panel = _deepPanels[idx];
+    if (panel.abortController) {
+      panel.abortController.abort();
+    }
+    panel.el.remove();
+    _deepPanels.splice(idx, 1);
+  }
+
+  // === 骨架屏 ===
+
+  function updateDeepSkeletonInPanel(panel, activeStep) {
+    var steps = panel.skeletonEl ? panel.skeletonEl.querySelectorAll(".deep-skeleton-step") : [];
+    steps.forEach(function (el, i) {
+      el.classList.remove("active", "done");
+      if (i + 1 < activeStep) el.classList.add("done");
+      if (i + 1 === activeStep) el.classList.add("active");
+    });
+  }
+
+  // === 打开 / 渲染 / 错误 / 取消 ===
+
+  function _showPanelSkeleton(panel, reasoning) {
+    panel.state = "loading";
+    if (panel.skeletonEl) panel.skeletonEl.classList.remove("hidden");
+    if (panel.contentEl) panel.contentEl.classList.add("hidden");
+    if (panel.errorEl) panel.errorEl.classList.add("hidden");
+    // 重置骨架步
+    var steps = panel.skeletonEl ? panel.skeletonEl.querySelectorAll(".deep-skeleton-step") : [];
+    steps.forEach(function (el, i) {
       el.classList.remove("active", "done");
       if (i === 0) el.classList.add("active");
     });
-
-    // Skeleton steps are now driven by real pipeline progress
-    // via updateDeepSkeleton() calls in submitDeepReasoning().
+    // 按钮状态
+    panel.el.querySelector(".deep-window-stop")?.classList.toggle("hidden", !reasoning);
+    panel.el.querySelector(".deep-window-close")?.classList.toggle("hidden", !!reasoning);
+    panel.el.querySelector(".deep-window-export")?.classList.toggle("hidden", !!reasoning);
+    panel.el.classList.toggle("generating", !!reasoning);
   }
 
-  function closeDeepOverlay() {
-    els.deepOverlay.classList.add("hidden");
-    document.body.style.overflow = "";
+  function _renderPanelReport(panel, report) {
+    panel.state = "content";
+    if (panel.skeletonEl) panel.skeletonEl.classList.add("hidden");
+    if (panel.contentEl) panel.contentEl.classList.remove("hidden");
+    if (panel.errorEl) panel.errorEl.classList.add("hidden");
+
+    var title = report.title || t("deep.report.defaultTitle", "Analysis Report");
+    panel.title = title;
+    if (panel.titleEl) panel.titleEl.textContent = title;
+    if (panel.summaryEl) panel.summaryEl.textContent = report.summary || "";
+
+    if (panel.sectionsEl) {
+      panel.sectionsEl.innerHTML = (report.sections || []).map(function (section) {
+        var severityClass = section.severity ? " severity-" + section.severity : "";
+        var tableHtml = "";
+        if (section.table && section.table.headers && section.table.headers.length) {
+          var headers = section.table.headers;
+          var rows = section.table.rows || [];
+          headers = headers.map(function (h) { return _deepHeaderLabel(h); });
+          var colTypes = headers.map(function (h) { return _isNumericCol(h) ? "num" : "text"; });
+          var headerHtml = headers.map(function (h, i) {
+            var cls = colTypes[i] === "num" ? ' class="num"' : "";
+            return "<th" + cls + ">" + escapeHtml(h) + "</th>";
+          }).join("");
+          var rowHtml = rows.map(function (row) {
+            return "<tr>" + row.map(function (c, i) {
+              var cls = colTypes[i] === "num" ? ' class="num"' : "";
+              return "<td" + cls + ">" + escapeHtml(c) + "</td>";
+            }).join("") + "</tr>";
+          }).join("");
+          tableHtml = '<div class="deep-table-wrap"><table class="deep-report-table"><thead><tr>' + headerHtml + '</tr></thead><tbody>' + rowHtml + '</tbody></table></div>';
+        }
+        return '<section class="deep-report-section' + severityClass + '">' +
+          '<h3>' + escapeHtml(section.title) + '</h3>' +
+          (section.findings ? '<ul class="deep-report-findings">' + section.findings.map(function (f) { return '<li>' + escapeHtml(f) + '</li>'; }).join("") + '</ul>' : "") +
+          tableHtml +
+          '</section>';
+      }).join("");
+    }
+
+    // 恢复按钮
+    panel.el.querySelector(".deep-window-stop")?.classList.add("hidden");
+    panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
+    panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+    panel.el.classList.remove("generating");
   }
 
-  function showDeepOverlayError(message) {
-    els.deepOverlaySkeleton.classList.add("hidden");
-    els.deepOverlayContent.classList.add("hidden");
-    els.deepOverlayError.classList.remove("hidden");
-    els.deepOverlayError.innerHTML = "<p>" + escapeHtml(message) + "</p>";
-    // Still insert a message in chat
-    addMessage("assistant", "📊 深度分析失败：" + escapeHtml(message));
+  function _showPanelError(panel, message) {
+    panel.state = "error";
+    if (panel.skeletonEl) panel.skeletonEl.classList.add("hidden");
+    if (panel.contentEl) panel.contentEl.classList.add("hidden");
+    if (panel.errorEl) {
+      panel.errorEl.classList.remove("hidden");
+      panel.errorEl.innerHTML = "<p>" + escapeHtml(message) + "</p>";
+    }
+    addMessage("assistant", t("deep.chat.errorPrefix", "📊 Deep Analysis Failed: ") + escapeHtml(message));
+
+    panel.el.querySelector(".deep-window-stop")?.classList.add("hidden");
+    panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
+    panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+    panel.el.classList.remove("generating");
   }
 
-  function renderDeepReport(report) {
-    els.deepOverlaySkeleton.classList.add("hidden");
-    els.deepOverlayContent.classList.remove("hidden");
-
-    els.deepReportTitle.textContent = report.title || "分析报告";
-    els.deepReportSummary.textContent = report.summary || "";
-
-    els.deepReportSections.innerHTML = (report.sections || []).map((section) => {
-      const severityClass = section.severity ? " severity-" + section.severity : "";
-      const tableHtml = section.table
-        ? `<table class="deep-report-table">
-             <thead><tr>${section.table.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
-             <tbody>${section.table.rows.map((row) => `<tr>${row.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("")}</tbody>
-           </table>`
-        : "";
-
-      return `<section class="deep-report-section${severityClass}">
-        <h3>${escapeHtml(section.title)}</h3>
-        ${section.findings ? `<ul class="deep-report-findings">${section.findings.map((f) => `<li>${escapeHtml(f)}</li>`).join("")}</ul>` : ""}
-        ${tableHtml}
-      </section>`;
-    }).join("");
+  function _cancelDeepPanel(id) {
+    var panel = _deepPanels.find(function (p) { return p.id === id; });
+    if (panel && panel.abortController) {
+      panel.abortController.abort();
+      panel.abortController = null;
+    }
+    _removeDeepPanel(id);
+    var msg = t("deep.stopAborted", "Analysis cancelled.");
+    addMessage("assistant", t("deep.chat.summaryPrefix", "📊 Deep Analysis: ") + msg);
   }
 
-  function deepSummaryHtml(report, prompt) {
-    const escapedTitle = escapeHtml(report.title || "分析报告");
-    const escapedSummary = escapeHtml(report.summary || "");
-    const promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
-    return `<div class="deep-summary-card" onclick="(function(){
-      var o = document.getElementById('deepOverlay');
-      if (o) {
-        o.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
+  // === 提交深度推理 ===
+
+  async function submitDeepReasoning(prompt) {
+    var panel = _createDeepPanel(prompt);
+    panel.abortController = new AbortController();
+    var signal = panel.abortController.signal;
+    _showPanelSkeleton(panel, true);
+
+    try {
+      updateDeepSkeletonInPanel(panel, 2);
+      var response = await fetch("/api/chat/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, mode: "deep", language: responseLanguageFor(prompt) }),
+        signal
+      });
+
+      if (signal.aborted) return;
+      if (!response.ok) {
+        _showPanelError(panel, t("deep.error.http", "Request failed ({status}), please try again later.").replace("{status}", response.status));
+        return;
       }
-    })()">
-      <h4>📊 深度分析：${escapedTitle}</h4>
-      <p>${escapedSummary}</p>
-      <small style="color:var(--muted);font-size:11px">${promptPreview}</small>
-    </div>`;
+
+      var data = await response.json();
+      if (signal.aborted) return;
+
+      if (!data.ok || !data.report) {
+        _showPanelError(panel, t("deep.error.return", "Analysis returned an error, please try again later."));
+        return;
+      }
+
+      updateDeepSkeletonInPanel(panel, 3);
+      _renderPanelReport(panel, data.report);
+      addMessage("assistant", _deepPanelSummaryHtml(panel, data.report, prompt));
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      console.error("[deep] reasoning error:", error);
+      _showPanelError(panel, t("deep.error.network", "Network request failed, please check your connection."));
+    }
   }
+
+  // === 聊天摘要 ===
+
+  function _deepPanelSummaryHtml(panel, report, prompt) {
+    var cardKey = ++_deepCardKeyCounter;
+    panel._cardKey = cardKey;
+    // 缓存报告数据，支持面板关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, report: report };
+    var escapedTitle = escapeHtml(report.title || t("deep.report.defaultTitle", "Analysis Report"));
+    var escapedSummary = escapeHtml(report.summary || "");
+    var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
+    var prefix = t("deep.chat.summaryPrefix", "📊 Deep Analysis: ");
+    return '<div class="deep-summary-card" onclick="(function(){ ' +
+      'var evt = new CustomEvent(\'deep-expand-panel\', {detail: {key: ' + cardKey + '}}); ' +
+      'document.dispatchEvent(evt); })()">' +
+      '<h4>' + prefix + escapedTitle + '</h4>' +
+      '<p>' + escapedSummary + '</p>' +
+      '<small style="color:var(--muted);font-size:11px">' + promptPreview + '</small>' +
+    '</div>';
+  }
+
+  // 数字列关键词——用于表格渲染时智能对齐
+  var _NUMERIC_COL_PATTERNS = [
+    /^epc$/i, /^avg\s*epc$/i, /^revenue$/i, /^sales$/i, /^orders$/i,
+    /^aov$/i, /^commission$/i, /^rate$/i, /^amount$/i, /^count$/i,
+    /^fee$/i, /^price$/i, /^profit$/i, /^cost$/i, /^total$/i,
+    /^value$/i, /^budget$/i, /^spend$/i, /^roas$/i, /^cpa$/i,
+    /^cvr$/i, /^cr$/i, /^rpm$/i, /^margin$/i, /^roi$/i,
+    /^pct$/i, /^[0-9]/, /\$/, /%/, /€/, /£/,
+    /^currency$/i, /^tax$/i, /^shipping$/i, /^refund$/i,
+  ];
+
+  function _isNumericCol(header) {
+    return _NUMERIC_COL_PATTERNS.some(function (p) { return p.test(header); });
+  }
+
+  function _deepHeaderLabel(raw) {
+    // 为 Deep Analysis 表头添加单位标签
+    var unitMap = {
+      "epc": " ($)",
+      "aov": " ($)",
+      "销售额": " ($)",
+      "总销售额": " ($)",
+      "联盟佣金": " ($)",
+      "佣金": " ($)",
+      "转化率": " (%)",
+      "佣金率": " (%)",
+      "订单": " (单)",
+      "总订单": " (单)",
+      "订单量": " (单)",
+      "总订单数": " (单)",
+      "总订单量": " (单)",
+      "点击": "",
+      "总点击": "",
+      "点击数": "",
+      "总点击量": "",
+      "总点击数": "",
+      "单价": " ($)",
+      "客单价": " ($)",
+      "dpv": " ($)",
+      "DPV": " ($)",
+      "atc": "",
+      "ATC": "",
+      "paymentCycle": " (天)",
+      "支付周期": " (天)",
+    };
+    // 先尝试精确匹配
+    if (unitMap[raw]) return raw + unitMap[raw];
+    // 模糊匹配：包含关键词
+    if (/转化率|佣金率|conv\.?\s*rate|conversion/i.test(raw)) return raw + " (%)";
+    if (/销售额|sales|revenue|commission|epc|aov|dpv/i.test(raw) && !/率|rate|click|order/i.test(raw)) return raw + " ($)";
+    if (/订单|order/i.test(raw) && !/率|rate/i.test(raw)) return raw + " (单)";
+    if (/周期|cycle|payment/i.test(raw)) return raw + " (天)";
+    return raw;
+  }
+  // renderDeepReport 和 deepSummaryHtml 已移至 _renderPanelReport 和 _deepPanelSummaryHtml
 
   async function applyPrompt(prompt) {
     // ★ Deep reasoning mode routing
@@ -10543,6 +10853,14 @@
       button.classList.toggle("active", isTier && button.dataset.tierPage === state.selectedTierPage);
     });
     updateReportsNavState();
+    // 切换页面时自动最小化所有非推理中的深度分析浮窗
+    _deepPanels.forEach(function (p) {
+      if (!p.minimized && !p.abortController) {
+        _minimizeDeepPanel(p.id);
+      }
+    });
+    // 浮动深度分析按钮只在 dashboard 页面显示
+    els.deepAnalysisFab?.classList.toggle("hidden", page !== "dashboard");
     if (page === "payments") {
       renderPaymentsPage();
       if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
@@ -10555,17 +10873,8 @@
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
 
-    // Deep overlay DOM refs
-    els.deepOverlay = document.getElementById("deepOverlay");
-    els.deepOverlayBody = document.getElementById("deepOverlayBody");
-    els.deepOverlayContent = document.getElementById("deepOverlayContent");
-    els.deepOverlaySkeleton = document.getElementById("deepOverlaySkeleton");
-    els.deepOverlayError = document.getElementById("deepOverlayError");
-    els.deepReportTitle = document.getElementById("deepReportTitle");
-    els.deepReportSummary = document.getElementById("deepReportSummary");
-    els.deepReportSections = document.getElementById("deepReportSections");
-    els.deepOverlayClose = document.getElementById("deepOverlayClose");
-    els.deepOverlayExport = document.getElementById("deepOverlayExport");
+    // 浮动深度分析按钮 & 模式切换
+    els.deepAnalysisFab = document.getElementById("deepAnalysisFab");
     els.chatModeToggle = document.getElementById("chatModeToggle");
     els.modeFastBtn = els.chatModeToggle?.querySelector('[data-mode="fast"]');
     els.modeDeepBtn = els.chatModeToggle?.querySelector('[data-mode="deep"]');
@@ -10748,33 +11057,81 @@
       state.deepMode = false;
       els.modeFastBtn.classList.add("active");
       els.modeDeepBtn.classList.remove("active");
-      els.chatInput.placeholder = chatbotI18n[state.language]?.chat?.placeholder || "Ask about EPC, tiers, AOV, conversion, unpaid offers...";
+      els.chatInput.placeholder = t("chat.placeholder", "Ask about EPC, tiers, AOV, conversion, unpaid offers...");
     });
 
     els.modeDeepBtn?.addEventListener("click", () => {
       state.deepMode = true;
       els.modeDeepBtn.classList.add("active");
       els.modeFastBtn.classList.remove("active");
-      els.chatInput.placeholder = "输入复杂分析问题（支持对比、趋势、多维分析…）";
+      els.chatInput.placeholder = t("deep.placeholder", "Enter complex analysis queries (comparison, trends, multi-dimensional analysis…)");
     });
 
-    // 覆盖层关闭
-    els.deepOverlayClose?.addEventListener("click", closeDeepOverlay);
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !els.deepOverlay?.classList.contains("hidden")) {
-        closeDeepOverlay();
+    // 浮动深度分析按钮——聚焦最上层面板或切换深度模式
+    els.deepAnalysisFab?.addEventListener("click", () => {
+      if (_deepPanels.length > 0) {
+        var topPanel = _deepPanels[_deepPanels.length - 1];
+        _bringPanelToFront(topPanel);
+        // 如果是最小化状态，展开它
+        if (topPanel.minimized) {
+          _expandDeepPanel(topPanel.id);
+        }
+        return;
+      }
+      // 无面板时切换到深度模式准备提问
+      if (!state.deepMode) {
+        state.deepMode = true;
+        els.modeDeepBtn?.classList.add("active");
+        els.modeFastBtn?.classList.remove("active");
+        els.chatInput.placeholder = t("deep.placeholder", "Enter complex analysis queries (comparison, trends, multi-dimensional analysis…)");
+      }
+      els.chatInput?.focus();
+      els.chatInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    // Escape 最小化最上层非推理中的面板
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        for (var i = _deepPanels.length - 1; i >= 0; i--) {
+          var p = _deepPanels[i];
+          if (!p.minimized && !p.abortController) {
+            _minimizeDeepPanel(p.id);
+            break;
+          }
+        }
       }
     });
 
-    // 导出
-    els.deepOverlayExport?.addEventListener("click", () => {
-      window.print();
+    // 监听聊天摘要中的展开事件（支持重建已关闭的面板）
+    document.addEventListener("deep-expand-panel", function (e) {
+      var key = e.detail.key;
+      if (!key) return;
+      // 先找现有面板
+      var panel = _deepPanels.find(function (p) { return p._cardKey === key; });
+      if (panel) {
+        if (panel.minimized) {
+          _expandDeepPanel(panel.id);
+        } else {
+          _bringPanelToFront(panel);
+        }
+        return;
+      }
+      // 面板已关闭，尝试从缓存重建
+      var cached = _deepReportCache[key];
+      if (cached) {
+        var newPanel = _createDeepPanel(cached.prompt);
+        newPanel._cardKey = key;
+        _renderPanelReport(newPanel, cached.report);
+        _bringPanelToFront(newPanel);
+      }
     });
 
     addMessage("assistant", `Loaded <strong>${offers.length.toLocaleString()}</strong> internal offers. Search merchant name, merchant ID, ASIN, category, payment status, or ask for recommendations.`);
     state.currentContext = { type: "default", items: [], summary: {}, filters: {} };
     syncPaymentControls();
     renderAll();
+    // 初始页面为 dashboard，显示浮动深度分析按钮
+    if (state.page === "dashboard") els.deepAnalysisFab?.classList.remove("hidden");
     renderPaymentsPage();
     rerenderForLanguage();
     document.body.classList.remove("app-loading");

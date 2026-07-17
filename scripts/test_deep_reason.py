@@ -266,3 +266,105 @@ def test_plan_validation():
     result = parse_query("这是完全不符合格式的超级长文测试数据")
     # Should still return a dict — either valid or error (no crashes)
     assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+
+
+# ── Multi-entity comparison tests ──────────────────────────────────────────────
+
+@patch("deep_reason._load_cache")
+def test_entity_breakdown_category_comparison(mock_cache):
+    """Multi-entity category query should produce per-entity breakdowns."""
+    from deep_reason import _execute_from_cache
+
+    offers = [
+        {"merchantId": "1", "brand": "BrandA", "category": "Beauty",
+         "mainCategory": "Beauty", "tier": "Tier 1", "epc": 2.0, "aov": 50.0,
+         "orders": 100, "clicks": 500, "salesAmount": 5000.0, "conversionRate": 0.2},
+        {"merchantId": "2", "brand": "BrandB", "category": "Beauty",
+         "mainCategory": "Beauty", "tier": "Tier 2", "epc": 1.5, "aov": 40.0,
+         "orders": 200, "clicks": 800, "salesAmount": 8000.0, "conversionRate": 0.25},
+        {"merchantId": "3", "brand": "BrandC", "category": "Electronics",
+         "mainCategory": "Electronics", "tier": "Tier 1", "epc": 3.0, "aov": 120.0,
+         "orders": 50, "clicks": 300, "salesAmount": 6000.0, "conversionRate": 0.17},
+    ]
+    mock_cache.return_value = {"offers": offers, "month": "2026-07"}
+
+    result = _execute_from_cache(
+        "category", ["Beauty", "Electronics"],
+        ["epc", "aov", "orders", "salesAmount"], None,
+        {"analysisType": "comparison", "timeRange": {"months": 2}},
+    )
+
+    # Should have entityBreakdown
+    assert "entityBreakdown" in result, f"Missing entityBreakdown: {list(result.keys())}"
+    assert "Beauty" in result["entityBreakdown"], f"Missing Beauty in breakdown: {list(result['entityBreakdown'].keys())}"
+    assert "Electronics" in result["entityBreakdown"], f"Missing Electronics in breakdown"
+
+    # Beauty should have 2 offers
+    beauty = result["entityBreakdown"]["Beauty"]
+    assert beauty["sampleSize"] == 2, f"Beauty should have 2 offers, got {beauty['sampleSize']}"
+    assert beauty["totals"]["orders"] == 300, f"Beauty orders should be 300, got {beauty['totals']['orders']}"
+    assert beauty["totals"]["salesAmount"] == 13000.0, f"Beauty sales should be 13000, got {beauty['totals']['salesAmount']}"
+
+    # Electronics should have 1 offer
+    elec = result["entityBreakdown"]["Electronics"]
+    assert elec["sampleSize"] == 1, f"Electronics should have 1 offer, got {elec['sampleSize']}"
+    assert elec["totals"]["orders"] == 50, f"Electronics orders should be 50, got {elec['totals']['orders']}"
+    assert elec["averages"]["epc"] == 3.0, f"Electronics avg EPC should be 3.0, got {elec['averages']['epc']}"
+
+    # Should also have cacheMonth
+    assert result.get("cacheMonth") == "2026-07", f"Missing cacheMonth: {result.get('cacheMonth')}"
+
+
+@patch("deep_reason._load_cache")
+def test_entity_breakdown_data_only_report(mock_cache):
+    """_data_only_report fallback should produce per-entity sections."""
+    from deep_reason import _data_only_report
+
+    offers = [
+        {"merchantId": "1", "brand": "BrandA", "category": "Beauty",
+         "mainCategory": "Beauty", "tier": "Tier 1", "epc": 2.0, "aov": 50.0,
+         "orders": 100, "clicks": 500, "salesAmount": 5000.0, "conversionRate": 0.2},
+        {"merchantId": "3", "brand": "BrandC", "category": "Electronics",
+         "mainCategory": "Electronics", "tier": "Tier 1", "epc": 3.0, "aov": 120.0,
+         "orders": 50, "clicks": 300, "salesAmount": 6000.0, "conversionRate": 0.17},
+    ]
+    data = {
+        "entityType": "category",
+        "entities": ["Beauty", "Electronics"],
+        "totalOffers": 2,
+        "entityCount": 2,
+        "entityBreakdown": {
+            "Beauty": {
+                "averages": {"epc": 2.0, "aov": 50.0},
+                "totals": {"orders": 100, "salesAmount": 5000.0},
+                "sampleSize": 1,
+                "offers": [offers[0]],
+            },
+            "Electronics": {
+                "averages": {"epc": 3.0, "aov": 120.0},
+                "totals": {"orders": 50, "salesAmount": 6000.0},
+                "sampleSize": 1,
+                "offers": [offers[1]],
+            },
+        },
+    }
+    plan = {
+        "entities": ["Beauty", "Electronics"],
+        "analysisType": "comparison",
+        "entityType": "category",
+    }
+
+    report = _data_only_report(data, plan, "zh")
+    assert "title" in report, f"Missing title"
+    assert report["title"] == "Beauty vs Electronics 对比分析", f"Wrong title: {report['title']}"
+    assert len(report["sections"]) >= 2, f"Should have 2+ sections, got {len(report['sections'])}"
+
+    # First section should be the comparison overview
+    overview = report["sections"][0]
+    assert overview["type"] == "overview"
+    assert "对比" in overview["title"]
+
+    # Should have per-entity sections
+    section_titles = [s["title"] for s in report["sections"]]
+    assert "Beauty 数据" in section_titles, f"Missing Beauty section in {section_titles}"
+    assert "Electronics 数据" in section_titles, f"Missing Electronics section in {section_titles}"
