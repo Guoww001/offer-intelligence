@@ -82,6 +82,12 @@ runScript("public/app.js", sandbox);
 const hooks = sandbox.window.OFFER_INTELLIGENCE_TEST_HOOKS;
 assertTruthy(hooks, "app should expose test hooks in test mode");
 
+assertEqual(hooks.formatSheetCell("Commission Rate", "27.00"), "27.00%", "whole-number commission rate should display as a percentage");
+assertEqual(hooks.formatSheetCell("Commission Rate", "0.27"), "27.00%", "fractional commission rate should display as a percentage");
+assertEqual(hooks.formatSheetCell("Commission Rate", "27.00%"), "27.00%", "existing commission percentage should not be duplicated");
+assertEqual(hooks.formatSheetCell("Completion Rate", "128.11"), "128.11%", "existing percentage columns should keep their formatting");
+assertEqual(hooks.formatSheetCell("Order count", "96"), "96", "non-rate numeric columns should stay numeric");
+
 for (const tierName of ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]) {
   const sheet = sandbox.window.SHEET_REPORT_DATA.sheets.find((entry) => entry.name === tierName);
   const displayRows = hooks.tierSheetRowsForDisplay(tierName);

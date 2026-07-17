@@ -2301,7 +2301,7 @@
 
   function isRateColumn(header) {
     const lower = String(header || "").toLowerCase();
-    return /(success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b)/.test(lower) && !/count/.test(lower);
+    return /(commission rate|success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b)/.test(lower) && !/count/.test(lower);
   }
 
   function percentageNumberForHeader(header, value) {
@@ -2316,15 +2316,16 @@
     return Math.abs(raw) <= 1 ? raw * 100 : raw;
   }
 
-  function formatPercentNumber(value) {
-    return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+  function formatPercentNumber(value, minimumFractionDigits = 0) {
+    return `${Number(value).toLocaleString(undefined, { minimumFractionDigits, maximumFractionDigits: 2 })}%`;
   }
 
   function formatSheetCell(header, value) {
     const text = String(value ?? "");
     if (text.includes("%")) return text;
     const percentage = percentageNumberForHeader(header, text);
-    return percentage === null ? text : formatPercentNumber(percentage);
+    const minimumFractionDigits = /commission rate/i.test(String(header || "")) ? 2 : 0;
+    return percentage === null ? text : formatPercentNumber(percentage, minimumFractionDigits);
   }
 
   function sortableReportValue(header, value) {
@@ -11181,6 +11182,7 @@
       rankedRecommendations,
       chatOverviewColumnLabels: () => chatOverviewColumns.map((column) => column.label),
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
+      formatSheetCell,
       displayCategory,
       dashboardCategoryGroups,
       dashboardCategoryFocusedGroups,
