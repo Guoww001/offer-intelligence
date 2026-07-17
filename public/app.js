@@ -2284,7 +2284,7 @@
 
   function isRateColumn(header) {
     const lower = String(header || "").toLowerCase();
-    return /(success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b|commission\s*rate)/.test(lower) && !/count/.test(lower);
+    return /(success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b)/.test(lower) && !/count/.test(lower);
   }
 
   function percentageNumberForHeader(header, value) {
