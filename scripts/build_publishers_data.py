@@ -111,6 +111,29 @@ WHERE o.user_id IS NOT NULL AND o.user_id > 0
   AND a.advert_id IS NOT NULL AND a.advert_id > 0
 """
 
+# 按月聚合（用于前端月份筛选）
+MONTHLY_SQL = f"""
+SELECT
+  o.user_id,
+  LEFT(CAST(o.order_time_day AS CHAR), 6) AS month,
+  CASE
+{_MARKET_WHEN_SQL}
+      ELSE 'Unknown'
+  END AS market,
+  SUM(o.clicks) AS clicks,
+  SUM(o.detail_page_views) AS dpv,
+  SUM(o.add_to_carts) AS atc,
+  SUM(o.total_purchases) AS orders,
+  SUM(o.amount) AS sales,
+  SUM(o.payout) AS all_commission,
+  SUM(o.aff_payout) AS aff_commission
+FROM cnpscy_amazon_order o
+LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+WHERE o.user_id IS NOT NULL AND o.user_id > 0
+  AND o.order_time_day IS NOT NULL
+GROUP BY o.user_id, month, market
+"""
+
 CACHE_FILE = ROOT / "protected_data" / "db_publishers_cache.json"
 
 
@@ -164,7 +187,34 @@ def build_publishers_payload() -> dict:
                 merchant_name_map[mid] = mname
             merchants_by_user[uid].append({"merchantId": mid, "merchantName": mname})
 
-        # 6) 聚合数据: { userId -> { ... } }
+        # 6) 查询按月聚合数据
+        monthly_rows = fetch_all(conn, MONTHLY_SQL)
+        monthly_data: dict[str, list[dict]] = {}  # month -> rows
+        months_set: set[str] = set()
+        for mr in monthly_rows:
+            uid = int(mr["user_id"])
+            month = str(mr["month"]).strip()
+            if not month or len(month) != 6:
+                continue
+            # format as YYYY-MM
+            month_key = f"{month[:4]}-{month[4:]}"
+            months_set.add(month_key)
+            if month_key not in monthly_data:
+                monthly_data[month_key] = []
+            market = str(mr["market"])
+            monthly_data[month_key].append({
+                "userId": uid,
+                "market": market,
+                "clicks": int(mr["clicks"] or 0),
+                "dpv": int(mr["dpv"] or 0),
+                "atc": int(mr["atc"] or 0),
+                "orders": int(mr["orders"] or 0),
+                "sales": float(mr["sales"] or 0),
+                "allCommission": float(mr["all_commission"] or 0),
+                "affCommission": float(mr["aff_commission"] or 0),
+            })
+
+        # 7) 聚合数据: { userId -> { ... } }
         publishers: dict[int, dict] = {}
         summary = {
             "totalPublishers": 0,
@@ -230,6 +280,8 @@ def build_publishers_payload() -> dict:
             "networks": sorted(all_networks_set),
             "linkTypes": sorted(all_link_types_set),
             "merchantNameMap": {str(k): v for k, v in merchant_name_map.items()},
+            "months": sorted(months_set),
+            "monthlyRows": monthly_data,
         }
         return payload
 

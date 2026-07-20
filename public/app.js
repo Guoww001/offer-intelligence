@@ -139,6 +139,8 @@
     publisherProductSearch: "",
     publisherManagerSearch: "",
     publisherChartMetric: "clicks",
+    publisherStartMonth: "all",
+    publisherEndMonth: "all",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -214,6 +216,8 @@
     paymentsPage: document.getElementById("paymentsPage"),
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
+    publisherStartMonth: document.getElementById("publisherStartMonth"),
+    publisherEndMonth: document.getElementById("publisherEndMonth"),
     publisherMarketFilter: document.getElementById("publisherMarketFilter"),
     publisherNetworkFilter: document.getElementById("publisherNetworkFilter"),
     publisherLinkTypeFilter: document.getElementById("publisherLinkTypeFilter"),
@@ -386,6 +390,8 @@
       "publishers.managerPlaceholder": "经理名称",
       "publishers.chartTitle": "按点击量排名",
       "publishers.tableTitle": "媒介数据",
+      "publishers.startMonth": "起始月份",
+      "publishers.endMonth": "截止月份",
       "publishers.empty": "暂无数据",
       "label.All markets": "全市场",
       "label.All": "全部",
@@ -8412,10 +8418,36 @@
       _fillPublishersSelect(els.publisherLinkTypeFilter, data.linkTypes || [], state.publisherLinkType);
       // 填充市场下拉
       _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket);
+      // 填充月份下拉
+      var months = data.months || [];
+      _fillPublishersSelect(els.publisherStartMonth, months, state.publisherStartMonth);
+      _fillPublishersSelect(els.publisherEndMonth, months, state.publisherEndMonth);
+
+      // 同步月份选择：起始月份 > 截止月份时自动调整
+      var sm = els.publisherStartMonth.value;
+      var em = els.publisherEndMonth.value;
+      if (sm !== "all" && em !== "all" && sm > em) {
+        state.publisherEndMonth = sm;
+        els.publisherEndMonth.value = sm;
+      }
+      // 如果只选了一个端，自动选全
+      if (sm !== "all" && em === "all") {
+        // 只有起始月份：显示从该月到最新
+      }
+      if (sm === "all" && em !== "all") {
+        // 只有截止月份：显示从最旧到该月
+      }
 
       // Restore search input values
       els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
       els.publisherProductSearch.value = state.publisherProductSearch || "";
+
+      // 当月份范围生效时，用 monthlyRows 重新计算 publisher 的数据
+      var hasMonthFilter = sm !== "all" || em !== "all";
+      if (hasMonthFilter && data.monthlyRows) {
+        data = _applyMonthFilterToData(data, sm, em);
+      }
+
       els.publisherManagerSearch.value = state.publisherManagerSearch || "";
 
       var filtered = getFilteredPublishers(data);
@@ -8434,6 +8466,81 @@
       els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-empty">' +
         escapeHtml(t("publishers.error", "Error: ") + err.message) + '</td></tr>';
     });
+  }
+
+  function _applyMonthFilterToData(data, startMonth, endMonth) {
+    // 从 monthlyRows 中筛选出目标月份的行，按 userId+market 汇总
+    var rows = data.monthlyRows || {};
+    var selected = [];
+    Object.keys(rows).forEach(function (month) {
+      if (startMonth !== "all" && month < startMonth) return;
+      if (endMonth !== "all" && month > endMonth) return;
+      selected = selected.concat(rows[month]);
+    });
+
+    // 按 userId+market 汇总
+    var sums = {};  // key: "uid|market"
+    selected.forEach(function (r) {
+      var key = r.userId + "|" + r.market;
+      if (!sums[key]) {
+        sums[key] = { userId: r.userId, market: r.market, clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+      }
+      sums[key].clicks += r.clicks;
+      sums[key].dpv += r.dpv;
+      sums[key].atc += r.atc;
+      sums[key].orders += r.orders;
+      sums[key].sales += r.sales;
+      sums[key].allCommission += r.allCommission;
+      sums[key].affCommission += r.affCommission;
+    });
+
+    // 重新计算每个 publisher 的 total 和 markets
+    var newPublishers = data.publishers.map(function (pub) {
+      var newPub = JSON.parse(JSON.stringify(pub));
+      newPub.markets = {};
+      newPub.total = { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+
+      Object.keys(sums).forEach(function (key) {
+        if (key.startsWith(pub.userId + "|")) {
+          var s = sums[key];
+          var mkt = s.market;
+          if (!newPub.markets[mkt]) {
+            newPub.markets[mkt] = { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+          }
+          newPub.markets[mkt].clicks += s.clicks;
+          newPub.markets[mkt].dpv += s.dpv;
+          newPub.markets[mkt].atc += s.atc;
+          newPub.markets[mkt].orders += s.orders;
+          newPub.markets[mkt].sales += s.sales;
+          newPub.markets[mkt].allCommission += s.allCommission;
+          newPub.markets[mkt].affCommission += s.affCommission;
+          newPub.total.clicks += s.clicks;
+          newPub.total.dpv += s.dpv;
+          newPub.total.atc += s.atc;
+          newPub.total.orders += s.orders;
+          newPub.total.sales += s.sales;
+          newPub.total.allCommission += s.allCommission;
+          newPub.total.affCommission += s.affCommission;
+        }
+      });
+
+      return newPub;
+    });
+
+    // 只保留有数据的 publisher，且保留 markets 中出现的 market
+    var activeMarkets = new Set();
+    newPublishers.forEach(function (p) {
+      Object.keys(p.markets).forEach(function (m) { activeMarkets.add(m); });
+    });
+
+    return {
+      publishers: newPublishers,
+      summary: data.summary,
+      markets: data.markets.filter(function (m) { return activeMarkets.has(m); }),
+      networks: data.networks,
+      linkTypes: data.linkTypes,
+      merchantNameMap: data.merchantNameMap || {},
+    };
   }
 
   // ===== End publisher functions =====
@@ -11400,6 +11507,14 @@
       state.publisherLinkType = els.publisherLinkTypeFilter.value;
       renderPublishersPage();
     });
+    els.publisherStartMonth.addEventListener("change", function () {
+      state.publisherStartMonth = els.publisherStartMonth.value;
+      renderPublishersPage();
+    });
+    els.publisherEndMonth.addEventListener("change", function () {
+      state.publisherEndMonth = els.publisherEndMonth.value;
+      renderPublishersPage();
+    });
     els.publisherMarketFilter.addEventListener("change", function () {
       state.publisherMarket = els.publisherMarketFilter.value;
       renderPublishersPage();
@@ -11423,12 +11538,16 @@
       state.publisherMarket = "all";
       state.publisherNetwork = "all";
       state.publisherLinkType = "all";
+      state.publisherStartMonth = "all";
+      state.publisherEndMonth = "all";
       state.publisherMerchantSearch = "";
       state.publisherProductSearch = "";
       state.publisherManagerSearch = "";
       els.publisherMarketFilter.value = "all";
       els.publisherNetworkFilter.value = "all";
       els.publisherLinkTypeFilter.value = "all";
+      els.publisherStartMonth.value = "all";
+      els.publisherEndMonth.value = "all";
       els.publisherMerchantSearch.value = "";
       els.publisherProductSearch.value = "";
       els.publisherManagerSearch.value = "";
