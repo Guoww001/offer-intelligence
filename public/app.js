@@ -205,6 +205,18 @@
     contextTitle: document.getElementById("contextTitle"),
     contextSubtitle: document.getElementById("contextSubtitle"),
     paymentsPage: document.getElementById("paymentsPage"),
+    publishersNav: document.getElementById("publishersNav"),
+    publishersPage: document.getElementById("publishersPage"),
+    publisherMarketFilter: document.getElementById("publisherMarketFilter"),
+    publisherSearch: document.getElementById("publisherSearch"),
+    publisherManagerSearch: document.getElementById("publisherManagerSearch"),
+    publisherSearchBtn: document.getElementById("publisherSearchBtn"),
+    publisherResetBtn: document.getElementById("publisherResetBtn"),
+    publishersKpiRow: document.getElementById("publishersKpiRow"),
+    publishersChart: document.getElementById("publishersChart"),
+    publishersTableHead: document.getElementById("publishersTableHead"),
+    publishersTableRows: document.getElementById("publishersTableRows"),
+    publishersTableCount: document.getElementById("publishersTableCount"),
     sheetPage: document.getElementById("sheetPage"),
     categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
@@ -320,6 +332,7 @@
       "brand.subtitle": "亚马逊分层分析",
       "nav.dashboard": "仪表盘",
       "nav.payments": "付款",
+      "nav.publishers": "媒体",
       "nav.reports": "报表",
       "nav.targets": "目标",
       "nav.category": "品类",
@@ -350,6 +363,14 @@
       "payments.records": "付款记录",
       "payments.search": "商家搜索",
       "payments.searchPlaceholder": "商家名称或 ID",
+      "publishers.title": "媒体概览",
+      "publishers.subtitle": "按市场聚合的媒介表现数据",
+      "publishers.search": "媒介搜索",
+      "publishers.searchPlaceholder": "媒介名称或 ID",
+      "publishers.manager": "媒介经理",
+      "publishers.managerPlaceholder": "经理名称",
+      "publishers.chartTitle": "按点击量排名",
+      "publishers.tableTitle": "媒介数据",
       "tier.searchPlaceholder": "商家、ID、原因、推荐",
       "tier.networkAgency": "网络 / Agency",
       "label.Brand": "品牌",
@@ -1686,16 +1707,17 @@
     const matchedOffer = offerForPaymentMerchant(record) || {};
     const network = record.network || matchedOffer.network || "Levanta";
     const matchedMerchantId = String(matchedOffer.merchantId || "").trim();
-    const useMatchedLevantaId = normalize(network) === "levanta" && matchedMerchantId;
-    const merchantId = useMatchedLevantaId ? matchedMerchantId : sourceMerchantId;
-    const levantaBrandId = record.levantaBrandId || (useMatchedLevantaId && sourceMerchantId !== merchantId ? sourceMerchantId : "");
+    // 不同站点的 merchantId 本来就是不同的，不要用 offer 的 merchantId 覆盖源数据
+    const merchantId = sourceMerchantId || matchedMerchantId;
+    const region = paymentRegionFor(record, matchedOffer);
+    const levantaBrandId = record.levantaBrandId || "";
     const normalized = {
       ...record,
       merchantId,
       levantaBrandId,
       merchantName: String(record.merchantName || record.brand || "").trim(),
       network,
-      region: paymentRegionFor(record, matchedOffer),
+      region,
       tier: paymentMetadataValue(record.tier, matchedOffer.tier, "Unknown"),
       category: paymentMetadataValue(record.category, matchedOffer.category || matchedOffer.levantaCategory, "Uncategorized"),
       categoryPath: paymentMetadataValue(record.categoryPath, matchedOffer.categoryPath, ""),
@@ -2022,7 +2044,8 @@
     if (byId.length) return byId;
     const brandKey = normalize(offer.brand);
     if (!brandKey) return [];
-    return paymentRecords.filter((record) => !String(record.merchantId || "").trim() && normalize(record.merchantName) === brandKey);
+    // merchantId 可能是 Levanta 品牌 UUID（不同站点不同），通过品牌名匹配
+    return paymentRecords.filter((record) => normalize(record.merchantName) === brandKey);
   }
 
   function hasOfferOverduePayment(offer) {
@@ -3419,8 +3442,7 @@
     if (!categoryName) return [];
     var lower = categoryName.toLowerCase().trim();
     return offers.filter(function(o) {
-      var cat = (o.mainCategory || o.category || "").toLowerCase();
-      return cat === lower || cat.indexOf(lower) !== -1;
+      return displayCategory(o).toLowerCase() === lower;
     });
   }
 
@@ -10842,11 +10864,13 @@
     if (isSheets || isCategory || isTier) state.reportsOpen = true;
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
+    els.publishersPage.classList.toggle("hidden", page !== "publishers");
     els.sheetPage.classList.toggle("hidden", !isSheets);
     els.categoryPage.classList.toggle("hidden", !isCategory);
     els.tierPage.classList.toggle("hidden", !isTier);
     els.dashboardNav.classList.toggle("active", page === "dashboard");
     els.paymentsNav.classList.toggle("active", page === "payments");
+    els.publishersNav.classList.toggle("active", page === "publishers");
     els.sheetsNav.classList.toggle("active", isSheets || isCategory || isTier);
     els.targetNav.classList.toggle("active", isSheets);
     els.categoryNav.classList.toggle("active", isCategory);
@@ -10865,6 +10889,9 @@
     if (page === "payments") {
       renderPaymentsPage();
       if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
+    }
+    if (page === "publishers") {
+      renderPublishersPage();
     }
     if (isSheets) renderSheetPage();
     if (isCategory) renderDashboardCategoryReport();
@@ -10925,6 +10952,7 @@
     els.dashboardCategoryReportBody.addEventListener("focusout", clearCategoryHighlight);
     els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
+    els.publishersNav.addEventListener("click", () => switchPage("publishers"));
     els.sheetsNav.addEventListener("click", () => {
       state.reportsOpen = !state.reportsOpen;
       updateReportsNavState();

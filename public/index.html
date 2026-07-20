@@ -78,6 +78,12 @@
             </span>
             <span data-i18n="nav.payments">Payments</span>
           </button>
+          <button class="page-nav-button" id="publishersNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            </span>
+            <span data-i18n="nav.publishers">Publishers</span>
+          </button>
           <div class="nav-group">
             <button class="page-nav-button report-nav" id="sheetsNav" type="button" aria-expanded="true" aria-controls="reportsSubnav">
               <span class="nav-icon" aria-hidden="true">
@@ -304,6 +310,68 @@
                 </table>
               </div>
             </section>
+          </section>
+        </section>
+
+        <section class="publishers-page hidden" id="publishersPage" aria-label="Publishers">
+          <div class="publishers-header">
+            <div>
+              <h2 data-i18n="publishers.title">Publishers</h2>
+              <p data-i18n="publishers.subtitle">Publisher performance aggregation by market</p>
+            </div>
+          </div>
+
+          <!-- 筛选区 -->
+          <section class="panel publishers-filters" aria-label="Publisher filters">
+            <div class="publishers-filter-row">
+              <label>
+                <span data-i18n="label.Market">Market</span>
+                <select id="publisherMarketFilter">
+                  <option value="all">All markets</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="publishers.search">Publisher</span>
+                <input id="publisherSearch" type="search" placeholder="Publisher name or ID" data-i18n-placeholder="publishers.searchPlaceholder" />
+              </label>
+              <label>
+                <span data-i18n="publishers.manager">Manager</span>
+                <input id="publisherManagerSearch" type="search" placeholder="Manager name" data-i18n-placeholder="publishers.managerPlaceholder" />
+              </label>
+            </div>
+            <div class="publishers-filter-actions">
+              <button class="primary-button" id="publisherSearchBtn" type="button" data-i18n="action.search">Search</button>
+              <button class="secondary-button" id="publisherResetBtn" type="button" data-i18n="action.reset">Reset</button>
+            </div>
+          </section>
+
+          <!-- KPI 指标卡 -->
+          <section class="publishers-kpi" id="publishersKpi" aria-label="Publisher KPI summary">
+            <div class="publishers-kpi-row" id="publishersKpiRow"></div>
+          </section>
+
+          <!-- 横向柱状图 -->
+          <section class="panel publishers-chart-panel" aria-label="Publisher clicks chart">
+            <div class="panel-title">
+              <h3 data-i18n="publishers.chartTitle">Clicks by Publisher</h3>
+            </div>
+            <div class="publishers-chart" id="publishersChart"></div>
+          </section>
+
+          <!-- 数据表格 -->
+          <section class="panel table-panel publishers-table-panel" aria-label="Publisher data table">
+            <div class="table-toolbar">
+              <div>
+                <h3 data-i18n="publishers.tableTitle">Publisher Records</h3>
+                <p id="publishersTableCount"></p>
+              </div>
+            </div>
+            <div class="table-wrap publishers-table-wrap">
+              <table class="publishers-table">
+                <thead id="publishersTableHead"></thead>
+                <tbody id="publishersTableRows"></tbody>
+              </table>
+            </div>
           </section>
         </section>
 
