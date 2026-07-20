@@ -8323,7 +8323,7 @@
         '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + barColor + ';animation-delay:' + delay + 'ms">' +
           (pct > 15 ? formatFn(val) : '') +
         '</div></div>' +
-        '<span class="chart-bar-value" style="color:' + barColor + '">' + formatFn(val) + '</span>' +
+        '<span class="chart-bar-value">' + formatFn(val) + '</span>' +
       '</div>';
     });
     if (!html) html = '<div class="publishers-empty">' + escapeHtml(t("publishers.empty", "No data")) + '</div>';
