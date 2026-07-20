@@ -8172,6 +8172,17 @@
 
   var _publishersCache = null;
 
+  // 输入防抖：用户停止输入 delay ms 后执行
+  function _debounce(fn, delay) {
+    var timer = null;
+    return function () {
+      var args = arguments;
+      var ctx = this;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () { fn.apply(ctx, args); }, delay);
+    };
+  }
+
   function _fillPublishersSelect(selectEl, values, currentValue) {
     if (!selectEl) return;
     selectEl.innerHTML = '<option value="all">' + escapeHtml(t("label.All", "All")) + '</option>';
@@ -11514,18 +11525,18 @@
       state.publisherMarket = els.publisherMarketFilter.value;
       renderPublishersPage();
     });
-    els.publisherMerchantSearch.addEventListener("input", function () {
+    els.publisherMerchantSearch.addEventListener("input", _debounce(function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
       renderPublishersPage();
-    });
-    els.publisherProductSearch.addEventListener("input", function () {
+    }, 300));
+    els.publisherProductSearch.addEventListener("input", _debounce(function () {
       state.publisherProductSearch = els.publisherProductSearch.value;
       renderPublishersPage();
-    });
-    els.publisherManagerSearch.addEventListener("input", function () {
+    }, 300));
+    els.publisherManagerSearch.addEventListener("input", _debounce(function () {
       state.publisherManagerSearch = els.publisherManagerSearch.value;
       renderPublishersPage();
-    });
+    }, 300));
     els.publisherSearchBtn.addEventListener("click", function () {
       renderPublishersPage();
     });
