@@ -213,6 +213,32 @@ def load_static_data():
 STATIC_DATA, OFFERS_BY_ID, OFFERS_BY_BRAND, STATIC_OFFERS = load_static_data()
 
 
+def load_levanta_brand_mapping():
+    """从 db_offers_cache.json 加载 levantaBrandId → merchantId 映射。
+
+    Levanta 品牌 UUID 在各站点唯一，通过该映射找到对应的数字 merchantId。
+    """
+    path = ROOT / "protected_data" / "db_offers_cache.json"
+    mapping = {}
+    if not path.exists():
+        return mapping
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        offers = payload.get("offers", []) if isinstance(payload, dict) else []
+        for offer in offers:
+            lid = str(offer.get("levantaBrandId") or "").strip()
+            mid = str(offer.get("merchantId") or "").strip()
+            if lid and mid:
+                # 每个 UUID 只映射到第一个 merchantId，避免重复
+                mapping.setdefault(lid, mid)
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+    return mapping
+
+
+LEVANTA_BRAND_TO_MERCHANT = load_levanta_brand_mapping()
+
+
 def load_sheet_payment_cycles():
     if not SHEET_DATA_FILE.exists():
         return {}
@@ -694,9 +720,14 @@ def normalize_invoice_item(item, month_name, zero_based_month, year, marketplace
     brand = item.get("brand") or {}
     levanta_brand_id = str(brand.get("id") or "").strip()
     merchant_name = str(brand.get("name") or "").strip()
-    offer = offer_for_payment_source(levanta_brand_id, merchant_name, "Levanta")
-    # levanta_brand_id 是 Levanta 按站点分配的唯一 ID，不同站点的 ID 本来就不同
-    merchant_id = levanta_brand_id or str(offer.get("merchantId") or "").strip()
+    # 先通过 levantaBrandId → merchantId 映射查找（各站点 ID 不同）
+    mapped_id = LEVANTA_BRAND_TO_MERCHANT.get(levanta_brand_id)
+    if mapped_id:
+        merchant_id = mapped_id
+        offer = offer_for_payment_source(merchant_id, merchant_name, "Levanta") or {}
+    else:
+        offer = offer_for_payment_source(levanta_brand_id, merchant_name, "Levanta")
+        merchant_id = str(offer.get("merchantId") or levanta_brand_id).strip()
     revenue_made = levanta_revenue_made(item)
     commission_made = levanta_commission_made(item)
     expected = commission_made
