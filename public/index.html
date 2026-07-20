@@ -324,24 +324,43 @@
           <!-- 筛选区 -->
           <section class="panel publishers-filters" aria-label="Publisher filters">
             <div class="publishers-filter-row">
-              <label>
-                <span data-i18n="label.Market">Market</span>
-                <select id="publisherMarketFilter">
-                  <option value="all">All markets</option>
-                </select>
-              </label>
-              <label>
-                <span data-i18n="publishers.search">Publisher</span>
-                <input id="publisherSearch" type="search" placeholder="Publisher name or ID" data-i18n-placeholder="publishers.searchPlaceholder" />
-              </label>
-              <label>
-                <span data-i18n="publishers.manager">Manager</span>
-                <input id="publisherManagerSearch" type="search" placeholder="Manager name" data-i18n-placeholder="publishers.managerPlaceholder" />
-              </label>
-            </div>
-            <div class="publishers-filter-actions">
-              <button class="primary-button" id="publisherSearchBtn" type="button" data-i18n="action.search">Search</button>
-              <button class="secondary-button" id="publisherResetBtn" type="button" data-i18n="action.reset">Reset</button>
+              <div class="publishers-filter-left">
+                <label>
+                  <span data-i18n="publishers.network">Affiliate Network</span>
+                  <select id="publisherNetworkFilter">
+                    <option value="all" data-i18n="label.All">All</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="publishers.linkType">Link Type</span>
+                  <select id="publisherLinkTypeFilter">
+                    <option value="all" data-i18n="label.All">All</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="publishers.merchant">Merchant</span>
+                  <input id="publisherMerchantSearch" type="search" placeholder="Merchant name or ID" data-i18n-placeholder="publishers.merchantPlaceholder" />
+                </label>
+                <label>
+                  <span data-i18n="publishers.product">Product</span>
+                  <input id="publisherProductSearch" type="search" placeholder="Product ASIN or name" data-i18n-placeholder="publishers.productPlaceholder" />
+                </label>
+                <label>
+                  <span data-i18n="publishers.manager">Manager</span>
+                  <input id="publisherManagerSearch" type="search" placeholder="Manager name" data-i18n-placeholder="publishers.managerPlaceholder" />
+                </label>
+                <label>
+                  <span data-i18n="label.Market">Market</span>
+                  <select id="publisherMarketFilter">
+                    <option value="all">All markets</option>
+                  </select>
+                </label>
+              </div>
+              <div class="publishers-filter-actions">
+                <button class="btn-search" id="publisherSearchBtn" type="button" data-i18n="action.search">🔍 Search</button>
+                <button class="btn-reset" id="publisherResetBtn" type="button" data-i18n="action.reset">🔄 Reset</button>
+                <button class="btn-export" id="publisherExportBtn" type="button" data-i18n="action.export">⬇ Export</button>
+              </div>
             </div>
           </section>
 

@@ -133,7 +133,10 @@
     targetMetric: "revenue",
     targetTrendView: "month",
     publisherMarket: "all",
-    publisherSearch: "",
+    publisherNetwork: "all",
+    publisherLinkType: "all",
+    publisherMerchantSearch: "",
+    publisherProductSearch: "",
     publisherManagerSearch: "",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
@@ -211,10 +214,14 @@
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
     publisherMarketFilter: document.getElementById("publisherMarketFilter"),
-    publisherSearch: document.getElementById("publisherSearch"),
+    publisherNetworkFilter: document.getElementById("publisherNetworkFilter"),
+    publisherLinkTypeFilter: document.getElementById("publisherLinkTypeFilter"),
+    publisherMerchantSearch: document.getElementById("publisherMerchantSearch"),
+    publisherProductSearch: document.getElementById("publisherProductSearch"),
     publisherManagerSearch: document.getElementById("publisherManagerSearch"),
     publisherSearchBtn: document.getElementById("publisherSearchBtn"),
     publisherResetBtn: document.getElementById("publisherResetBtn"),
+    publisherExportBtn: document.getElementById("publisherExportBtn"),
     publishersKpiRow: document.getElementById("publishersKpiRow"),
     publishersChart: document.getElementById("publishersChart"),
     publishersTableHead: document.getElementById("publishersTableHead"),
@@ -368,13 +375,21 @@
       "payments.searchPlaceholder": "商家名称或 ID",
       "publishers.title": "媒体概览",
       "publishers.subtitle": "按市场聚合的媒介表现数据",
-      "publishers.search": "媒介搜索",
-      "publishers.searchPlaceholder": "媒介名称或 ID",
+      "publishers.network": "所属联盟",
+      "publishers.linkType": "链接类型",
+      "publishers.merchant": "商家",
+      "publishers.merchantPlaceholder": "商家名称或 ID",
+      "publishers.product": "商品",
+      "publishers.productPlaceholder": "商品 ASIN 或名称",
       "publishers.manager": "媒介经理",
       "publishers.managerPlaceholder": "经理名称",
       "publishers.chartTitle": "按点击量排名",
       "publishers.tableTitle": "媒介数据",
+      "publishers.empty": "暂无数据",
       "label.All markets": "全市场",
+      "label.All": "全部",
+      "action.search": "搜索",
+      "action.export": "导出",
       "tier.searchPlaceholder": "商家、ID、原因、推荐",
       "tier.networkAgency": "网络 / Agency",
       "label.Brand": "品牌",
@@ -8108,9 +8123,64 @@
     renderPaymentRows(rows);
   }
 
+  function downloadPublishersXlsx() {
+    if (!_publishersCache) return;
+    var data = _publishersCache;
+    var filtered = getFilteredPublishers(data);
+    var market = state.publisherMarket || "all";
+    var rows = filtered.map(function (pub, idx) {
+      var m = market && market !== "all" ? pub.markets[market] : pub.total;
+      m = m || { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+      return {
+        rank: idx + 1,
+        userId: pub.userId,
+        userName: pub.userName,
+        adminName: pub.adminName || "Unknown",
+        clicks: m.clicks,
+        cvr: m.clicks > 0 ? (m.orders / m.clicks) : 0,
+        dpv: m.dpv,
+        atc: m.atc,
+        orders: m.orders,
+        sales: m.sales,
+        allCommission: m.allCommission,
+        affCommission: m.affCommission,
+        grossProfit: m.allCommission - m.affCommission,
+      };
+    });
+    var headers = [
+      "Rank", "Publisher ID", "Publisher Name", "Manager",
+      "Clicks", "CVR", "DPV", "ATC", "Orders",
+      "Sales", "All Commission", "Aff Commission", "Gross Profit"
+    ];
+    downloadRowsAsXlsx(rows, {
+      downloadType: "sheet",
+      filePrefix: "publishers",
+      exportScope: state.publisherMarket,
+      sheetName: "Publishers",
+      downloadColumns: objectExportColumns(rows, headers)
+    });
+  }
+
   // ===== Publisher functions =====
 
   var _publishersCache = null;
+
+  function _fillPublishersSelect(selectEl, values, currentValue) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="all">' + escapeHtml(t("label.All", "All")) + '</option>';
+    if (!values || !values.length) return;
+    values.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    if (currentValue && values.indexOf(currentValue) !== -1) {
+      selectEl.value = currentValue;
+    } else {
+      selectEl.value = "all";
+    }
+  }
 
   function loadPublishersData(forceRefresh) {
     if (_publishersCache && !forceRefresh) return Promise.resolve(_publishersCache);
@@ -8126,17 +8196,45 @@
   function getFilteredPublishers(data) {
     if (!data || !data.publishers) return [];
     var market = state.publisherMarket || "all";
-    var search = (state.publisherSearch || "").toLowerCase().trim();
+    var network = state.publisherNetwork || "all";
+    var linkType = state.publisherLinkType || "all";
+    var merchantSearch = (state.publisherMerchantSearch || "").toLowerCase().trim();
+    var productSearch = (state.publisherProductSearch || "").toLowerCase().trim();
     var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
+    var nameMap = data.merchantNameMap || {};
 
     return data.publishers.filter(function (pub) {
       // 市场筛选
       if (market !== "all" && !pub.markets[market]) return false;
-      // 媒介搜索
-      if (search) {
-        var name = (pub.userName || "").toLowerCase();
-        var id = String(pub.userId);
-        if (name.indexOf(search) === -1 && id.indexOf(search) === -1) return false;
+      // 联盟筛选
+      if (network !== "all" && (!pub.networks || pub.networks.indexOf(network) === -1)) return false;
+      // 链接类型筛选
+      if (linkType !== "all" && (!pub.linkTypes || !pub.linkTypes[linkType])) return false;
+      // 商家搜索（匹配商家名称和 ID）
+      if (merchantSearch) {
+        var matched = false;
+        var mIds = pub.merchantIds || [];
+        for (var i = 0; i < mIds.length; i++) {
+          var mid = String(mIds[i]);
+          var mName = (nameMap[mid] || "").toLowerCase();
+          if (mid.indexOf(merchantSearch) !== -1 || mName.indexOf(merchantSearch) !== -1) {
+            matched = true;
+            break;
+          }
+        }
+        // 也搜索 publisher 本身名称/ID
+        if (!matched) {
+          var name = (pub.userName || "").toLowerCase();
+          var id = String(pub.userId);
+          if (name.indexOf(merchantSearch) !== -1 || id.indexOf(merchantSearch) !== -1) matched = true;
+        }
+        if (!matched) return false;
+      }
+      // 商品搜索（publisher 名称/ID）
+      if (productSearch) {
+        var name2 = (pub.userName || "").toLowerCase();
+        var id2 = String(pub.userId);
+        if (name2.indexOf(productSearch) === -1 && id2.indexOf(productSearch) === -1) return false;
       }
       // 经理搜索
       if (manager) {
@@ -8282,14 +8380,17 @@
       escapeHtml(t("publishers.loading", "Loading...")) + '</td></tr>';
 
     loadPublishersData().then(function (data) {
-      // 填充市场下拉（先清空防止重复）
-      els.publisherMarketFilter.innerHTML = '<option value="all">' + escapeHtml(t("label.All markets", "All markets")) + '</option>';
-      (data.markets || []).forEach(function (m) {
-        var opt = document.createElement("option");
-        opt.value = m; opt.textContent = m;
-        els.publisherMarketFilter.appendChild(opt);
-      });
-      els.publisherMarketFilter.value = data.markets.indexOf(state.publisherMarket) !== -1 ? state.publisherMarket : "all";
+      // 填充联盟下拉
+      _fillPublishersSelect(els.publisherNetworkFilter, data.networks || [], state.publisherNetwork);
+      // 填充链接类型下拉
+      _fillPublishersSelect(els.publisherLinkTypeFilter, data.linkTypes || [], state.publisherLinkType);
+      // 填充市场下拉
+      _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket);
+
+      // Restore search input values
+      els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
+      els.publisherProductSearch.value = state.publisherProductSearch || "";
+      els.publisherManagerSearch.value = state.publisherManagerSearch || "";
 
       var filtered = getFilteredPublishers(data);
       var market = state.publisherMarket || "all";
@@ -11265,12 +11366,24 @@
     els.languageToggle.addEventListener("click", toggleLanguage);
     if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
+    els.publisherNetworkFilter.addEventListener("change", function () {
+      state.publisherNetwork = els.publisherNetworkFilter.value;
+      renderPublishersPage();
+    });
+    els.publisherLinkTypeFilter.addEventListener("change", function () {
+      state.publisherLinkType = els.publisherLinkTypeFilter.value;
+      renderPublishersPage();
+    });
     els.publisherMarketFilter.addEventListener("change", function () {
       state.publisherMarket = els.publisherMarketFilter.value;
       renderPublishersPage();
     });
-    els.publisherSearch.addEventListener("input", function () {
-      state.publisherSearch = els.publisherSearch.value;
+    els.publisherMerchantSearch.addEventListener("input", function () {
+      state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+      renderPublishersPage();
+    });
+    els.publisherProductSearch.addEventListener("input", function () {
+      state.publisherProductSearch = els.publisherProductSearch.value;
       renderPublishersPage();
     });
     els.publisherManagerSearch.addEventListener("input", function () {
@@ -11282,13 +11395,20 @@
     });
     els.publisherResetBtn.addEventListener("click", function () {
       state.publisherMarket = "all";
-      state.publisherSearch = "";
+      state.publisherNetwork = "all";
+      state.publisherLinkType = "all";
+      state.publisherMerchantSearch = "";
+      state.publisherProductSearch = "";
       state.publisherManagerSearch = "";
       els.publisherMarketFilter.value = "all";
-      els.publisherSearch.value = "";
+      els.publisherNetworkFilter.value = "all";
+      els.publisherLinkTypeFilter.value = "all";
+      els.publisherMerchantSearch.value = "";
+      els.publisherProductSearch.value = "";
       els.publisherManagerSearch.value = "";
       renderPublishersPage();
     });
+    els.publisherExportBtn.addEventListener("click", downloadPublishersXlsx);
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
     if (els.sheetDownload) els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
     els.tierDownload.addEventListener("click", downloadTierSheetXlsx);

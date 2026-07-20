@@ -4144,7 +4144,7 @@ th {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  padding: 7px 4px;
+  padding: 7px 14px;
   position: sticky;
   text-transform: uppercase;
   top: 0;
@@ -4162,6 +4162,7 @@ th {
 
 .category-detail-inner-table td {
   border-top: 1px solid #f1f5f9;
+  padding: 8px 14px;
 }
 
 .category-detail-inner-table tbody tr:first-child td {
@@ -5583,7 +5584,7 @@ td strong {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  align-items: flex-end;
+  align-items: flex-start;
   padding: 16px;
 }
 
@@ -5591,30 +5592,41 @@ td strong {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  align-items: flex-start;
+  flex: 1;
+  width: 100%;
+}
+
+.publishers-filter-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: flex-end;
   flex: 1;
 }
 
-.publishers-filter-row label {
+.publishers-filter-left label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
+  gap: 3px;
+  font-size: 12px;
   color: var(--muted);
 }
 
-.publishers-filter-row label select,
-.publishers-filter-row label input {
-  padding: 6px 10px;
+.publishers-filter-left label select,
+.publishers-filter-left label input {
+  padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
-  font-size: 14px;
-  min-width: 140px;
+  font-size: 13px;
+  min-width: 120px;
+  height: 32px;
+  box-sizing: border-box;
 }
 
-.publishers-filter-row label input {
-  min-width: 160px;
+.publishers-filter-left label input {
+  min-width: 140px;
 }
 
 .publishers-filter-actions {
@@ -5622,6 +5634,44 @@ td strong {
   gap: 8px;
   align-items: flex-end;
   padding-bottom: 2px;
+  flex-shrink: 0;
+}
+
+/* ── 筛选操作按钮 ── */
+
+.publishers-filter-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #fff;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.publishers-filter-actions button:hover {
+  opacity: 0.9;
+}
+
+.publishers-filter-actions button:active {
+  transform: scale(0.97);
+}
+
+.btn-search {
+  background: #22c55e;
+}
+
+.btn-reset {
+  background: #f97316;
+}
+
+.btn-export {
+  background: #3b82f6;
 }
 
 /* ── KPI 指标卡 ── */

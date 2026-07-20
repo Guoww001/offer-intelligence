@@ -70,6 +70,47 @@ WHERE o.user_id IS NOT NULL AND o.user_id > 0
 GROUP BY o.user_id, market
 """
 
+# 查询每个 publisher 关联的联盟（network）
+NETWORK_SQL = """
+SELECT DISTINCT o.user_id, TRIM(at.advert_type_name) AS network
+FROM cnpscy_amazon_order o
+LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+LEFT JOIN cnpscy_advert_type at
+    ON a.advert_advertiser = at.advert_type_id AND at.advert_type_parent_id = 53
+WHERE o.user_id IS NOT NULL AND o.user_id > 0
+  AND at.advert_type_name IS NOT NULL AND TRIM(at.advert_type_name) != ''
+"""
+
+# 查询每个 publisher 的链接类型（product / storefront）
+LINK_TYPE_SQL = """
+SELECT
+  o.user_id,
+  CASE
+    WHEN a.advert_url_real LIKE '%%/dp/%%' THEN 'product'
+    ELSE 'storefront'
+  END AS link_type,
+  SUM(o.clicks) AS clicks,
+  SUM(o.detail_page_views) AS dpv,
+  SUM(o.add_to_carts) AS atc,
+  SUM(o.total_purchases) AS orders,
+  SUM(o.amount) AS sales,
+  SUM(o.payout) AS all_commission,
+  SUM(o.aff_payout) AS aff_commission
+FROM cnpscy_amazon_order o
+LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+WHERE o.user_id IS NOT NULL AND o.user_id > 0
+GROUP BY o.user_id, link_type
+"""
+
+# 查询每个 publisher 关联的 merchants
+MERCHANT_SQL = """
+SELECT DISTINCT o.user_id, a.advert_id AS merchant_id, a.advert_name AS merchant_name
+FROM cnpscy_amazon_order o
+LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+WHERE o.user_id IS NOT NULL AND o.user_id > 0
+  AND a.advert_id IS NOT NULL AND a.advert_id > 0
+"""
+
 CACHE_FILE = ROOT / "protected_data" / "db_publishers_cache.json"
 
 
@@ -81,7 +122,49 @@ def build_publishers_payload() -> dict:
         # 2) 获取所有用户和管理员映射
         admins_map = _load_admin_map(conn)
 
-        # 3) 聚合数据: { userId -> { userName, adminName, markets: { market -> metrics }, total } }
+        # 3) 查询每个 publisher 的联盟（network）
+        network_rows = fetch_all(conn, NETWORK_SQL)
+        networks_by_user: dict[int, list[str]] = {}
+        for nr in network_rows:
+            uid = int(nr["user_id"])
+            net = str(nr["network"]).strip()
+            if net:
+                networks_by_user.setdefault(uid, []).append(net)
+
+        # 4) 查询每个 publisher 的链接类型
+        link_type_rows = fetch_all(conn, LINK_TYPE_SQL)
+        link_types_by_user: dict[int, dict[str, dict]] = {}
+        for lr in link_type_rows:
+            uid = int(lr["user_id"])
+            lt = str(lr["link_type"]).strip()
+            if lt:
+                if uid not in link_types_by_user:
+                    link_types_by_user[uid] = {}
+                link_types_by_user[uid][lt] = {
+                    "clicks": int(lr["clicks"] or 0),
+                    "dpv": int(lr["dpv"] or 0),
+                    "atc": int(lr["atc"] or 0),
+                    "orders": int(lr["orders"] or 0),
+                    "sales": float(lr["sales"] or 0),
+                    "allCommission": float(lr["all_commission"] or 0),
+                    "affCommission": float(lr["aff_commission"] or 0),
+                }
+
+        # 5) 查询每个 publisher 关联的 merchants
+        merchant_rows = fetch_all(conn, MERCHANT_SQL)
+        merchants_by_user: dict[int, list[dict]] = {}
+        merchant_name_map: dict[int, str] = {}
+        for mr in merchant_rows:
+            uid = int(mr["user_id"])
+            mid = int(mr["merchant_id"])
+            mname = str(mr["merchant_name"] or "")
+            if uid not in merchants_by_user:
+                merchants_by_user[uid] = []
+            if mid not in merchant_name_map:
+                merchant_name_map[mid] = mname
+            merchants_by_user[uid].append({"merchantId": mid, "merchantName": mname})
+
+        # 6) 聚合数据: { userId -> { ... } }
         publishers: dict[int, dict] = {}
         summary = {
             "totalPublishers": 0,
@@ -89,6 +172,8 @@ def build_publishers_payload() -> dict:
             "totalSales": 0.0, "totalAllCommission": 0.0, "totalAffCommission": 0.0,
         }
         markets_set: set[str] = set()
+        all_networks_set: set[str] = set()
+        all_link_types_set: set[str] = set()
 
         for row in rows:
             uid = int(row["user_id"])
@@ -96,10 +181,21 @@ def build_publishers_payload() -> dict:
             markets_set.add(market)
 
             if uid not in publishers:
+                networks = networks_by_user.get(uid, [])
+                link_types = link_types_by_user.get(uid, {})
+                merchants = merchants_by_user.get(uid, [])
+                for net in networks:
+                    all_networks_set.add(net)
+                for lt in link_types:
+                    all_link_types_set.add(lt)
+
                 publishers[uid] = {
                     "userId": uid,
                     "userName": str(uid),
                     "adminName": "Unknown",
+                    "networks": sorted(set(networks)),
+                    "linkTypes": link_types,
+                    "merchantIds": sorted(set(m["merchantId"] for m in merchants)),
                     "markets": {},
                     "total": {"clicks": 0, "dpv": 0, "atc": 0, "orders": 0,
                               "sales": 0.0, "allCommission": 0.0, "affCommission": 0.0},
@@ -112,10 +208,10 @@ def build_publishers_payload() -> dict:
                                           "sales": 0.0, "allCommission": 0.0, "affCommission": 0.0}
             _accumulate(pub["markets"][market], row)
 
-        # 4) 填充用户名称和经理信息
+        # 7) 填充用户名称和经理信息
         _fill_user_info(conn, publishers, admins_map)
 
-        # 5) 计算 summary
+        # 8) 计算 summary
         for pub in publishers.values():
             summary["totalClicks"] += pub["total"]["clicks"]
             summary["totalDpv"] += pub["total"]["dpv"]
@@ -131,6 +227,9 @@ def build_publishers_payload() -> dict:
             "publishers": sorted(publishers.values(), key=lambda p: p["total"]["clicks"], reverse=True),
             "summary": summary,
             "markets": sorted(m for m in markets_set if m != "Unknown") + (["Unknown"] if "Unknown" in markets_set else []),
+            "networks": sorted(all_networks_set),
+            "linkTypes": sorted(all_link_types_set),
+            "merchantNameMap": {str(k): v for k, v in merchant_name_map.items()},
         }
         return payload
 
