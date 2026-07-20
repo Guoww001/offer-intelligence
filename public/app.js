@@ -8172,17 +8172,6 @@
 
   var _publishersCache = null;
 
-  // 输入防抖：用户停止输入 delay ms 后执行
-  function _debounce(fn, delay) {
-    var timer = null;
-    return function () {
-      var args = arguments;
-      var ctx = this;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(function () { fn.apply(ctx, args); }, delay);
-    };
-  }
-
   function _fillPublishersSelect(selectEl, values, currentValue) {
     if (!selectEl) return;
     selectEl.innerHTML = '<option value="all">' + escapeHtml(t("label.All", "All")) + '</option>';
@@ -8433,9 +8422,10 @@
       els.publisherStartDate.value = state.publisherStartDate || "";
       els.publisherEndDate.value = state.publisherEndDate || "";
 
-      // Restore search input values
+      // 恢复搜索框值
       els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
       els.publisherProductSearch.value = state.publisherProductSearch || "";
+      els.publisherManagerSearch.value = state.publisherManagerSearch || "";
 
       // 当日期范围生效时，用 monthlyRows 重新计算 publisher 的数据
       var sd = state.publisherStartDate || "";
@@ -8444,8 +8434,6 @@
       if (hasDateFilter && data.monthlyRows) {
         data = _applyMonthFilterToData(data, sd, ed);
       }
-
-      els.publisherManagerSearch.value = state.publisherManagerSearch || "";
 
       var filtered = getFilteredPublishers(data);
       var market = state.publisherMarket || "all";
@@ -11525,18 +11513,16 @@
       state.publisherMarket = els.publisherMarketFilter.value;
       renderPublishersPage();
     });
-    els.publisherMerchantSearch.addEventListener("input", _debounce(function () {
+    // 输入框实时同步 state（导航回来恢复值用），但不触发渲染
+    els.publisherMerchantSearch.addEventListener("input", function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
-      renderPublishersPage();
-    }, 300));
-    els.publisherProductSearch.addEventListener("input", _debounce(function () {
+    });
+    els.publisherProductSearch.addEventListener("input", function () {
       state.publisherProductSearch = els.publisherProductSearch.value;
-      renderPublishersPage();
-    }, 300));
-    els.publisherManagerSearch.addEventListener("input", _debounce(function () {
+    });
+    els.publisherManagerSearch.addEventListener("input", function () {
       state.publisherManagerSearch = els.publisherManagerSearch.value;
-      renderPublishersPage();
-    }, 300));
+    });
     els.publisherSearchBtn.addEventListener("click", function () {
       renderPublishersPage();
     });
