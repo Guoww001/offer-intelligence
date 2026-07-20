@@ -51,7 +51,7 @@ jobs:
 
       - name: Commit updated caches
         run: |
-          git add protected_data/db_offers_cache.json protected_data/db_keywords_cache.json
+          git add protected_data/db_offers_cache.json protected_data/db_keywords_cache.json protected_data/db_publishers_cache.json
           if git diff --cached --quiet; then
             echo "No cache changes to commit."
             exit 0

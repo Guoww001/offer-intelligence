@@ -133,8 +133,17 @@
     targetMetric: "revenue",
     targetTrendView: "month",
     publisherMarket: "all",
-    publisherSearch: "",
+    publisherNetwork: "all",
+    publisherLinkType: "all",
+    publisherMerchantSearch: "",
+    publisherProductSearch: "",
     publisherManagerSearch: "",
+    publisherSiteSearch: "",
+    publisherTrackSearch: "",
+    publisherChartMetric: "clicks",
+    publisherStartDate: "",
+    publisherEndDate: "",
+    publisherSort: { key: "", direction: "desc" },
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -210,13 +219,22 @@
     paymentsPage: document.getElementById("paymentsPage"),
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
+    publisherStartDate: document.getElementById("publisherStartDate"),
+    publisherEndDate: document.getElementById("publisherEndDate"),
     publisherMarketFilter: document.getElementById("publisherMarketFilter"),
-    publisherSearch: document.getElementById("publisherSearch"),
+    publisherNetworkFilter: document.getElementById("publisherNetworkFilter"),
+    publisherLinkTypeFilter: document.getElementById("publisherLinkTypeFilter"),
+    publisherMerchantSearch: document.getElementById("publisherMerchantSearch"),
+    publisherProductSearch: document.getElementById("publisherProductSearch"),
     publisherManagerSearch: document.getElementById("publisherManagerSearch"),
+    publisherSiteSearch: document.getElementById("publisherSiteSearch"),
+    publisherTrackSearch: document.getElementById("publisherTrackSearch"),
     publisherSearchBtn: document.getElementById("publisherSearchBtn"),
     publisherResetBtn: document.getElementById("publisherResetBtn"),
+    publisherExportBtn: document.getElementById("publisherExportBtn"),
     publishersKpiRow: document.getElementById("publishersKpiRow"),
     publishersChart: document.getElementById("publishersChart"),
+    publishersChartTitle: document.getElementById("publishersChartTitle"),
     publishersTableHead: document.getElementById("publishersTableHead"),
     publishersTableRows: document.getElementById("publishersTableRows"),
     publishersTableCount: document.getElementById("publishersTableCount"),
@@ -368,13 +386,25 @@
       "payments.searchPlaceholder": "商家名称或 ID",
       "publishers.title": "媒体概览",
       "publishers.subtitle": "按市场聚合的媒介表现数据",
-      "publishers.search": "媒介搜索",
-      "publishers.searchPlaceholder": "媒介名称或 ID",
+      "publishers.network": "所属联盟",
+      "publishers.linkType": "链接类型",
+      "publishers.merchant": "商家",
+      "publishers.merchantPlaceholder": "商家名称或 ID",
+      "publishers.product": "商品",
+      "publishers.productPlaceholder": "商品 ASIN 或名称",
       "publishers.manager": "媒介经理",
       "publishers.managerPlaceholder": "经理名称",
       "publishers.chartTitle": "按点击量排名",
       "publishers.tableTitle": "媒介数据",
+      "publishers.startMonth": "起始日期",
+      "publishers.endMonth": "截止日期",
+      "publishers.site": "站点",
+      "publishers.track": "Track",
+      "publishers.empty": "暂无数据",
       "label.All markets": "全市场",
+      "label.All": "全部",
+      "action.search": "搜索",
+      "action.export": "导出",
       "tier.searchPlaceholder": "商家、ID、原因、推荐",
       "tier.networkAgency": "网络 / Agency",
       "label.Brand": "品牌",
@@ -2445,6 +2475,11 @@
     if (button.dataset.reportSortScope === "payment") {
       updateReportSort(state.paymentSort, key);
       renderPaymentsPage();
+      return;
+    }
+    if (button.dataset.reportSortScope === "publisher") {
+      updateReportSort(state.publisherSort, key);
+      renderPublishersPage();
       return;
     }
     updateReportSort(state.tierSheetSort, key);
@@ -8108,9 +8143,106 @@
     renderPaymentRows(rows);
   }
 
+  function downloadPublishersXlsx() {
+    if (!_publishersCache) return;
+    var data = _publishersCache;
+    var filtered = getFilteredPublishers(data);
+    var market = state.publisherMarket || "all";
+    var rows = filtered.map(function (pub, idx) {
+      var m = market && market !== "all" ? pub.markets[market] : pub.total;
+      m = m || { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+      return {
+        rank: idx + 1,
+        userId: pub.userId,
+        userName: pub.userName,
+        adminName: pub.adminName || "Unknown",
+        clicks: m.clicks,
+        cvr: m.clicks > 0 ? (m.orders / m.clicks) : 0,
+        dpv: m.dpv,
+        atc: m.atc,
+        orders: m.orders,
+        sales: m.sales,
+        allCommission: m.allCommission,
+        affCommission: m.affCommission,
+        grossProfit: m.allCommission - m.affCommission,
+      };
+    });
+    var headers = [
+      "Rank", "Publisher ID", "Publisher Name", "Manager",
+      "Clicks", "CVR", "DPV", "ATC", "Orders",
+      "Sales", "All Commission", "Aff Commission", "Gross Profit"
+    ];
+    downloadRowsAsXlsx(rows, {
+      downloadType: "sheet",
+      filePrefix: "publishers",
+      exportScope: state.publisherMarket,
+      sheetName: "Publishers",
+      downloadColumns: objectExportColumns(rows, headers)
+    });
+  }
+
   // ===== Publisher functions =====
 
   var _publishersCache = null;
+
+  function _fillPublishersSelect(selectEl, values, currentValue, defaultText) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="all">' + escapeHtml(defaultText || t("label.All", "All")) + '</option>';
+    if (!values || !values.length) return;
+    values.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    if (currentValue && values.indexOf(currentValue) !== -1) {
+      selectEl.value = currentValue;
+    } else {
+      selectEl.value = "all";
+    }
+  }
+
+  var _managerOptions = [];
+
+  function _rebuildManagerOptions(publishers) {
+    if (!publishers) return;
+    var counts = {};
+    publishers.forEach(function (pub) {
+      var name = pub.adminName || "Unknown";
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    _managerOptions = Object.keys(counts).sort(function (a, b) {
+      if (a === "Unknown") return 1;
+      if (b === "Unknown") return -1;
+      return a.localeCompare(b);
+    }).map(function (name) {
+      return { name: name, count: counts[name] };
+    });
+  }
+
+  function _showManagerDropdown() {
+    var dd = document.getElementById("publisherManagerDropdown");
+    if (!dd || !els.publisherManagerSearch) return;
+    var q = (els.publisherManagerSearch.value || "").toLowerCase().trim();
+    var html = "";
+    var matched = 0;
+    _managerOptions.forEach(function (opt) {
+      if (q && opt.name.toLowerCase().indexOf(q) === -1) return;
+      matched++;
+      html += '<div class="combobox-option" data-value="' + escapeHtml(opt.name) + '">' +
+        escapeHtml(opt.name) + '<span class="opt-count">(' + opt.count + ')</span></div>';
+    });
+    if (!html) {
+      html = '<div class="combobox-option" style="color:var(--muted);cursor:default">无匹配</div>';
+    }
+    dd.innerHTML = html;
+    dd.classList.add("show");
+  }
+
+  function _hideManagerDropdown() {
+    var dd = document.getElementById("publisherManagerDropdown");
+    if (dd) dd.classList.remove("show");
+  }
 
   function loadPublishersData(forceRefresh) {
     if (_publishersCache && !forceRefresh) return Promise.resolve(_publishersCache);
@@ -8126,22 +8258,77 @@
   function getFilteredPublishers(data) {
     if (!data || !data.publishers) return [];
     var market = state.publisherMarket || "all";
-    var search = (state.publisherSearch || "").toLowerCase().trim();
+    var network = state.publisherNetwork || "all";
+    var linkType = state.publisherLinkType || "all";
+    var merchantSearch = (state.publisherMerchantSearch || "").toLowerCase().trim();
+    var productSearch = (state.publisherProductSearch || "").toLowerCase().trim();
     var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
+    var siteSearch = (state.publisherSiteSearch || "").toLowerCase().trim();
+    var trackSearch = (state.publisherTrackSearch || "").toLowerCase().trim();
+    var nameMap = data.merchantNameMap || {};
 
     return data.publishers.filter(function (pub) {
       // 市场筛选
       if (market !== "all" && !pub.markets[market]) return false;
-      // 媒介搜索
-      if (search) {
-        var name = (pub.userName || "").toLowerCase();
-        var id = String(pub.userId);
-        if (name.indexOf(search) === -1 && id.indexOf(search) === -1) return false;
+      // 联盟筛选
+      if (network !== "all" && (!pub.networks || pub.networks.indexOf(network) === -1)) return false;
+      // 链接类型筛选
+      if (linkType !== "all" && (!pub.linkTypes || !pub.linkTypes[linkType])) return false;
+      // 商家搜索（匹配商家名称和 ID）
+      if (merchantSearch) {
+        var matched = false;
+        var mIds = pub.merchantIds || [];
+        for (var i = 0; i < mIds.length; i++) {
+          var mid = String(mIds[i]);
+          var mName = (nameMap[mid] || "").toLowerCase();
+          if (mid.indexOf(merchantSearch) !== -1 || mName.indexOf(merchantSearch) !== -1) {
+            matched = true;
+            break;
+          }
+        }
+        // 也搜索 publisher 本身名称/ID
+        if (!matched) {
+          var name = (pub.userName || "").toLowerCase();
+          var id = String(pub.userId);
+          if (name.indexOf(merchantSearch) !== -1 || id.indexOf(merchantSearch) !== -1) matched = true;
+        }
+        if (!matched) return false;
+      }
+      // 商品搜索（publisher 名称/ID）
+      if (productSearch) {
+        var name2 = (pub.userName || "").toLowerCase();
+        var id2 = String(pub.userId);
+        if (name2.indexOf(productSearch) === -1 && id2.indexOf(productSearch) === -1) return false;
       }
       // 经理搜索
       if (manager) {
         var adminName = (pub.adminName || "").toLowerCase();
         if (adminName.indexOf(manager) === -1) return false;
+      }
+      // 站点搜索（模糊匹配市场名称）
+      if (siteSearch) {
+        var marketKeys = Object.keys(pub.markets || {});
+        var siteMatched = false;
+        for (var si = 0; si < marketKeys.length; si++) {
+          if (marketKeys[si].toLowerCase().indexOf(siteSearch) !== -1) {
+            siteMatched = true;
+            break;
+          }
+        }
+        // 也搜索 publisher 名称/ID
+        if (!siteMatched) {
+          var siteName = (pub.userName || "").toLowerCase();
+          var siteId = String(pub.userId);
+          if (siteName.indexOf(siteSearch) !== -1 || siteId.indexOf(siteSearch) !== -1) siteMatched = true;
+        }
+        if (!siteMatched) return false;
+      }
+      // track 搜索（全局搜索 publisher 名称/ID/经理等）
+      if (trackSearch) {
+        var trackName = (pub.userName || "").toLowerCase();
+        var trackId = String(pub.userId);
+        var trackAdmin = (pub.adminName || "").toLowerCase();
+        if (trackName.indexOf(trackSearch) === -1 && trackId.indexOf(trackSearch) === -1 && trackAdmin.indexOf(trackSearch) === -1) return false;
       }
       return true;
     });
@@ -8165,41 +8352,71 @@
     return agg;
   }
 
+  var PUBLISHER_CHART_METRIC_COLORS = {
+    clicks: "#66b3ff",
+    dpv: "#22c55e",
+    atc: "#ec4899",
+    orders: "#ef4444",
+    sales: "#a855f7",
+    allCommission: "#f97316",
+  };
+
+  var PUBLISHER_KPI_METRICS = [
+    { key: "clicks", label: "Clicks", format: function(v) { return number(v); } },
+    { key: "dpv", label: "DPV", format: function(v) { return number(v); } },
+    { key: "atc", label: "ATC", format: function(v) { return number(v); } },
+    { key: "orders", label: "Orders", format: function(v) { return number(v); } },
+    { key: "sales", label: "Sales", format: function(v) { return money(v); } },
+    { key: "allCommission", label: "Commission", format: function(v) { return money(v); } },
+  ];
+
   function renderPublishersKpi(agg) {
-    var cards = [
-      ["Clicks", number(agg.clicks)],
-      ["DPV", number(agg.dpv)],
-      ["ATC", number(agg.atc)],
-      ["Orders", number(agg.orders)],
-      ["Sales", money(agg.sales)],
-      ["Commission", money(agg.allCommission)]
-    ];
-    els.publishersKpiRow.innerHTML = cards.map(function (c) {
-      return '<div class="metric"><span>' + escapeHtml(c[0]) + '</span><strong>' + escapeHtml(c[1]) + '</strong></div>';
+    var activeMetric = state.publisherChartMetric || "clicks";
+    els.publishersKpiRow.innerHTML = PUBLISHER_KPI_METRICS.map(function (m) {
+      var val = agg[m.key] != null ? agg[m.key] : 0;
+      var activeClass = m.key === activeMetric ? ' metric-active' : '';
+      return '<div class="metric' + activeClass + '" data-publisher-kpi="' + m.key + '"><span>' +
+        escapeHtml(m.label) + '</span><strong>' + m.format(val) + '</strong></div>';
     }).join("");
   }
 
   function renderPublishersChart(filteredPubs, market) {
+    var metric = state.publisherChartMetric || "clicks";
+    // 更新图表标题
+    if (els.publishersChartTitle) {
+      var metricLabels = { clicks: "Clicks", dpv: "DPV", atc: "ATC", orders: "Orders", sales: "Sales", allCommission: "Commission" };
+      els.publishersChartTitle.textContent = (metricLabels[metric] || "Clicks") + " by Publisher";
+    }
     var sorted = filteredPubs.slice().sort(function (a, b) {
       var ma = market && market !== "all" ? a.markets[market] : a.total;
       var mb = market && market !== "all" ? b.markets[market] : b.total;
-      return (mb ? mb.clicks : 0) - (ma ? ma.clicks : 0);
+      var va = ma ? (ma[metric] || 0) : 0;
+      var vb = mb ? (mb[metric] || 0) : 0;
+      return vb - va;
     });
     var topN = sorted.slice(0, 15);
     var topPub = topN[0];
     var maxForPct = topPub && (market && market !== "all" ? topPub.markets[market] : topPub.total);
-    var maxClicks = maxForPct ? maxForPct.clicks : 1;
+    var maxVal = maxForPct ? (maxForPct[metric] || 1) : 1;
+    // Find format function for the metric
+    var metricDef = null;
+    for (var i = 0; i < PUBLISHER_KPI_METRICS.length; i++) {
+      if (PUBLISHER_KPI_METRICS[i].key === metric) { metricDef = PUBLISHER_KPI_METRICS[i]; break; }
+    }
+    var formatFn = metricDef ? metricDef.format : number;
+    var barColor = PUBLISHER_CHART_METRIC_COLORS[metric] || "#66b3ff";
     var html = "";
-    topN.forEach(function (pub) {
+    topN.forEach(function (pub, idx) {
       var m = market && market !== "all" ? pub.markets[market] : pub.total;
-      var clicks = m ? m.clicks : 0;
-      var pct = Math.max(2, (clicks / maxClicks) * 100);
+      var val = m ? (m[metric] || 0) : 0;
+      var pct = Math.max(2, (val / maxVal) * 100);
+      var delay = idx * 30;
       html += '<div class="chart-bar-row">' +
         '<span class="chart-bar-label" title="' + escapeHtml(pub.userName) + '">' + escapeHtml(pub.userName) + '</span>' +
-        '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%">' +
-          (pct > 15 ? number(clicks) : '') +
+        '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + barColor + ';animation-delay:' + delay + 'ms">' +
+          (pct > 5 ? formatFn(val) : '') +
         '</div></div>' +
-        '<span class="chart-bar-value">' + number(clicks) + '</span>' +
+        '<span class="chart-bar-value">' + formatFn(val) + '</span>' +
       '</div>';
     });
     if (!html) html = '<div class="publishers-empty">' + escapeHtml(t("publishers.empty", "No data")) + '</div>';
@@ -8210,7 +8427,7 @@
     { key: "rank", label: "#", render: function(r) { return String(r.rank); } },
     { key: "userId", label: "Publisher ID", render: function(r) { return String(r.userId); } },
     { key: "userName", label: "Publisher Name", render: function(r) { return escapeHtml(r.userName); } },
-    { key: "adminName", label: "Manager", render: function(r) { return escapeHtml(r.adminName || "Unknown"); } },
+    { key: "adminName", label: "Manager", render: function(r) { return escapeHtml(r.adminName || (r.userName === "Total" ? "" : "Unknown")); } },
     { key: "clicks", label: "Clicks", render: function(r) { return number(r.clicks); } },
     { key: "conversionRate", label: "CVR", render: function(r) { return pct(r.conversionRate); } },
     { key: "dpv", label: "DPV", render: function(r) { return number(r.dpv); } },
@@ -8223,16 +8440,18 @@
   ];
 
   function renderPublishersTable(filteredPubs, market, totals) {
-    // 表头
+    // 可排序表头
     els.publishersTableHead.innerHTML = "<tr>" + PUBLISHER_TABLE_COLUMNS.map(function (c) {
-      return '<th>' + escapeHtml(c.label) + '</th>';
+      return sortableHeaderHtml(c.key, state.publisherSort, "publisher");
     }).join("") + "</tr>";
 
-    // 预计算每行的指标
+    // 预计算每行的指标（不含合计行，合计行不参与排序）
+    var sortKey = state.publisherSort.key;
     var rows = filteredPubs.map(function (pub, idx) {
       var m = market && market !== "all" ? pub.markets[market] : pub.total;
       m = m || { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
       return {
+        _idx: idx,
         rank: idx + 1,
         userId: pub.userId,
         userName: pub.userName,
@@ -8248,6 +8467,14 @@
         grossProfit: m.allCommission - m.affCommission,
       };
     });
+
+    // 排序
+    if (sortKey) {
+      var getter = function (row, key) { return row[key]; };
+      rows = sortReportRows(rows, state.publisherSort, getter);
+      // 重新编号 rank
+      rows.forEach(function (r, i) { r.rank = i + 1; });
+    }
 
     // 合计行
     var totalRow = {
@@ -8282,14 +8509,35 @@
       escapeHtml(t("publishers.loading", "Loading...")) + '</td></tr>';
 
     loadPublishersData().then(function (data) {
-      // 填充市场下拉（先清空防止重复）
-      els.publisherMarketFilter.innerHTML = '<option value="all">' + escapeHtml(t("label.All markets", "All markets")) + '</option>';
-      (data.markets || []).forEach(function (m) {
-        var opt = document.createElement("option");
-        opt.value = m; opt.textContent = m;
-        els.publisherMarketFilter.appendChild(opt);
-      });
-      els.publisherMarketFilter.value = data.markets.indexOf(state.publisherMarket) !== -1 ? state.publisherMarket : "all";
+      // 填充联盟下拉
+      _fillPublishersSelect(els.publisherNetworkFilter, data.networks || [], state.publisherNetwork, "请选择所属联盟");
+      // 填充链接类型下拉
+      _fillPublishersSelect(els.publisherLinkTypeFilter, data.linkTypes || [], state.publisherLinkType, "请选择链接类型");
+      // 填充市场下拉
+      _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket, "请选择站点");
+      // 重建经理选项列表（供组合框使用）
+      _rebuildManagerOptions(data.publishers);
+      if (els.publisherManagerSearch) {
+        els.publisherManagerSearch.value = state.publisherManagerSearch || "";
+      }
+      // 恢复日期选择器值
+      els.publisherStartDate.value = state.publisherStartDate || "";
+      els.publisherEndDate.value = state.publisherEndDate || "";
+
+      // 恢复搜索框值
+      els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
+      els.publisherProductSearch.value = state.publisherProductSearch || "";
+      els.publisherManagerSearch.value = state.publisherManagerSearch || "";
+      els.publisherSiteSearch.value = state.publisherSiteSearch || "";
+      els.publisherTrackSearch.value = state.publisherTrackSearch || "";
+
+      // 当日期范围生效时，用 monthlyRows 重新计算 publisher 的数据
+      var sd = state.publisherStartDate || "";
+      var ed = state.publisherEndDate || "";
+      var hasDateFilter = sd !== "" || ed !== "";
+      if (hasDateFilter && data.monthlyRows) {
+        data = _applyMonthFilterToData(data, sd, ed);
+      }
 
       var filtered = getFilteredPublishers(data);
       var market = state.publisherMarket || "all";
@@ -8307,6 +8555,90 @@
       els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-empty">' +
         escapeHtml(t("publishers.error", "Error: ") + err.message) + '</td></tr>';
     });
+  }
+
+  function _applyMonthFilterToData(data, startDate, endDate) {
+    // 将日期转为月范围：2026-03-15 → month key "2026-03"
+    var startMonth = "";
+    var endMonth = "";
+    if (startDate) {
+      startMonth = startDate.substring(0, 7);  // "2026-03"
+    }
+    if (endDate) {
+      endMonth = endDate.substring(0, 7);  // "2026-06"
+    }
+    // 从 monthlyRows 中筛选出目标月份的行，按 userId+market 汇总
+    var rows = data.monthlyRows || {};
+    var selected = [];
+    Object.keys(rows).forEach(function (month) {
+      if (startMonth && month < startMonth) return;
+      if (endMonth && month > endMonth) return;
+      selected = selected.concat(rows[month]);
+    });
+
+    // 按 userId+market 汇总
+    var sums = {};  // key: "uid|market"
+    selected.forEach(function (r) {
+      var key = r.userId + "|" + r.market;
+      if (!sums[key]) {
+        sums[key] = { userId: r.userId, market: r.market, clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+      }
+      sums[key].clicks += r.clicks;
+      sums[key].dpv += r.dpv;
+      sums[key].atc += r.atc;
+      sums[key].orders += r.orders;
+      sums[key].sales += r.sales;
+      sums[key].allCommission += r.allCommission;
+      sums[key].affCommission += r.affCommission;
+    });
+
+    // 重新计算每个 publisher 的 total 和 markets
+    var newPublishers = data.publishers.map(function (pub) {
+      var newPub = JSON.parse(JSON.stringify(pub));
+      newPub.markets = {};
+      newPub.total = { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+
+      Object.keys(sums).forEach(function (key) {
+        if (key.startsWith(pub.userId + "|")) {
+          var s = sums[key];
+          var mkt = s.market;
+          if (!newPub.markets[mkt]) {
+            newPub.markets[mkt] = { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+          }
+          newPub.markets[mkt].clicks += s.clicks;
+          newPub.markets[mkt].dpv += s.dpv;
+          newPub.markets[mkt].atc += s.atc;
+          newPub.markets[mkt].orders += s.orders;
+          newPub.markets[mkt].sales += s.sales;
+          newPub.markets[mkt].allCommission += s.allCommission;
+          newPub.markets[mkt].affCommission += s.affCommission;
+          newPub.total.clicks += s.clicks;
+          newPub.total.dpv += s.dpv;
+          newPub.total.atc += s.atc;
+          newPub.total.orders += s.orders;
+          newPub.total.sales += s.sales;
+          newPub.total.allCommission += s.allCommission;
+          newPub.total.affCommission += s.affCommission;
+        }
+      });
+
+      return newPub;
+    });
+
+    // 只保留有数据的 publisher，且保留 markets 中出现的 market
+    var activeMarkets = new Set();
+    newPublishers.forEach(function (p) {
+      Object.keys(p.markets).forEach(function (m) { activeMarkets.add(m); });
+    });
+
+    return {
+      publishers: newPublishers,
+      summary: data.summary,
+      markets: data.markets.filter(function (m) { return activeMarkets.has(m); }),
+      networks: data.networks,
+      linkTypes: data.linkTypes,
+      merchantNameMap: data.merchantNameMap || {},
+    };
   }
 
   // ===== End publisher functions =====
@@ -11223,6 +11555,7 @@
     els.sheetPageNotes.addEventListener("submit", handleTargetReportSubmit);
     if (els.sheetGridHead) els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
+    els.publishersTableHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("change", handleTierSelectionChange);
     els.tierSheetRows.addEventListener("change", handleTierSelectionChange);
     els.tierMoveSelected.addEventListener("click", openTierMoveDialog);
@@ -11265,29 +11598,136 @@
     els.languageToggle.addEventListener("click", toggleLanguage);
     if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
+    els.publisherNetworkFilter.addEventListener("change", function () {
+      state.publisherNetwork = els.publisherNetworkFilter.value;
+      renderPublishersPage();
+    });
+    els.publisherLinkTypeFilter.addEventListener("change", function () {
+      state.publisherLinkType = els.publisherLinkTypeFilter.value;
+      renderPublishersPage();
+    });
+    els.publisherStartDate.addEventListener("change", function () {
+      state.publisherStartDate = els.publisherStartDate.value;
+      renderPublishersPage();
+    });
+    els.publisherEndDate.addEventListener("change", function () {
+      state.publisherEndDate = els.publisherEndDate.value;
+      renderPublishersPage();
+    });
     els.publisherMarketFilter.addEventListener("change", function () {
       state.publisherMarket = els.publisherMarketFilter.value;
       renderPublishersPage();
     });
-    els.publisherSearch.addEventListener("input", function () {
-      state.publisherSearch = els.publisherSearch.value;
-      renderPublishersPage();
-    });
+    // 经理组合框：输入过滤 + 即时渲染
     els.publisherManagerSearch.addEventListener("input", function () {
       state.publisherManagerSearch = els.publisherManagerSearch.value;
+      _showManagerDropdown();
       renderPublishersPage();
+    });
+    els.publisherManagerSearch.addEventListener("focus", function () {
+      _rebuildManagerOptions((_publishersCache || {}).publishers);
+      _showManagerDropdown();
+    });
+    els.publisherManagerSearch.addEventListener("blur", function () {
+      setTimeout(_hideManagerDropdown, 200);
+    });
+    // 经理下拉选项点击
+    document.getElementById("publisherManagerDropdown").addEventListener("click", function (e) {
+      var opt = e.target.closest(".combobox-option");
+      if (!opt || !opt.getAttribute("data-value")) return;
+      var val = opt.getAttribute("data-value");
+      state.publisherManagerSearch = val;
+      els.publisherManagerSearch.value = val;
+      _hideManagerDropdown();
+      renderPublishersPage();
+    });
+    // 文本输入框仅同步 state，不触发渲染（点击搜索按钮才渲染）
+    els.publisherMerchantSearch.addEventListener("input", function () {
+      state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+    });
+    els.publisherProductSearch.addEventListener("input", function () {
+      state.publisherProductSearch = els.publisherProductSearch.value;
+    });
+    els.publisherManagerSearch.addEventListener("change", function () {
+      state.publisherManagerSearch = els.publisherManagerSearch.value;
+    });
+    els.publisherSiteSearch.addEventListener("input", function () {
+      state.publisherSiteSearch = els.publisherSiteSearch.value;
+    });
+    els.publisherTrackSearch.addEventListener("input", function () {
+      state.publisherTrackSearch = els.publisherTrackSearch.value;
     });
     els.publisherSearchBtn.addEventListener("click", function () {
       renderPublishersPage();
     });
+    // 日期快捷按钮
+    document.getElementById("publisherDateQuickBtns").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-quick]");
+      if (!btn) return;
+      var mode = btn.getAttribute("data-quick");
+      var now = new Date();
+      var y = now.getFullYear();
+      var m = now.getMonth(); // 0=Jan
+      var d = now.getDate();
+      var sd, ed;
+      switch (mode) {
+        case "lastMonth":
+          sd = new Date(y, m - 1, 1);
+          ed = new Date(y, m, 0);
+          break;
+        case "past30":
+          sd = new Date(y, m, d - 30);
+          ed = now;
+          break;
+        case "past3m":
+          sd = new Date(y, m - 3, d);
+          ed = now;
+          break;
+        case "past6m":
+          sd = new Date(y, m - 6, d);
+          ed = now;
+          break;
+      }
+      function pad(n) { return n < 10 ? "0" + n : "" + n; }
+      state.publisherStartDate = sd.getFullYear() + "-" + pad(sd.getMonth() + 1) + "-" + pad(sd.getDate());
+      state.publisherEndDate = ed.getFullYear() + "-" + pad(ed.getMonth() + 1) + "-" + pad(ed.getDate());
+      els.publisherStartDate.value = state.publisherStartDate;
+      els.publisherEndDate.value = state.publisherEndDate;
+      renderPublishersPage();
+    });
     els.publisherResetBtn.addEventListener("click", function () {
       state.publisherMarket = "all";
-      state.publisherSearch = "";
+      state.publisherNetwork = "all";
+      state.publisherLinkType = "all";
+      state.publisherStartDate = "";
+      state.publisherEndDate = "";
+      state.publisherMerchantSearch = "";
+      state.publisherProductSearch = "";
       state.publisherManagerSearch = "";
+      state.publisherSiteSearch = "";
+      state.publisherTrackSearch = "";
       els.publisherMarketFilter.value = "all";
-      els.publisherSearch.value = "";
+      els.publisherNetworkFilter.value = "all";
+      els.publisherLinkTypeFilter.value = "all";
+      els.publisherStartDate.value = "";
+      els.publisherEndDate.value = "";
+      els.publisherMerchantSearch.value = "";
+      els.publisherProductSearch.value = "";
       els.publisherManagerSearch.value = "";
+      els.publisherSiteSearch.value = "";
+      els.publisherTrackSearch.value = "";
       renderPublishersPage();
+    });
+    els.publisherExportBtn.addEventListener("click", downloadPublishersXlsx);
+    // KPI 卡片点击切换图表指标
+    els.publishersKpiRow.addEventListener("click", function (event) {
+      var card = event.target.closest("[data-publisher-kpi]");
+      if (!card) return;
+      var metric = card.getAttribute("data-publisher-kpi");
+      if (metric && metric !== state.publisherChartMetric) {
+        state.publisherChartMetric = metric;
+        renderPublishersPage();
+      }
     });
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
     if (els.sheetDownload) els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
