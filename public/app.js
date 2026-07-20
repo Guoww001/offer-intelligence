@@ -374,6 +374,7 @@
       "publishers.managerPlaceholder": "经理名称",
       "publishers.chartTitle": "按点击量排名",
       "publishers.tableTitle": "媒介数据",
+      "label.All markets": "全市场",
       "tier.searchPlaceholder": "商家、ID、原因、推荐",
       "tier.networkAgency": "网络 / Agency",
       "label.Brand": "品牌",
@@ -8185,7 +8186,9 @@
       return (mb ? mb.clicks : 0) - (ma ? ma.clicks : 0);
     });
     var topN = sorted.slice(0, 15);
-    var maxClicks = topN.length > 0 ? topN[0].total.clicks : 1;
+    var topPub = topN[0];
+    var maxForPct = topPub && (market && market !== "all" ? topPub.markets[market] : topPub.total);
+    var maxClicks = maxForPct ? maxForPct.clicks : 1;
     var html = "";
     topN.forEach(function (pub) {
       var m = market && market !== "all" ? pub.markets[market] : pub.total;
