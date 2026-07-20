@@ -1323,11 +1323,13 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
 CACHE_DIR = ROOT / "protected_data"
 OFFERS_CACHE_FILE = CACHE_DIR / "db_offers_cache.json"
 KEYWORDS_CACHE_FILE = CACHE_DIR / "db_keywords_cache.json"
+PUBLISHERS_CACHE_FILE = CACHE_DIR / "db_publishers_cache.json"
 CACHE_TTL_SECONDS = int(os.environ.get("OFFER_DB_CACHE_TTL", "86400"))  # 24 hours
 MERCHANT_CACHE_TTL = int(os.environ.get("OFFER_DB_MERCHANT_CACHE_TTL", "3600"))  # 1 hour
 SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1 hour
 STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
 TIER_SHEET_CACHE_TTL = int(os.environ.get("OFFER_DB_CACHE_TTL", "21600"))    # 6 hours
+PUBLISHERS_CACHE_TTL = int(os.environ.get("OFFER_DB_PUBLISHERS_CACHE_TTL", "3600"))  # 1 hour
 _bg_refresh_running: dict[str, bool] = {}
 _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -1335,6 +1337,8 @@ _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
+# In-memory cache for publishers payload
+_publishers_memory_cache: tuple[float, dict[str, Any]] | None = None
 # 防止 ThreadingHTTPServer 多线程同时重建 offers 缓存导致 MySQL /tmp 写满
 _offers_rebuild_lock = threading.Lock()
 
@@ -2199,6 +2203,54 @@ def _build_keywords_payload() -> dict[str, Any]:
     }
     _save_cache(KEYWORDS_CACHE_FILE, result)
     return result
+
+
+# ── publishers cache ──────────────────────────────────────────────────
+
+
+def publishers_payload(force_refresh: bool = False) -> dict[str, Any]:
+    """从 db_publishers_cache.json 读取聚合的媒介数据。
+
+    遵循 offers_payload 的缓存模式: 内存缓存 + 文件缓存 + TTL + 后台刷新。
+    数据由 scripts/build_publishers_data.py 构建。
+    """
+    global _publishers_memory_cache
+    now = time.time()
+
+    if not force_refresh and _publishers_memory_cache is not None:
+        ts, payload = _publishers_memory_cache
+        if now - ts < PUBLISHERS_CACHE_TTL:
+            return payload
+
+    if not force_refresh:
+        cached = _load_any_cache(PUBLISHERS_CACHE_FILE)
+        if cached is not None:
+            age = _cache_age(PUBLISHERS_CACHE_FILE)
+            if age is not None and age < PUBLISHERS_CACHE_TTL:
+                _publishers_memory_cache = (now, cached)
+                return cached
+            # Stale: return stale, trigger background refresh
+            _publishers_memory_cache = (now, cached)
+            if not _bg_refresh_running.get("publishers"):
+                _bg_refresh_running["publishers"] = True
+
+                def _refresh_publishers():
+                    global _publishers_memory_cache
+                    try:
+                        cached_file = _load_any_cache(PUBLISHERS_CACHE_FILE)
+                        if cached_file is not None:
+                            _publishers_memory_cache = (time.time(), cached_file)
+                    finally:
+                        _bg_refresh_running["publishers"] = False
+
+                threading.Thread(target=_refresh_publishers, daemon=True).start()
+            return cached
+
+    cached = _load_any_cache(PUBLISHERS_CACHE_FILE)
+    if cached is None:
+        return {"ok": False, "error": "Publishers cache not built yet. Run scripts/build_publishers_data.py first."}
+    _publishers_memory_cache = (now, cached)
+    return cached
 
 
 def compact_api_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
