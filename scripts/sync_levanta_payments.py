@@ -195,19 +195,23 @@ def reconcile_source_payment_record(record: dict) -> dict:
     merchant_name = str(record.get("merchantName") or record.get("brand") or "").strip()
     source_merchant_id = str(record.get("merchantId") or record.get("brand_id") or "").strip()
     network = record.get("network") or "Levanta"
-    offer = server.offer_for_payment_source(source_merchant_id, merchant_name, network)
-    if not offer:
-        return record
-
-    # 保留源 merchantId（Levanta 按站点分配的唯一 ID），不同站点的 ID 本来就不同
-    merchant_id = source_merchant_id or str(offer.get("merchantId") or "").strip()
+    # 先通过 levantaBrandId → merchantId 映射查找
+    levanta_brand_id = str(record.get("levantaBrandId") or "").strip()
+    mapped_id = server.LEVANTA_BRAND_TO_MERCHANT.get(levanta_brand_id) if levanta_brand_id else None
+    if mapped_id:
+        merchant_id = mapped_id
+        offer = server.offer_for_payment_source(merchant_id, merchant_name, network) or {}
+    else:
+        offer = server.offer_for_payment_source(source_merchant_id, merchant_name, network)
+        if not offer:
+            return record
+        merchant_id = source_merchant_id or str(offer.get("merchantId") or "").strip()
     if not merchant_id:
         return record
 
     reconciled = dict(record)
     reconciled["merchantId"] = merchant_id
 
-    levanta_brand_id = str(reconciled.get("levantaBrandId") or "").strip()
     if not levanta_brand_id:
         levanta_brand_id = source_merchant_id
     if levanta_brand_id:

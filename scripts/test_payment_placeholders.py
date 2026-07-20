@@ -183,10 +183,10 @@ def main() -> int:
             5,
             2026,
         )
-        # live sync 应保留 Levanta brand UUID（不同站点的 ID 本来就不同）
+        # live sync 应使用 levantaBrandId → merchantId 映射找到该站点的正确 ID
         assert_true(
-            sample.get("merchantId") == renpho_rows[0].get("levantaBrandId"),
-            f"live sync should preserve per-site brand UUID for {merchant_name}",
+            sample.get("merchantId") == merchant_id,
+            f"live sync should map {merchant_name} to per-site merchantId {merchant_id} via brand UUID lookup",
         )
 
     corrected_direct_id_sample = server.normalize_invoice_item(
@@ -201,8 +201,8 @@ def main() -> int:
         2026,
     )
     assert_true(
-        corrected_direct_id_sample.get("merchantId") == "387793",
-        "Levanta payment rows should keep the source brand id even when it is a direct MID",
+        corrected_direct_id_sample.get("merchantId") == "362938",
+        "Levanta direct MID 387793 should be mapped to 362938 (not a UUID, falls through to brand match)",
     )
 
     direct_renpho_ids = {"387792", "387793"}
