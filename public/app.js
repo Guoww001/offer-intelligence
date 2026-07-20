@@ -1711,15 +1711,17 @@
     const network = record.network || matchedOffer.network || "Levanta";
     const matchedMerchantId = String(matchedOffer.merchantId || "").trim();
     const useMatchedLevantaId = normalize(network) === "levanta" && matchedMerchantId;
-    const merchantId = useMatchedLevantaId ? matchedMerchantId : sourceMerchantId;
-    const levantaBrandId = record.levantaBrandId || (useMatchedLevantaId && sourceMerchantId !== merchantId ? sourceMerchantId : "");
+    // 不同站点的 merchantId 本来就是不同的，不要用 offer 的 merchantId 覆盖源数据
+    const merchantId = sourceMerchantId || matchedMerchantId;
+    const region = paymentRegionFor(record, matchedOffer);
+    const levantaBrandId = record.levantaBrandId || "";
     const normalized = {
       ...record,
       merchantId,
       levantaBrandId,
       merchantName: String(record.merchantName || record.brand || "").trim(),
       network,
-      region: paymentRegionFor(record, matchedOffer),
+      region,
       tier: paymentMetadataValue(record.tier, matchedOffer.tier, "Unknown"),
       category: paymentMetadataValue(record.category, matchedOffer.category || matchedOffer.levantaCategory, "Uncategorized"),
       categoryPath: paymentMetadataValue(record.categoryPath, matchedOffer.categoryPath, ""),
@@ -2046,7 +2048,7 @@
     if (byId.length) return byId;
     const brandKey = normalize(offer.brand);
     if (!brandKey) return [];
-    return paymentRecords.filter((record) => !String(record.merchantId || "").trim() && normalize(record.merchantName) === brandKey);
+    return paymentRecords.filter((record) => normalize(record.merchantName) === brandKey);
   }
 
   function hasOfferOverduePayment(offer) {
@@ -8272,8 +8274,14 @@
       escapeHtml(t("publishers.loading", "Loading...")) + '</td></tr>';
 
     loadPublishersData().then(function (data) {
-      // 填充市场下拉
-      fillSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket);
+      // 填充市场下拉（先清空防止重复）
+      els.publisherMarketFilter.innerHTML = '<option value="all">' + escapeHtml(t("label.All markets", "All markets")) + '</option>';
+      (data.markets || []).forEach(function (m) {
+        var opt = document.createElement("option");
+        opt.value = m; opt.textContent = m;
+        els.publisherMarketFilter.appendChild(opt);
+      });
+      els.publisherMarketFilter.value = data.markets.indexOf(state.publisherMarket) !== -1 ? state.publisherMarket : "all";
 
       var filtered = getFilteredPublishers(data);
       var market = state.publisherMarket || "all";

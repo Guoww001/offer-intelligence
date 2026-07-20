@@ -151,21 +151,23 @@ def main() -> int:
             "paymentStatus": "Pending",
         }
         reconciled_source_record = sync_levanta_payments.reconcile_source_payment_record(source_payment_record)
+        # 保留源 merchantId（不同站点的 ID 本来就不同）
         assert_true(
-            reconciled_source_record.get("merchantId") == merchant_id,
-            f"source API rows for {merchant_name} should be reconciled to Levanta MID {merchant_id}",
+            reconciled_source_record.get("merchantId") == source_brand_id,
+            f"source API rows for {merchant_name} should keep the source brand id (per-site unique)",
         )
         assert_true(
             reconciled_source_record.get("levantaBrandId") == source_brand_id,
             f"source API rows for {merchant_name} should preserve source brand id",
         )
         assert_true(
-            str(reconciled_source_record.get("id") or "").startswith(f"{merchant_id}::2026-06::"),
-            f"source API rows for {merchant_name} should rebuild the payment id with the Levanta MID",
+            str(reconciled_source_record.get("id") or "").startswith(f"{source_brand_id}::2026-06::"),
+            f"source API rows for {merchant_name} should rebuild the payment id with the source brand id",
         )
 
         renpho_rows = [record for record in records if record.get("merchantName") == merchant_name]
         assert_true(renpho_rows, f"{merchant_name} payment rows should exist")
+        # 静态缓存数据仍沿用旧数值 merchantId（后续重建数据会变）
         for record in renpho_rows:
             assert_true(record.get("merchantId") == merchant_id, f"{merchant_name} should use Levanta MID {merchant_id}")
             assert_true(record.get("levantaBrandId"), f"{merchant_name} should preserve the Levanta API brand id")
@@ -181,7 +183,11 @@ def main() -> int:
             5,
             2026,
         )
-        assert_true(sample.get("merchantId") == merchant_id, f"live sync should map {merchant_name} to Levanta MID {merchant_id}")
+        # live sync 应保留 Levanta brand UUID（不同站点的 ID 本来就不同）
+        assert_true(
+            sample.get("merchantId") == renpho_rows[0].get("levantaBrandId"),
+            f"live sync should preserve per-site brand UUID for {merchant_name}",
+        )
 
     corrected_direct_id_sample = server.normalize_invoice_item(
         {
@@ -195,8 +201,8 @@ def main() -> int:
         2026,
     )
     assert_true(
-        corrected_direct_id_sample.get("merchantId") == "362938",
-        "Levanta payment rows should not keep the direct RENPHO Group MID",
+        corrected_direct_id_sample.get("merchantId") == "387793",
+        "Levanta payment rows should keep the source brand id even when it is a direct MID",
     )
 
     direct_renpho_ids = {"387792", "387793"}

@@ -695,7 +695,8 @@ def normalize_invoice_item(item, month_name, zero_based_month, year, marketplace
     levanta_brand_id = str(brand.get("id") or "").strip()
     merchant_name = str(brand.get("name") or "").strip()
     offer = offer_for_payment_source(levanta_brand_id, merchant_name, "Levanta")
-    merchant_id = str(offer.get("merchantId") or levanta_brand_id).strip()
+    # levanta_brand_id 是 Levanta 按站点分配的唯一 ID，不同站点的 ID 本来就不同
+    merchant_id = levanta_brand_id or str(offer.get("merchantId") or "").strip()
     revenue_made = levanta_revenue_made(item)
     commission_made = levanta_commission_made(item)
     expected = commission_made
