@@ -8264,6 +8264,15 @@
     return agg;
   }
 
+  var PUBLISHER_CHART_METRIC_COLORS = {
+    clicks: "#66b3ff",
+    dpv: "#22c55e",
+    atc: "#ec4899",
+    orders: "#ef4444",
+    sales: "#a855f7",
+    allCommission: "#f97316",
+  };
+
   var PUBLISHER_KPI_METRICS = [
     { key: "clicks", label: "Clicks", format: function(v) { return number(v); } },
     { key: "dpv", label: "DPV", format: function(v) { return number(v); } },
@@ -8302,17 +8311,19 @@
       if (PUBLISHER_KPI_METRICS[i].key === metric) { metricDef = PUBLISHER_KPI_METRICS[i]; break; }
     }
     var formatFn = metricDef ? metricDef.format : number;
+    var barColor = PUBLISHER_CHART_METRIC_COLORS[metric] || "#66b3ff";
     var html = "";
-    topN.forEach(function (pub) {
+    topN.forEach(function (pub, idx) {
       var m = market && market !== "all" ? pub.markets[market] : pub.total;
       var val = m ? (m[metric] || 0) : 0;
       var pct = Math.max(2, (val / maxVal) * 100);
+      var delay = idx * 30;
       html += '<div class="chart-bar-row">' +
         '<span class="chart-bar-label" title="' + escapeHtml(pub.userName) + '">' + escapeHtml(pub.userName) + '</span>' +
-        '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%">' +
+        '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + barColor + ';animation-delay:' + delay + 'ms">' +
           (pct > 15 ? formatFn(val) : '') +
         '</div></div>' +
-        '<span class="chart-bar-value">' + formatFn(val) + '</span>' +
+        '<span class="chart-bar-value" style="color:' + barColor + '">' + formatFn(val) + '</span>' +
       '</div>';
     });
     if (!html) html = '<div class="publishers-empty">' + escapeHtml(t("publishers.empty", "No data")) + '</div>';
