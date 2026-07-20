@@ -5642,7 +5642,7 @@ td strong {
 .publishers-filter-actions button {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 7px 16px;
   border: none;
   border-radius: 6px;
@@ -5652,6 +5652,21 @@ td strong {
   white-space: nowrap;
   color: #fff;
   transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn-search::before {
+  content: "🔍";
+  font-size: 13px;
+}
+
+.btn-reset::before {
+  content: "🔄";
+  font-size: 13px;
+}
+
+.btn-export::before {
+  content: "⬇";
+  font-size: 13px;
 }
 
 .publishers-filter-actions button:hover {
