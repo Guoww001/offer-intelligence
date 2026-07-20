@@ -98,7 +98,7 @@ def parse_query(prompt: str, language: str = "zh") -> dict:
         system_prompt=PARSE_QUERY_SYSTEM_PROMPT,
         user_message=prompt,
         max_tokens=600,
-        timeout=20,
+        timeout=60,
         temperature=0,
     )
 
@@ -181,6 +181,43 @@ def _load_cache(path: Path) -> dict:
         return json.load(f)
 
 
+def _display_category(offer: dict) -> str:
+    """Replicate frontend's sheetMainCategory() priority chain.
+
+    Priority: sheetCategory → mainCategory → feishuMainCategory →
+    category → levantaCategory → "Uncategorized"
+    """
+    for key in ("sheetCategory", "mainCategory", "feishuMainCategory"):
+        val = offer.get(key)
+        if val and str(val).strip() and str(val).strip() != "Uncategorized":
+            return str(val).strip()
+    category = offer.get("category")
+    if category and str(category).strip() and str(category).strip() != "Uncategorized":
+        return str(category).strip()
+    levanta = offer.get("levantaCategory")
+    if levanta and str(levanta).strip() and str(levanta).strip() != "Uncategorized":
+        return str(levanta).strip()
+    return "Uncategorized"
+
+
+def _category_matches(offer_category: str, entity_name: str) -> bool:
+    """Check if entity_name matches a category name.
+
+    Exact match first; then check if entity_name is a leading prefix
+    of the category (e.g. "Beauty" → "Beauty & Personal Care").
+    This avoids matching compound categories like
+    "Furniture & Home, Electronics" when querying "Electronics".
+    """
+    oc = offer_category.lower().strip()
+    en = entity_name.lower().strip()
+    if oc == en:
+        return True
+    # Leading prefix: "beauty" → "beauty & personal care" (followed by ' &' or ',')
+    if oc.startswith(en) and len(oc) > len(en) and oc[len(en)] in " &,":
+        return True
+    return False
+
+
 def execute_query_plan(plan: dict) -> dict:
     """Stage 2: Execute the query plan against data sources.
 
@@ -232,7 +269,7 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
         cat_lower = category_filter.lower().strip()
         offers = [
             o for o in offers
-            if cat_lower in (o.get("mainCategory") or o.get("category") or "").lower()
+            if _category_matches(_display_category(o), cat_lower)
         ]
 
     # Filter offers based on entity type
@@ -251,8 +288,8 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
         results = _summarize_offers(matched, metrics, plan)
         # Find peers for comparison
         if comparison_type == "vs_category" and matched:
-            categories = set(o.get("mainCategory") or o.get("category") for o in matched)
-            peers = [o for o in offers if (o.get("mainCategory") or o.get("category")) in categories and o not in matched]
+            categories = set(_display_category(o) for o in matched)
+            peers = [o for o in offers if _display_category(o) in categories and o not in matched]
             results["peers"] = _summarize_offers(peers, metrics, plan)
         elif comparison_type == "vs_tier" and matched:
             tiers = set(o.get("tier") for o in matched)
@@ -264,7 +301,7 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
         matched = [
             o for o in offers
             if any(
-                e in (o.get("mainCategory") or o.get("category") or "").lower()
+                _category_matches(_display_category(o), e)
                 for e in entity_lower
             )
         ]
@@ -273,7 +310,7 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
         if plan.get("analysisType") == "distribution":
             by_category = defaultdict(list)
             for o in offers:
-                cat = o.get("mainCategory") or o.get("category") or "Uncategorized"
+                cat = _display_category(o)
                 by_category[cat].append(o)
             results["distribution"] = {
                 cat: _summarize_offers(group, metrics, plan)
@@ -296,13 +333,13 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
             if not has_tier_match:
                 # 检查是否可能是品类名
                 has_category_match = any(
-                    e in (o.get("mainCategory") or o.get("category") or "").lower()
+                    _category_matches(_display_category(o), e)
                     for o in offers[:10]
                 )
                 if has_category_match:
                     matched = [
                         o for o in matched
-                        if e in (o.get("mainCategory") or o.get("category") or "").lower()
+                        if _category_matches(_display_category(o), e)
                     ]
         results = _summarize_offers(matched, metrics, plan)
 
@@ -325,7 +362,7 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
             elif entity_type == "category":
                 e_offers = [
                     o for o in offers
-                    if el in (o.get("mainCategory") or o.get("category") or "").lower()
+                    if _category_matches(_display_category(o), el)
                 ]
             elif entity_type == "tier":
                 e_offers = [
@@ -411,7 +448,7 @@ def _summarize_offers(offers: list, metrics: list, plan: dict) -> dict:
                 "merchantId": o.get("merchantId"),
                 "brand": o.get("brand"),
                 "tier": o.get("tier"),
-                "category": o.get("mainCategory") or o.get("category"),
+                "category": _display_category(o),
                 "epc": float(o.get("epc") or 0),
                 "aov": float(o.get("aov") or 0),
                 "orders": float(o.get("orders") or 0),
@@ -809,7 +846,7 @@ Data summary:
         system_prompt=REPORT_SYSTEM_PROMPT_EN if is_en else REPORT_SYSTEM_PROMPT_ZH,
         user_message=user_message,
         max_tokens=1500,
-        timeout=30,
+        timeout=60,
         temperature=0,
     )
 
