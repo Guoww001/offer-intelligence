@@ -139,8 +139,8 @@
     publisherProductSearch: "",
     publisherManagerSearch: "",
     publisherChartMetric: "clicks",
-    publisherStartMonth: "all",
-    publisherEndMonth: "all",
+    publisherStartDate: "",
+    publisherEndDate: "",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -216,8 +216,8 @@
     paymentsPage: document.getElementById("paymentsPage"),
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
-    publisherStartMonth: document.getElementById("publisherStartMonth"),
-    publisherEndMonth: document.getElementById("publisherEndMonth"),
+    publisherStartDate: document.getElementById("publisherStartDate"),
+    publisherEndDate: document.getElementById("publisherEndDate"),
     publisherMarketFilter: document.getElementById("publisherMarketFilter"),
     publisherNetworkFilter: document.getElementById("publisherNetworkFilter"),
     publisherLinkTypeFilter: document.getElementById("publisherLinkTypeFilter"),
@@ -390,8 +390,8 @@
       "publishers.managerPlaceholder": "经理名称",
       "publishers.chartTitle": "按点击量排名",
       "publishers.tableTitle": "媒介数据",
-      "publishers.startMonth": "起始月份",
-      "publishers.endMonth": "截止月份",
+      "publishers.startMonth": "起始日期",
+      "publishers.endMonth": "截止日期",
       "publishers.empty": "暂无数据",
       "label.All markets": "全市场",
       "label.All": "全部",
@@ -8418,34 +8418,20 @@
       _fillPublishersSelect(els.publisherLinkTypeFilter, data.linkTypes || [], state.publisherLinkType);
       // 填充市场下拉
       _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket);
-      // 填充月份下拉
-      var months = data.months || [];
-      _fillPublishersSelect(els.publisherStartMonth, months, state.publisherStartMonth);
-      _fillPublishersSelect(els.publisherEndMonth, months, state.publisherEndMonth);
-
-      // 同步月份选择：起始月份 > 截止月份时自动调整
-      var sm = els.publisherStartMonth.value;
-      var em = els.publisherEndMonth.value;
-      if (sm !== "all" && em !== "all" && sm > em) {
-        state.publisherEndMonth = sm;
-        els.publisherEndMonth.value = sm;
-      }
-      // 如果只选了一个端，自动选全
-      if (sm !== "all" && em === "all") {
-        // 只有起始月份：显示从该月到最新
-      }
-      if (sm === "all" && em !== "all") {
-        // 只有截止月份：显示从最旧到该月
-      }
+      // 恢复日期选择器值
+      els.publisherStartDate.value = state.publisherStartDate || "";
+      els.publisherEndDate.value = state.publisherEndDate || "";
 
       // Restore search input values
       els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
       els.publisherProductSearch.value = state.publisherProductSearch || "";
 
-      // 当月份范围生效时，用 monthlyRows 重新计算 publisher 的数据
-      var hasMonthFilter = sm !== "all" || em !== "all";
-      if (hasMonthFilter && data.monthlyRows) {
-        data = _applyMonthFilterToData(data, sm, em);
+      // 当日期范围生效时，用 monthlyRows 重新计算 publisher 的数据
+      var sd = state.publisherStartDate || "";
+      var ed = state.publisherEndDate || "";
+      var hasDateFilter = sd !== "" || ed !== "";
+      if (hasDateFilter && data.monthlyRows) {
+        data = _applyMonthFilterToData(data, sd, ed);
       }
 
       els.publisherManagerSearch.value = state.publisherManagerSearch || "";
@@ -8468,13 +8454,22 @@
     });
   }
 
-  function _applyMonthFilterToData(data, startMonth, endMonth) {
+  function _applyMonthFilterToData(data, startDate, endDate) {
+    // 将日期转为月范围：2026-03-15 → month key "2026-03"
+    var startMonth = "";
+    var endMonth = "";
+    if (startDate) {
+      startMonth = startDate.substring(0, 7);  // "2026-03"
+    }
+    if (endDate) {
+      endMonth = endDate.substring(0, 7);  // "2026-06"
+    }
     // 从 monthlyRows 中筛选出目标月份的行，按 userId+market 汇总
     var rows = data.monthlyRows || {};
     var selected = [];
     Object.keys(rows).forEach(function (month) {
-      if (startMonth !== "all" && month < startMonth) return;
-      if (endMonth !== "all" && month > endMonth) return;
+      if (startMonth && month < startMonth) return;
+      if (endMonth && month > endMonth) return;
       selected = selected.concat(rows[month]);
     });
 
@@ -11507,12 +11502,12 @@
       state.publisherLinkType = els.publisherLinkTypeFilter.value;
       renderPublishersPage();
     });
-    els.publisherStartMonth.addEventListener("change", function () {
-      state.publisherStartMonth = els.publisherStartMonth.value;
+    els.publisherStartDate.addEventListener("change", function () {
+      state.publisherStartDate = els.publisherStartDate.value;
       renderPublishersPage();
     });
-    els.publisherEndMonth.addEventListener("change", function () {
-      state.publisherEndMonth = els.publisherEndMonth.value;
+    els.publisherEndDate.addEventListener("change", function () {
+      state.publisherEndDate = els.publisherEndDate.value;
       renderPublishersPage();
     });
     els.publisherMarketFilter.addEventListener("change", function () {
@@ -11538,16 +11533,16 @@
       state.publisherMarket = "all";
       state.publisherNetwork = "all";
       state.publisherLinkType = "all";
-      state.publisherStartMonth = "all";
-      state.publisherEndMonth = "all";
+      state.publisherStartDate = "";
+      state.publisherEndDate = "";
       state.publisherMerchantSearch = "";
       state.publisherProductSearch = "";
       state.publisherManagerSearch = "";
       els.publisherMarketFilter.value = "all";
       els.publisherNetworkFilter.value = "all";
       els.publisherLinkTypeFilter.value = "all";
-      els.publisherStartMonth.value = "all";
-      els.publisherEndMonth.value = "all";
+      els.publisherStartDate.value = "";
+      els.publisherEndDate.value = "";
       els.publisherMerchantSearch.value = "";
       els.publisherProductSearch.value = "";
       els.publisherManagerSearch.value = "";
