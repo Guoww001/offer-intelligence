@@ -5712,6 +5712,18 @@ td strong {
   flex-direction: column;
   gap: 4px;
   box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.publishers-kpi-row .metric:hover {
+  border-color: var(--blue-soft);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.publishers-kpi-row .metric.metric-active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
 }
 
 .publishers-kpi-row .metric span {

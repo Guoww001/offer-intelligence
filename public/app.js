@@ -138,6 +138,7 @@
     publisherMerchantSearch: "",
     publisherProductSearch: "",
     publisherManagerSearch: "",
+    publisherChartMetric: "clicks",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -8263,41 +8264,55 @@
     return agg;
   }
 
+  var PUBLISHER_KPI_METRICS = [
+    { key: "clicks", label: "Clicks", format: function(v) { return number(v); } },
+    { key: "dpv", label: "DPV", format: function(v) { return number(v); } },
+    { key: "atc", label: "ATC", format: function(v) { return number(v); } },
+    { key: "orders", label: "Orders", format: function(v) { return number(v); } },
+    { key: "sales", label: "Sales", format: function(v) { return money(v); } },
+    { key: "allCommission", label: "Commission", format: function(v) { return money(v); } },
+  ];
+
   function renderPublishersKpi(agg) {
-    var cards = [
-      ["Clicks", number(agg.clicks)],
-      ["DPV", number(agg.dpv)],
-      ["ATC", number(agg.atc)],
-      ["Orders", number(agg.orders)],
-      ["Sales", money(agg.sales)],
-      ["Commission", money(agg.allCommission)]
-    ];
-    els.publishersKpiRow.innerHTML = cards.map(function (c) {
-      return '<div class="metric"><span>' + escapeHtml(c[0]) + '</span><strong>' + escapeHtml(c[1]) + '</strong></div>';
+    var activeMetric = state.publisherChartMetric || "clicks";
+    els.publishersKpiRow.innerHTML = PUBLISHER_KPI_METRICS.map(function (m) {
+      var val = agg[m.key] != null ? agg[m.key] : 0;
+      var activeClass = m.key === activeMetric ? ' metric-active' : '';
+      return '<div class="metric' + activeClass + '" data-publisher-kpi="' + m.key + '"><span>' +
+        escapeHtml(m.label) + '</span><strong>' + m.format(val) + '</strong></div>';
     }).join("");
   }
 
   function renderPublishersChart(filteredPubs, market) {
+    var metric = state.publisherChartMetric || "clicks";
     var sorted = filteredPubs.slice().sort(function (a, b) {
       var ma = market && market !== "all" ? a.markets[market] : a.total;
       var mb = market && market !== "all" ? b.markets[market] : b.total;
-      return (mb ? mb.clicks : 0) - (ma ? ma.clicks : 0);
+      var va = ma ? (ma[metric] || 0) : 0;
+      var vb = mb ? (mb[metric] || 0) : 0;
+      return vb - va;
     });
     var topN = sorted.slice(0, 15);
     var topPub = topN[0];
     var maxForPct = topPub && (market && market !== "all" ? topPub.markets[market] : topPub.total);
-    var maxClicks = maxForPct ? maxForPct.clicks : 1;
+    var maxVal = maxForPct ? (maxForPct[metric] || 1) : 1;
+    // Find format function for the metric
+    var metricDef = null;
+    for (var i = 0; i < PUBLISHER_KPI_METRICS.length; i++) {
+      if (PUBLISHER_KPI_METRICS[i].key === metric) { metricDef = PUBLISHER_KPI_METRICS[i]; break; }
+    }
+    var formatFn = metricDef ? metricDef.format : number;
     var html = "";
     topN.forEach(function (pub) {
       var m = market && market !== "all" ? pub.markets[market] : pub.total;
-      var clicks = m ? m.clicks : 0;
-      var pct = Math.max(2, (clicks / maxClicks) * 100);
+      var val = m ? (m[metric] || 0) : 0;
+      var pct = Math.max(2, (val / maxVal) * 100);
       html += '<div class="chart-bar-row">' +
         '<span class="chart-bar-label" title="' + escapeHtml(pub.userName) + '">' + escapeHtml(pub.userName) + '</span>' +
         '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%">' +
-          (pct > 15 ? number(clicks) : '') +
+          (pct > 15 ? formatFn(val) : '') +
         '</div></div>' +
-        '<span class="chart-bar-value">' + number(clicks) + '</span>' +
+        '<span class="chart-bar-value">' + formatFn(val) + '</span>' +
       '</div>';
     });
     if (!html) html = '<div class="publishers-empty">' + escapeHtml(t("publishers.empty", "No data")) + '</div>';
@@ -11409,6 +11424,16 @@
       renderPublishersPage();
     });
     els.publisherExportBtn.addEventListener("click", downloadPublishersXlsx);
+    // KPI 卡片点击切换图表指标
+    els.publishersKpiRow.addEventListener("click", function (event) {
+      var card = event.target.closest("[data-publisher-kpi]");
+      if (!card) return;
+      var metric = card.getAttribute("data-publisher-kpi");
+      if (metric && metric !== state.publisherChartMetric) {
+        state.publisherChartMetric = metric;
+        renderPublishersPage();
+      }
+    });
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
     if (els.sheetDownload) els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
     els.tierDownload.addEventListener("click", downloadTierSheetXlsx);
