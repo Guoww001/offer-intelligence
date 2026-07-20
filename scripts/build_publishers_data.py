@@ -82,11 +82,16 @@ WHERE o.user_id IS NOT NULL AND o.user_id > 0
 """
 
 # 查询每个 publisher 的链接类型（product / storefront）
+# Amazon 商品链接的常见模式：/dp/ASIN, /gp/product/ASIN, /exec/obidos/ASIN, &asin= 参数
 LINK_TYPE_SQL = """
 SELECT
   o.user_id,
   CASE
     WHEN a.advert_url_real LIKE '%%/dp/%%' THEN 'product'
+    WHEN a.advert_url_real LIKE '%%/gp/product/%%' THEN 'product'
+    WHEN a.advert_url_real LIKE '%%/exec/obidos/%%' THEN 'product'
+    WHEN a.advert_url_real LIKE '%%&asin=%%' THEN 'product'
+    WHEN a.advert_url_real LIKE '%%?asin=%%' THEN 'product'
     ELSE 'storefront'
   END AS link_type,
   SUM(o.clicks) AS clicks,
