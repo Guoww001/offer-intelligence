@@ -1707,17 +1707,16 @@
     const matchedOffer = offerForPaymentMerchant(record) || {};
     const network = record.network || matchedOffer.network || "Levanta";
     const matchedMerchantId = String(matchedOffer.merchantId || "").trim();
-    // 不同站点的 merchantId 本来就是不同的，不要用 offer 的 merchantId 覆盖源数据
-    const merchantId = sourceMerchantId || matchedMerchantId;
-    const region = paymentRegionFor(record, matchedOffer);
-    const levantaBrandId = record.levantaBrandId || "";
+    const useMatchedLevantaId = normalize(network) === "levanta" && matchedMerchantId;
+    const merchantId = useMatchedLevantaId ? matchedMerchantId : sourceMerchantId;
+    const levantaBrandId = record.levantaBrandId || (useMatchedLevantaId && sourceMerchantId !== merchantId ? sourceMerchantId : "");
     const normalized = {
       ...record,
       merchantId,
       levantaBrandId,
       merchantName: String(record.merchantName || record.brand || "").trim(),
       network,
-      region,
+      region: paymentRegionFor(record, matchedOffer),
       tier: paymentMetadataValue(record.tier, matchedOffer.tier, "Unknown"),
       category: paymentMetadataValue(record.category, matchedOffer.category || matchedOffer.levantaCategory, "Uncategorized"),
       categoryPath: paymentMetadataValue(record.categoryPath, matchedOffer.categoryPath, ""),
@@ -2044,8 +2043,7 @@
     if (byId.length) return byId;
     const brandKey = normalize(offer.brand);
     if (!brandKey) return [];
-    // merchantId 可能是 Levanta 品牌 UUID（不同站点不同），通过品牌名匹配
-    return paymentRecords.filter((record) => normalize(record.merchantName) === brandKey);
+    return paymentRecords.filter((record) => !String(record.merchantId || "").trim() && normalize(record.merchantName) === brandKey);
   }
 
   function hasOfferOverduePayment(offer) {
@@ -3442,7 +3440,8 @@
     if (!categoryName) return [];
     var lower = categoryName.toLowerCase().trim();
     return offers.filter(function(o) {
-      return displayCategory(o).toLowerCase() === lower;
+      var cat = (o.mainCategory || o.category || "").toLowerCase();
+      return cat === lower || cat.indexOf(lower) !== -1;
     });
   }
 
