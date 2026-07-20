@@ -8179,7 +8179,12 @@
   }
 
   function renderPublishersChart(filteredPubs, market) {
-    var topN = filteredPubs.slice(0, 15);
+    var sorted = filteredPubs.slice().sort(function (a, b) {
+      var ma = market && market !== "all" ? a.markets[market] : a.total;
+      var mb = market && market !== "all" ? b.markets[market] : b.total;
+      return (mb ? mb.clicks : 0) - (ma ? ma.clicks : 0);
+    });
+    var topN = sorted.slice(0, 15);
     var maxClicks = topN.length > 0 ? topN[0].total.clicks : 1;
     var html = "";
     topN.forEach(function (pub) {
