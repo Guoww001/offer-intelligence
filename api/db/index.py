@@ -10,6 +10,7 @@ from offer_db import (
     offers_payload,
     parse_query,
     product_keywords_payload,
+    publishers_payload,
     require_db_token,
     search_payload,
     send_db_error,
@@ -99,6 +100,15 @@ def handle_ui_keywords(target):
         send_db_error(target, error)
 
 
+def handle_ui_publishers(target, query):
+    try:
+        send_json(target, 200, publishers_payload(
+            force_refresh=first_query_value(query, "refresh").lower() in {"1", "true", "yes"}
+        ))
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def handle_ui_offers(target, query):
     try:
         send_json(
@@ -159,10 +169,12 @@ def app(environ, start_response):
         handle_options(target)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
-    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-tier-summary"}:
+    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-tier-summary", "ui-publishers"}:
         if require_auth(target):
             if route == "ui-keywords":
                 handle_ui_keywords(target)
+            elif route == "ui-publishers":
+                handle_ui_publishers(target, query)
             elif route == "ui-offers":
                 handle_ui_offers(target, query)
             elif route == "ui-tier-sheet":

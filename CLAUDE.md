@@ -27,6 +27,7 @@ python scripts/hash_auth_password.py
 ```bash
 python scripts/build_sheet_report_data.py
 ruby scripts/build_offer_chatbot_data.rb
+python scripts/build_publishers_data.py
 python scripts/validate_db_migration.py --output output/db_migration_status.json
 python scripts/build_db_static_snapshot.py --chatbot-output protected_data/chatbot_data.js
 python scripts/import_product_name_keywords.py --source "/path/to/brand and asins t1-t3.xlsx"

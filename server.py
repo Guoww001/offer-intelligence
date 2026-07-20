@@ -44,6 +44,7 @@ from offer_db import (
     merchant_payload,
     offers_payload,
     product_keywords_payload,
+    publishers_payload,
     public_error_payload,
     read_static_merchant_ids,
     search_payload,
@@ -694,7 +695,8 @@ def normalize_invoice_item(item, month_name, zero_based_month, year, marketplace
     levanta_brand_id = str(brand.get("id") or "").strip()
     merchant_name = str(brand.get("name") or "").strip()
     offer = offer_for_payment_source(levanta_brand_id, merchant_name, "Levanta")
-    merchant_id = str(offer.get("merchantId") or levanta_brand_id).strip()
+    # levanta_brand_id 是 Levanta 按站点分配的唯一 ID，不同站点的 ID 本来就不同
+    merchant_id = levanta_brand_id or str(offer.get("merchantId") or "").strip()
     revenue_made = levanta_revenue_made(item)
     commission_made = levanta_commission_made(item)
     expected = commission_made
@@ -984,6 +986,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, tier_summary_payload(
                     month=first_query_value(query, "month") or None,
                 ))
+                return
+
+            if parsed.path == "/api/ui/db/publishers":
+                force = first_query_value(query, "refresh") == "1"
+                self.send_json(200, publishers_payload(force_refresh=force))
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})
