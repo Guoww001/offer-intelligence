@@ -138,9 +138,12 @@
     publisherMerchantSearch: "",
     publisherProductSearch: "",
     publisherManagerSearch: "",
+    publisherSiteSearch: "",
+    publisherTrackSearch: "",
     publisherChartMetric: "clicks",
     publisherStartDate: "",
     publisherEndDate: "",
+    publisherSort: { key: "", direction: "desc" },
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -224,11 +227,14 @@
     publisherMerchantSearch: document.getElementById("publisherMerchantSearch"),
     publisherProductSearch: document.getElementById("publisherProductSearch"),
     publisherManagerSearch: document.getElementById("publisherManagerSearch"),
+    publisherSiteSearch: document.getElementById("publisherSiteSearch"),
+    publisherTrackSearch: document.getElementById("publisherTrackSearch"),
     publisherSearchBtn: document.getElementById("publisherSearchBtn"),
     publisherResetBtn: document.getElementById("publisherResetBtn"),
     publisherExportBtn: document.getElementById("publisherExportBtn"),
     publishersKpiRow: document.getElementById("publishersKpiRow"),
     publishersChart: document.getElementById("publishersChart"),
+    publishersChartTitle: document.getElementById("publishersChartTitle"),
     publishersTableHead: document.getElementById("publishersTableHead"),
     publishersTableRows: document.getElementById("publishersTableRows"),
     publishersTableCount: document.getElementById("publishersTableCount"),
@@ -392,6 +398,8 @@
       "publishers.tableTitle": "媒介数据",
       "publishers.startMonth": "起始日期",
       "publishers.endMonth": "截止日期",
+      "publishers.site": "站点",
+      "publishers.track": "Track",
       "publishers.empty": "暂无数据",
       "label.All markets": "全市场",
       "label.All": "全部",
@@ -2467,6 +2475,11 @@
     if (button.dataset.reportSortScope === "payment") {
       updateReportSort(state.paymentSort, key);
       renderPaymentsPage();
+      return;
+    }
+    if (button.dataset.reportSortScope === "publisher") {
+      updateReportSort(state.publisherSort, key);
+      renderPublishersPage();
       return;
     }
     updateReportSort(state.tierSheetSort, key);
@@ -8172,9 +8185,9 @@
 
   var _publishersCache = null;
 
-  function _fillPublishersSelect(selectEl, values, currentValue) {
+  function _fillPublishersSelect(selectEl, values, currentValue, defaultText) {
     if (!selectEl) return;
-    selectEl.innerHTML = '<option value="all">' + escapeHtml(t("label.All", "All")) + '</option>';
+    selectEl.innerHTML = '<option value="all">' + escapeHtml(defaultText || t("label.All", "All")) + '</option>';
     if (!values || !values.length) return;
     values.forEach(function (v) {
       var opt = document.createElement("option");
@@ -8187,6 +8200,48 @@
     } else {
       selectEl.value = "all";
     }
+  }
+
+  var _managerOptions = [];
+
+  function _rebuildManagerOptions(publishers) {
+    if (!publishers) return;
+    var counts = {};
+    publishers.forEach(function (pub) {
+      var name = pub.adminName || "Unknown";
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    _managerOptions = Object.keys(counts).sort(function (a, b) {
+      if (a === "Unknown") return 1;
+      if (b === "Unknown") return -1;
+      return a.localeCompare(b);
+    }).map(function (name) {
+      return { name: name, count: counts[name] };
+    });
+  }
+
+  function _showManagerDropdown() {
+    var dd = document.getElementById("publisherManagerDropdown");
+    if (!dd || !els.publisherManagerSearch) return;
+    var q = (els.publisherManagerSearch.value || "").toLowerCase().trim();
+    var html = "";
+    var matched = 0;
+    _managerOptions.forEach(function (opt) {
+      if (q && opt.name.toLowerCase().indexOf(q) === -1) return;
+      matched++;
+      html += '<div class="combobox-option" data-value="' + escapeHtml(opt.name) + '">' +
+        escapeHtml(opt.name) + '<span class="opt-count">(' + opt.count + ')</span></div>';
+    });
+    if (!html) {
+      html = '<div class="combobox-option" style="color:var(--muted);cursor:default">无匹配</div>';
+    }
+    dd.innerHTML = html;
+    dd.classList.add("show");
+  }
+
+  function _hideManagerDropdown() {
+    var dd = document.getElementById("publisherManagerDropdown");
+    if (dd) dd.classList.remove("show");
   }
 
   function loadPublishersData(forceRefresh) {
@@ -8208,6 +8263,8 @@
     var merchantSearch = (state.publisherMerchantSearch || "").toLowerCase().trim();
     var productSearch = (state.publisherProductSearch || "").toLowerCase().trim();
     var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
+    var siteSearch = (state.publisherSiteSearch || "").toLowerCase().trim();
+    var trackSearch = (state.publisherTrackSearch || "").toLowerCase().trim();
     var nameMap = data.merchantNameMap || {};
 
     return data.publishers.filter(function (pub) {
@@ -8247,6 +8304,31 @@
       if (manager) {
         var adminName = (pub.adminName || "").toLowerCase();
         if (adminName.indexOf(manager) === -1) return false;
+      }
+      // 站点搜索（模糊匹配市场名称）
+      if (siteSearch) {
+        var marketKeys = Object.keys(pub.markets || {});
+        var siteMatched = false;
+        for (var si = 0; si < marketKeys.length; si++) {
+          if (marketKeys[si].toLowerCase().indexOf(siteSearch) !== -1) {
+            siteMatched = true;
+            break;
+          }
+        }
+        // 也搜索 publisher 名称/ID
+        if (!siteMatched) {
+          var siteName = (pub.userName || "").toLowerCase();
+          var siteId = String(pub.userId);
+          if (siteName.indexOf(siteSearch) !== -1 || siteId.indexOf(siteSearch) !== -1) siteMatched = true;
+        }
+        if (!siteMatched) return false;
+      }
+      // track 搜索（全局搜索 publisher 名称/ID/经理等）
+      if (trackSearch) {
+        var trackName = (pub.userName || "").toLowerCase();
+        var trackId = String(pub.userId);
+        var trackAdmin = (pub.adminName || "").toLowerCase();
+        if (trackName.indexOf(trackSearch) === -1 && trackId.indexOf(trackSearch) === -1 && trackAdmin.indexOf(trackSearch) === -1) return false;
       }
       return true;
     });
@@ -8300,6 +8382,11 @@
 
   function renderPublishersChart(filteredPubs, market) {
     var metric = state.publisherChartMetric || "clicks";
+    // 更新图表标题
+    if (els.publishersChartTitle) {
+      var metricLabels = { clicks: "Clicks", dpv: "DPV", atc: "ATC", orders: "Orders", sales: "Sales", allCommission: "Commission" };
+      els.publishersChartTitle.textContent = (metricLabels[metric] || "Clicks") + " by Publisher";
+    }
     var sorted = filteredPubs.slice().sort(function (a, b) {
       var ma = market && market !== "all" ? a.markets[market] : a.total;
       var mb = market && market !== "all" ? b.markets[market] : b.total;
@@ -8327,7 +8414,7 @@
       html += '<div class="chart-bar-row">' +
         '<span class="chart-bar-label" title="' + escapeHtml(pub.userName) + '">' + escapeHtml(pub.userName) + '</span>' +
         '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + barColor + ';animation-delay:' + delay + 'ms">' +
-          (pct > 15 ? formatFn(val) : '') +
+          (pct > 5 ? formatFn(val) : '') +
         '</div></div>' +
         '<span class="chart-bar-value">' + formatFn(val) + '</span>' +
       '</div>';
@@ -8340,7 +8427,7 @@
     { key: "rank", label: "#", render: function(r) { return String(r.rank); } },
     { key: "userId", label: "Publisher ID", render: function(r) { return String(r.userId); } },
     { key: "userName", label: "Publisher Name", render: function(r) { return escapeHtml(r.userName); } },
-    { key: "adminName", label: "Manager", render: function(r) { return escapeHtml(r.adminName || "Unknown"); } },
+    { key: "adminName", label: "Manager", render: function(r) { return escapeHtml(r.adminName || (r.userName === "Total" ? "" : "Unknown")); } },
     { key: "clicks", label: "Clicks", render: function(r) { return number(r.clicks); } },
     { key: "conversionRate", label: "CVR", render: function(r) { return pct(r.conversionRate); } },
     { key: "dpv", label: "DPV", render: function(r) { return number(r.dpv); } },
@@ -8353,16 +8440,18 @@
   ];
 
   function renderPublishersTable(filteredPubs, market, totals) {
-    // 表头
+    // 可排序表头
     els.publishersTableHead.innerHTML = "<tr>" + PUBLISHER_TABLE_COLUMNS.map(function (c) {
-      return '<th>' + escapeHtml(c.label) + '</th>';
+      return sortableHeaderHtml(c.key, state.publisherSort, "publisher");
     }).join("") + "</tr>";
 
-    // 预计算每行的指标
+    // 预计算每行的指标（不含合计行，合计行不参与排序）
+    var sortKey = state.publisherSort.key;
     var rows = filteredPubs.map(function (pub, idx) {
       var m = market && market !== "all" ? pub.markets[market] : pub.total;
       m = m || { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
       return {
+        _idx: idx,
         rank: idx + 1,
         userId: pub.userId,
         userName: pub.userName,
@@ -8378,6 +8467,14 @@
         grossProfit: m.allCommission - m.affCommission,
       };
     });
+
+    // 排序
+    if (sortKey) {
+      var getter = function (row, key) { return row[key]; };
+      rows = sortReportRows(rows, state.publisherSort, getter);
+      // 重新编号 rank
+      rows.forEach(function (r, i) { r.rank = i + 1; });
+    }
 
     // 合计行
     var totalRow = {
@@ -8413,11 +8510,16 @@
 
     loadPublishersData().then(function (data) {
       // 填充联盟下拉
-      _fillPublishersSelect(els.publisherNetworkFilter, data.networks || [], state.publisherNetwork);
+      _fillPublishersSelect(els.publisherNetworkFilter, data.networks || [], state.publisherNetwork, "请选择所属联盟");
       // 填充链接类型下拉
-      _fillPublishersSelect(els.publisherLinkTypeFilter, data.linkTypes || [], state.publisherLinkType);
+      _fillPublishersSelect(els.publisherLinkTypeFilter, data.linkTypes || [], state.publisherLinkType, "请选择链接类型");
       // 填充市场下拉
-      _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket);
+      _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket, "请选择站点");
+      // 重建经理选项列表（供组合框使用）
+      _rebuildManagerOptions(data.publishers);
+      if (els.publisherManagerSearch) {
+        els.publisherManagerSearch.value = state.publisherManagerSearch || "";
+      }
       // 恢复日期选择器值
       els.publisherStartDate.value = state.publisherStartDate || "";
       els.publisherEndDate.value = state.publisherEndDate || "";
@@ -8426,6 +8528,8 @@
       els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
       els.publisherProductSearch.value = state.publisherProductSearch || "";
       els.publisherManagerSearch.value = state.publisherManagerSearch || "";
+      els.publisherSiteSearch.value = state.publisherSiteSearch || "";
+      els.publisherTrackSearch.value = state.publisherTrackSearch || "";
 
       // 当日期范围生效时，用 monthlyRows 重新计算 publisher 的数据
       var sd = state.publisherStartDate || "";
@@ -11451,6 +11555,7 @@
     els.sheetPageNotes.addEventListener("submit", handleTargetReportSubmit);
     if (els.sheetGridHead) els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
+    els.publishersTableHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("change", handleTierSelectionChange);
     els.tierSheetRows.addEventListener("change", handleTierSelectionChange);
     els.tierMoveSelected.addEventListener("click", openTierMoveDialog);
@@ -11513,17 +11618,81 @@
       state.publisherMarket = els.publisherMarketFilter.value;
       renderPublishersPage();
     });
-    // 输入框实时同步 state（导航回来恢复值用），但不触发渲染
+    // 经理组合框：输入过滤 + 即时渲染
+    els.publisherManagerSearch.addEventListener("input", function () {
+      state.publisherManagerSearch = els.publisherManagerSearch.value;
+      _showManagerDropdown();
+      renderPublishersPage();
+    });
+    els.publisherManagerSearch.addEventListener("focus", function () {
+      _rebuildManagerOptions((_publishersCache || {}).publishers);
+      _showManagerDropdown();
+    });
+    els.publisherManagerSearch.addEventListener("blur", function () {
+      setTimeout(_hideManagerDropdown, 200);
+    });
+    // 经理下拉选项点击
+    document.getElementById("publisherManagerDropdown").addEventListener("click", function (e) {
+      var opt = e.target.closest(".combobox-option");
+      if (!opt || !opt.getAttribute("data-value")) return;
+      var val = opt.getAttribute("data-value");
+      state.publisherManagerSearch = val;
+      els.publisherManagerSearch.value = val;
+      _hideManagerDropdown();
+      renderPublishersPage();
+    });
+    // 文本输入框仅同步 state，不触发渲染（点击搜索按钮才渲染）
     els.publisherMerchantSearch.addEventListener("input", function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
     });
     els.publisherProductSearch.addEventListener("input", function () {
       state.publisherProductSearch = els.publisherProductSearch.value;
     });
-    els.publisherManagerSearch.addEventListener("input", function () {
+    els.publisherManagerSearch.addEventListener("change", function () {
       state.publisherManagerSearch = els.publisherManagerSearch.value;
     });
+    els.publisherSiteSearch.addEventListener("input", function () {
+      state.publisherSiteSearch = els.publisherSiteSearch.value;
+    });
+    els.publisherTrackSearch.addEventListener("input", function () {
+      state.publisherTrackSearch = els.publisherTrackSearch.value;
+    });
     els.publisherSearchBtn.addEventListener("click", function () {
+      renderPublishersPage();
+    });
+    // 日期快捷按钮
+    document.getElementById("publisherDateQuickBtns").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-quick]");
+      if (!btn) return;
+      var mode = btn.getAttribute("data-quick");
+      var now = new Date();
+      var y = now.getFullYear();
+      var m = now.getMonth(); // 0=Jan
+      var d = now.getDate();
+      var sd, ed;
+      switch (mode) {
+        case "lastMonth":
+          sd = new Date(y, m - 1, 1);
+          ed = new Date(y, m, 0);
+          break;
+        case "past30":
+          sd = new Date(y, m, d - 30);
+          ed = now;
+          break;
+        case "past3m":
+          sd = new Date(y, m - 3, d);
+          ed = now;
+          break;
+        case "past6m":
+          sd = new Date(y, m - 6, d);
+          ed = now;
+          break;
+      }
+      function pad(n) { return n < 10 ? "0" + n : "" + n; }
+      state.publisherStartDate = sd.getFullYear() + "-" + pad(sd.getMonth() + 1) + "-" + pad(sd.getDate());
+      state.publisherEndDate = ed.getFullYear() + "-" + pad(ed.getMonth() + 1) + "-" + pad(ed.getDate());
+      els.publisherStartDate.value = state.publisherStartDate;
+      els.publisherEndDate.value = state.publisherEndDate;
       renderPublishersPage();
     });
     els.publisherResetBtn.addEventListener("click", function () {
@@ -11535,6 +11704,8 @@
       state.publisherMerchantSearch = "";
       state.publisherProductSearch = "";
       state.publisherManagerSearch = "";
+      state.publisherSiteSearch = "";
+      state.publisherTrackSearch = "";
       els.publisherMarketFilter.value = "all";
       els.publisherNetworkFilter.value = "all";
       els.publisherLinkTypeFilter.value = "all";
@@ -11543,6 +11714,8 @@
       els.publisherMerchantSearch.value = "";
       els.publisherProductSearch.value = "";
       els.publisherManagerSearch.value = "";
+      els.publisherSiteSearch.value = "";
+      els.publisherTrackSearch.value = "";
       renderPublishersPage();
     });
     els.publisherExportBtn.addEventListener("click", downloadPublishersXlsx);

@@ -11,3 +11,5 @@ __pycache__/
 specs/
 tests/
 .playwright-mcp
+.superpowers/
+.pytest_cache
