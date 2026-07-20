@@ -132,6 +132,9 @@
     },
     targetMetric: "revenue",
     targetTrendView: "month",
+    publisherMarket: "all",
+    publisherSearch: "",
+    publisherManagerSearch: "",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -8102,6 +8105,196 @@
     renderPaymentRows(rows);
   }
 
+  // ===== Publisher functions =====
+
+  var _publishersCache = null;
+
+  function loadPublishersData(forceRefresh) {
+    if (_publishersCache && !forceRefresh) return Promise.resolve(_publishersCache);
+    return fetch("/api/ui/db/publishers" + (forceRefresh ? "?refresh=1" : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok === false) throw new Error(data.error || "Failed to load publishers data");
+        _publishersCache = data;
+        return data;
+      });
+  }
+
+  function getFilteredPublishers(data) {
+    if (!data || !data.publishers) return [];
+    var market = state.publisherMarket || "all";
+    var search = (state.publisherSearch || "").toLowerCase().trim();
+    var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
+
+    return data.publishers.filter(function (pub) {
+      // 市场筛选
+      if (market !== "all" && !pub.markets[market]) return false;
+      // 媒介搜索
+      if (search) {
+        var name = (pub.userName || "").toLowerCase();
+        var id = String(pub.userId);
+        if (name.indexOf(search) === -1 && id.indexOf(search) === -1) return false;
+      }
+      // 经理搜索
+      if (manager) {
+        var adminName = (pub.adminName || "").toLowerCase();
+        if (adminName.indexOf(manager) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function aggregatePublisherMetrics(filteredPubs, market) {
+    var agg = { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+    filteredPubs.forEach(function (pub) {
+      var m = market && market !== "all" ? pub.markets[market] : pub.total;
+      if (!m) return;
+      agg.clicks += m.clicks;
+      agg.dpv += m.dpv;
+      agg.atc += m.atc;
+      agg.orders += m.orders;
+      agg.sales += m.sales;
+      agg.allCommission += m.allCommission;
+      agg.affCommission += m.affCommission;
+    });
+    agg.grossProfit = agg.allCommission - agg.affCommission;
+    agg.conversionRate = agg.clicks > 0 ? agg.orders / agg.clicks : 0;
+    return agg;
+  }
+
+  function renderPublishersKpi(agg) {
+    var cards = [
+      ["Clicks", number(agg.clicks)],
+      ["DPV", number(agg.dpv)],
+      ["ATC", number(agg.atc)],
+      ["Orders", number(agg.orders)],
+      ["Sales", money(agg.sales)],
+      ["Commission", money(agg.allCommission)]
+    ];
+    els.publishersKpiRow.innerHTML = cards.map(function (c) {
+      return '<div class="metric"><span>' + escapeHtml(c[0]) + '</span><strong>' + escapeHtml(c[1]) + '</strong></div>';
+    }).join("");
+  }
+
+  function renderPublishersChart(filteredPubs, market) {
+    var topN = filteredPubs.slice(0, 15);
+    var maxClicks = topN.length > 0 ? topN[0].total.clicks : 1;
+    var html = "";
+    topN.forEach(function (pub) {
+      var m = market && market !== "all" ? pub.markets[market] : pub.total;
+      var clicks = m ? m.clicks : 0;
+      var pct = Math.max(2, (clicks / maxClicks) * 100);
+      html += '<div class="chart-bar-row">' +
+        '<span class="chart-bar-label" title="' + escapeHtml(pub.userName) + '">' + escapeHtml(pub.userName) + '</span>' +
+        '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct.toFixed(1) + '%">' +
+          (pct > 15 ? number(clicks) : '') +
+        '</div></div>' +
+        '<span class="chart-bar-value">' + number(clicks) + '</span>' +
+      '</div>';
+    });
+    if (!html) html = '<div class="publishers-empty">' + escapeHtml(t("publishers.empty", "No data")) + '</div>';
+    els.publishersChart.innerHTML = html;
+  }
+
+  var PUBLISHER_TABLE_COLUMNS = [
+    { key: "rank", label: "#", render: function(r) { return String(r.rank); } },
+    { key: "userId", label: "Publisher ID", render: function(r) { return String(r.userId); } },
+    { key: "userName", label: "Publisher Name", render: function(r) { return escapeHtml(r.userName); } },
+    { key: "adminName", label: "Manager", render: function(r) { return escapeHtml(r.adminName || "Unknown"); } },
+    { key: "clicks", label: "Clicks", render: function(r) { return number(r.clicks); } },
+    { key: "conversionRate", label: "CVR", render: function(r) { return pct(r.conversionRate); } },
+    { key: "dpv", label: "DPV", render: function(r) { return number(r.dpv); } },
+    { key: "atc", label: "ATC", render: function(r) { return number(r.atc); } },
+    { key: "orders", label: "Orders", render: function(r) { return number(r.orders); } },
+    { key: "sales", label: "Sales", render: function(r) { return money(r.sales); } },
+    { key: "allCommission", label: "All Comm", render: function(r) { return money(r.allCommission); } },
+    { key: "affCommission", label: "Aff Comm", render: function(r) { return money(r.affCommission); } },
+    { key: "grossProfit", label: "Gross Profit", render: function(r) { return money(r.grossProfit); } },
+  ];
+
+  function renderPublishersTable(filteredPubs, market, totals) {
+    // 表头
+    els.publishersTableHead.innerHTML = "<tr>" + PUBLISHER_TABLE_COLUMNS.map(function (c) {
+      return '<th>' + escapeHtml(c.label) + '</th>';
+    }).join("") + "</tr>";
+
+    // 预计算每行的指标
+    var rows = filteredPubs.map(function (pub, idx) {
+      var m = market && market !== "all" ? pub.markets[market] : pub.total;
+      m = m || { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 };
+      return {
+        rank: idx + 1,
+        userId: pub.userId,
+        userName: pub.userName,
+        adminName: pub.adminName || "Unknown",
+        clicks: m.clicks,
+        conversionRate: m.clicks > 0 ? m.orders / m.clicks : 0,
+        dpv: m.dpv,
+        atc: m.atc,
+        orders: m.orders,
+        sales: m.sales,
+        allCommission: m.allCommission,
+        affCommission: m.affCommission,
+        grossProfit: m.allCommission - m.affCommission,
+      };
+    });
+
+    // 合计行
+    var totalRow = {
+      rank: "",
+      userId: "",
+      userName: "Total",
+      adminName: "",
+      clicks: totals.clicks,
+      conversionRate: totals.conversionRate,
+      dpv: totals.dpv,
+      atc: totals.atc,
+      orders: totals.orders,
+      sales: totals.sales,
+      allCommission: totals.allCommission,
+      affCommission: totals.affCommission,
+      grossProfit: totals.grossProfit,
+    };
+
+    els.publishersTableCount.textContent = "Total: " + filteredPubs.length.toLocaleString();
+
+    var allRows = [totalRow].concat(rows);
+    els.publishersTableRows.innerHTML = allRows.map(function (r, i) {
+      var cls = i === 0 ? ' class="total-row"' : "";
+      return "<tr" + cls + ">" + PUBLISHER_TABLE_COLUMNS.map(function (c) {
+        return "<td>" + c.render(r) + "</td>";
+      }).join("") + "</tr>";
+    }).join("");
+  }
+
+  function renderPublishersPage() {
+    els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-loading">' +
+      escapeHtml(t("publishers.loading", "Loading...")) + '</td></tr>';
+
+    loadPublishersData().then(function (data) {
+      // 填充市场下拉
+      fillSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket);
+
+      var filtered = getFilteredPublishers(data);
+      var market = state.publisherMarket || "all";
+      var agg = aggregatePublisherMetrics(filtered, market);
+
+      // KPI
+      renderPublishersKpi(agg);
+
+      // 柱状图（按当前市场排序）
+      renderPublishersChart(filtered, market);
+
+      // 表格
+      renderPublishersTable(filtered, market, agg);
+    }).catch(function (err) {
+      els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-empty">' +
+        escapeHtml(t("publishers.error", "Error: ") + err.message) + '</td></tr>';
+    });
+  }
+
+  // ===== End publisher functions =====
+
   function sheetByName(name) {
     return (sheetReport.sheets || []).find((sheet) => sheet.name === name) || null;
   }
@@ -11056,6 +11249,30 @@
     els.languageToggle.addEventListener("click", toggleLanguage);
     if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
+    els.publisherMarketFilter.addEventListener("change", function () {
+      state.publisherMarket = els.publisherMarketFilter.value;
+      renderPublishersPage();
+    });
+    els.publisherSearch.addEventListener("input", function () {
+      state.publisherSearch = els.publisherSearch.value;
+      renderPublishersPage();
+    });
+    els.publisherManagerSearch.addEventListener("input", function () {
+      state.publisherManagerSearch = els.publisherManagerSearch.value;
+      renderPublishersPage();
+    });
+    els.publisherSearchBtn.addEventListener("click", function () {
+      renderPublishersPage();
+    });
+    els.publisherResetBtn.addEventListener("click", function () {
+      state.publisherMarket = "all";
+      state.publisherSearch = "";
+      state.publisherManagerSearch = "";
+      els.publisherMarketFilter.value = "all";
+      els.publisherSearch.value = "";
+      els.publisherManagerSearch.value = "";
+      renderPublishersPage();
+    });
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
     if (els.sheetDownload) els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
     els.tierDownload.addEventListener("click", downloadTierSheetXlsx);
