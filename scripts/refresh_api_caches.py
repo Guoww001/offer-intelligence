@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild db_offers_cache.json and db_keywords_cache.json from the MySQL database.
+"""Rebuild db_offers_cache.json, db_keywords_cache.json and db_publishers_cache.json.
 
 Called by the daily GitHub Actions workflow after DB sync completes.
 Can also be run locally:
@@ -46,6 +46,20 @@ def main() -> None:
     print("  saving to disk ...", flush=True)
     _save_cache(KEYWORDS_CACHE_FILE, kw)
     print(f"  saved to {KEYWORDS_CACHE_FILE}\n")
+
+    print("[3/3] Rebuilding publishers cache (scripts/build_publishers_data.py) ...", flush=True)
+    t0 = time.time()
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_publishers_data.py")],
+        capture_output=True, text=True, cwd=str(ROOT),
+    )
+    elapsed = time.time() - t0
+    if result.returncode != 0:
+        print(f"  FAILED (exit {result.returncode}): {result.stderr.strip()}")
+    else:
+        print(f"  {result.stdout.strip()}")
+    print(f"  completed in {elapsed:.0f}s\n")
 
     print("=== cache refresh complete ===")
 
