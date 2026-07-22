@@ -16,20 +16,17 @@ python server.py
 # Opens at http://127.0.0.1:8765
 ```
 
-Required env vars for full functionality: `LEVANTA_API_KEY`, `OI_AUTH_ENABLED`, `OI_ADMIN_USERNAME`, `OI_ADMIN_PASSWORD_HASH`, `OI_SESSION_SECRET`, `OFFER_DB_API_TOKEN`, and the `OFFER_DB_*` connection variables. The frontend can load from committed `protected_data/` payloads without the Levanta key or DB.
+Required env vars for full functionality: `LEVANTA_API_KEY`, `OI_AUTH_ENABLED`, `OI_ADMIN_USERNAME`, `OI_ADMIN_PASSWORD_HASH`, `OI_SESSION_SECRET`, `OFFER_DB_API_TOKEN`, and the `OFFER_DB_*` connection variables. The frontend can load from committed `protected_data/db_offers_cache.json` and `protected_data/db_keywords_cache.json` without the Levanta key or DB.
 
 ### Generate password hash
 ```bash
 python scripts/hash_auth_password.py
 ```
 
-### Rebuild static data payloads
+### Rebuild cached data payloads
 ```bash
-python scripts/build_sheet_report_data.py
-ruby scripts/build_offer_chatbot_data.rb
 python scripts/build_publishers_data.py
 python scripts/validate_db_migration.py --output output/db_migration_status.json
-python scripts/build_db_static_snapshot.py --chatbot-output protected_data/chatbot_data.js
 python scripts/import_product_name_keywords.py --source "/path/to/brand and asins t1-t3.xlsx"
 ```
 
@@ -47,7 +44,7 @@ node scripts/test_category_drilldown.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
-python -m py_compile auth.py browser_payloads.py protected_payloads.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
+python -m py_compile auth.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py
 ```
 
 ## Architecture
@@ -58,7 +55,7 @@ The codebase runs as a single `python server.py` process locally, but on Vercel 
 
 - **`server.py`** is the monolith that handles all routes locally. It imports from `auth.py`, `offer_db.py`, `api/tier_moves.py`, etc.
 - **`api/**/*.py`** files each export a `handler` class (extending `BaseHTTPRequestHandler`) that Vercel invokes independently. These files re-import shared logic from the root modules.
-- Code shared between local and serverless paths lives in root-level `.py` files (`auth.py`, `offer_db.py`, `browser_payloads.py`, `protected_payloads.py`).
+- Code shared between local and serverless paths lives in root-level `.py` files (`auth.py`, `offer_db.py`).
 
 ### Request flow (local)
 
@@ -67,7 +64,6 @@ Browser → server.py Handler.do_GET/POST
   ├── /api/auth/session  → auth.handle_auth_session()
   ├── /api/auth/login    → auth.handle_auth_login()      [POST]
   ├── /api/auth/logout   → auth.handle_auth_logout()     [POST]
-  ├── /api/auth/data     → protected_payloads.handle_protected_data()
   ├── /api/levanta/payments → server.py internal handler
   ├── /api/tier_moves    → api/tier_moves.handle_tier_moves()
   ├── /api/ui/db/*       → server.py internal handler (session auth)
@@ -101,9 +97,8 @@ DB endpoints come in two flavors:
 
 Vanilla JS SPA with no framework or build step. GSAP loaded from CDN for motion. Three phases:
 
-1. **`auth.js`** loads first — checks session, shows login form if unauthenticated, then loads protected data
-2. **Protected data** (`chatbot_data.js`, `sheet_report_data.js`, `product_keywords.js`) loaded as `<script>` tags after auth
-3. **`app.js`** (~420KB) bootstraps the dashboard — tier pages, category reports, chatbot, payment page, targets page, XLSX export
+1. **`auth.js`** loads first — checks session, shows login form if unauthenticated, then loads protected data from DB API (`/api/ui/db/offers`, `/api/ui/db/keywords`)
+2. **`app.js`** (~420KB) bootstraps the dashboard — tier pages, category reports, chatbot, payment page, targets page, XLSX export
 
 ### Chatbot
 
@@ -123,7 +118,7 @@ Five tiers: Tier 1, Tier 2, Tier 3, Tier 4, BLACK TIER. Tier moves are persisted
 
 Levanta invoice data is fetched from the Levanta API, normalized into payment records, enriched with offer metadata (tier, category, payment cycle), and augmented with pending placeholder records for months without invoice data. Payment statuses: Paid, Pending, Unpaid, Overdue, Partial. Zero-revenue+zero-commission records are excluded from all payment views and exports.
 
-A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs daily at 02:00 UTC to sync payment data and auto-commit updated `chatbot_data.js` back to the repo.
+A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs daily at 02:00 UTC to sync payment data directly to the `cnpscy_oi_payment_records` table.
 
 ### `public/app.js` navigation index (~8900 lines)
 
@@ -163,7 +158,9 @@ A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs d
 
 ### Data files
 
-- `protected_data/` — committed browser payloads (JS files that assign to `window.CHATBOT_DATA`, `window.SHEET_REPORT_DATA`, `window.PRODUCT_KEYWORDS`)
+- `protected_data/db_offers_cache.json` — DB-driven offers + sheets + payment records cache (committed, TTL 24h)
+- `protected_data/db_keywords_cache.json` — DB-driven product keywords cache
+- `protected_data/db_publishers_cache.json` — Publishers cache
 - `data/feishu_merchant_categories.csv` — Feishu category mappings
 - `data/product_name_keywords_t1_t3.csv` — product name keywords for Tier 1-3
 - `api/static_merchant_ids.json` — known merchant ID list for DB search

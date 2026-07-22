@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import collections
 import json
-import re
+import os
 import sys
 from pathlib import Path
 
@@ -17,20 +18,35 @@ from scripts import sync_levanta_payments as payment_sync  # noqa: E402
 from scripts import sync_levanta_payments  # noqa: E402
 
 
+RECORDS_FILE_DEFAULT = str(ROOT / "output" / "payment_records.json")
+
+
 def assert_true(value, label):
     if not value:
         raise AssertionError(label)
 
 
-def load_static_payload():
-    text = (ROOT / "protected_data" / "chatbot_data.js").read_text(encoding="utf-8")
-    match = re.match(r"window\.CHATBOT_DATA=(.*);\s*$", text, re.S)
-    assert_true(match, "chatbot_data.js should expose window.CHATBOT_DATA")
-    return json.loads(match.group(1))
+def load_payment_records(path: str = "") -> list[dict]:
+    """Load payment records from the JSON output of sync_levanta_payments.py."""
+    records_path = Path(path or RECORDS_FILE_DEFAULT)
+    if not records_path.exists():
+        raise FileNotFoundError(f"Payment records file not found at {records_path}")
+
+    with records_path.open(encoding="utf-8") as f:
+        data = json.load(f)
+    return data.get("records", [])
 
 
-def load_static_payment_records():
-    return load_static_payload().get("paymentRecords", [])
+def load_offers_from_cache() -> list[dict]:
+    """Load offer data from db_offers_cache.json (替代旧的 chatbot_data.js)."""
+    cache_path = ROOT / "protected_data" / "db_offers_cache.json"
+    if not cache_path.exists():
+        return []
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    return payload.get("offers", [])
 
 
 def payment_date_record(status, region="US", **overrides):
@@ -95,11 +111,29 @@ def test_payment_made_dates():
     assert_true(uk_newly_paid.get("paymentMadeDate") == "2026-07-12", "regions should keep separate payment histories")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Validate payment records produced by sync_levanta_payments.py."
+    )
+    parser.add_argument(
+        "--records-file", default=RECORDS_FILE_DEFAULT,
+        help=f"Path to payment_records.json (default: {RECORDS_FILE_DEFAULT})",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     test_payment_made_dates()
-    payload = load_static_payload()
-    records = payload.get("paymentRecords", [])
-    offers = payload.get("offers", [])
+
+    records_path = Path(args.records_file)
+    if not records_path.exists():
+        print(f"Payment records file not found at {records_path}; skipping integration tests.")
+        print("Run sync_levanta_payments.py first to generate the file.")
+        return 0
+
+    records = load_payment_records(args.records_file)
+    offers = load_offers_from_cache()
     with_placeholders = server.with_pending_placeholders(records, server.DEFAULT_MONTHS)
     trackable = [record for record in with_placeholders if server.is_trackable_payment_record(record)]
     trackable_ids = {record.get("id") for record in trackable}

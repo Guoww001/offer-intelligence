@@ -189,9 +189,8 @@ index.html
   ├── <script> tier2_recommendation_rules.js
   ├── <script> auth.js              ← 检查 session，获取 window.__OI_LLM_ENABLED
   │     └── 登录成功后动态加载:
-  │         ├── chatbot_data.js     ← window.CHATBOT_DATA
-  │         ├── sheet_report_data.js ← window.SHEET_REPORT_DATA
-  │         ├── product_keywords.js ← window.PRODUCT_KEYWORDS
+  │         ├── db_offers_cache.json ← /api/ui/db/offers → window.CHATBOT_DATA + SHEET_REPORT_DATA
+  │         ├── db_keywords_cache.json ← /api/ui/db/keywords → window.PRODUCT_KEYWORDS
   │         └── app.js              ← 初始化，绑定事件
   └── GSAP CDN (async)
 ```
@@ -395,7 +394,7 @@ api/chat/analyze.py   ← class handler: do_POST → generate_analysis_text()
 8. `data/product_name_keywords_t1_t3.csv` — 产品关键词
 9. 各 Tier Sheet TSV 文件
 
-**输出**: `protected_data/chatbot_data.js` → `window.CHATBOT_DATA`
+**输出**: `protected_data/db_offers_cache.json` → `/api/ui/db/offers` → `window.CHATBOT_DATA`
 
 **核心逻辑**:
 - 品类优先级链: Google Sheet → mainCategory → Feishu main → Feishu sub → Levanta → "Uncategorized"
@@ -406,7 +405,7 @@ api/chat/analyze.py   ← class handler: do_POST → generate_analysis_text()
 
 `.github/workflows/sync-levanta-payments.yml` 每日 02:00 UTC:
 1. 同步 Levanta 付款数据
-2. 重新构建 `chatbot_data.js`
+2. 刷新 DB 缓存（`offer_db.py` 自动处理，或由 `refresh-db-caches` workflow 触发）
 3. Auto-commit 回 repo
 
 ---
@@ -448,9 +447,8 @@ public/
 ├── tier2_recommendation_rules.js ← Tier 2 推荐规则
 ├── styles.css                ← 聊天样式 + 分析表格样式
 └── protected_data/
-    ├── chatbot_data.js       ← 主数据快照 (~4MB)
-    ├── sheet_report_data.js  ← Sheet 快照 (~2.8MB)
-    └── product_keywords.js   ← 产品关键词 (~2.9MB)
+    ├── db_offers_cache.json   ← 主数据缓存 (offers + sheets + paymentRecords)
+    ├── db_keywords_cache.json  ← 产品关键词缓存
 ```
 
 ### 后端 Python（12 个文件）
@@ -503,7 +501,7 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 
 ```
 .github/workflows/ci.yml                    ← CI 测试 chatbot 文件
-.github/workflows/sync-levanta-payments.yml ← 每日同步 + 重建 chatbot_data.js
+.github/workflows/sync-levanta-payments.yml ← 每日同步付款到 cnpscy_oi_payment_records
 ```
 
 ---
@@ -545,7 +543,7 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - **无趋势分析**: 仅使用当前月份快照，不支持时间序列、环比/同比
 - **无图表**: 未引入图表库，分析结果以表格呈现
 - **无多轮对话记忆**: 每次提问独立处理（有基础追问支持但不持久）
-- **数据为静态快照**: 需定期重新构建 `protected_data/` 文件
+- **数据有缓存 TTL**: `db_offers_cache.json` 使用 24h TTL + stale-while-revalidate
 - **无支付维度分析**: 分析功能尚未覆盖支付维度
 - **LLM 依赖网络**: 文字分析需要 API 调用，超时 15s
 

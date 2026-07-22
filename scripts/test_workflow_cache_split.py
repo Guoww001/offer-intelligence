@@ -10,8 +10,10 @@ class WorkflowCacheSplitTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/sync-levanta-payments.yml").read_text(encoding="utf-8")
 
         self.assertNotIn("refresh_api_caches.py", workflow)
-        self.assertIn("git add protected_data/chatbot_data.js", workflow)
-        self.assertNotIn("db_offers_cache.json", workflow)
+        self.assertNotIn("chatbot_data.js", workflow)
+        self.assertNotIn("sheet_report_data.js", workflow)
+        self.assertNotIn("product_keywords.js", workflow)
+        self.assertIn("output/payment_records.json", workflow)
 
     def test_cache_workflow_runs_after_successful_payment_sync(self) -> None:
         workflow = (ROOT / ".github/workflows/refresh-db-caches.yml").read_text(encoding="utf-8")
@@ -19,7 +21,6 @@ class WorkflowCacheSplitTests(unittest.TestCase):
         self.assertIn("workflow_run:", workflow)
         self.assertIn("- Sync Levanta payments", workflow)
         self.assertIn("workflow_run.conclusion == 'success'", workflow)
-        self.assertIn("python scripts/refresh_api_caches.py", workflow)
         self.assertIn("protected_data/db_offers_cache.json", workflow)
         self.assertIn("protected_data/db_keywords_cache.json", workflow)
 

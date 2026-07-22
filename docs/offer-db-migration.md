@@ -6,10 +6,7 @@ Use the hybrid model:
 
 - MySQL is the read-only source of truth for fresh offer, product, and metric data.
 - `oi_*` reporting views/tables are the only database objects the app reads.
-- Static browser payloads remain the default page input after admin login:
-  - `protected_data/chatbot_data.js`
-  - `protected_data/sheet_report_data.js`
-  - `protected_data/product_keywords.js`
+- DB cache payloads (`protected_data/db_offers_cache.json`, `db_keywords_cache.json`) are committed and served via `/api/ui/db/*` endpoints.
 - Small server-side APIs handle status, merchant drilldown, and restricted search.
 - Browser code must never connect to MySQL directly.
 
@@ -57,7 +54,7 @@ Endpoints:
 
 These APIs return allowlisted fields only. They must not return raw user, site, bank, login, callback, link tracking, or internal-note columns.
 
-## Static Snapshot Build
+## Cache Validation
 
 Validate production freshness and coverage before publishing:
 
@@ -70,22 +67,7 @@ python scripts/validate_db_migration.py \
   --output output/db_migration_status.json
 ```
 
-Build a DB-backed chatbot payload from the `oi_*` views:
-
-```bash
-python scripts/build_db_static_snapshot.py \
-  --chatbot-output protected_data/chatbot_data.js
-```
-
-To replace tier sheet payloads from DB tier assignments as well:
-
-```bash
-python scripts/build_db_static_snapshot.py \
-  --chatbot-output protected_data/chatbot_data.js \
-  --sheet-output protected_data/sheet_report_data.js
-```
-
-If a Google Sheet remains the tier source, keep running `scripts/build_sheet_report_data.py` for `protected_data/sheet_report_data.js`.
+DB cache files (`db_offers_cache.json`, `db_keywords_cache.json`) are built automatically by `offer_db.py` on first access and refreshed by the `refresh-db-caches` GitHub Actions workflow.
 
 ## Tier Visual Status
 
