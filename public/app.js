@@ -27,6 +27,10 @@
     }
     offer.originalTier = offer.originalTier || offer.tier || "Unknown";
     applyTierOverrideToOffer(offer);
+    // 字段名兼容：DB payload 用 affiliatePayout，前端代码期望 affCommission
+    if (offer.affCommission === undefined && offer.affiliatePayout !== undefined) {
+      offer.affCommission = offer.affiliatePayout;
+    }
     offer.paymentCycle = resolveOfferPaymentCycle(offer);
     offer.region = normalizeRegion(offer.region || offer.country || inferRegionFromText(offer.brand));
   });

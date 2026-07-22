@@ -1685,6 +1685,9 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             else:
                 o["productAsins"] = None
 
+            # 字段名映射：前端（旧代码）期望 affCommission，DB 提供的是 affiliatePayout
+            o["affCommission"] = o.get("affiliatePayout")
+
             offers.append(o)
 
         # ── top ASINs per merchant (aggregated from products view) ──
