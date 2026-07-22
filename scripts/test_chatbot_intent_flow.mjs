@@ -254,10 +254,10 @@ assertEqual(retainedTier3, 2, "change tier 3 should replace exactly one current 
 
 hooks.answerPrompt("I want 100 offers from tier 1");
 bundle = hooks.currentRecommendationBundle();
-assertEqual(bundle.rows.length, 45, "bundle should return fewer rows when the tier does not have enough candidates");
+assertEqual(bundle.rows.length, 42, "bundle should return fewer rows when the tier does not have enough candidates");
 assertEqual(bundle.gaps.length, 1, "bundle should report a shortage when candidates are insufficient");
 assertEqual(bundle.gaps[0].tier, "Tier 1", "shortage should identify the tier");
-assertEqual(bundle.gaps[0].gap, 55, "shortage should report the missing count");
+assertEqual(bundle.gaps[0].gap, 58, "shortage should report the missing count");
 
 hooks.answerPrompt("top 10 beauty offers");
 const recommendationDownloads = Object.values(hooks.recommendationDownloads());
