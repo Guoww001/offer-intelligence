@@ -4121,7 +4121,10 @@
     const category = categoryForPrompt(userMessage);
     const metricSort = extractMetricSortIntent(userMessage);
     const metricFilters = extractMetricFilters(userMessage);
+    const keywordRequest = keywordSearchRequest(userMessage);
     if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category") return zhIntent;
+    // keyword 搜索优先于 merchant 和 category 检测
+    if (keywordRequest && hasKeywordSearchIntent(userMessage, keywordRequest, { category })) return "keyword";
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
     if (hasStrongMerchantLookup(userMessage, category)) return "merchant";
     if (zhIntent === "recommendation") return "recommendation";
