@@ -8162,6 +8162,16 @@
   function downloadPublishersXlsx() {
     if (!_publishersCache) return;
     var data = _publishersCache;
+    var sd = state.publisherStartDate || "";
+    var ed = state.publisherEndDate || "";
+    var hasDateFilter = sd !== "" || ed !== "";
+    if (hasDateFilter && (data.dailyRows || data.monthlyRows)) {
+      data = _applyDateFilterToData(data, sd, ed);
+      data.publishers = data.publishers.filter(function (pub) {
+        return pub.total.clicks > 0 || pub.total.dpv > 0 || pub.total.atc > 0 ||
+               pub.total.orders > 0 || pub.total.sales > 0;
+      });
+    }
     var filtered = getFilteredPublishers(data);
     var market = state.publisherMarket || "all";
     var rows = filtered.map(function (pub, idx) {
@@ -8547,12 +8557,17 @@
       els.publisherSiteSearch.value = state.publisherSiteSearch || "";
       els.publisherTrackSearch.value = state.publisherTrackSearch || "";
 
-      // 当日期范围生效时，用 monthlyRows 重新计算 publisher 的数据
+      // 当日期范围生效时，用 dailyRows 重新计算 publisher 的数据
       var sd = state.publisherStartDate || "";
       var ed = state.publisherEndDate || "";
       var hasDateFilter = sd !== "" || ed !== "";
-      if (hasDateFilter && data.monthlyRows) {
-        data = _applyMonthFilterToData(data, sd, ed);
+      if (hasDateFilter && (data.dailyRows || data.monthlyRows)) {
+        data = _applyDateFilterToData(data, sd, ed);
+        // 筛选后剔除在该时间范围内没有数据的 publisher
+        data.publishers = data.publishers.filter(function (pub) {
+          return pub.total.clicks > 0 || pub.total.dpv > 0 || pub.total.atc > 0 ||
+                 pub.total.orders > 0 || pub.total.sales > 0;
+        });
       }
 
       var filtered = getFilteredPublishers(data);
@@ -8573,23 +8588,16 @@
     });
   }
 
-  function _applyMonthFilterToData(data, startDate, endDate) {
-    // 将日期转为月范围：2026-03-15 → month key "2026-03"
-    var startMonth = "";
-    var endMonth = "";
-    if (startDate) {
-      startMonth = startDate.substring(0, 7);  // "2026-03"
-    }
-    if (endDate) {
-      endMonth = endDate.substring(0, 7);  // "2026-06"
-    }
-    // 从 monthlyRows 中筛选出目标月份的行，按 userId+market 汇总
-    var rows = data.monthlyRows || {};
+  function _applyDateFilterToData(data, startDate, endDate) {
+    // 从 dailyRows（或向后兼容的 monthlyRows）中筛选出目标日期范围内的行
+    var rows = data.dailyRows || data.monthlyRows || {};
     var selected = [];
-    Object.keys(rows).forEach(function (month) {
-      if (startMonth && month < startMonth) return;
-      if (endMonth && month > endMonth) return;
-      selected = selected.concat(rows[month]);
+    Object.keys(rows).forEach(function (key) {
+      // dailyRows 的 key 是 "YYYY-MM-DD"，monthlyRows 是 "YYYY-MM"
+      // 两种格式都可以用字符串直接比较
+      if (startDate && key < startDate) return;
+      if (endDate && key > endDate) return;
+      selected = selected.concat(rows[key]);
     });
 
     // 按 userId+market 汇总

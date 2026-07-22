@@ -116,11 +116,11 @@ WHERE o.user_id IS NOT NULL AND o.user_id > 0
   AND a.advert_id IS NOT NULL AND a.advert_id > 0
 """
 
-# 按月聚合（用于前端月份筛选）
-MONTHLY_SQL = f"""
+# 按天聚合（用于前端精确日期筛选）
+DAILY_SQL = f"""
 SELECT
   o.user_id,
-  LEFT(CAST(o.order_time_day AS CHAR), 6) AS month,
+  CAST(o.order_time_day AS CHAR) AS day,
   CASE
 {_MARKET_WHEN_SQL}
       ELSE 'Unknown'
@@ -136,7 +136,7 @@ FROM cnpscy_amazon_order o
 LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
 WHERE o.user_id IS NOT NULL AND o.user_id > 0
   AND o.order_time_day IS NOT NULL
-GROUP BY o.user_id, month, market
+GROUP BY o.user_id, day, market
 """
 
 CACHE_FILE = ROOT / "protected_data" / "db_publishers_cache.json"
@@ -192,31 +192,31 @@ def build_publishers_payload() -> dict:
                 merchant_name_map[mid] = mname
             merchants_by_user[uid].append({"merchantId": mid, "merchantName": mname})
 
-        # 6) 查询按月聚合数据
-        monthly_rows = fetch_all(conn, MONTHLY_SQL)
-        monthly_data: dict[str, list[dict]] = {}  # month -> rows
-        months_set: set[str] = set()
-        for mr in monthly_rows:
-            uid = int(mr["user_id"])
-            month = str(mr["month"]).strip()
-            if not month or len(month) != 6:
+        # 6) 查询按天聚合数据（用于前端精确日期筛选）
+        daily_rows = fetch_all(conn, DAILY_SQL)
+        daily_data: dict[str, list[dict]] = {}  # "2026-07-10" -> rows
+        days_set: set[str] = set()
+        for dr in daily_rows:
+            uid = int(dr["user_id"])
+            day_raw = str(dr["day"]).strip()
+            if not day_raw or len(day_raw) < 8:
                 continue
-            # format as YYYY-MM
-            month_key = f"{month[:4]}-{month[4:]}"
-            months_set.add(month_key)
-            if month_key not in monthly_data:
-                monthly_data[month_key] = []
-            market = str(mr["market"])
-            monthly_data[month_key].append({
+            # 格式化为 YYYY-MM-DD
+            day_key = f"{day_raw[:4]}-{day_raw[4:6]}-{day_raw[6:8]}"
+            days_set.add(day_key)
+            if day_key not in daily_data:
+                daily_data[day_key] = []
+            market = str(dr["market"])
+            daily_data[day_key].append({
                 "userId": uid,
                 "market": market,
-                "clicks": int(mr["clicks"] or 0),
-                "dpv": int(mr["dpv"] or 0),
-                "atc": int(mr["atc"] or 0),
-                "orders": int(mr["orders"] or 0),
-                "sales": float(mr["sales"] or 0),
-                "allCommission": float(mr["all_commission"] or 0),
-                "affCommission": float(mr["aff_commission"] or 0),
+                "clicks": int(dr["clicks"] or 0),
+                "dpv": int(dr["dpv"] or 0),
+                "atc": int(dr["atc"] or 0),
+                "orders": int(dr["orders"] or 0),
+                "sales": float(dr["sales"] or 0),
+                "allCommission": float(dr["all_commission"] or 0),
+                "affCommission": float(dr["aff_commission"] or 0),
             })
 
         # 7) 聚合数据: { userId -> { ... } }
@@ -285,8 +285,8 @@ def build_publishers_payload() -> dict:
             "networks": sorted(all_networks_set),
             "linkTypes": sorted(all_link_types_set),
             "merchantNameMap": {str(k): v for k, v in merchant_name_map.items()},
-            "months": sorted(months_set),
-            "monthlyRows": monthly_data,
+            "days": sorted(days_set),
+            "dailyRows": daily_data,
         }
         return payload
 
