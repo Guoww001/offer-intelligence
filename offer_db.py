@@ -12,9 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
-from urllib.request import urlopen
 
-from browser_payloads import read_browser_payload
 
 
 ROOT = Path(__file__).resolve().parent
@@ -423,48 +421,24 @@ def clean_decimal(value: Any, places: int = 6) -> float:
     return round(to_float(value), places)
 
 
-def read_static_chatbot_text() -> str:
-    try:
-        return read_browser_payload("chatbot_data.js")
-    except OSError:
-        pass
-
-    candidates = []
-    explicit_url = os.environ.get("OFFER_STATIC_DATA_URL", "").strip()
-    if explicit_url:
-        candidates.append(explicit_url)
-    for key in ("VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"):
-        host = os.environ.get(key, "").strip()
-        if host:
-            candidates.append(
-                f"https://{host.removeprefix('https://').removeprefix('http://')}/api/auth/data?file=chatbot_data.js"
-            )
-
-    for url in candidates:
-        try:
-            with urlopen(url, timeout=15) as response:
-                return response.read().decode("utf-8", "replace")
-        except OSError:
-            continue
-    return ""
-
-
 def read_static_merchant_ids() -> list[str]:
-    text = read_static_chatbot_text()
-    if not text:
-        return read_static_merchant_id_manifest().get("merchantIds", [])
-    match = re.search(r"window\.CHATBOT_DATA\s*=\s*(\{.*\});\s*$", text, re.S)
-    if not match:
-        return read_static_merchant_id_manifest().get("merchantIds", [])
-    payload = json.loads(match.group(1))
+    """从 db_offers_cache.json 或 static_merchant_ids.json 读取公开 merchant ID 列表。"""
     ids = []
     seen = set()
-    for offer in payload.get("offers", []):
-        merchant_id = re.sub(r"\.0$", "", str(offer.get("merchantId") or "").strip())
-        if DIGITS_RE.match(merchant_id) and merchant_id not in seen:
-            ids.append(merchant_id)
-            seen.add(merchant_id)
-    return ids
+    if OFFERS_CACHE_FILE.exists():
+        try:
+            payload = json.loads(OFFERS_CACHE_FILE.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                for offer in payload.get("offers", []):
+                    merchant_id = re.sub(r"\.0$", "", str(offer.get("merchantId") or "").strip())
+                    if DIGITS_RE.match(merchant_id) and merchant_id not in seen:
+                        ids.append(merchant_id)
+                        seen.add(merchant_id)
+        except (OSError, json.JSONDecodeError):
+            pass
+    if ids:
+        return ids
+    return read_static_merchant_id_manifest().get("merchantIds", [])
 
 
 def read_static_merchant_id_manifest() -> dict[str, Any]:
@@ -1038,11 +1012,17 @@ def tier_summary_payload(month: str | None = None) -> dict[str, Any]:
 
 
 def static_chatbot_generated_at() -> str | None:
-    text = read_static_chatbot_text()
-    if not text:
-        return read_static_merchant_id_manifest().get("generatedAt")
-    match = re.search(r'"generatedAt"\s*:\s*"([^"]+)"', text[:5000])
-    return match.group(1) if match else read_static_merchant_id_manifest().get("generatedAt")
+    """从 db_offers_cache.json summary 读取生成的快照时间戳。"""
+    if OFFERS_CACHE_FILE.exists():
+        try:
+            payload = json.loads(OFFERS_CACHE_FILE.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                gen = payload.get("summary", {}).get("generatedAt")
+                if gen:
+                    return str(gen)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return read_static_merchant_id_manifest().get("generatedAt")
 
 
 def merchant_base(conn, merchant_id: str) -> dict[str, Any] | None:

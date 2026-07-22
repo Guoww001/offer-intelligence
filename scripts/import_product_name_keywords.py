@@ -15,7 +15,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = Path("/Users/bryansaputra/Downloads/brand and asins t1-t3 (1).xlsx")
 DEFAULT_CSV = ROOT / "data" / "product_name_keywords_t1_t3.csv"
-DEFAULT_JS = ROOT / "protected_data" / "product_keywords.js"
+DEFAULT_JS = ""  # 不再生成 JS 文件，只在 CSV 输出后通过 sync_oi_tables.py 同步到 DB
 
 REQUIRED_COLUMNS = ["商家ID", "商家", "产品ASIN", "产品名称"]
 WORD_RE = re.compile(r"[a-z0-9]+")
@@ -242,7 +242,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract product-name keywords from the brand/ASIN workbook.")
     parser.add_argument("--source", default=str(DEFAULT_SOURCE), help="Input .xlsx path containing 商家ID/商家/产品ASIN/产品名称.")
     parser.add_argument("--csv-output", default=str(DEFAULT_CSV), help="Aggregated CSV output path.")
-    parser.add_argument("--js-output", default=str(DEFAULT_JS), help="Browser payload output path.")
+    parser.add_argument("--js-output", default=str(DEFAULT_JS), help="(已弃用) 不再生成 JS 文件。" if not DEFAULT_JS else "Browser payload output path.")
     parser.add_argument("--max-keywords", type=int, default=220, help="Maximum product keywords per merchant.")
     parser.add_argument("--max-titles", type=int, default=12, help="Maximum representative product titles per merchant.")
     parser.add_argument("--max-asins", type=int, default=30, help="Maximum product ASINs per merchant.")
@@ -254,7 +254,8 @@ def main() -> int:
     source = Path(args.source).expanduser()
     rows = load_rows(source, args.max_keywords, args.max_titles, args.max_asins)
     write_csv(rows, Path(args.csv_output))
-    write_js(rows, Path(args.js_output), source)
+    if args.js_output and Path(args.js_output):
+        write_js(rows, Path(args.js_output), source)
     print(
         json.dumps(
             {
@@ -262,7 +263,6 @@ def main() -> int:
                 "productNameCount": sum(row["productNameCount"] for row in rows),
                 "productAsinCount": sum(row["productAsinCount"] for row in rows),
                 "csvOutput": str(Path(args.csv_output)),
-                "jsOutput": str(Path(args.js_output)),
             },
             ensure_ascii=False,
         )

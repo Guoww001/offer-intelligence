@@ -66,9 +66,20 @@ const sandbox = {
 };
 sandbox.window.document = sandbox.document;
 
-runScript("protected_data/chatbot_data.js", sandbox);
-runScript("protected_data/product_keywords.js", sandbox);
-runScript("protected_data/sheet_report_data.js", sandbox);
+// 从 db_offers_cache.json / db_keywords_cache.json 加载数据（替代旧的静态 JS 文件）
+const _offersCache = JSON.parse(fs.readFileSync("protected_data/db_offers_cache.json", "utf8"));
+sandbox.window.CHATBOT_DATA = {
+  summary: _offersCache.summary || {},
+  offers: _offersCache.offers || [],
+  paymentRecords: _offersCache.paymentRecords || [],
+  sources: { mode: "db", month: _offersCache.month }
+};
+sandbox.window.SHEET_REPORT_DATA = {
+  sheets: _offersCache.sheets || [],
+  tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
+};
+const _kwCache = JSON.parse(fs.readFileSync("protected_data/db_keywords_cache.json", "utf8"));
+sandbox.window.PRODUCT_KEYWORDS = _kwCache;
 runScript("public/chatbot_i18n.js", sandbox);
 runScript("public/tier2_recommendation_rules.js", sandbox);
 runScript("public/app.js", sandbox);

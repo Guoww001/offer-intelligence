@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""Fetch Levanta payment records and write them directly to MySQL.
+
+Previously this script wrote into protected_data/chatbot_data.js, which was
+then consumed by sync_oi_tables.py to reach the database. Now it writes
+directly to cnpscy_oi_payment_records, eliminating the chatbot_data.js
+dependency for payment data.
+
+Outputs a payment_records.json for CI validation if --records-output is set.
+"""
 
 from __future__ import annotations
 
@@ -21,22 +30,106 @@ sys.path.insert(0, str(ROOT))
 import server  # noqa: E402
 
 
-CHATBOT_PREFIX = "window.CHATBOT_DATA="
+# ── MySQL helpers (same pattern as sync_oi_tables.py) ────────────────────
+
+def db_connection():
+    """Create a MySQL connection (reuses offer_db.py env-var convention)."""
+    try:
+        import pymysql
+    except ImportError:
+        sys.exit("PyMySQL not installed. Run: pip install pymysql")
+
+    required = ["OFFER_DB_HOST", "OFFER_DB_NAME", "OFFER_DB_USER", "OFFER_DB_PASSWORD"]
+    missing = [k for k in required if not os.environ.get(k, "").strip()]
+    if missing:
+        sys.exit(f"Missing env vars: {', '.join(missing)}")
+
+    return pymysql.connect(
+        host=os.environ["OFFER_DB_HOST"].strip(),
+        port=int(os.environ.get("OFFER_DB_PORT", "3306")),
+        database=os.environ["OFFER_DB_NAME"].strip(),
+        user=os.environ["OFFER_DB_USER"].strip(),
+        password=os.environ["OFFER_DB_PASSWORD"],
+        charset="utf8mb4",
+        connect_timeout=30,
+        read_timeout=60,
+        write_timeout=60,
+        ssl=None,
+        autocommit=True,
+    )
 
 
-def read_chatbot_payload(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith(CHATBOT_PREFIX):
-        raise ValueError(f"{path} does not look like a chatbot data payload")
-    return json.loads(text[len(CHATBOT_PREFIX) :].rstrip(";\n"))
+def upsert(conn, table: str, rows: list[dict], key_columns: list[str]) -> int:
+    """Batch UPSERT: INSERT … ON DUPLICATE KEY UPDATE. Returns row count."""
+    if not rows:
+        return 0
+
+    columns = list(rows[0].keys())
+    col_names = ", ".join(f"`{c}`" for c in columns)
+
+    update_parts = [f"`{c}` = VALUES(`{c}`)" for c in columns if c not in key_columns]
+
+    if update_parts:
+        placeholders = ", ".join(["%s"] * len(columns))
+        sql = (
+            f"INSERT INTO `{table}` ({col_names}) VALUES ({placeholders}) "
+            f"ON DUPLICATE KEY UPDATE {', '.join(update_parts)}"
+        )
+    else:
+        placeholders = ", ".join(["%s"] * len(columns))
+        sql = f"INSERT IGNORE INTO `{table}` ({col_names}) VALUES ({placeholders})"
+
+    values_list = [tuple(row.get(c) for c in columns) for row in rows]
+
+    written = 0
+    batch_size = 100
+    with conn.cursor() as cur:
+        for i in range(0, len(values_list), batch_size):
+            batch = values_list[i:i + batch_size]
+            cur.executemany(sql, batch)
+            written += len(batch)
+        conn.commit()
+    return written
 
 
-def write_chatbot_payload(path: Path, payload: dict) -> None:
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    temp_path.write_text(f"{CHATBOT_PREFIX}{body};\n", encoding="utf-8")
-    temp_path.replace(path)
+# ── existing-record helpers (replaces chatbot_data.js reads) ─────────────
 
+LOAD_COLUMNS = [
+    "id", "merchantId", "merchantName", "network", "region",
+    "paymentStatus", "rawStatus",
+    "paymentMadeDate", "lastCheckedDate",
+    "reportMonth", "reportYear", "reportMonthKey",
+    "revenueMade", "commissionMade",
+]
+
+LOAD_COLUMN_TYPES = {
+    "reportYear": int,
+    "revenueMade": float,
+    "commissionMade": float,
+}
+
+
+def load_existing_records(conn) -> list[dict]:
+    """Read payment records currently stored in the database."""
+    col_list = ", ".join(f"`{c}`" for c in LOAD_COLUMNS)
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT {col_list} FROM `cnpscy_oi_payment_records`")
+        rows = []
+        for row in cur.fetchall():
+            record = {}
+            for i, col in enumerate(LOAD_COLUMNS):
+                val = row[i]
+                if val is not None and col in LOAD_COLUMN_TYPES:
+                    try:
+                        val = LOAD_COLUMN_TYPES[col](val)
+                    except (TypeError, ValueError):
+                        pass
+                record[col] = val
+            rows.append(record)
+    return rows
+
+
+# ── helpers (unchanged) ─────────────────────────────────────────────────
 
 def month_key(month: tuple[str, int, int]) -> str:
     _name, zero_based_month, year = month
@@ -232,11 +325,66 @@ def reconcile_source_payment_record(record: dict) -> dict:
     return reconciled
 
 
+# ── MySQL row builder (mirrors sync_oi_tables.py sync_payment_records) ───
+
+def _num(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(str(value).replace(",", "").replace("$", "").replace("%", ""))
+    except (ValueError, TypeError):
+        return None
+
+
+def payment_record_to_db_row(r: dict) -> dict:
+    """Convert a payment record dict to a MySQL upsert row."""
+    rid = str(r.get("id") or "").strip()
+    if not rid:
+        return {}
+    return {
+        "id": rid[:128],
+        "merchantId": str(r.get("merchantId") or "").strip()[:32] or None,
+        "levantaBrandId": str(r.get("levantaBrandId") or "").strip()[:32] or None,
+        "merchantName": str(r.get("merchantName") or "").strip()[:255] or None,
+        "network": str(r.get("network") or "Levanta").strip()[:64],
+        "region": str(r.get("region") or "").strip()[:16] or None,
+        "tier": str(r.get("tier") or "Unknown").strip()[:32],
+        "category": str(r.get("category") or "Uncategorized").strip()[:128],
+        "categoryPath": str(r.get("categoryPath") or "").strip()[:255] or None,
+        "mainCategory": str(r.get("mainCategory") or "").strip()[:128] or None,
+        "subCategory": str(r.get("subCategory") or "").strip()[:128] or None,
+        "mainCategoryCn": str(r.get("mainCategoryCn") or "").strip()[:128] or None,
+        "subCategoryCn": str(r.get("subCategoryCn") or "").strip()[:128] or None,
+        "reportMonth": str(r.get("reportMonth") or "").strip()[:16],
+        "reportYear": int(r.get("reportYear") or 0),
+        "reportMonthKey": str(r.get("reportMonthKey") or "").strip()[:7],
+        "revenueMade": _num(r.get("revenueMade")) or 0,
+        "commissionMade": _num(r.get("commissionMade")) or 0,
+        "expectedPaymentAmount": _num(r.get("expectedPaymentAmount")) or 0,
+        "paidAmount": _num(r.get("paidAmount")) or 0,
+        "remainingAmount": _num(r.get("remainingAmount")) or 0,
+        "paymentCycle": int(_num(r.get("paymentCycle")) or 60),
+        "paymentAvailabilityDate": str(r.get("paymentAvailabilityDate") or r.get("expectedPaymentDate") or "").strip()[:16] or None,
+        "expectedPaymentDate": str(r.get("expectedPaymentDate") or "").strip()[:16] or None,
+        "paymentStatus": str(r.get("paymentStatus") or "Unknown").strip()[:16],
+        "rawStatus": str(r.get("rawStatus") or "").strip()[:32] or None,
+        "lastCheckedDate": str(r.get("lastCheckedDate") or "").strip()[:16] or None,
+        "currency": str(r.get("currency") or "USD").strip()[:8],
+        "isPlaceholder": 1 if r.get("isPlaceholder") else 0,
+        "notes": str(r.get("notes") or "").strip()[:1024] or None,
+    }
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fetch Levanta payments and update protected_data/chatbot_data.js.")
-    parser.add_argument("--start", default="", help="Optional first report month, formatted YYYY-MM. Empty uses server/API default.")
-    parser.add_argument("--end", default="", help="Optional last report month, formatted YYYY-MM. Empty uses server/API default.")
-    parser.add_argument("--data-file", default=str(ROOT / "protected_data" / "chatbot_data.js"), help="Path to chatbot_data.js.")
+    parser = argparse.ArgumentParser(
+        description="Fetch Levanta payments and write them to cnpscy_oi_payment_records."
+    )
+    parser.add_argument("--start", default="",
+                        help="Optional first report month, formatted YYYY-MM. Empty uses server/API default.")
+    parser.add_argument("--end", default="",
+                        help="Optional last report month, formatted YYYY-MM. Empty uses server/API default.")
     parser.add_argument(
         "--source-url",
         default=os.environ.get("PAYMENT_SYNC_SOURCE_URL", ""),
@@ -247,14 +395,20 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PAYMENT_SYNC_TOKEN", "") or os.environ.get("OI_PAYMENT_SYNC_TOKEN", ""),
         help="Optional bearer token for protected payment source URLs.",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Fetch and validate without writing chatbot_data.js.")
+    parser.add_argument(
+        "--records-output",
+        default="",
+        help="Optional path to write processed payment records as JSON (for CI validation).",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Fetch and validate without writing to the database.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    data_file = Path(args.data_file)
-    payload = read_chatbot_payload(data_file)
     query = {}
     if args.start:
         query["start"] = [args.start]
@@ -264,6 +418,7 @@ def main() -> int:
     window_start = f"{months[0][2]}-{months[0][1] + 1:02d}"
     window_end = f"{months[-1][2]}-{months[-1][1] + 1:02d}"
 
+    # ── 1. Fetch ──────────────────────────────────────────────────────
     source_url = str(args.source_url or "").strip()
     checked_at = ""
     if source_url:
@@ -282,26 +437,53 @@ def main() -> int:
         raw_records = fetch_payment_records(months, api_key)
 
     checked_at = checked_at or dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+    # ── 2. Transform ──────────────────────────────────────────────────
+    # Load existing records for payment-made-date tracking
+    previous_records: list[dict] = []
+    if not args.dry_run:
+        try:
+            conn = db_connection()
+            previous_records = load_existing_records(conn)
+            conn.close()
+            print(f"Loaded {len(previous_records)} existing payment records from database")
+        except SystemExit:
+            raise
+        except Exception as exc:
+            print(f"Warning: could not load existing records from DB ({exc}); will proceed without history.", file=sys.stderr)
+
     records = [
         record
         for record in server.with_pending_placeholders(raw_records, months)
         if server.is_trackable_payment_record(record)
     ]
-    records = apply_payment_made_dates(records, payload.get("paymentRecords") or [], checked_at)
+    records = apply_payment_made_dates(records, previous_records, checked_at)
     validation = validate_payment_records(records, months)
 
-    payload["paymentRecords"] = records
-    payload.setdefault("summary", {})["paymentSummary"] = server.payment_summary(records)
-    payload["summary"]["paymentLastCheckedAt"] = checked_at
-    payload["summary"]["paymentSyncWindow"] = {"start": window_start, "end": window_end}
-    payload.setdefault("sources", {})["payments"] = (
-        f"Vercel Levanta API {window_start}..{window_end}" if source_url else f"Levanta API {window_start}..{window_end}"
-    )
-
-    print(json.dumps({"checkedAt": checked_at, **validation}, ensure_ascii=False, indent=2))
+    # ── 3. Write to MySQL ─────────────────────────────────────────────
     if not args.dry_run:
-        write_chatbot_payload(data_file, payload)
-        print(f"Updated {data_file}")
+        db_rows = [payment_record_to_db_row(r) for r in records]
+        db_rows = [r for r in db_rows if r]  # remove empties (no id)
+        conn = db_connection()
+        try:
+            n = upsert(conn, "cnpscy_oi_payment_records", db_rows, ["id"])
+            print(f"Wrote {n} payment records to cnpscy_oi_payment_records")
+        finally:
+            conn.close()
+
+    # ── 4. Optional JSON output for CI validation ─────────────────────
+    output_path = str(args.records_output or "").strip()
+    if output_path:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            json.dumps({"records": records, "checkedAt": checked_at, **validation}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        print(f"Wrote {len(records)} records to {out}")
+
+    # ── 5. Summary ────────────────────────────────────────────────────
+    print(json.dumps({"checkedAt": checked_at, **validation}, ensure_ascii=False, indent=2))
     return 0
 
 

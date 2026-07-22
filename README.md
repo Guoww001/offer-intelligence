@@ -7,10 +7,10 @@ Internal YeahPromos Amazon offer intelligence dashboard for offer ranking, categ
 ## What Is Included
 
 - Static dashboard UI in `public/`.
-- Protected browser payloads in `protected_data/`, served only after admin login:
-  - `protected_data/chatbot_data.js`
-  - `protected_data/sheet_report_data.js`
-  - `protected_data/product_keywords.js`
+- Cached browser payloads in `protected_data/` (committed DB API cache files):
+  - `protected_data/db_offers_cache.json`
+  - `protected_data/db_keywords_cache.json`
+  - `protected_data/db_publishers_cache.json`
 - Google Sheet and Feishu category intelligence for main-category and subcategory search.
 - Recommendation chatbot with English and Chinese prompt support.
 - Tier 2 publisher recommendation rules in `public/tier2_recommendation_rules.js`.
@@ -221,21 +221,13 @@ DB APIs also require the `OFFER_DB_*` connection variables and `OFFER_DB_API_TOK
 
 ## Data Rebuild Scripts
 
-The repository is a Python-served static frontend, not a Node app. The generated data files are committed browser payloads under `protected_data/`.
-
-```bash
-python scripts/build_sheet_report_data.py
-ruby scripts/build_offer_chatbot_data.rb
-```
-
-DB-backed snapshot and migration validation:
+The repository is a Python-served static frontend, not a Node app. Cached data files are committed under `protected_data/`.
 
 ```bash
 python scripts/validate_db_migration.py --output output/db_migration_status.json
-python scripts/build_db_static_snapshot.py --chatbot-output protected_data/chatbot_data.js
 ```
 
-Product-name keyword data for Tier 1-3 offers is generated from the brand/ASIN workbook into `data/product_name_keywords_t1_t3.csv` and `protected_data/product_keywords.js`.
+Product-name keyword data for Tier 1-3 offers is generated from the brand/ASIN workbook into `data/product_name_keywords_t1_t3.csv` which is then synced to `cnpscy_oi_product_keywords`:
 
 ```bash
 python scripts/import_product_name_keywords.py --source "/path/to/brand and asins t1-t3.xlsx"
@@ -274,7 +266,7 @@ node scripts/test_sheet_categories.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
-python -m py_compile auth.py browser_payloads.py protected_payloads.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py api/db/index.py scripts/validate_db_migration.py scripts/build_db_static_snapshot.py
+python -m py_compile auth.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/db/index.py scripts/validate_db_migration.py
 ```
 
 ## Security

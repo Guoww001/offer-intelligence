@@ -36,7 +36,6 @@ _load_dotenv()
 
 from api.tier_moves import handle_tier_moves
 from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, _read_json_body
-from browser_payloads import browser_payload_path
 from offer_db import (
     DIGITS_RE,
     first_query_value,
@@ -52,7 +51,6 @@ from offer_db import (
     tier_sheet_payload,
     tier_summary_payload,
 )
-from protected_payloads import handle_protected_data
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
 from deep_reason import run_deep_reasoning
@@ -60,9 +58,7 @@ from deep_reason import run_deep_reasoning
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "public"
-DATA_FILE = browser_payload_path("chatbot_data.js")
-SHEET_DATA_FILE = browser_payload_path("sheet_report_data.js")
-PROTECTED_STATIC_NAMES = {"chatbot_data.js", "sheet_report_data.js", "product_keywords.js"}
+OFFERS_CACHE_PATH = ROOT / "protected_data" / "db_offers_cache.json"
 LEVANTA_BASE = "https://app.levanta.io/api/creator/v1"
 DEFAULT_MONTHS = [
     ("February", 1, 2026),
@@ -188,16 +184,22 @@ def safe_brand_match(offer_brand, merchant_name):
 
 
 def load_static_data():
-    if not DATA_FILE.exists():
+    """从 db_offers_cache.json 加载 offer 数据（替代旧的 chatbot_data.js）。"""
+    if not OFFERS_CACHE_PATH.exists():
         return {}, {}, {}, []
-    text = DATA_FILE.read_text(encoding="utf-8")
-    prefix = "window.CHATBOT_DATA="
-    if not text.startswith(prefix):
+    try:
+        payload = json.loads(OFFERS_CACHE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
         return {}, {}, {}, []
-    payload = json.loads(text[len(prefix) :].rstrip(";\n"))
+    # 包装为与旧 CHATBOT_DATA 兼容的结构
+    data = {
+        "offers": payload.get("offers", []),
+        "summary": payload.get("summary", {}),
+        "paymentRecords": payload.get("paymentRecords", []),
+    }
     raw_by_id = {}
     raw_by_brand = {}
-    offers = payload.get("offers", [])
+    offers = data["offers"]
     for offer in offers:
         merchant_id = str(offer.get("merchantId") or "").strip()
         brand = normalize(offer.get("brand"))
@@ -207,7 +209,7 @@ def load_static_data():
             raw_by_brand.setdefault(brand, []).append(offer)
     by_id = {merchant_id: best_offer(matches) for merchant_id, matches in raw_by_id.items()}
     by_brand = {brand: best_offer(matches) for brand, matches in raw_by_brand.items()}
-    return payload, by_id, by_brand, offers
+    return data, by_id, by_brand, offers
 
 
 STATIC_DATA, OFFERS_BY_ID, OFFERS_BY_BRAND, STATIC_OFFERS = load_static_data()
@@ -218,12 +220,11 @@ def load_levanta_brand_mapping():
 
     Levanta 品牌 UUID 在各站点唯一，通过该映射找到对应的数字 merchantId。
     """
-    path = ROOT / "protected_data" / "db_offers_cache.json"
     mapping = {}
-    if not path.exists():
+    if not OFFERS_CACHE_PATH.exists():
         return mapping
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(OFFERS_CACHE_PATH.read_text(encoding="utf-8"))
         offers = payload.get("offers", []) if isinstance(payload, dict) else []
         for offer in offers:
             lid = str(offer.get("levantaBrandId") or "").strip()
@@ -240,13 +241,13 @@ LEVANTA_BRAND_TO_MERCHANT = load_levanta_brand_mapping()
 
 
 def load_sheet_payment_cycles():
-    if not SHEET_DATA_FILE.exists():
+    """从 db_offers_cache.json 加载 Sheet 账期映射（替代旧的 sheet_report_data.js）。"""
+    if not OFFERS_CACHE_PATH.exists():
         return {}
-    text = SHEET_DATA_FILE.read_text(encoding="utf-8")
-    prefix = "window.SHEET_REPORT_DATA="
-    if not text.startswith(prefix):
+    try:
+        payload = json.loads(OFFERS_CACHE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
         return {}
-    payload = json.loads(text[len(prefix) :].rstrip(";\n"))
     cycles = {}
     for sheet in payload.get("sheets", []):
         for row in sheet.get("rows", []):
@@ -832,9 +833,6 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/auth/session":
             handle_auth_session(self)
             return
-        if parsed.path == "/api/auth/data":
-            handle_protected_data(self)
-            return
         if parsed.path == "/api/levanta/payments":
             if not require_auth(self, allow_payment_sync_token=True):
                 return
@@ -1070,9 +1068,6 @@ class Handler(BaseHTTPRequestHandler):
     def handle_static(self, path):
         if path in ("", "/"):
             path = "/index.html"
-        if path.lstrip("/") in PROTECTED_STATIC_NAMES:
-            self.send_error(404)
-            return
         target = (STATIC_DIR / path.lstrip("/")).resolve()
         if not str(target).startswith(str(STATIC_DIR.resolve())) or not target.is_file():
             self.send_error(404)

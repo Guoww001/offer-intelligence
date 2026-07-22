@@ -46,63 +46,31 @@ TIER_VISUAL_STATUS_SOURCE_KEYS = [
 
 # ── helpers ────────────────────────────────────────────────────────
 
-def load_chatbot_data() -> dict:
-    """解析 protected_data/chatbot_data.js 并返回 JSON 对象。"""
-    js_path = ROOT / "protected_data" / "chatbot_data.js"
-    if not js_path.exists():
-        raise FileNotFoundError(f"chatbot_data.js not found at {js_path}")
-
-    text = js_path.read_text(encoding="utf-8")
-    start = text.index("{")
-    end = text.rindex("}")
-    data: dict = json.loads(text[start:end + 1])
-    return data
+OFFERS_CACHE_PATH = ROOT / "protected_data" / "db_offers_cache.json"
 
 
-def load_feishu_csv() -> list[dict]:
-    """读取 data/feishu_merchant_categories.csv。"""
-    csv_path = ROOT / "data" / "feishu_merchant_categories.csv"
-    if not csv_path.exists():
-        print(f"[warn] feishu CSV not found at {csv_path}, skipping")
-        return []
-    with csv_path.open(encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        return list(reader)
+def load_offers_from_cache() -> list[dict]:
+    """从 db_offers_cache.json 加载 offer 列表（替代旧的 chatbot_data.js）。"""
+    if not OFFERS_CACHE_PATH.exists():
+        raise FileNotFoundError(f"db_offers_cache.json not found at {OFFERS_CACHE_PATH}")
+    try:
+        payload = json.loads(OFFERS_CACHE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise RuntimeError(f"Failed to parse {OFFERS_CACHE_PATH}: {e}") from e
+    return payload.get("offers", [])
 
 
-def load_sheet_report_data() -> list[dict]:
-    """解析 protected_data/sheet_report_data.js 返回 sheets 列表。
+def load_sheets_from_cache() -> list[dict]:
+    """从 db_offers_cache.json 加载 sheets 列表（替代旧的 sheet_report_data.js）。
     每个 sheet 含 name / headers / rows（rows 是 dict 列表）。
     """
-    js_path = ROOT / "protected_data" / "sheet_report_data.js"
-    if not js_path.exists():
-        raise FileNotFoundError(f"sheet_report_data.js not found at {js_path}")
-
-    text = js_path.read_text(encoding="utf-8")
-    start = text.index("{")
-    end = text.rindex("}")
-    data: dict = json.loads(text[start:end + 1])
-
-    sheets: list[dict] = []
-    for raw_sheet in data.get("sheets", []):
-        name = raw_sheet.get("name", "")
-        headers = raw_sheet.get("headers", [])
-        raw_rows = raw_sheet.get("rows", [])
-
-        # rows 可能已经是 dict 列表，也可能是 list[list]
-        rows: list[dict] = []
-        if raw_rows and isinstance(raw_rows[0], dict):
-            rows = raw_rows  # 已经是 dict 格式
-        elif raw_rows and isinstance(raw_rows[0], list) and headers:
-            for row_vals in raw_rows:
-                row_dict = {}
-                for i, h in enumerate(headers):
-                    row_dict[h] = str(row_vals[i]) if i < len(row_vals) else ""
-                rows.append(row_dict)
-
-        sheets.append({"name": name, "headers": headers, "rows": rows})
-
-    return sheets
+    if not OFFERS_CACHE_PATH.exists():
+        raise FileNotFoundError(f"db_offers_cache.json not found at {OFFERS_CACHE_PATH}")
+    try:
+        payload = json.loads(OFFERS_CACHE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise RuntimeError(f"Failed to parse {OFFERS_CACHE_PATH}: {e}") from e
+    return payload.get("sheets", [])
 
 
 def db_connection():
@@ -795,20 +763,17 @@ def main():
     print("=== sync_oi_tables ===\n")
 
     # 1. 加载数据源
-    print("[load] chatbot_data.js ...")
-    chatbot = load_chatbot_data()
-    offers: list[dict] = chatbot.get("offers", [])
-    payment_records: list[dict] = chatbot.get("paymentRecords", [])
-    print(f"  → {len(offers)} offers loaded")
-    print(f"  → {len(payment_records)} payment records loaded")
+    print("[load] db_offers_cache.json (offers) ...")
+    offers = load_offers_from_cache()
+    print(f"  → {len(offers)} offers loaded\n")
 
     print("[load] feishu_merchant_categories.csv ...")
     feishu_rows = load_feishu_csv()
-    print(f"  → {len(feishu_rows)} rows loaded")
+    print(f"  → {len(feishu_rows)} rows loaded\n")
 
-    print("[load] sheet_report_data.js ...")
-    sheets = load_sheet_report_data()
-    tier_sheet_count = sum(1 for s in sheets if s["name"] in ("Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"))
+    print("[load] db_offers_cache.json (sheets) ...")
+    sheets = load_sheets_from_cache()
+    tier_sheet_count = sum(1 for s in sheets if s.get("name") in ("Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"))
     print(f"  → {len(sheets)} sheets ({tier_sheet_count} tier sheets)\n")
 
     print("[load] product_name_keywords_t1_t3.csv ...")
@@ -832,8 +797,6 @@ def main():
         print()
         n5 = sync_sheet_metadata(conn, sheets, offers)
         print()
-        n6 = sync_payment_records(conn, payment_records)
-        print()
 
         # 4. 汇总
         print("=== sync complete ===")
@@ -842,7 +805,7 @@ def main():
         print(f"  cnpscy_oi_tier_visual_status:    {n3} merchants")
         print(f"  cnpscy_oi_product_keywords:      {n4} merchants")
         print(f"  cnpscy_oi_offer_sheet_metadata:  {n5} merchants")
-        print(f"  cnpscy_oi_payment_records:       {n6} records")
+        print(f"  cnpscy_oi_payment_records:       (handled by sync_levanta_payments.py)")
 
     finally:
         conn.close()

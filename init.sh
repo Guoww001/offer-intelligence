@@ -30,11 +30,10 @@ run_check "public/tier2_recommendation_rules.js" node --check public/tier2_recom
 
 echo ""
 echo "=== Python compilation checks ==="
-for f in auth.py browser_payloads.py protected_payloads.py server.py offer_db.py \
-         llm_classify.py llm_provider.py; do
+for f in auth.py server.py offer_db.py llm_classify.py llm_provider.py; do
   run_check "$f" python -m py_compile "$f"
 done
-for f in api/auth/login.py api/auth/session.py api/auth/logout.py api/auth/data.py \
+for f in api/auth/login.py api/auth/session.py api/auth/logout.py \
          api/db/index.py \
          api/ui/db/merchant.py api/ui/db/search.py api/ui/db/status.py \
          api/levanta/payments.py api/tier_moves.py; do

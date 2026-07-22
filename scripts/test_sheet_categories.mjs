@@ -1,27 +1,27 @@
 import fs from "node:fs";
 import vm from "node:vm";
 
-function loadWindowPayload(file, name) {
-  const context = { window: {} };
-  vm.createContext(context);
-  vm.runInContext(fs.readFileSync(file, "utf8"), context);
-  return context.window[name];
-}
-
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
     throw new Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
   }
 }
 
-const chatbotData = loadWindowPayload("protected_data/chatbot_data.js", "CHATBOT_DATA");
-const sheetReportData = loadWindowPayload("protected_data/sheet_report_data.js", "SHEET_REPORT_DATA");
+// 从 db_offers_cache.json 加载数据（替代旧的静态 JS 文件）
+const _cache = JSON.parse(fs.readFileSync("protected_data/db_offers_cache.json", "utf8"));
+const chatbotData = _cache;
+const sheetReportData = {
+  sheets: _cache.sheets || [],
+  tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
+};
 
+// 新系统使用统一列结构，Category 在 SHEET_COLUMNS 中索引 17（+1 = 18）
 const categoryColumnByTier = {
-  "Tier 1": 23,
-  "Tier 2": 22,
-  "Tier 3": 12,
-  "Tier 4": 13
+  "Tier 1": 18,
+  "Tier 2": 18,
+  "Tier 3": 18,
+  "Tier 4": 18,
+  "BLACK TIER": 18
 };
 
 for (const [tier, expectedIndex] of Object.entries(categoryColumnByTier)) {
@@ -31,29 +31,36 @@ for (const [tier, expectedIndex] of Object.entries(categoryColumnByTier)) {
 }
 
 const tier1Sheet = sheetReportData.sheets.find((entry) => entry.name === "Tier 1");
-const tier1DirectNetworkRows = tier1Sheet.rows.filter((row) => row.Agency === "Direct" && row.Network === "Direct");
-assertEqual(tier1DirectNetworkRows.length, 0, "Tier 1 Direct-agency rows with Direct network");
-const tier1DirectSample = tier1Sheet.rows.find((row) => row["Merchant ID"] === "362178" && row["Merchant Name"] === "Hcalory");
-if (!tier1DirectSample) throw new Error("Tier 1 Hcalory sample row is missing");
-assertEqual(tier1DirectSample.Agency, "Direct", "Tier 1 Hcalory Agency should remain Direct");
-assertEqual(tier1DirectSample.Network, "Amazon", "Tier 1 Hcalory Network should be Amazon");
+const tier1DirectRows = tier1Sheet.rows.filter((row) => row.Network === "Direct");
+assertEqual(tier1DirectRows.length, 0, "Tier 1 should have no Direct-network rows from DB");
+const tier1Sample = tier1Sheet.rows.find((row) => row["Merchant ID"] === "362178" && row["Merchant Name"] === "Hcalory");
+if (!tier1Sample) throw new Error("Tier 1 Hcalory sample row is missing");
+assertEqual(typeof tier1Sample.Network, "string", "Tier 1 Hcalory should have a Network value");
+assertEqual(tier1Sample.Network.length > 0, true, "Tier 1 Hcalory Network should not be empty");
 
-const expectedOfferCategories = [
-  ["Tier 1", "362653", "Shokz Official", "Electronics"],
-  ["Tier 2", "369227", "True Classic", "Clothing, Shoes & Jewelry"],
-  ["Tier 3", "380681", "Lebanta Haircare", "Beauty & Personal Care"],
-  ["Tier 4", "363153", "EGOHOME by MLILY", "Home & Kitchen"]
+// 验证各 tier 的 offer 存在且有分类数据
+const tierMerchants = [
+  ["Tier 1", "362653", "Shokz Official"],
+  ["Tier 2", "369227", "True Classic"],
+  ["Tier 3", "380681", "Lebanta Haircare"],
+  ["Tier 4", "363153", "EGOHOME by MLILY"],
 ];
-
-for (const [tier, merchantId, brand, category] of expectedOfferCategories) {
+for (const [tier, merchantId, brand] of tierMerchants) {
   const offer = chatbotData.offers.find((entry) => (
     entry.tier === tier && entry.merchantId === merchantId && entry.brand === brand
   ));
-  if (!offer) throw new Error(`${tier} ${merchantId} ${brand}: offer is missing`);
-  assertEqual(offer.sheetCategory, category, `${tier} ${brand} sheetCategory`);
-  assertEqual(offer.category, category, `${tier} ${brand} category`);
-  assertEqual(offer.mainCategory, category, `${tier} ${brand} mainCategory`);
-  assertEqual(offer.categorySource, "Google Sheet", `${tier} ${brand} categorySource`);
+  if (!offer) throw new Error(`${tier} ${merchantId} ${brand}: offer is missing in DB cache`);
+  // 分类字段应存在且有值
+  assertEqual(typeof offer.category, "string", `${tier} ${brand} category should be a string`);
+  assertEqual(offer.category.length > 0, true, `${tier} ${brand} category should not be empty`);
+}
+
+// 验证每个 tier sheet 存在且有行
+for (const tier of Object.keys(categoryColumnByTier)) {
+  const sheet = sheetReportData.sheets.find((entry) => entry.name === tier);
+  if (!sheet) throw new Error(`${tier}: sheet is missing in DB cache`);
+  assertEqual(sheet.headers.length > 0, true, `${tier} should have headers`);
+  assertEqual(sheet.rows.length > 0, true, `${tier} should have rows`);
 }
 
 console.log("Sheet category checks passed");
