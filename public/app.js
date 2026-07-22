@@ -2554,6 +2554,8 @@
     const cleaned = query
       .replace(/\b(search|find|merchant|overview|info|information|about|for)\b/gi, " ")
       .replace(/查找|搜索|查看|看看|商家|品牌|概览|信息|资料|关于|帮我|请|找|分析|评估|诊断|怎么样|表现|趋势|健康度/g, " ")
+      .replace(metricTermPattern(), " ")
+      .replace(/的/g, " ")
       .trim();
     const scored = offers
       .map((offer) => {
@@ -3172,10 +3174,11 @@
       .replace(metricRangeFilterPattern(), " ")
       .replace(metricFilterPattern(), " ")
       .replace(metricTrailingComparisonPattern(), " ")
+      .replace(metricTermPattern(), " ")
       .replace(/\b(?:top|give|show|list|export|download|pull|find|search|recommend)\s+(?:me\s+)?(?:the\s+)?(?:top\s+)?\d{1,4}\b/gi, " ")
       .replace(/\b\d{1,4}\s+(?:offers?|brands?|recommendations?)\b/gi, " ")
       .replace(/\b(?:offers?|brands?|recommendations?|recommend|please|best|top|show|give|list|pull|download|export|find|search|merchant|brand|overview|info|information|about|for|the)\b/gi, " ")
-      .replace(/推荐|请|帮我|给我|显示|列出|查找|搜索|拉取|下载|导出|最好|最佳|前\s*\d*|商家|品牌|信息|概览|关于/g, " ")
+      .replace(/推荐|请|帮我|给我|显示|列出|查找|搜索|拉取|下载|导出|最好|最佳|前\s*\d*|商家|品牌|信息|概览|关于|的/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
@@ -3360,6 +3363,12 @@
 
     // Top metric request — formulaic "top/highest EPC/AOV/commission" patterns
     if (extractTopMetricRequest(prompt)) return true;
+
+    // Merchant name + optional metric — "Shokz EPC", "Shokz的AOV", etc.
+    // The merchant name is the primary entity; metric suffix adds no ambiguity.
+    // hasDirectMerchantKeywordLookup uses cleanedMerchantLookupPhrase which
+    // strips metric terms ("EPC", "AOV", …) and "的" before matching.
+    if (hasDirectMerchantKeywordLookup(prompt)) return true;
 
     // ── Intent signals (computed early — used by checks below) ──
 
@@ -4112,7 +4121,10 @@
     const category = categoryForPrompt(userMessage);
     const metricSort = extractMetricSortIntent(userMessage);
     const metricFilters = extractMetricFilters(userMessage);
+    const keywordRequest = keywordSearchRequest(userMessage);
     if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category") return zhIntent;
+    // keyword 搜索：仅当没有匹配到类别时，才优先于 merchant/category
+    if (!category && keywordRequest && hasKeywordSearchIntent(userMessage, keywordRequest, { category })) return "keyword";
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
     if (hasStrongMerchantLookup(userMessage, category)) return "merchant";
     if (zhIntent === "recommendation") return "recommendation";
@@ -5849,7 +5861,7 @@
       return analysisAnswer(prompt, p);
     }
 
-    if (!llmIndicatesRecommendation && hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
+    if (!llmIndicatesRecommendation && intent !== "merchant" && hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
       return keywordSearchAnswer(prompt, keywordRequest, { topMetricRequest });
     }
 
