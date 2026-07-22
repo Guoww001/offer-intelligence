@@ -21,6 +21,7 @@ class WorkflowCacheSplitTests(unittest.TestCase):
         self.assertIn("workflow_run:", workflow)
         self.assertIn("- Sync Levanta payments", workflow)
         self.assertIn("workflow_run.conclusion == 'success'", workflow)
+        self.assertIn("github.repository == 'bryansaputra68YP/offer-intelligence'", workflow)
         self.assertIn("protected_data/db_offers_cache.json", workflow)
         self.assertIn("protected_data/db_keywords_cache.json", workflow)
 
