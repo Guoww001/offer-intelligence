@@ -88,6 +88,18 @@
           "args": "ui-tier-summary"
         }
       ]
+    },
+    {
+      "src": "^/api/ui/db/publishers/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-publishers"
+        }
+      ]
     }
   ],
   "functions": {

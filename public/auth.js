@@ -1,6 +1,6 @@
 (function () {
   const DATA_FILES = ["sheet_report_data.js", "chatbot_data.js", "product_keywords.js"];
-  const APP_SCRIPT = "./app.js?v=20260708-auth2";
+  const APP_SCRIPT = "./app.js?v=20260720-auth3";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -119,7 +119,7 @@
   }
 
   async function loadProtectedData(name) {
-    const url = `/api/auth/data?file=${encodeURIComponent(name)}&v=20260708-auth2`;
+    const url = `/api/auth/data?file=${encodeURIComponent(name)}&v=20260720-auth3`;
     const response = await fetch(url, { cache: "no-store", credentials: "same-origin" });
     if (!response.ok) {
       throw new Error(`Could not load ${name}`);
