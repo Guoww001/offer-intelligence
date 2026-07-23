@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sync_oi_tables import parse_args
+from sync_oi_tables import load_feishu_csv, load_product_keywords_csv, parse_args
 
 
 default_args = parse_args([])
@@ -13,6 +13,16 @@ manual_args = parse_args([
 ])
 assert manual_args.sync_tier_assignments
 assert manual_args.sync_visual_status
+
+feishu_rows = load_feishu_csv()
+assert feishu_rows
+assert {"merchantId", "merchantName", "mainCategory", "subCategory"} <= set(
+    feishu_rows[0]
+)
+
+keyword_rows = load_product_keywords_csv()
+assert keyword_rows
+assert {"merchantId", "merchantName", "productKeywords"} <= set(keyword_rows[0])
 
 workflow = (
     Path(__file__).resolve().parent.parent

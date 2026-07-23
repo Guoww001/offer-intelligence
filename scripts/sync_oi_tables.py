@@ -48,6 +48,7 @@ TIER_VISUAL_STATUS_SOURCE_KEYS = [
 # ── helpers ────────────────────────────────────────────────────────
 
 OFFERS_CACHE_PATH = ROOT / "protected_data" / "db_offers_cache.json"
+FEISHU_CATEGORIES_PATH = ROOT / "data" / "feishu_merchant_categories.csv"
 
 
 def load_offers_from_cache() -> list[dict]:
@@ -72,6 +73,18 @@ def load_sheets_from_cache() -> list[dict]:
     except (json.JSONDecodeError, OSError) as e:
         raise RuntimeError(f"Failed to parse {OFFERS_CACHE_PATH}: {e}") from e
     return payload.get("sheets", [])
+
+
+def load_feishu_csv() -> list[dict]:
+    """读取 data/feishu_merchant_categories.csv。"""
+    if not FEISHU_CATEGORIES_PATH.exists():
+        print(
+            f"[warn] Feishu merchant categories CSV not found at "
+            f"{FEISHU_CATEGORIES_PATH}, skipping"
+        )
+        return []
+    with FEISHU_CATEGORIES_PATH.open(encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def db_connection():
