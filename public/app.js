@@ -1791,8 +1791,8 @@
     const network = record.network || matchedOffer.network || "Levanta";
     const matchedMerchantId = String(matchedOffer.merchantId || "").trim();
     const useMatchedLevantaId = normalize(network) === "levanta" && matchedMerchantId;
-    // 不同站点的 merchantId 本来就是不同的，不要用 offer 的 merchantId 覆盖源数据
-    const merchantId = sourceMerchantId || matchedMerchantId;
+    // Levanta 数据可能是 UUID，命中 offer 时用真实 merchantId
+    const merchantId = useMatchedLevantaId ? matchedMerchantId : (sourceMerchantId || matchedMerchantId);
     const region = paymentRegionFor(record, matchedOffer);
     const levantaBrandId = record.levantaBrandId || "";
     const normalized = {
