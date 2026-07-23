@@ -1791,8 +1791,8 @@
     const network = record.network || matchedOffer.network || "Levanta";
     const matchedMerchantId = String(matchedOffer.merchantId || "").trim();
     const useMatchedLevantaId = normalize(network) === "levanta" && matchedMerchantId;
-    // 不同站点的 merchantId 本来就是不同的，不要用 offer 的 merchantId 覆盖源数据
-    const merchantId = sourceMerchantId || matchedMerchantId;
+    // Levanta 数据可能是 UUID，命中 offer 时用真实 merchantId
+    const merchantId = useMatchedLevantaId ? matchedMerchantId : (sourceMerchantId || matchedMerchantId);
     const region = paymentRegionFor(record, matchedOffer);
     const levantaBrandId = record.levantaBrandId || "";
     const normalized = {
@@ -3553,14 +3553,33 @@
   function globalAverages() {
     var metrics = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
     var result = {};
+    // 比率字段使用加权汇总，非比率字段使用算术平均
     for (var m = 0; m < metrics.length; m++) {
       var field = metrics[m];
-      var values = [];
-      for (var i = 0; i < offers.length; i++) {
-        var v = field === "conversionRate" ? (offers[i].conversionRate || 0) * 100 : (offers[i][field] || 0);
-        if (v > 0) values.push(v);
+      if (field === "epc") {
+        var _rev = 0, _cls = 0;
+        for (var _i = 0; _i < offers.length; _i++) { _rev += Number(offers[_i].salesAmount || 0); _cls += Number(offers[_i].clicks || 0); }
+        result[field] = _cls > 0 ? _rev / _cls : 0;
+      } else if (field === "aov") {
+        var _rev = 0, _ord = 0;
+        for (var _i = 0; _i < offers.length; _i++) { _rev += Number(offers[_i].salesAmount || 0); _ord += Number(offers[_i].orders || 0); }
+        result[field] = _ord > 0 ? _rev / _ord : 0;
+      } else if (field === "conversionRate") {
+        var _ord = 0, _cls = 0;
+        for (var _i = 0; _i < offers.length; _i++) { _ord += Number(offers[_i].orders || 0); _cls += Number(offers[_i].clicks || 0); }
+        result[field] = _cls > 0 ? (_ord / _cls) * 100 : 0;
+      } else if (field === "commissionRate") {
+        var _comm = 0, _rev = 0;
+        for (var _i = 0; _i < offers.length; _i++) { _comm += Number(offers[_i].affCommission || 0); _rev += Number(offers[_i].salesAmount || 0); }
+        result[field] = _rev > 0 ? _comm / _rev : 0;
+      } else {
+        var values = [];
+        for (var i = 0; i < offers.length; i++) {
+          var v = offers[i][field] || 0;
+          if (v > 0) values.push(v);
+        }
+        result[field] = values.length ? values.reduce(function(a, b) { return a + b; }, 0) / values.length : 0;
       }
-      result[field] = values.length ? values.reduce(function(a, b) { return a + b; }, 0) / values.length : 0;
     }
     return result;
   }
@@ -3596,13 +3615,35 @@
       };
     }
 
-    // Comparisons
-    function avgField(offList, field) {
-      if (!offList.length) return 0;
-      var sum = 0;
-      for (var i = 0; i < offList.length; i++) sum += metricValueForOffer(offList[i], field);
-      return sum / offList.length;
-    }
+
+	    // Comparisons
+	    function avgField(offList, field) {
+	      if (!offList.length) return 0;
+	      // 比率字段使用加权汇总（整体值相除），而非各商家比率的算术平均
+	      if (field === "epc") {
+	        var _rev = 0, _cls = 0;
+	        for (var _i = 0; _i < offList.length; _i++) { _rev += Number(offList[_i].salesAmount || 0); _cls += Number(offList[_i].clicks || 0); }
+	        return _cls > 0 ? _rev / _cls : 0;
+	      }
+	      if (field === "aov") {
+	        var _rev = 0, _ord = 0;
+	        for (var _i = 0; _i < offList.length; _i++) { _rev += Number(offList[_i].salesAmount || 0); _ord += Number(offList[_i].orders || 0); }
+	        return _ord > 0 ? _rev / _ord : 0;
+	      }
+	      if (field === "conversionRate") {
+	        var _ord = 0, _cls = 0;
+	        for (var _i = 0; _i < offList.length; _i++) { _ord += Number(offList[_i].orders || 0); _cls += Number(offList[_i].clicks || 0); }
+	        return _cls > 0 ? (_ord / _cls) * 100 : 0;
+	      }
+	      if (field === "commissionRate") {
+	        var _comm = 0, _rev = 0;
+	        for (var _i = 0; _i < offList.length; _i++) { _comm += Number(offList[_i].affCommission || 0); _rev += Number(offList[_i].salesAmount || 0); }
+	        return _rev > 0 ? _comm / _rev : 0;
+	      }
+	      var sum = 0;
+	      for (var i = 0; i < offList.length; i++) sum += metricValueForOffer(offList[i], field);
+	      return sum / offList.length;
+	    }
 
     function compare(selfVal, otherAvg) {
       return { self: selfVal, avg: otherAvg, delta: pctDelta(selfVal, otherAvg) };
@@ -3677,7 +3718,28 @@
       return s;
     }
     function avgField(list, field) {
-      return list.length ? sumField(list, field) / list.length : 0;
+      if (!list.length) return 0;
+      if (field === "epc") {
+        var _rev = 0, _cls = 0;
+        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _cls += Number(list[_i].clicks || 0); }
+        return _cls > 0 ? _rev / _cls : 0;
+      }
+      if (field === "aov") {
+        var _rev = 0, _ord = 0;
+        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _ord += Number(list[_i].orders || 0); }
+        return _ord > 0 ? _rev / _ord : 0;
+      }
+      if (field === "conversionRate") {
+        var _ord = 0, _cls = 0;
+        for (var _i = 0; _i < list.length; _i++) { _ord += Number(list[_i].orders || 0); _cls += Number(list[_i].clicks || 0); }
+        return _cls > 0 ? (_ord / _cls) * 100 : 0;
+      }
+      if (field === "commissionRate") {
+        var _comm = 0, _rev = 0;
+        for (var _i = 0; _i < list.length; _i++) { _comm += Number(list[_i].affCommission || 0); _rev += Number(list[_i].salesAmount || 0); }
+        return _rev > 0 ? _comm / _rev : 0;
+      }
+      return sumField(list, field) / list.length;
     }
 
     var aggregates = {
@@ -3737,7 +3799,28 @@
       return s;
     }
     function avgField(list, field) {
-      return list.length ? sumField(list, field) / list.length : 0;
+      if (!list.length) return 0;
+      if (field === "epc") {
+        var _rev = 0, _cls = 0;
+        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _cls += Number(list[_i].clicks || 0); }
+        return _cls > 0 ? _rev / _cls : 0;
+      }
+      if (field === "aov") {
+        var _rev = 0, _ord = 0;
+        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _ord += Number(list[_i].orders || 0); }
+        return _ord > 0 ? _rev / _ord : 0;
+      }
+      if (field === "conversionRate") {
+        var _ord = 0, _cls = 0;
+        for (var _i = 0; _i < list.length; _i++) { _ord += Number(list[_i].orders || 0); _cls += Number(list[_i].clicks || 0); }
+        return _cls > 0 ? (_ord / _cls) * 100 : 0;
+      }
+      if (field === "commissionRate") {
+        var _comm = 0, _rev = 0;
+        for (var _i = 0; _i < list.length; _i++) { _comm += Number(list[_i].affCommission || 0); _rev += Number(list[_i].salesAmount || 0); }
+        return _rev > 0 ? _comm / _rev : 0;
+      }
+      return sumField(list, field) / list.length;
     }
 
     var aggregates = {
