@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from scripts import ensure_oi_schema  # noqa: E402
 from scripts import sync_levanta_payments as payment_sync  # noqa: E402
 from scripts import sync_levanta_payments  # noqa: E402
 
@@ -38,7 +39,7 @@ def load_payment_records(path: str = "") -> list[dict]:
 
 
 def load_offers_from_cache() -> list[dict]:
-    """Load offer data from db_offers_cache.json (替代旧的 chatbot_data.js)."""
+    """Load offer data from db_offers_cache.json (???? chatbot_data.js)."""
     cache_path = ROOT / "protected_data" / "db_offers_cache.json"
     if not cache_path.exists():
         return []
@@ -71,6 +72,20 @@ def test_payment_made_dates():
         "2026-07-10T02:00:00Z",
     )[0]
     assert_true(newly_paid.get("paymentMadeDate") == "2026-07-10", "newly paid row should use detection date")
+    persisted_newly_paid = payment_sync.payment_record_to_db_row(newly_paid)
+    assert_true(
+        persisted_newly_paid.get("paymentMadeDate") == "2026-07-10",
+        "payment made date should be included in the DB upsert row",
+    )
+    assert_true(
+        "paymentMadeDate" in ensure_oi_schema.PAYMENT_RECORD_COLUMN_MIGRATIONS,
+        "payment schema migrations should include paymentMadeDate",
+    )
+    offer_db_source = (ROOT / "offer_db.py").read_text(encoding="utf-8")
+    assert_true(
+        "paymentStatus, rawStatus, paymentMadeDate, lastCheckedDate" in offer_db_source,
+        "offers payload query should expose paymentMadeDate",
+    )
 
     still_paid = payment_sync.apply_payment_made_dates(
         [payment_date_record("Paid", lastCheckedDate="2026-07-11")],
@@ -111,6 +126,28 @@ def test_payment_made_dates():
     assert_true(uk_newly_paid.get("paymentMadeDate") == "2026-07-12", "regions should keep separate payment histories")
 
 
+def test_direct_renpho_payment_state():
+    offers = load_offers_from_cache()
+    direct_renpho_ids = {"387792", "387793"}
+    direct_renpho_offers = [
+        offer for offer in offers
+        if str(offer.get("merchantId")) in direct_renpho_ids
+    ]
+    assert_true(
+        {str(offer.get("merchantId")) for offer in direct_renpho_offers} == direct_renpho_ids,
+        "direct Renpho offers should be present in the offers cache",
+    )
+    for offer in direct_renpho_offers:
+        assert_true(
+            offer.get("paymentState") in (None, "", "not_available"),
+            "direct Renpho offers should not inherit Levanta paid or risk state",
+        )
+        assert_true(
+            offer.get("paymentStatus") == "No payment issue found",
+            "direct Renpho offers should not inherit Levanta paid status",
+        )
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Validate payment records produced by sync_levanta_payments.py."
@@ -125,6 +162,7 @@ def parse_args():
 def main() -> int:
     args = parse_args()
     test_payment_made_dates()
+    test_direct_renpho_payment_state()
 
     records_path = Path(args.records_file)
     if not records_path.exists():
@@ -185,7 +223,7 @@ def main() -> int:
             "paymentStatus": "Pending",
         }
         reconciled_source_record = sync_levanta_payments.reconcile_source_payment_record(source_payment_record)
-        # 保留源 merchantId（不同站点的 ID 本来就不同）
+        # ??? merchantId?????? ID ??????
         assert_true(
             reconciled_source_record.get("merchantId") == source_brand_id,
             f"source API rows for {merchant_name} should keep the source brand id (per-site unique)",
@@ -201,7 +239,7 @@ def main() -> int:
 
         renpho_rows = [record for record in records if record.get("merchantName") == merchant_name]
         assert_true(renpho_rows, f"{merchant_name} payment rows should exist")
-        # 静态缓存数据仍沿用旧数值 merchantId（后续重建数据会变）
+        # ???????????? merchantId??????????
         for record in renpho_rows:
             assert_true(record.get("merchantId") == merchant_id, f"{merchant_name} should use Levanta MID {merchant_id}")
             assert_true(record.get("levantaBrandId"), f"{merchant_name} should preserve the Levanta API brand id")
@@ -217,7 +255,7 @@ def main() -> int:
             5,
             2026,
         )
-        # live sync 应使用 levantaBrandId → merchantId 映射找到该站点的正确 ID
+        # live sync ??? levantaBrandId ? merchantId ?????????? ID
         assert_true(
             sample.get("merchantId") == merchant_id,
             f"live sync should map {merchant_name} to per-site merchantId {merchant_id} via brand UUID lookup",
@@ -238,16 +276,6 @@ def main() -> int:
         corrected_direct_id_sample.get("merchantId") == "362938",
         "Levanta direct MID 387793 should be mapped to 362938 (not a UUID, falls through to brand match)",
     )
-
-    direct_renpho_ids = {"387792", "387793"}
-    for offer in offers:
-        if str(offer.get("merchantId")) not in direct_renpho_ids:
-            continue
-        assert_true(not offer.get("paymentState"), "direct Renpho offers should not inherit Levanta payment state")
-        assert_true(
-            offer.get("paymentStatus") == "No payment issue found",
-            "direct Renpho offers should not inherit Levanta paid status",
-        )
 
     print(
         "Payment placeholder tests passed:",

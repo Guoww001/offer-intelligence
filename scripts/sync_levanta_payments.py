@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 import server  # noqa: E402
 
 
-# ── MySQL helpers (same pattern as sync_oi_tables.py) ────────────────────
+# ?? MySQL helpers (same pattern as sync_oi_tables.py) ????????????????????
 
 def db_connection():
     """Create a MySQL connection (reuses offer_db.py env-var convention)."""
@@ -60,7 +60,7 @@ def db_connection():
 
 
 def upsert(conn, table: str, rows: list[dict], key_columns: list[str]) -> int:
-    """Batch UPSERT: INSERT … ON DUPLICATE KEY UPDATE. Returns row count."""
+    """Batch UPSERT: INSERT ? ON DUPLICATE KEY UPDATE. Returns row count."""
     if not rows:
         return 0
 
@@ -92,7 +92,7 @@ def upsert(conn, table: str, rows: list[dict], key_columns: list[str]) -> int:
     return written
 
 
-# ── existing-record helpers (replaces chatbot_data.js reads) ─────────────
+# ?? existing-record helpers (replaces chatbot_data.js reads) ?????????????
 
 LOAD_COLUMNS = [
     "id", "merchantId", "merchantName", "network", "region",
@@ -129,7 +129,7 @@ def load_existing_records(conn) -> list[dict]:
     return rows
 
 
-# ── helpers (unchanged) ─────────────────────────────────────────────────
+# ?? helpers (unchanged) ?????????????????????????????????????????????????
 
 def month_key(month: tuple[str, int, int]) -> str:
     _name, zero_based_month, year = month
@@ -288,7 +288,7 @@ def reconcile_source_payment_record(record: dict) -> dict:
     merchant_name = str(record.get("merchantName") or record.get("brand") or "").strip()
     source_merchant_id = str(record.get("merchantId") or record.get("brand_id") or "").strip()
     network = record.get("network") or "Levanta"
-    # 先通过 levantaBrandId → merchantId 映射查找
+    # ??? levantaBrandId ? merchantId ????
     levanta_brand_id = str(record.get("levantaBrandId") or "").strip()
     mapped_id = server.LEVANTA_BRAND_TO_MERCHANT.get(levanta_brand_id) if levanta_brand_id else None
     if mapped_id:
@@ -325,7 +325,7 @@ def reconcile_source_payment_record(record: dict) -> dict:
     return reconciled
 
 
-# ── MySQL row builder (mirrors sync_oi_tables.py sync_payment_records) ───
+# ?? MySQL row builder (mirrors sync_oi_tables.py sync_payment_records) ???
 
 def _num(value) -> float | None:
     if value is None:
@@ -368,6 +368,7 @@ def payment_record_to_db_row(r: dict) -> dict:
         "expectedPaymentDate": str(r.get("expectedPaymentDate") or "").strip()[:16] or None,
         "paymentStatus": str(r.get("paymentStatus") or "Unknown").strip()[:16],
         "rawStatus": str(r.get("rawStatus") or "").strip()[:32] or None,
+        "paymentMadeDate": str(r.get("paymentMadeDate") or "").strip()[:16] or None,
         "lastCheckedDate": str(r.get("lastCheckedDate") or "").strip()[:16] or None,
         "currency": str(r.get("currency") or "USD").strip()[:8],
         "isPlaceholder": 1 if r.get("isPlaceholder") else 0,
@@ -375,7 +376,7 @@ def payment_record_to_db_row(r: dict) -> dict:
     }
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────
+# ?? CLI ?????????????????????????????????????????????????????????????????
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -418,7 +419,7 @@ def main() -> int:
     window_start = f"{months[0][2]}-{months[0][1] + 1:02d}"
     window_end = f"{months[-1][2]}-{months[-1][1] + 1:02d}"
 
-    # ── 1. Fetch ──────────────────────────────────────────────────────
+    # ?? 1. Fetch ??????????????????????????????????????????????????????
     source_url = str(args.source_url or "").strip()
     checked_at = ""
     if source_url:
@@ -438,7 +439,7 @@ def main() -> int:
 
     checked_at = checked_at or dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
 
-    # ── 2. Transform ──────────────────────────────────────────────────
+    # ?? 2. Transform ??????????????????????????????????????????????????
     # Load existing records for payment-made-date tracking
     previous_records: list[dict] = []
     if not args.dry_run:
@@ -460,7 +461,7 @@ def main() -> int:
     records = apply_payment_made_dates(records, previous_records, checked_at)
     validation = validate_payment_records(records, months)
 
-    # ── 3. Write to MySQL ─────────────────────────────────────────────
+    # ?? 3. Write to MySQL ?????????????????????????????????????????????
     if not args.dry_run:
         db_rows = [payment_record_to_db_row(r) for r in records]
         db_rows = [r for r in db_rows if r]  # remove empties (no id)
@@ -471,7 +472,7 @@ def main() -> int:
         finally:
             conn.close()
 
-    # ── 4. Optional JSON output for CI validation ─────────────────────
+    # ?? 4. Optional JSON output for CI validation ?????????????????????
     output_path = str(args.records_output or "").strip()
     if output_path:
         out = Path(output_path)
@@ -482,7 +483,7 @@ def main() -> int:
         )
         print(f"Wrote {len(records)} records to {out}")
 
-    # ── 5. Summary ────────────────────────────────────────────────────
+    # ?? 5. Summary ????????????????????????????????????????????????????
     print(json.dumps({"checkedAt": checked_at, **validation}, ensure_ascii=False, indent=2))
     return 0
 

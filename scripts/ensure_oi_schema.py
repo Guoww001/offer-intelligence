@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-幂等执行 cnpscy_oi_* 表结构初始化 / 增量变更。
-在每次 sync_oi_tables.py 运行前执行，确保新表和视图存在。
+???? cnpscy_oi_* ?????? / ?????
+??? sync_oi_tables.py ????????????????
 
-安全：所有语句都是幂等的（CREATE TABLE IF NOT EXISTS,
-ALTER TABLE with 手动检查, CREATE OR REPLACE VIEW）。
+?????????????CREATE TABLE IF NOT EXISTS,
+ALTER TABLE with ????, CREATE OR REPLACE VIEW??
 """
 
 from __future__ import annotations
@@ -16,9 +16,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+PAYMENT_RECORD_COLUMN_MIGRATIONS = {
+    "paymentMadeDate": (
+        "ALTER TABLE cnpscy_oi_payment_records "
+        "ADD COLUMN paymentMadeDate VARCHAR(16) DEFAULT NULL AFTER rawStatus"
+    ),
+}
+
 
 def db_connection():
-    """创建 MySQL 连接（复用 offer_db.py 的配置模式）。"""
+    """?? MySQL ????? offer_db.py ???????"""
     try:
         import pymysql
     except ImportError:
@@ -45,7 +52,7 @@ def db_connection():
 
 
 def column_exists(conn, table: str, column: str) -> bool:
-    """检查列是否已存在。"""
+    """?????????"""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM information_schema.COLUMNS "
@@ -56,7 +63,7 @@ def column_exists(conn, table: str, column: str) -> bool:
 
 
 def table_exists(conn, table: str) -> bool:
-    """检查表是否已存在。"""
+    """?????????"""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM information_schema.TABLES "
@@ -73,7 +80,7 @@ def main():
     print("[db] connected\n")
 
     try:
-        # ── 1. cnpscy_oi_payment_records ──
+        # ?? 1. cnpscy_oi_payment_records ??
         if not table_exists(conn, "cnpscy_oi_payment_records"):
             print("[ddl] CREATE TABLE cnpscy_oi_payment_records ...")
             with conn.cursor() as cur:
@@ -105,6 +112,7 @@ def main():
                       expectedPaymentDate     VARCHAR(16) DEFAULT NULL,
                       paymentStatus           VARCHAR(16) NOT NULL DEFAULT 'Unknown',
                       rawStatus               VARCHAR(32) DEFAULT NULL,
+                      paymentMadeDate         VARCHAR(16) DEFAULT NULL,
                       lastCheckedDate         VARCHAR(16) DEFAULT NULL,
                       currency                VARCHAR(8) DEFAULT 'USD',
                       isPlaceholder           TINYINT(1) NOT NULL DEFAULT 0,
@@ -117,11 +125,20 @@ def main():
                       KEY idx_payment_tier (tier)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """)
-            print("  → created")
+            print("  ? created")
         else:
             print("[ddl] cnpscy_oi_payment_records already exists, skipping")
 
-        # ── 2. cnpscy_oi_offer_sheet_metadata ──
+        for column, ddl in PAYMENT_RECORD_COLUMN_MIGRATIONS.items():
+            if not column_exists(conn, "cnpscy_oi_payment_records", column):
+                print(f"[ddl] ALTER TABLE cnpscy_oi_payment_records ADD COLUMN {column} ...")
+                with conn.cursor() as cur:
+                    cur.execute(ddl)
+                print("  ? added")
+            else:
+                print(f"[ddl] cnpscy_oi_payment_records.{column} already exists, skipping")
+
+        # ?? 2. cnpscy_oi_offer_sheet_metadata ??
         if not table_exists(conn, "cnpscy_oi_offer_sheet_metadata"):
             print("[ddl] CREATE TABLE cnpscy_oi_offer_sheet_metadata ...")
             with conn.cursor() as cur:
@@ -164,24 +181,24 @@ def main():
                       KEY idx_sheet_region (region)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """)
-            print("  → created")
+            print("  ? created")
         else:
             print("[ddl] cnpscy_oi_offer_sheet_metadata already exists, skipping")
 
-        # ── 3. cnpscy_oi_category: add categoryNameCn ──
+        # ?? 3. cnpscy_oi_category: add categoryNameCn ??
         if not column_exists(conn, "cnpscy_oi_category", "categoryNameCn"):
             print("[ddl] ALTER TABLE cnpscy_oi_category ADD COLUMN categoryNameCn ...")
             with conn.cursor() as cur:
                 cur.execute(
                     "ALTER TABLE cnpscy_oi_category "
-                    "ADD COLUMN categoryNameCn VARCHAR(128) DEFAULT NULL COMMENT '中文类目名' "
+                    "ADD COLUMN categoryNameCn VARCHAR(128) DEFAULT NULL COMMENT '?????' "
                     "AFTER source"
                 )
-            print("  → added")
+            print("  ? added")
         else:
             print("[ddl] cnpscy_oi_category.categoryNameCn already exists, skipping")
 
-        # ── 4. cnpscy_oi_offer_base VIEW: recreate with region column ──
+        # ?? 4. cnpscy_oi_offer_base VIEW: recreate with region column ??
         print("[ddl] CREATE OR REPLACE VIEW cnpscy_oi_offer_base ...")
         with conn.cursor() as cur:
             cur.execute("""
@@ -208,7 +225,7 @@ def main():
                 LEFT JOIN cnpscy_advert_lianmeng al ON a.advert_id = al.advert_all_id
                 WHERE a.advert_isdel = 1
             """)
-        print("  → view recreated")
+        print("  ? view recreated")
 
         print("\n=== schema check complete ===")
 

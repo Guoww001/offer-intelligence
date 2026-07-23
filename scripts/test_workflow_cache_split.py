@@ -14,6 +14,7 @@ class WorkflowCacheSplitTests(unittest.TestCase):
         self.assertNotIn("sheet_report_data.js", workflow)
         self.assertNotIn("product_keywords.js", workflow)
         self.assertIn("output/payment_records.json", workflow)
+        self.assertIn("github.repository == 'bryansaputra68YP/offer-intelligence'", workflow)
 
     def test_cache_workflow_runs_after_successful_payment_sync(self) -> None:
         workflow = (ROOT / ".github/workflows/refresh-db-caches.yml").read_text(encoding="utf-8")

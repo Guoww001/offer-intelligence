@@ -473,7 +473,7 @@ def clean_decimal(value: Any, places: int = 6) -> float:
 
 
 def read_static_merchant_ids() -> list[str]:
-    """从 db_offers_cache.json 或 static_merchant_ids.json 读取公开 merchant ID 列表。"""
+    """? db_offers_cache.json ? static_merchant_ids.json ???? merchant ID ???"""
     ids = []
     seen = set()
     if OFFERS_CACHE_FILE.exists():
@@ -1063,7 +1063,7 @@ def tier_summary_payload(month: str | None = None) -> dict[str, Any]:
 
 
 def static_chatbot_generated_at() -> str | None:
-    """从 db_offers_cache.json summary 读取生成的快照时间戳。"""
+    """? db_offers_cache.json summary ???????????"""
     if OFFERS_CACHE_FILE.exists():
         try:
             payload = json.loads(OFFERS_CACHE_FILE.read_text(encoding="utf-8"))
@@ -1349,7 +1349,7 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
     return result
 
 
-# ── payload cache ────────────────────────────────────────────────────
+# ?? payload cache ????????????????????????????????????????????????????
 
 CACHE_DIR = ROOT / "protected_data"
 OFFERS_CACHE_FILE = CACHE_DIR / "db_offers_cache.json"
@@ -1370,7 +1370,7 @@ _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
 # In-memory cache for publishers payload
 _publishers_memory_cache: tuple[float, dict[str, Any]] | None = None
-# 防止 ThreadingHTTPServer 多线程同时重建 offers 缓存导致 MySQL /tmp 写满
+# ?? ThreadingHTTPServer ??????? offers ???? MySQL /tmp ??
 _offers_rebuild_lock = threading.Lock()
 
 
@@ -1408,24 +1408,24 @@ def _save_cache(path: Path, payload: dict[str, Any]) -> None:
 
 
 def offers_payload(month: str | None = None, force_refresh: bool = False) -> dict[str, Any]:
-    """从 cnpscy_oi_* 视图/表返回全量 offer 列表 + 月度指标 + 汇总统计。
+    """? cnpscy_oi_* ??/????? offer ?? + ???? + ?????
 
-    结果缓存到 protected_data/db_offers_cache.json（TTL 6 小时），
-    同时保持进程内内存缓存避免重复的 23MB json.loads。
-    缓存过期后先返回旧数据（毫秒级），后台异步刷新。
-    传 force_refresh=True 可跳过缓存同步重建。
+    ????? protected_data/db_offers_cache.json?TTL 6 ????
+    ???????????????? 23MB json.loads?
+    ????????????????????????
+    ? force_refresh=True ??????????
     """
     global _offers_memory_cache
     now = time.time()
 
-    # Memory cache — avoid 23MB file read + json.loads on warm requests
+    # Memory cache ? avoid 23MB file read + json.loads on warm requests
     if not force_refresh and _offers_memory_cache is not None:
         ts, payload = _offers_memory_cache
         if now - ts < CACHE_TTL_SECONDS:
             return payload
         # TTL expired: fall through to file cache
 
-    # File cache — shared across Vercel instances
+    # File cache ? shared across Vercel instances
     if not force_refresh:
         cached = _load_any_cache(OFFERS_CACHE_FILE)
         if cached is not None:
@@ -1442,10 +1442,10 @@ def offers_payload(month: str | None = None, force_refresh: bool = False) -> dic
                     global _offers_memory_cache
                     try:
                         with _offers_rebuild_lock:
-                            # 二次检查：另一个线程可能已经刷新过了
+                            # ??????????????????
                             if _offers_memory_cache is not None:
                                 ts, curr = _offers_memory_cache
-                                if time.time() - ts < 60:  # 60秒内已经刷过则跳过
+                                if time.time() - ts < 60:  # 60?????????
                                     return
                             payload = _build_offers_payload(month)
                             _save_cache(OFFERS_CACHE_FILE, payload)
@@ -1457,9 +1457,9 @@ def offers_payload(month: str | None = None, force_refresh: bool = False) -> dic
             return cached
 
     # No cache available at all: build from DB
-    # 使用锁防止 ThreadingHTTPServer 多线程并发重建导致 MySQL /tmp 写满
+    # ????? ThreadingHTTPServer ????????? MySQL /tmp ??
     with _offers_rebuild_lock:
-        # Double-check: 另一个线程可能已经重建好了
+        # Double-check: ?????????????
         if not force_refresh and _offers_memory_cache is not None:
             ts, cached = _offers_memory_cache
             if now - ts < CACHE_TTL_SECONDS:
@@ -1475,14 +1475,14 @@ def offer_network_fallback_map(
     merchant_ids: list[str],
     cached_payload: dict[str, Any] | None,
 ) -> dict[str, str]:
-    """仅对 network 缺失的商户回查 network 来源。
+    """?? network ??????? network ???
 
-    优先从缓存恢复历史已知的 network，再对缓存中找不到的商户
-    通过 cnpscy_advert_type 查漏（避免物化 cnpscy_advertiser_performance_daily_view 视图）。
+    ???????????? network????????????
+    ?? cnpscy_advert_type ??????? cnpscy_advertiser_performance_daily_view ????
     """
     network_map: dict[str, str] = {}
 
-    # 1) 从旧缓存恢复已知 network
+    # 1) ???????? network
     if cached_payload and isinstance(cached_payload, dict):
         cached_offers = cached_payload.get("offers", [])
         if isinstance(cached_offers, list):
@@ -1496,7 +1496,7 @@ def offer_network_fallback_map(
                 if mid in cache_by_id:
                     network_map[mid] = cache_by_id[mid]
 
-    # 2) 缓存未命中 → 查 advert_type（避免视图物化）
+    # 2) ????? ? ? advert_type????????
     db_ids = [mid for mid in merchant_ids if mid and mid not in network_map]
     if db_ids:
         for batch in chunks(db_ids, 500):
@@ -1548,7 +1548,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             except (ValueError, IndexError):
                 pass
 
-        # Payment records start month (24 个月前，避免全表扫描写满 /tmp)
+        # Payment records start month (24 ???????????? /tmp)
         payment_start_month = ""
         if month and len(month) == 7 and month[4] == "-":
             try:
@@ -1560,7 +1560,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             except (ValueError, IndexError):
                 pass
 
-        # ── core query: tier + advert + metrics ──
+        # ?? core query: tier + advert + metrics ??
         core_offers = fetch_all(
             conn,
             """
@@ -1597,7 +1597,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             (month,),
         )
 
-        # ── lookup maps (separate fast queries, merge in Python) ──
+        # ?? lookup maps (separate fast queries, merge in Python) ??
         # Categories (pre-aggregated per merchant)
         cat_rows = fetch_all(
             conn,
@@ -1647,7 +1647,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
-        # Network fallback: 只查 network 缺失的商户，避免全量扫描和视图物化
+        # Network fallback: ?? network ?????????????????
         missing_network_ids = [
             row.get("merchantId")
             for row in core_offers
@@ -1659,7 +1659,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             _load_any_cache(OFFERS_CACHE_FILE),
         )
 
-        # ── merge all into offers ──
+        # ?? merge all into offers ??
         offers = []
         for o in core_offers:
             mid = o["merchantId"]
@@ -1671,7 +1671,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             o["visualStatusReason"] = vs["reason_text"] if vs else None
             o["visualStatusSource"] = vs["source"] if vs else None
 
-            # network from advert_type (覆盖 pr_net 的 'Unknown' 默认值)
+            # network from advert_type (?? pr_net ? 'Unknown' ???)
             nm = network_map.get(mid)
             if nm and o.get("network") in (None, "Unknown", ""):
                 o["network"] = nm
@@ -1727,7 +1727,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 o["cpc"] = None
                 o["trackingIssue"] = 0
 
-            # product keywords — only productAsins kept in core payload for ASIN search;
+            # product keywords ? only productAsins kept in core payload for ASIN search;
             # productTitles / productKeywords / productNameCount / productAsinCount
             # are loaded lazily via /api/ui/db/keywords when chatbot needs them.
             pk = pk_map.get(mid)
@@ -1736,12 +1736,12 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             else:
                 o["productAsins"] = None
 
-            # 字段名映射：前端（旧代码）期望 affCommission，DB 提供的是 affiliatePayout
+            # ??????????????? affCommission?DB ???? affiliatePayout
             o["affCommission"] = o.get("affiliatePayout")
 
             offers.append(o)
 
-        # ── top ASINs per merchant (aggregated from products view) ──
+        # ?? top ASINs per merchant (aggregated from products view) ??
         asin_rows = fetch_all(
             conn,
             """
@@ -1754,7 +1754,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         asin_map: dict[str, dict] = {r["merchantId"]: r for r in asin_rows}
 
-        # ── payment records (限定 24 个月，避免全表扫描写满 /tmp) ──
+        # ?? payment records (?? 24 ??????????? /tmp) ??
         payment_records_raw = fetch_all(
             conn,
             """
@@ -1765,7 +1765,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                    revenueMade, commissionMade, expectedPaymentAmount,
                    paidAmount, remainingAmount,
                    paymentCycle, paymentAvailabilityDate, expectedPaymentDate,
-                   paymentStatus, rawStatus, lastCheckedDate,
+                   paymentStatus, rawStatus, paymentMadeDate, lastCheckedDate,
                    currency, isPlaceholder, notes
             FROM cnpscy_oi_payment_records
             WHERE reportMonthKey >= %s
@@ -1774,7 +1774,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             (payment_start_month,),
         )
 
-        # ── payment risk per merchant (限定 24 个月) ──
+        # ?? payment risk per merchant (?? 24 ??) ??
         payment_risk_rows = fetch_all(
             conn,
             """
@@ -1798,7 +1798,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         payment_risk_map: dict[str, dict] = {r["merchantId"]: r for r in payment_risk_rows}
 
-        # ── prior month revenues (single query, merge in Python) ──
+        # ?? prior month revenues (single query, merge in Python) ??
         prior_revenue_map: dict[str, dict] = {}
         if prev_month1 or prev_month2:
             prior_rows = fetch_all(
@@ -1816,7 +1816,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                     prior_revenue_map[mid] = {}
                 prior_revenue_map[mid][str(pr["month"])] = pr["revenue"]
 
-        # ── merge top ASINs + payment risk + computed fields into offers ──
+        # ?? merge top ASINs + payment risk + computed fields into offers ??
         for o in offers:
             mid = o["merchantId"]
 
@@ -1893,7 +1893,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 else:
                     o[field] = []
 
-        # ── payment records (with computed fields matching static shape) ──
+        # ?? payment records (with computed fields matching static shape) ??
         payment_records = []
         for pr in payment_records_raw:
             record = dict(pr)
@@ -1907,7 +1907,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             record["isPlaceholder"] = bool(record.get("isPlaceholder"))
             payment_records.append(record)
 
-        # ── payment summary ──
+        # ?? payment summary ??
         def _payment_summary(records: list[dict]) -> dict:
             if not records:
                 return {
@@ -1930,7 +1930,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 "overdueMerchantCount": len(set(r["merchantId"] for r in records if r.get("paymentStatus") == "Overdue" and r.get("merchantId"))),
             }
 
-        # ── summary ──
+        # ?? summary ??
         tier_rows = fetch_all(conn,
             "SELECT tier, COUNT(*) AS cnt FROM cnpscy_oi_tier_assignments GROUP BY tier ORDER BY cnt DESC")
         # Build network summary from already-merged offers
@@ -1954,7 +1954,7 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             "paymentSummary": _payment_summary(payment_records),
         }
 
-        # ── build tier sheets from offers data ──
+        # ?? build tier sheets from offers data ??
         TIER_ORDER = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
         SHEET_COLUMNS = [
             ("merchantId", "Merchant ID"),
@@ -2234,8 +2234,8 @@ def tier_sheet_payload(
 
 
 def product_keywords_payload(force_refresh: bool = False) -> dict[str, Any]:
-    """从 cnpscy_oi_product_keywords 返回产品关键词数据，
-    兼容 window.PRODUCT_KEYWORDS 的 shape。结果缓存在 db_keywords_cache.json。
+    """? cnpscy_oi_product_keywords ??????????
+    ?? window.PRODUCT_KEYWORDS ? shape?????? db_keywords_cache.json?
     """
     if not force_refresh:
         cached = _load_any_cache(KEYWORDS_CACHE_FILE)
@@ -2306,14 +2306,14 @@ def _build_keywords_payload() -> dict[str, Any]:
     return result
 
 
-# ── publishers cache ──────────────────────────────────────────────────
+# ?? publishers cache ??????????????????????????????????????????????????
 
 
 def publishers_payload(force_refresh: bool = False) -> dict[str, Any]:
-    """从 db_publishers_cache.json 读取聚合的媒介数据。
+    """? db_publishers_cache.json ??????????
 
-    遵循 offers_payload 的缓存模式: 内存缓存 + 文件缓存 + TTL + 后台刷新。
-    数据由 scripts/build_publishers_data.py 构建。
+    ?? offers_payload ?????: ???? + ???? + TTL + ?????
+    ??? scripts/build_publishers_data.py ???
     """
     global _publishers_memory_cache
     now = time.time()

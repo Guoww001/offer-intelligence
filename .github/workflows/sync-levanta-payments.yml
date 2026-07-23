@@ -16,6 +16,7 @@ concurrency:
 jobs:
   sync-payments:
     name: Pull Vercel payments and sync DB
+    if: github.repository == 'bryansaputra68YP/offer-intelligence'
     runs-on: ubuntu-latest
     env:
       PAYMENT_SYNC_SOURCE_URL: ${{ vars.PAYMENT_SYNC_SOURCE_URL }}
