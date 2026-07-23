@@ -390,35 +390,48 @@ def _execute_from_cache(entity_type: str, entities: list, metrics: list,
 
 
 def _summarize_offers(offers: list, metrics: list, plan: dict) -> dict:
-    """Aggregate a list of offers into summary stats."""
+    """Aggregate a list of offers into summary stats.
+
+    Rate fields (epc, aov, conversionRate, commissionRate) use blended
+    (weighted) formulas — total(numerator) / total(denominator) — rather
+    than simple averages of per-offer rates.  This matches the frontend
+    behaviour in aggregateRows() and avgField().
+    """
     if not offers:
         return {"offers": [], "averages": {}, "totals": {}, "sampleSize": 0}
 
     totals = {}
     averages = {}
-    epc_values = []
 
-    if "epc" in metrics or not metrics:
-        vals = [float(o.get("epc") or 0) for o in offers]
-        epc_values = vals
-        averages["epc"] = round(sum(vals) / len(vals), 4) if vals else 0
-    if "aov" in metrics:
-        vals = [float(o.get("aov") or 0) for o in offers]
-        averages["aov"] = round(sum(vals) / len(vals), 2) if vals else 0
-    if "conversionRate" in metrics:
-        vals = [float(o.get("conversionRate") or 0) for o in offers]
-        averages["conversionRate"] = round(sum(vals) / len(vals), 4) if vals else 0
+    # ── Compute totals first (needed for blended rate calculations) ──
     if "orders" in metrics:
         totals["orders"] = sum(float(o.get("orders") or 0) for o in offers)
     if "clicks" in metrics:
         totals["clicks"] = sum(float(o.get("clicks") or 0) for o in offers)
     if "salesAmount" in metrics:
         totals["salesAmount"] = sum(float(o.get("salesAmount") or 0) for o in offers)
-    if "commissionRate" in metrics:
-        vals = [float(o.get("commissionRate") or 0) for o in offers]
-        averages["commissionRate"] = round(sum(vals) / len(vals), 4) if vals else 0
     if "affCommission" in metrics:
         totals["affCommission"] = sum(float(o.get("affiliatePayout") or o.get("payout") or 0) for o in offers)
+
+    # ── Blended rate fields ──
+    if "epc" in metrics or not metrics:
+        sales = totals.get("salesAmount", sum(float(o.get("salesAmount") or 0) for o in offers))
+        clicks = totals.get("clicks", sum(float(o.get("clicks") or 0) for o in offers))
+        averages["epc"] = round(sales / clicks, 4) if clicks > 0 else 0
+    if "aov" in metrics:
+        sales = totals.get("salesAmount", sum(float(o.get("salesAmount") or 0) for o in offers))
+        orders = totals.get("orders", sum(float(o.get("orders") or 0) for o in offers))
+        averages["aov"] = round(sales / orders, 2) if orders > 0 else 0
+    if "conversionRate" in metrics:
+        orders = totals.get("orders", sum(float(o.get("orders") or 0) for o in offers))
+        clicks = totals.get("clicks", sum(float(o.get("clicks") or 0) for o in offers))
+        averages["conversionRate"] = round(orders / clicks, 4) if clicks > 0 else 0
+    if "commissionRate" in metrics:
+        commission = totals.get("affCommission", sum(float(o.get("affiliatePayout") or o.get("payout") or 0) for o in offers))
+        sales = totals.get("salesAmount", sum(float(o.get("salesAmount") or 0) for o in offers))
+        averages["commissionRate"] = round(commission / sales, 4) if sales > 0 else 0
+
+    # ── Simple-average fields (per-offer counts/amounts, not rates) ──
     if "paymentCycle" in metrics:
         vals = [float(o.get("paymentCycle") or 0) for o in offers if float(o.get("paymentCycle") or 0) > 0]
         averages["paymentCycle"] = round(sum(vals) / len(vals), 1) if vals else 0
@@ -428,16 +441,6 @@ def _summarize_offers(offers: list, metrics: list, plan: dict) -> dict:
     if "atc" in metrics:
         vals = [float(o.get("atc") or 0) for o in offers]
         averages["atc"] = round(sum(vals) / len(vals), 4) if vals else 0
-
-    # Calculate weighted EPC
-    clicks_list = [float(o.get("clicks") or 0) for o in offers]
-    total_clicks = sum(clicks_list)
-    if epc_values and total_clicks > 0:
-        weighted_epc = sum(
-            epc_values[i] * clicks_list[i]
-            for i in range(len(offers))
-        ) / total_clicks
-        averages["weightedEpc"] = round(weighted_epc, 4)
 
     # Top 10 offers sorted by EPC for display
     sorted_offers = sorted(offers, key=lambda o: float(o.get("epc") or 0), reverse=True)
