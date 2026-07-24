@@ -16,6 +16,7 @@
   const offerGroupsByMerchantId = new Map();
   const originalOfferTiers = [];
   let tierOverrides = loadTierOverrides();
+  var _trendContextData = null;
   const sheetPaymentCycles = buildSheetPaymentCycleIndex();
   offers.forEach((offer, index) => {
     originalOfferTiers[index] = offer.tier || "";
@@ -3438,7 +3439,7 @@
   }
 
   function metricLabel(field) {
-    var labels = { epc: "EPC", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Commission", commissionRate: "Comm %", salesAmount: "Sales", dpv: "DPV", atc: "ATC" };
+    var labels = { epc: "EPC", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Commission", commissionRate: "Comm %", salesAmount: "Sales", revenue: "Revenue", affiliatePayout: "Commission", dpv: "DPV", atc: "ATC" };
     return labels[field] || field;
   }
 
@@ -3460,7 +3461,7 @@
     if (value == null) return "N/A";
     if (field === "conversionRate" || field === "commissionRate") return pct(value / 100);
     if (field === "epc") return epc(value);
-    if (field === "aov" || field === "salesAmount" || field === "affCommission") return money(value);
+    if (field === "aov" || field === "salesAmount" || field === "affCommission" || field === "affiliatePayout" || field === "revenue") return money(value);
     if (field === "orders" || field === "clicks" || field === "dpv" || field === "atc") return number(value).toLocaleString();
     return String(value);
   }
@@ -3518,7 +3519,7 @@
     var hasRecommendationKeywords = /recommend|push|focus|best|should we/.test(lower) ||
       /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(prompt) ||
       wantsRecommendationList(prompt);
-    var hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(prompt) ||
+    var hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到|对比|比较|和.*对比|与.*相比/.test(prompt) ||
       /\b(?:analyze|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade)\b/i.test(lower);
     var hasMetricSignal = extractMetricSortIntent(prompt) || extractMetricFilters(prompt).length > 0;
     var hasPaymentCycleFilter = !!extractPaymentCycleFilter(prompt);
@@ -3786,6 +3787,206 @@
     };
   }
 
+  function analyzeMerchantComparison(targets) {
+    if (!targets || targets.length < 2) return null;
+    var language = state.language || "en";
+    var zh = language === "zh";
+
+    // Resolve each target to an offer
+    var offers = [];
+    var notFound = [];
+    for (var i = 0; i < targets.length; i++) {
+      var o = findOfferByMerchantName(targets[i]);
+      if (o) offers.push(o); else notFound.push(targets[i]);
+    }
+    if (!offers.length) return null;
+
+    var fields = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
+    var entities = [];
+    for (var i = 0; i < offers.length; i++) {
+      var offer = offers[i];
+      var metrics = {};
+      for (var f = 0; f < fields.length; f++) metrics[fields[f]] = metricValueForOffer(offer, fields[f]);
+      entities.push({
+        name: offer.brand || offer.merchantName || targets[i],
+        tier: offer.tier || "Unknown",
+        category: offer.mainCategory || offer.category || "Uncategorized",
+        visualStatus: highlightStatus(offer),
+        paymentRisk: paymentRiskTextForOffer ? paymentRiskTextForOffer(offer) : "N/A",
+        metrics: metrics
+      });
+    }
+
+    // Compute pairwise deltas (first vs rest as reference)
+    var deltas = (entities.length >= 2) ? {} : null;
+    if (deltas) {
+      var ref = entities[0];
+      for (var f = 0; f < fields.length; f++) {
+        var field = fields[f];
+        var refVal = ref.metrics[field];
+        var otherVal = entities[1].metrics[field];
+        var abs = otherVal - refVal;
+        var pct = refVal !== 0 ? ((otherVal - refVal) / Math.abs(refVal)) * 100 : 0;
+        deltas[field] = {
+          abs: abs,
+          pct: pct,
+          better: abs > 0 ? entities[1].name : (abs < 0 ? ref.name : "tie")
+        };
+      }
+    }
+
+    return {
+      type: "merchant_comparison",
+      entities: entities,
+      targetCount: entities.length,
+      notFound: notFound.length ? notFound : null,
+      deltas: deltas
+    };
+  }
+
+  function computeTrend(monthlyMetrics, trendMetric) {
+    if (!monthlyMetrics || !monthlyMetrics.length || monthlyMetrics.length < 2) return null;
+    var language = state.language || "en";
+    var zh = language === "zh";
+
+    // Sort by month ASC (oldest first)
+    var sorted = monthlyMetrics.slice().sort(function(a, b) {
+      return (a.month || "").localeCompare(b.month || "");
+    });
+
+    // Determine which metrics to show
+    var allMetrics = ["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout"];
+    var displayMetrics = trendMetric
+      ? (allMetrics.indexOf(trendMetric) !== -1 ? [trendMetric] : allMetrics)
+      : allMetrics;
+
+    // Map affiliatePayout → commission for readability
+    var metricFieldMap = {
+      revenue: "revenue",
+      orders: "orders",
+      epc: "epc",
+      aov: "aov",
+      clicks: "clicks",
+      affiliatePayout: "affiliatePayout",
+      commission: "affiliatePayout"
+    };
+
+    // Build month data rows
+    var months = [];
+    for (var i = 0; i < sorted.length; i++) {
+      var row = sorted[i];
+      // If months > 12, trim to last 12
+      if (sorted.length > 12 && i < sorted.length - 12) continue;
+      var monthData = { month: row.month || "unknown" };
+      for (var m = 0; m < displayMetrics.length; m++) {
+        var field = metricFieldMap[displayMetrics[m]] || displayMetrics[m];
+        monthData[displayMetrics[m]] = Number(row[field]) || 0;
+      }
+      months.push(monthData);
+    }
+
+    // Compute deltas (month-over-month)
+    var deltas = {};
+    for (var i = 1; i < months.length; i++) {
+      var curr = months[i];
+      var prev = months[i - 1];
+      var monthKey = curr.month;
+      var monthDeltas = {};
+      for (var m = 0; m < displayMetrics.length; m++) {
+        var metric = displayMetrics[m];
+        var currVal = curr[metric] || 0;
+        var prevVal = prev[metric] || 0;
+        var abs = currVal - prevVal;
+        var pct = prevVal !== 0 ? ((currVal - prevVal) / Math.abs(prevVal)) * 100 : 0;
+        monthDeltas[metric] = {
+          abs: abs,
+          pct: pct,
+          dir: abs > 0 ? "up" : (abs < 0 ? "down" : "flat")
+        };
+      }
+      deltas[monthKey] = monthDeltas;
+    }
+
+    // Overall summary (first vs last)
+    var first = months[0];
+    var last = months[months.length - 1];
+    var summary = {};
+    for (var m = 0; m < displayMetrics.length; m++) {
+      var metric = displayMetrics[m];
+      var fVal = first[metric] || 0;
+      var lVal = last[metric] || 0;
+      var absDelta = lVal - fVal;
+      var pctDelta2 = fVal !== 0 ? ((lVal - fVal) / Math.abs(fVal)) * 100 : 0;
+      summary[metric] = {
+        first: fVal,
+        last: lVal,
+        abs: absDelta,
+        pct: pctDelta2,
+        dir: absDelta > 0 ? "up" : (absDelta < 0 ? "down" : "flat")
+      };
+    }
+
+    return {
+      type: "trend",
+      metrics: displayMetrics,
+      months: months,
+      deltas: deltas,
+      summary: summary
+    };
+  }
+
+  function generateTrendFromOfferSummary(offer, monthCount) {
+    if (!offer) return null;
+    var invoiceMonths = offer.invoiceMonths;
+    if (!Array.isArray(invoiceMonths) || invoiceMonths.length < 2) {
+      // Fall back to last N months if no invoiceMonths
+      var defaultCount = (typeof monthCount === "number" && monthCount >= 2) ? monthCount : 3;
+      var now = new Date();
+      invoiceMonths = [];
+      for (var i = defaultCount - 1; i >= 0; i--) {
+        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, "0");
+        invoiceMonths.push(y + "-" + m);
+      }
+    }
+    // Use the available months (at most 12), respecting requested count
+    var months = invoiceMonths.slice(-12);
+    if (typeof monthCount === "number" && monthCount >= 2 && months.length > monthCount) {
+      months = months.slice(-monthCount);
+    }
+    if (months.length < 2) return null;
+
+    // Aggregate totals from the offer
+    var totalRevenue = Number(offer.salesAmount) || 0;
+    var totalOrders = Number(offer.orders) || 0;
+    var totalClicks = Number(offer.clicks) || 0;
+    var totalCommission = Number(offer.affCommission || offer.affiliatePayout) || 0;
+    var n = months.length;
+
+    // Build monthly entries by distributing totals evenly across active months
+    var metricRows = [];
+    for (var i = 0; i < months.length; i++) {
+      var rev = totalRevenue / n;
+      var ord = totalOrders / n;
+      var clk = totalClicks / n;
+      var comm = totalCommission / n;
+
+      metricRows.push({
+        month: months[i],
+        revenue: Math.round(rev * 100) / 100,
+        orders: Math.round(ord),
+        epc: clk > 0 ? Math.round((rev / clk) * 10000) / 10000 : 0,
+        aov: ord > 0 ? Math.round((rev / ord) * 100) / 100 : 0,
+        clicks: Math.round(clk),
+        affiliatePayout: Math.round(comm * 100) / 100
+      });
+    }
+
+    // Let computeTrend do the heavy lifting (deltas, MoM, summary)
+    return computeTrend(metricRows, null);
+  }
+
   function analyzeCategory(name) {
     var catOffers = offersInCategory(name);
     if (!catOffers.length) return null;
@@ -3971,13 +4172,172 @@
     };
   }
 
+  // ── Multi-entity analysis (category & tier comparison) ──────────────────────
+
+  function analyzeMultiCategory(categories, tierFilter) {
+    if (!categories || !categories.length) return null;
+    var language = state.language || "en";
+    var zh = language === "zh";
+    var entities = [];
+
+    for (var i = 0; i < categories.length; i++) {
+      var catName = categories[i];
+      var catOffers = offersInCategory(catName);
+      if (tierFilter) {
+        catOffers = catOffers.filter(function(o) { return o.tier === tierFilter; });
+      }
+      if (!catOffers.length) continue;
+
+      // Compute aggregates for this category
+      var totalRevenue = 0, totalCommission = 0, totalClicks = 0, totalOrders = 0;
+      for (var j = 0; j < catOffers.length; j++) {
+        var o = catOffers[j];
+        totalRevenue += Number(o.salesAmount || 0);
+        totalCommission += Number(o.affCommission || 0);
+        totalClicks += Number(o.clicks || 0);
+        totalOrders += Number(o.orders || 0);
+      }
+      var avgEpc = totalClicks > 0 ? totalRevenue / totalClicks : 0;
+      var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
+      var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
+
+      // Top 5 brands by commission
+      var sorted = catOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
+      var topBrands = sorted.slice(0, 5).map(function(o) {
+        return {
+          name: o.brand || o.merchantName || "Unknown",
+          tier: o.tier || "",
+          epc: o.epc || 0,
+          aov: o.aov || 0,
+          orders: o.orders || 0,
+          affCommission: o.affCommission || 0
+        };
+      });
+
+      entities.push({
+        name: catName,
+        merchantCount: catOffers.length,
+        totals: {
+          revenue: totalRevenue,
+          commission: totalCommission,
+          clicks: totalClicks,
+          orders: totalOrders
+        },
+        averages: {
+          epc: avgEpc,
+          aov: avgAov,
+          cvr: avgCvr,
+          commissionRate: avgCommRate
+        },
+        topBrands: topBrands
+      });
+    }
+
+    if (!entities.length) return null;
+
+    return {
+      type: "multi_category",
+      target: {
+        names: categories,
+        tierFilter: tierFilter || null,
+        entityCount: entities.length
+      },
+      entities: entities
+    };
+  }
+
+  function analyzeMultiTier(tiers, categoryFilter) {
+    if (!tiers || !tiers.length) return null;
+    var language = state.language || "en";
+    var zh = language === "zh";
+    var entities = [];
+
+    for (var i = 0; i < tiers.length; i++) {
+      var tierName = tiers[i];
+      var tierOffers = offersInTier(tierName);
+      if (categoryFilter) {
+        tierOffers = tierOffers.filter(function(o) { return categoryMatches(o, categoryFilter); });
+      }
+      if (!tierOffers.length) continue;
+
+      // Compute aggregates for this tier
+      var totalRevenue = 0, totalCommission = 0, totalClicks = 0, totalOrders = 0;
+      for (var j = 0; j < tierOffers.length; j++) {
+        var o = tierOffers[j];
+        totalRevenue += Number(o.salesAmount || 0);
+        totalCommission += Number(o.affCommission || 0);
+        totalClicks += Number(o.clicks || 0);
+        totalOrders += Number(o.orders || 0);
+      }
+      var avgEpc = totalClicks > 0 ? totalRevenue / totalClicks : 0;
+      var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
+      var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
+
+      // Top 5 brands by commission
+      var sorted = tierOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
+      var topBrands = sorted.slice(0, 5).map(function(o) {
+        return {
+          name: o.brand || o.merchantName || "Unknown",
+          epc: o.epc || 0,
+          aov: o.aov || 0,
+          orders: o.orders || 0,
+          affCommission: o.affCommission || 0
+        };
+      });
+
+      // Category distribution within this tier
+      var catDist = {};
+      for (var j = 0; j < tierOffers.length; j++) {
+        var cat = tierOffers[j].mainCategory || tierOffers[j].category || "Uncategorized";
+        catDist[cat] = (catDist[cat] || 0) + 1;
+      }
+
+      entities.push({
+        name: tierName,
+        merchantCount: tierOffers.length,
+        totals: {
+          revenue: totalRevenue,
+          commission: totalCommission,
+          clicks: totalClicks,
+          orders: totalOrders
+        },
+        averages: {
+          epc: avgEpc,
+          aov: avgAov,
+          cvr: avgCvr,
+          commissionRate: avgCommRate
+        },
+        topBrands: topBrands,
+        categoryDistribution: catDist
+      });
+    }
+
+    if (!entities.length) return null;
+
+    return {
+      type: "multi_tier",
+      target: {
+        names: tiers,
+        categoryFilter: categoryFilter || null,
+        entityCount: entities.length
+      },
+      entities: entities
+    };
+  }
+
   // ── Analysis table rendering ────────────────────────────────────────────────
 
   function renderAnalysisTable(summary) {
     if (!summary) return "<p>No analysis data available.</p>";
     if (summary.type === "merchant") return renderMerchantAnalysisTable(summary);
+    if (summary.type === "merchant_comparison") return renderMerchantComparisonTable(summary);
     if (summary.type === "category") return renderCategoryAnalysisTable(summary);
     if (summary.type === "tier") return renderTierAnalysisTable(summary);
+    if (summary.type === "multi_category") return renderMultiCategoryAnalysisTable(summary);
+    if (summary.type === "multi_tier") return renderMultiTierAnalysisTable(summary);
+    if (summary.type === "trend") return renderTrendTable(summary);
     return "<p>Unknown analysis type.</p>";
   }
 
@@ -4050,6 +4410,543 @@
     }
 
     return html;
+  }
+
+  function renderMerchantComparisonTable(s) {
+    if (!s || !s.entities || s.entities.length < 1) return "<p>No data for comparison.</p>";
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var fields = ["epc", "aov", "conversionRate", "orders", "affCommission", "commissionRate"];
+    var names = s.entities.map(function(e) { return e.name; });
+    var title = zh ? "商户对比: " : "Merchant Comparison: ";
+    var hasDelta = s.deltas !== null && s.entities.length === 2;
+    var extraCol = hasDelta ? 1 : 0;
+
+    var html = "<div class=\"analysis-section\"><h4>" + escapeHtml(title + names.join(" vs ")) + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th>";
+    for (var i = 0; i < s.entities.length; i++) {
+      html += "<th>" + escapeHtml(names[i]) + "</th>";
+    }
+    if (hasDelta) html += "<th>" + (zh ? "差异" : "Delta") + "</th>";
+    html += "</tr></thead><tbody>";
+
+    for (var f = 0; f < fields.length; f++) {
+      var field = fields[f];
+      html += "<tr><td>" + metricLabel(field) + "</td>";
+      for (var i = 0; i < s.entities.length; i++) {
+        html += "<td>" + formatAnalysisMetric(s.entities[i].metrics[field] || 0, field) + "</td>";
+      }
+      if (hasDelta) {
+        var d = s.deltas[field];
+        var deltaText = "";
+        if (d.abs === 0) {
+          deltaText = "=";
+        } else if (Math.abs(d.pct) < 1) {
+          deltaText = "≈";
+        } else {
+          var sign = d.pct > 0 ? "+" : "";
+          var dir = d.pct > 0 ? " ↑" : " ↓";
+          deltaText = sign + d.pct.toFixed(1) + "%" + dir;
+        }
+        html += "<td" + (d.pct > 0 ? " class=\"up\"" : (d.pct < 0 ? " class=\"down\"" : "")) + ">" + escapeHtml(deltaText) + "</td>";
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+
+    // Merchant info line
+    var infoLines = [];
+    for (var i = 0; i < s.entities.length; i++) {
+      var e = s.entities[i];
+      infoLines.push(escapeHtml(e.name) + ": " + (e.tier || "?") + " · " + (e.category || "?"));
+    }
+    html += "<p class=\"comparison-info\">" + infoLines.join(" &nbsp;|&nbsp; ") + "</p>";
+
+    // NotFound warning
+    if (s.notFound && s.notFound.length) {
+      html += "<p class=\"warning\">" + (zh ? "未找到以下商户: " : "Not found: ") + escapeHtml(s.notFound.join(", ")) + "</p>";
+    }
+
+    html += "</div>";
+    return html;
+  }
+
+  function renderTrendTable(s) {
+    if (!s || !s.months || s.months.length < 2) return "<p>Trend data is not available.</p>";
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var metrics = s.metrics || [];
+    var months = s.months || [];
+    var hasDelta = Object.keys(s.deltas || {}).length > 0;
+
+    // Build table header
+    var html = "<div class=\"analysis-section\"><h4>" + (zh ? "趋势分析" : "Trend Analysis") + "</h4>";
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "月份" : "Month") + "</th>";
+    for (var m = 0; m < metrics.length; m++) {
+      html += "<th>" + metricLabel(metrics[m]) + "</th>";
+      if (hasDelta) html += "<th class=\"delta-col\">Δ</th>";
+    }
+    html += "</tr></thead><tbody>";
+
+    for (var i = 0; i < months.length; i++) {
+      var month = months[i];
+      html += "<tr><td>" + escapeHtml(month.month) + "</td>";
+      for (var m = 0; m < metrics.length; m++) {
+        var metric = metrics[m];
+        var val = month[metric] || 0;
+        html += "<td>" + formatAnalysisMetric(val, metric) + "</td>";
+        if (hasDelta && i > 0) {
+          var delta = s.deltas[month.month] ? s.deltas[month.month][metric] : null;
+          if (delta) {
+            var dir = delta.dir === "up" ? " ↑" : (delta.dir === "down" ? " ↓" : "");
+            var cls = delta.dir === "up" ? "up" : (delta.dir === "down" ? "down" : "");
+            var sign = delta.pct > 0 ? "+" : "";
+            html += "<td class=\"" + cls + "\">" + sign + delta.pct.toFixed(1) + "%" + dir + "</td>";
+          } else {
+            html += "<td>–</td>";
+          }
+        } else if (hasDelta) {
+          html += "<td>–</td>";
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+
+    // Summary line (first vs last)
+    if (s.summary) {
+      html += "<div class=\"trend-summary\"><p><strong>" + (zh ? "整体趋势: " : "Overall: ") + "</strong>";
+      var summaryParts = [];
+      for (var m = 0; m < metrics.length; m++) {
+        var metric = metrics[m];
+        var sum = s.summary[metric];
+        if (sum && sum.pct !== 0) {
+          var dir2 = sum.dir === "up" ? " ↑" : (sum.dir === "down" ? " ↓" : "");
+          var sign2 = sum.pct > 0 ? "+" : "";
+          summaryParts.push(metricLabel(metric) + " " + sign2 + sum.pct.toFixed(1) + "%" + dir2);
+        }
+      }
+      if (summaryParts.length) {
+        html += escapeHtml(summaryParts.join(", "));
+      } else {
+        html += "<em>" + (zh ? "各指标无明显变化" : "No significant change across metrics") + "</em>";
+      }
+      html += "</p></div>";
+    }
+
+    html += "</div>";
+    return html;
+  }
+
+  function extractMonthCount(promptText) {
+    if (!promptText) return 0;
+    var text = promptText.trim();
+    // Chinese: 近N个月, 最近N个月, 过去N个月, N can be Chinese or Arabic
+    var zhMatch = text.match(/(?:近|最近|过去|前)\s*([一二三四五六七八九十百零\d]+)\s*(?:个?月)/);
+    if (zhMatch) {
+      var numStr = zhMatch[1];
+      // Convert Chinese numerals to Arabic
+      var chnMap = {"一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9,"十":10,"百":100};
+      if (chnMap[numStr] !== undefined) return chnMap[numStr];
+      var n = parseInt(numStr, 10);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    // Chinese: 近半年 → 6, 近一年 → 12
+    var zhSpecial = text.match(/(?:近|最近|过去|前)\s*(半\s*年|一\s*年|1\s*年)/);
+    if (zhSpecial) {
+      var spec = zhSpecial[1].replace(/\s+/g, "");
+      if (spec === "半年") return 6;
+      if (spec === "一年" || spec === "1年") return 12;
+    }
+    // English: last / recent / past N months
+    var enMatch = text.match(/(?:last|recent|past)\s+(\d+)\s*(?:months?|month)/i);
+    if (enMatch) {
+      var n2 = parseInt(enMatch[1], 10);
+      if (!isNaN(n2) && n2 > 0) return n2;
+    }
+    return 0;
+  }
+
+  async function fetchMerchantMetrics(merchantId, months) {
+    if (!merchantId || typeof fetch !== "function") return null;
+    var id = String(merchantId).trim();
+    if (!id) return null;
+    months = (typeof months === "number" && months >= 1 && months <= 24) ? months : 12;
+    // Check cache first (merged merchantId + months)
+    var cacheKey = id + ":" + months;
+    if (dbMerchantCache.has(cacheKey)) {
+      return dbMerchantCache.get(cacheKey);
+    }
+    // Also check if a larger months bucket is cached (e.g., 12 available, need 3)
+    for (var entry of dbMerchantCache) {
+      var key = entry[0];
+      if (key === id || key.startsWith(id + ":")) {
+        var cachedMonths = parseInt(key.split(":")[1], 10);
+        if (cachedMonths >= months && cachedMonths >= 12) {
+          return entry[1];
+        }
+      }
+    }
+    try {
+      var response = await fetch(DB_MERCHANT_UI_API + "?merchantId=" + encodeURIComponent(id) + "&limit=1&months=" + months, { cache: "no-store" });
+      if (!response.ok) return null;
+      var payload = await response.json();
+      if (payload && payload.ok !== false) {
+        dbMerchantCache.set(cacheKey, payload);
+        return payload;
+      }
+    } catch (e) {
+      console.warn("[trend] fetch merchant metrics failed:", e);
+    }
+    return null;
+  }
+
+  function detectTrendEntityType(target) {
+    if (!target) return "merchant";
+    var t = tierFromPrompt(target);
+    if (t) return "tier";
+    var cat = categoryForPrompt(target);
+    if (cat && offersInCategory(cat).length > 0) return "category";
+    return "merchant";
+  }
+
+  function trendAnalysisTitle(entityType, target, zh) {
+    if (entityType === "tier") return (zh ? "层级趋势分析: " : "Tier Trend: ") + escapeHtml(target);
+    if (entityType === "category") return (zh ? "分类趋势分析: " : "Category Trend: ") + escapeHtml(target);
+    return (zh ? "趋势分析: " : "Trend: ") + escapeHtml(target);
+  }
+
+  function renderTrendLoadingPlaceholder(prompt, params, extra, language) {
+    var zh = language === "zh";
+    var analysisTarget = params && params.analysisTarget;
+    var trendMetric = params && params.trendMetric || null;
+    var entityType = detectTrendEntityType(analysisTarget);
+    var placeholderId = "trend-placeholder-" + Date.now();
+
+    var html = "<div id=\"" + placeholderId + "\" class=\"analysis-section\"><h4>" + trendAnalysisTitle(entityType, analysisTarget, zh) + "</h4>";
+    html += "<p><em>" + (zh ? "正在加载趋势数据…" : "Loading trend data…") + "</em></p></div>";
+
+    setTimeout(async function() {
+      var container = document.getElementById(placeholderId);
+      if (!container) return;
+
+      try {
+        // Extract month count from prompt (e.g., "近三个月" → 3)
+        var requestedMonthCount = extractMonthCount(prompt) || 0;
+        // For trend we need at least 2 months; if user asks for 1, fetch 2 anyway
+        var apiMonthCount = requestedMonthCount > 0 ? Math.max(requestedMonthCount, 2) : 12;
+        var trimTarget = requestedMonthCount > 0 ? Math.max(requestedMonthCount, 2) : 0;
+
+        var label = analysisTarget;
+        var monthlyMetrics = null;
+
+        // ════════════════════════════════════════════════
+        // Merchant trend path
+        // ════════════════════════════════════════════════
+        if (entityType === "merchant") {
+          var offer = analysisTarget ? findOfferByMerchantName(analysisTarget) : null;
+          if (!offer) {
+            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+              + (zh ? "未找到 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。" : "No data found for <strong>" + escapeHtml(analysisTarget) + "</strong>.")
+              + "</p></div>";
+            return;
+          }
+          label = offer.brand || offer.merchantName || analysisTarget;
+
+          var payload = await fetchMerchantMetrics(offer.merchantId, apiMonthCount);
+          monthlyMetrics = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
+          if (monthlyMetrics && trimTarget > 0 && monthlyMetrics.length > trimTarget) {
+            monthlyMetrics = monthlyMetrics.slice(0, trimTarget);
+          }
+
+          // Estimated fallback for merchant
+          if (!monthlyMetrics || monthlyMetrics.length < 2) {
+            var basicTrend = generateTrendFromOfferSummary(offer, requestedMonthCount);
+            if (basicTrend) {
+              renderEstimatedTrend(basicTrend, label, container, zh, language);
+              return;
+            }
+            renderMerchantInsufficientData(offer, analysisTarget, zh, container);
+            return;
+          }
+        }
+        // ════════════════════════════════════════════════
+        // Category trend path
+        // ════════════════════════════════════════════════
+        else if (entityType === "category") {
+          var catOffers = offersInCategory(analysisTarget);
+          if (!catOffers || catOffers.length === 0) {
+            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+              + (zh ? "未找到分类 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。" : "No data found for category <strong>" + escapeHtml(analysisTarget) + "</strong>.")
+              + "</p></div>";
+            return;
+          }
+          label = analysisTarget;
+          // Timed fetch: if DB unavailable, quickly fall back to estimated
+          monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(catOffers, apiMonthCount), 8000, null);
+          if (monthlyMetrics && trimTarget > 0 && monthlyMetrics.length > trimTarget) {
+            monthlyMetrics = monthlyMetrics.slice(0, trimTarget);
+          }
+
+          if (!monthlyMetrics || monthlyMetrics.length < 2) {
+            var catEstimated = estimateAggregatedTrend(catOffers, requestedMonthCount);
+            if (catEstimated) {
+              renderEstimatedTrend(catEstimated, label, container, zh, language);
+              return;
+            }
+            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+              + (zh ? "分类 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据不足以分析趋势（需要至少 2 个月的月度数据）。" : "Insufficient data for category <strong>" + escapeHtml(analysisTarget) + "</strong> trend (need at least 2 months).")
+              + "</p></div>";
+            return;
+          }
+        }
+        // ════════════════════════════════════════════════
+        // Tier trend path
+        // ════════════════════════════════════════════════
+        else if (entityType === "tier") {
+          var tierOffers = offersInTier(analysisTarget);
+          if (!tierOffers || tierOffers.length === 0) {
+            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+              + (zh ? "未找到层级 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。" : "No data found for tier <strong>" + escapeHtml(analysisTarget) + "</strong>.")
+              + "</p></div>";
+            return;
+          }
+          label = analysisTarget;
+          monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(tierOffers, apiMonthCount), 8000, null);
+          if (monthlyMetrics && trimTarget > 0 && monthlyMetrics.length > trimTarget) {
+            monthlyMetrics = monthlyMetrics.slice(0, trimTarget);
+          }
+
+          if (!monthlyMetrics || monthlyMetrics.length < 2) {
+            var tierEstimated = estimateAggregatedTrend(tierOffers, requestedMonthCount);
+            if (tierEstimated) {
+              renderEstimatedTrend(tierEstimated, label, container, zh, language);
+              return;
+            }
+            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+              + (zh ? "层级 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据不足以分析趋势（需要至少 2 个月的月度数据）。" : "Insufficient data for tier <strong>" + escapeHtml(analysisTarget) + "</strong> trend (need at least 2 months).")
+              + "</p></div>";
+            return;
+          }
+        } else {
+          container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+            + (zh ? "未知的分析目标类型。" : "Unknown analysis target type.")
+            + "</p></div>";
+          return;
+        }
+
+        // ════════════════════════════════════════════════
+        // Shared compute & render (all entity types)
+        // ════════════════════════════════════════════════
+        var summary = computeTrend(monthlyMetrics, trendMetric);
+        if (!summary) {
+          container.innerHTML = "<div class=\"analysis-section\"><p>" + (zh ? "无法计算趋势。" : "Unable to compute trend.") + "</p></div>";
+          return;
+        }
+
+        summary.target = label;
+
+        // Render the trend table in chat bubble
+        container.innerHTML = renderTrendTable(summary);
+
+        // Update the left context panel with trend chart
+        setContext(buildTrendContext(summary));
+
+        // Append narrative (non-blocking)
+        appendTrendNarrative(container, summary, zh, language);
+      } catch (error) {
+        console.error("[trend] async trend error:", error);
+        container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+          + (zh ? "趋势分析出错：" : "Trend analysis error: ") + escapeHtml(error.message || "unknown")
+          + "</p></div>";
+      }
+    }, 0);
+
+    return html;
+  }
+
+  // ── Trend helper: render estimated trend (used by all entity types) ──
+  function renderEstimatedTrend(summary, label, container, zh, language) {
+    summary.target = label;
+    summary.estimated = true;
+    container.innerHTML = "<div class=\"analysis-section\">"
+      + "<p class=\"info\" style=\"margin-bottom:8px;font-size:0.85em;color:#888;\">"
+      + (zh ? "⚡ 数据库未连接，趋势数据基于汇总历史估算。连接数据库后可获取精确月度指标。" : "⚡ Database not connected; trend data estimated from aggregate totals. Connect DB for precise monthly metrics.")
+      + "</p>"
+      + "</div>"
+      + renderTrendTable(summary);
+    setContext(buildTrendContext(summary));
+    appendTrendNarrative(container, summary, zh, language);
+  }
+
+  // ── Trend helper: merchant insufficient data fallback ──
+  function renderMerchantInsufficientData(offer, analysisTarget, zh, container) {
+    container.innerHTML = "<div class=\"analysis-section\"><h4>" + (zh ? "趋势分析: " : "Trend: ") + escapeHtml(offer.brand || offer.merchantName || analysisTarget) + "</h4>"
+      + "<p>" + (zh ? "数据不足以分析趋势（需要至少 2 个月的月度数据）。当前已知数据：" : "Insufficient data for trend analysis (need at least 2 months). Current snapshot: ")
+      + (zh ? "订单 " : "Orders ") + number(offer.orders || 0).toLocaleString()
+      + (zh ? "，Revenue " : ", Revenue ") + money(offer.salesAmount || 0)
+      + (zh ? "，EPC " : ", EPC ") + epc(offer.epc || 0)
+      + "</p>"
+      + "<p class=\"info\" style=\"font-size:0.85em;color:#888;\">"
+      + (zh ? "💡 提示：趋势分析需要数据库中的月度时间序列数据。请设置 OFFER_DB_* 环境变量或部署到生产环境。" : "💡 Trend analysis requires monthly time-series data from the database. Set OFFER_DB_* env vars or deploy to production.")
+      + "</p></div>";
+  }
+
+  // ── Trend helper: append narrative prose (non-blocking) ──
+  function appendTrendNarrative(container, summary, zh, language) {
+    setTimeout(async function() {
+      var narrativeId = "trend-narrative-" + Date.now();
+      var narrativeHtml = "<div id=\"" + narrativeId + "\" class=\"analysis-narrative-placeholder\"><p><em>" + (zh ? "正在生成趋势分析…" : "Generating trend analysis…") + "</em></p></div>";
+      container.innerHTML += narrativeHtml;
+      try {
+        var text = await fetchAnalysisText(summary, language);
+        if (!text) text = fallbackAnalysisText(summary, language);
+        var narrativeContainer = document.getElementById(narrativeId);
+        if (narrativeContainer) {
+          narrativeContainer.innerHTML = "";
+          renderAnalysisNarrative(narrativeContainer, text);
+        }
+      } catch (e) {
+        var fallbackText = fallbackAnalysisText(summary, language);
+        var fallbackContainer = document.getElementById(narrativeId);
+        if (fallbackContainer) fallbackContainer.innerHTML = "<p>" + escapeHtml(fallbackText) + "</p>";
+      }
+    }, 0);
+  }
+
+  // ── Trend helper: wrap a promise with a timeout ──
+  function timeoutPromise(promise, ms, fallback) {
+    return Promise.race([
+      promise,
+      new Promise(function(_, reject) {
+        setTimeout(function() { reject(new Error("timeout")); }, ms);
+      })
+    ]).catch(function() { return fallback; });
+  }
+
+  // ── Trend helper: fetch aggregated monthly metrics from DB for multiple offers ──
+  async function fetchAggregatedMonthlyMetrics(offers, monthCount) {
+    if (!offers || offers.length === 0) return null;
+
+    // Sort by revenue descending, take top 25 merchants for performance
+    var topOffers = offers.slice().sort(function(a, b) {
+      return (b.salesAmount || 0) - (a.salesAmount || 0);
+    }).slice(0, 25);
+
+    // Fetch metrics in batches to avoid overwhelming the API
+    var allMerchantRows = [];
+    var batchSize = 6;
+    for (var i = 0; i < topOffers.length; i += batchSize) {
+      var batch = topOffers.slice(i, i + batchSize);
+      var batchResults = await Promise.all(batch.map(function(o) {
+        return fetchMerchantMetrics(o.merchantId, monthCount);
+      }));
+      for (var r = 0; r < batchResults.length; r++) {
+        var payload = batchResults[r];
+        if (payload && Array.isArray(payload.monthlyAmazonMetrics)) {
+          allMerchantRows.push(payload.monthlyAmazonMetrics);
+        }
+      }
+    }
+
+    if (allMerchantRows.length === 0) return null;
+
+    // Aggregate by month: sum additive fields across all merchants
+    var monthMap = {};
+    for (var i = 0; i < allMerchantRows.length; i++) {
+      var merchantMonths = allMerchantRows[i];
+      for (var m = 0; m < merchantMonths.length; m++) {
+        var row = merchantMonths[m];
+        var monthKey = row.month;
+        if (!monthMap[monthKey]) {
+          monthMap[monthKey] = { month: monthKey, revenue: 0, orders: 0, clicks: 0, affiliatePayout: 0 };
+        }
+        monthMap[monthKey].revenue += Number(row.revenue) || 0;
+        monthMap[monthKey].orders += Number(row.orders) || 0;
+        monthMap[monthKey].clicks += Number(row.clicks) || 0;
+        monthMap[monthKey].affiliatePayout += Number(row.affiliatePayout || row.affCommission) || 0;
+      }
+    }
+
+    var result = Object.values(monthMap).sort(function(a, b) {
+      return a.month.localeCompare(b.month);
+    });
+
+    // Compute weighted rates for each month
+    for (var i = 0; i < result.length; i++) {
+      var entry = result[i];
+      entry.epc = entry.clicks > 0 ? entry.revenue / entry.clicks : 0;
+      entry.aov = entry.orders > 0 ? entry.revenue / entry.orders : 0;
+    }
+
+    return result;
+  }
+
+  // ── Trend helper: estimated aggregated trend from offer totals (no DB) ──
+  function estimateAggregatedTrend(offers, monthCount) {
+    if (!offers || offers.length === 0) return null;
+
+    // Collect all months across all offers' invoiceMonths, then aggregate
+    var monthMap = {};
+    for (var i = 0; i < offers.length; i++) {
+      var o = offers[i];
+      var invoiceMonths = o.invoiceMonths;
+      if (!Array.isArray(invoiceMonths) || invoiceMonths.length < 2) {
+        // Generate synthetic months if no invoiceMonths
+        var count = Math.max(typeof monthCount === "number" ? monthCount : 3, 2);
+        var now = new Date();
+        invoiceMonths = [];
+        for (var j = count - 1; j >= 0; j--) {
+          var d = new Date(now.getFullYear(), now.getMonth() - j, 1);
+          invoiceMonths.push(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"));
+        }
+      }
+
+      var months = invoiceMonths.slice();
+      if (typeof monthCount === "number" && monthCount >= 2 && months.length > monthCount) {
+        months = months.slice(-monthCount);
+      }
+      var n = months.length;
+      if (n < 1) continue;
+
+      var totalRevenue = Number(o.salesAmount) || 0;
+      var totalOrders = Number(o.orders) || 0;
+      var totalClicks = Number(o.clicks) || 0;
+      var totalCommission = Number(o.affCommission || o.affiliatePayout) || 0;
+
+      for (var j = 0; j < months.length; j++) {
+        if (!monthMap[months[j]]) {
+          monthMap[months[j]] = { month: months[j], revenue: 0, orders: 0, clicks: 0, affiliatePayout: 0 };
+        }
+        monthMap[months[j]].revenue += totalRevenue / n;
+        monthMap[months[j]].orders += totalOrders / n;
+        monthMap[months[j]].clicks += totalClicks / n;
+        monthMap[months[j]].affiliatePayout += totalCommission / n;
+      }
+    }
+
+    var monthKeys = Object.keys(monthMap).sort();
+    if (monthKeys.length < 2) return null;
+
+    if (typeof monthCount === "number" && monthCount >= 2 && monthKeys.length > monthCount) {
+      monthKeys = monthKeys.slice(-monthCount);
+    }
+
+    var metricRows = [];
+    for (var i = 0; i < monthKeys.length; i++) {
+      var m = monthMap[monthKeys[i]];
+      metricRows.push({
+        month: m.month,
+        revenue: Math.round(m.revenue * 100) / 100,
+        orders: Math.round(m.orders),
+        epc: m.clicks > 0 ? Math.round((m.revenue / m.clicks) * 10000) / 10000 : 0,
+        aov: m.orders > 0 ? Math.round((m.revenue / m.orders) * 100) / 100 : 0,
+        clicks: Math.round(m.clicks),
+        affiliatePayout: Math.round(m.affiliatePayout * 100) / 100
+      });
+    }
+
+    return computeTrend(metricRows, null);
   }
 
   function renderCategoryAnalysisTable(s) {
@@ -4153,6 +5050,220 @@
     return html;
   }
 
+  // ── Multi-entity rendering ───────────────────────────────────────────────────
+
+  function renderMultiCategoryAnalysisTable(s) {
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var entities = s.entities;
+    if (!entities || !entities.length) return "<p>" + (zh ? "无对比数据。" : "No comparison data.") + "</p>";
+
+    var entityNames = entities.map(function(e) { return e.name; });
+    var html = "";
+
+    // Title
+    var tierLabel = s.target.tierFilter ? " (" + s.target.tierFilter + ")" : "";
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "品类对比分析" : "Category Comparison") + escapeHtml(tierLabel) + "</h4>";
+
+    // Comparison table: rows = metrics, columns = categories
+    var metrics = [
+      { key: "merchantCount", label: zh ? "商户数" : "Merchants", fmt: "number" },
+      { key: "revenue", label: zh ? "总收入" : "Revenue", fmt: "money" },
+      { key: "commission", label: zh ? "总佣金" : "Commission", fmt: "money" },
+      { key: "orders", label: zh ? "总订单" : "Orders", fmt: "number" },
+      { key: "epc", label: "Avg EPC", fmt: "epc" },
+      { key: "aov", label: "Avg AOV", fmt: "money" },
+      { key: "cvr", label: "Avg CVR", fmt: "pct" },
+      { key: "commissionRate", label: zh ? "佣金率" : "Comm Rate", fmt: "pct" },
+    ];
+
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th>";
+    for (var i = 0; i < entityNames.length; i++) {
+      html += "<th>" + escapeHtml(entityNames[i]) + "</th>";
+    }
+    html += "</tr></thead><tbody>";
+
+    for (var m = 0; m < metrics.length; m++) {
+      var metric = metrics[m];
+      html += "<tr><td>" + metric.label + "</td>";
+      for (var i = 0; i < entities.length; i++) {
+        var val;
+        if (metric.key === "merchantCount") {
+          val = entities[i].merchantCount;
+        } else if (metric.key === "revenue" || metric.key === "commission" || metric.key === "orders" || metric.key === "clicks") {
+          val = entities[i].totals[metric.key];
+        } else {
+          val = entities[i].averages[metric.key];
+        }
+        if (metric.fmt === "money") {
+          html += "<td>" + money(val) + "</td>";
+        } else if (metric.fmt === "epc") {
+          html += "<td>" + epc(val) + "</td>";
+        } else if (metric.fmt === "pct") {
+          // cvr and commissionRate are stored as percentages
+          html += "<td>" + pct((metric.key === "commissionRate" ? val : val) / 100) + "</td>";
+        } else {
+          html += "<td>" + (typeof val === "number" ? number(val).toLocaleString() : escapeHtml(String(val))) + "</td>";
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table></div>";
+
+    // Each entity's top brands
+    for (var i = 0; i < entities.length; i++) {
+      var ent = entities[i];
+      html += "<div class=\"analysis-section\"><h4>" + escapeHtml(ent.name) + (zh ? " — Top 品牌" : " — Top Brands") + "</h4>";
+      if (ent.topBrands && ent.topBrands.length) {
+        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>" + (zh ? "Tier" : "Tier") + "</th><th>EPC</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+        for (var b = 0; b < ent.topBrands.length; b++) {
+          var brand = ent.topBrands[b];
+          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + escapeHtml(brand.tier) + "</td><td>" + epc(brand.epc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.affCommission) + "</td></tr>";
+        }
+        html += "</tbody></table>";
+      }
+      html += "</div>";
+    }
+
+    // Key findings
+    if (entities.length >= 2) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "差异发现" : "Key Differences") + "</h4><ul>";
+      // Compare orders
+      var byOrders = entities.slice().sort(function(a, b) { return b.totals.orders - a.totals.orders; });
+      if (byOrders[0].totals.orders > 0 && byOrders[1].totals.orders > 0) {
+        var ratio = (byOrders[0].totals.orders / byOrders[1].totals.orders).toFixed(1);
+        html += "<li>" + escapeHtml(byOrders[0].name) + (zh ? " 订单量 (" : " orders (") + number(byOrders[0].totals.orders).toLocaleString() + (zh ? ") 是 " : ") is ") + ratio + "x " + escapeHtml(byOrders[1].name) + (zh ? " 的 " : "'s ") + number(byOrders[1].totals.orders).toLocaleString() + (zh ? " 单" : " orders") + "</li>";
+      }
+      // Compare EPC
+      var byEpc = entities.slice().sort(function(a, b) { return b.averages.epc - a.averages.epc; });
+      if (byEpc[0].averages.epc > 0 && byEpc[1].averages.epc > 0) {
+        var epcDelta = ((byEpc[0].averages.epc - byEpc[1].averages.epc) / byEpc[1].averages.epc * 100).toFixed(1);
+        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
+      }
+      // Compare AOV
+      var byAov = entities.slice().sort(function(a, b) { return b.averages.aov - a.averages.aov; });
+      if (byAov[0].averages.aov > 0 && byAov[1].averages.aov > 0) {
+        var aovDelta = ((byAov[0].averages.aov - byAov[1].averages.aov) / byAov[1].averages.aov * 100).toFixed(1);
+        html += "<li>" + escapeHtml(byAov[0].name) + " Avg AOV (" + money(byAov[0].averages.aov) + (zh ? ") 比 " : ") is ") + aovDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byAov[1].name) + " (" + money(byAov[1].averages.aov) + ")</li>";
+      }
+      // Compare merchant count
+      var byCount = entities.slice().sort(function(a, b) { return b.merchantCount - a.merchantCount; });
+      if (byCount[0].merchantCount > byCount[1].merchantCount) {
+        html += "<li>" + escapeHtml(byCount[0].name) + (zh ? " 有 " : " has ") + byCount[0].merchantCount + (zh ? " 个商户，是 " : " merchants, vs ") + escapeHtml(byCount[1].name) + " " + byCount[1].merchantCount + (zh ? " 个" : " merchants") + "</li>";
+      }
+      html += "</ul></div>";
+    }
+
+    return html;
+  }
+
+  function renderMultiTierAnalysisTable(s) {
+    var lang = state.language || "en";
+    var zh = lang === "zh";
+    var entities = s.entities;
+    if (!entities || !entities.length) return "<p>" + (zh ? "无对比数据。" : "No comparison data.") + "</p>";
+
+    var entityNames = entities.map(function(e) { return e.name; });
+    var html = "";
+
+    var catLabel = s.target.categoryFilter ? " (" + escapeHtml(s.target.categoryFilter) + ")" : "";
+    html += "<div class=\"analysis-section\"><h4>" + (zh ? "Tier 对比分析" : "Tier Comparison") + catLabel + "</h4>";
+
+    // Comparison table: rows = metrics, columns = tiers
+    var metrics = [
+      { key: "merchantCount", label: zh ? "商户数" : "Merchants", fmt: "number" },
+      { key: "revenue", label: zh ? "总收入" : "Revenue", fmt: "money" },
+      { key: "commission", label: zh ? "总佣金" : "Commission", fmt: "money" },
+      { key: "orders", label: zh ? "总订单" : "Orders", fmt: "number" },
+      { key: "epc", label: "Avg EPC", fmt: "epc" },
+      { key: "aov", label: "Avg AOV", fmt: "money" },
+      { key: "cvr", label: "Avg CVR", fmt: "pct" },
+    ];
+
+    html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "指标" : "Metric") + "</th>";
+    for (var i = 0; i < entityNames.length; i++) {
+      html += "<th>" + escapeHtml(entityNames[i]) + "</th>";
+    }
+    html += "</tr></thead><tbody>";
+
+    for (var m = 0; m < metrics.length; m++) {
+      var metric = metrics[m];
+      html += "<tr><td>" + metric.label + "</td>";
+      for (var i = 0; i < entities.length; i++) {
+        var val;
+        if (metric.key === "merchantCount") {
+          val = entities[i].merchantCount;
+        } else if (["revenue", "commission", "orders", "clicks"].indexOf(metric.key) !== -1) {
+          val = entities[i].totals[metric.key];
+        } else {
+          val = entities[i].averages[metric.key];
+        }
+        if (metric.fmt === "money") {
+          html += "<td>" + money(val) + "</td>";
+        } else if (metric.fmt === "epc") {
+          html += "<td>" + epc(val) + "</td>";
+        } else if (metric.fmt === "pct") {
+          html += "<td>" + pct(val / 100) + "</td>";
+        } else {
+          html += "<td>" + (typeof val === "number" ? number(val).toLocaleString() : escapeHtml(String(val))) + "</td>";
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table></div>";
+
+    // Each tier's top brands
+    for (var i = 0; i < entities.length; i++) {
+      var ent = entities[i];
+      html += "<div class=\"analysis-section\"><h4>" + escapeHtml(ent.name) + (zh ? " — Top 品牌" : " — Top Brands") + "</h4>";
+      if (ent.topBrands && ent.topBrands.length) {
+        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>EPC</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+        for (var b = 0; b < ent.topBrands.length; b++) {
+          var brand = ent.topBrands[b];
+          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + epc(brand.epc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.affCommission) + "</td></tr>";
+        }
+        html += "</tbody></table>";
+      }
+      html += "</div>";
+    }
+
+    // Category distribution for each tier (only when no category filter)
+    if (!s.target.categoryFilter) {
+      for (var i = 0; i < entities.length; i++) {
+        var ent = entities[i];
+        if (ent.categoryDistribution) {
+          var cats = Object.keys(ent.categoryDistribution).sort(function(a, b) { return ent.categoryDistribution[b] - ent.categoryDistribution[a]; });
+          if (cats.length) {
+            html += "<div class=\"analysis-section\"><h5>" + escapeHtml(ent.name) + (zh ? " 品类分布" : " Category Distribution") + "</h5>";
+            html += "<table class=\"analysis-table\"><thead><tr><th>" + (zh ? "品类" : "Category") + "</th><th>" + (zh ? "商户数" : "Count") + "</th></tr></thead><tbody>";
+            for (var c = 0; c < cats.length; c++) {
+              html += "<tr><td>" + escapeHtml(cats[c]) + "</td><td>" + ent.categoryDistribution[cats[c]] + "</td></tr>";
+            }
+            html += "</tbody></table></div>";
+          }
+        }
+      }
+    }
+
+    // Key findings
+    if (entities.length >= 2) {
+      html += "<div class=\"analysis-section\"><h4>" + (zh ? "差异发现" : "Key Differences") + "</h4><ul>";
+      var byOrders = entities.slice().sort(function(a, b) { return b.totals.orders - a.totals.orders; });
+      if (byOrders[0].totals.orders > 0 && byOrders[1].totals.orders > 0) {
+        var ratio = (byOrders[0].totals.orders / byOrders[1].totals.orders).toFixed(1);
+        html += "<li>" + escapeHtml(byOrders[0].name) + (zh ? " 订单量 (" : " orders (") + number(byOrders[0].totals.orders).toLocaleString() + (zh ? ") 是 " : ") is ") + ratio + "x " + escapeHtml(byOrders[1].name) + (zh ? " 的 " : "'s ") + number(byOrders[1].totals.orders).toLocaleString() + (zh ? " 单" : " orders") + "</li>";
+      }
+      var byEpc = entities.slice().sort(function(a, b) { return b.averages.epc - a.averages.epc; });
+      if (byEpc[0].averages.epc > 0 && byEpc[1].averages.epc > 0) {
+        var epcDelta = ((byEpc[0].averages.epc - byEpc[1].averages.epc) / byEpc[1].averages.epc * 100).toFixed(1);
+        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
+      }
+      html += "</ul></div>";
+    }
+
+    return html;
+  }
+
   // ── LLM analysis text (async) ──────────────────────────────────────────────
 
   async function fetchAnalysisText(summary, language) {
@@ -4223,19 +5334,208 @@
       if (summary.segments) {
         lines.push(zh ? ("头部 " + summary.segments.head.count + " 个商户贡献主要佣金，尾部 " + summary.segments.tail.count + " 个商户可能需关注。") : ("Top " + summary.segments.head.count + " merchants drive most commission; bottom " + summary.segments.tail.count + " may need attention."));
       }
+    } else if (summary.type === "multi_category") {
+      var entities = summary.entities;
+      if (entities && entities.length) {
+        var names = entities.map(function(e) { return e.name; });
+        if (summary.target.tierFilter) {
+          lines.push(zh
+            ? (escapeHtml(names.join(" vs ")) + " 在 " + summary.target.tierFilter + " 中的对比分析：")
+            : ("Comparison of " + escapeHtml(names.join(" vs ")) + " in " + summary.target.tierFilter + ":"));
+        } else {
+          lines.push(zh
+            ? (escapeHtml(names.join(" vs ")) + " 品类对比分析：")
+            : ("Category comparison: " + escapeHtml(names.join(" vs "))));
+        }
+        for (var i = 0; i < entities.length; i++) {
+          var e = entities[i];
+          lines.push(escapeHtml(e.name) + (zh ? ": " + e.merchantCount + " 个商户，总订单 " : ": " + e.merchantCount + " merchants, ") + number(e.totals.orders).toLocaleString() + (zh ? " 单，EPC " : " orders, EPC ") + epc(e.averages.epc) + (zh ? "，AOV " : ", AOV ") + money(e.averages.aov));
+        }
+        // Highlight the leader by orders
+        var byOrders = entities.slice().sort(function(a, b) { return b.totals.orders - a.totals.orders; });
+        if (byOrders.length >= 2 && byOrders[0].totals.orders > 0 && byOrders[1].totals.orders > 0) {
+          var ratioOrders = (byOrders[0].totals.orders / byOrders[1].totals.orders).toFixed(1);
+          lines.push(zh
+            ? (escapeHtml(byOrders[0].name) + " 的订单量是 " + escapeHtml(byOrders[1].name) + " 的 " + ratioOrders + " 倍。")
+            : (escapeHtml(byOrders[0].name) + " has " + ratioOrders + "x the orders of " + escapeHtml(byOrders[1].name) + "."));
+        }
+      }
+    } else if (summary.type === "multi_tier") {
+      var entities2 = summary.entities;
+      if (entities2 && entities2.length) {
+        var names2 = entities2.map(function(e) { return e.name; });
+        if (summary.target.categoryFilter) {
+          lines.push(zh
+            ? (escapeHtml(summary.target.categoryFilter) + " 品类在 " + escapeHtml(names2.join(" vs ")) + " 中的对比分析：")
+            : ("Comparison of " + escapeHtml(summary.target.categoryFilter) + " across " + escapeHtml(names2.join(" vs ")) + ":"));
+        } else {
+          lines.push(zh
+            ? (escapeHtml(names2.join(" vs ")) + " 层级对比分析：")
+            : ("Tier comparison: " + escapeHtml(names2.join(" vs "))));
+        }
+        for (var i = 0; i < entities2.length; i++) {
+          var e2 = entities2[i];
+          lines.push(escapeHtml(e2.name) + (zh ? ": " + e2.merchantCount + " 个商户，总订单 " : ": " + e2.merchantCount + " merchants, ") + number(e2.totals.orders).toLocaleString() + (zh ? " 单，EPC " : " orders, EPC ") + epc(e2.averages.epc));
+        }
+        var byOrders2 = entities2.slice().sort(function(a, b) { return b.totals.orders - a.totals.orders; });
+        if (byOrders2.length >= 2 && byOrders2[0].totals.orders > 0 && byOrders2[1].totals.orders > 0) {
+          var ratioOrders2 = (byOrders2[0].totals.orders / byOrders2[1].totals.orders).toFixed(1);
+          lines.push(zh
+            ? (escapeHtml(byOrders2[0].name) + " 的订单量是 " + escapeHtml(byOrders2[1].name) + " 的 " + ratioOrders2 + " 倍。")
+            : (escapeHtml(byOrders2[0].name) + " has " + ratioOrders2 + "x the orders of " + escapeHtml(byOrders2[1].name) + "."));
+        }
+      }
+    } else if (summary.type === "merchant_comparison") {
+      var ents = summary.entities;
+      if (ents && ents.length) {
+        var names = ents.map(function(e) { return e.name; });
+        lines.push(zh ? (escapeHtml(names.join(" vs ")) + " 商户对比分析：") : ("Merchant comparison: " + escapeHtml(names.join(" vs ")) + ":"));
+        for (var i = 0; i < ents.length; i++) {
+          var e = ents[i];
+          lines.push(escapeHtml(e.name) + (zh ? ": " + e.tier + " · " + e.category + "，EPC " : ": " + e.tier + " · " + e.category + ", EPC ") + epc(e.metrics.epc || 0) + (zh ? "，AOV " : ", AOV ") + money(e.metrics.aov || 0) + (zh ? "，订单 " : ", orders ") + number(e.metrics.orders || 0).toLocaleString());
+        }
+        if (summary.deltas) {
+          var bestDelta = null, bestField = "";
+          for (var key in summary.deltas) {
+            if (!Object.prototype.hasOwnProperty.call(summary.deltas, key)) continue;
+            var d = summary.deltas[key];
+            if (d.abs !== 0 && (!bestDelta || Math.abs(d.pct) > Math.abs(bestDelta.pct))) {
+              bestDelta = d;
+              bestField = key;
+            }
+          }
+          if (bestDelta) {
+            lines.push(zh
+              ? ("最大差异在 " + metricLabel(bestField) + "：" + escapeHtml(bestDelta.better) + " 领先 " + (bestDelta.pct > 0 ? "+" : "") + bestDelta.pct.toFixed(1) + "%")
+              : ("Biggest gap in " + metricLabel(bestField) + ": " + escapeHtml(bestDelta.better) + " leads by " + (bestDelta.pct > 0 ? "+" : "") + bestDelta.pct.toFixed(1) + "%"));
+          }
+        }
+        if (summary.notFound) {
+          lines.push(zh ? "未找到以下商户: " + escapeHtml(summary.notFound.join(", ")) : "Not found: " + escapeHtml(summary.notFound.join(", ")));
+        }
+      }
+    } else if (summary.type === "trend") {
+      if (summary.target) {
+        lines.push(zh ? (escapeHtml(summary.target) + " 趋势分析：") : (escapeHtml(summary.target) + " trend analysis:"));
+      }
+      if (summary.months && summary.months.length >= 2) {
+        var firstMonth = summary.months[0];
+        var lastMonth = summary.months[summary.months.length - 1];
+        lines.push(zh
+          ? ("从 " + escapeHtml(firstMonth.month) + " 到 " + escapeHtml(lastMonth.month) + "，共 " + summary.months.length + " 个月的数据。")
+          : ("From " + escapeHtml(firstMonth.month) + " to " + escapeHtml(lastMonth.month) + ", " + summary.months.length + " months of data."));
+      }
+      if (summary.summary) {
+        var sumKeys = Object.keys(summary.summary);
+        for (var i = 0; i < sumKeys.length; i++) {
+          var s = summary.summary[sumKeys[i]];
+          if (s && s.dir !== "flat") {
+            lines.push(metricLabel(sumKeys[i]) + (zh ? " 整体" : " overall ") + (s.dir === "up" ? (zh ? "上升" : "up") : (zh ? "下降" : "down")) + " " + Math.abs(s.pct).toFixed(1) + "%");
+          }
+        }
+      }
+      if (!lines.length) {
+        lines.push(zh ? "各指标趋势平稳，无明显变化。" : "Metrics are stable with no significant trend changes.");
+      }
     }
     return lines.join("<br>");
   }
 
   // ── Analysis answer router ──────────────────────────────────────────────────
 
-  function analysisAnswer(prompt, params) {
+  function analysisAnswer(prompt, params, extra) {
     console.log("[analysis] analysisAnswer called, prompt:", prompt, "params:", JSON.stringify(params));
     try {
       var language = responseLanguageFor(prompt);
       var zh = language === "zh";
       var analysisType = params.analysisType;
       var analysisTarget = params.analysisTarget;
+      var trendMetric = params.trendMetric || null;
+
+      // Frontend fallback: detect trend intent from time range / trend keywords
+      // (catches cases where LLM didn't return analysisType: "trend")
+      if ((!analysisType || analysisType === "merchant") && analysisTarget) {
+        var hasTrendTimeRange = extractMonthCount(prompt) > 0 || /趋势|trend/i.test(prompt);
+        if (hasTrendTimeRange) analysisType = "trend";
+      }
+
+      // Trend analysis: async path, returns placeholder immediately
+      if (analysisType === "trend") {
+        return renderTrendLoadingPlaceholder(prompt, params, extra, language);
+      }
+
+      // Multi-entity detection:
+      // 1. LLM provided analysisTargets array → use it
+      // 2. Frontend extracted multiple categories from prompt → multi-category analysis
+      // 3. Frontend extracted multiple tiers from prompt → multi-tier analysis
+      var llmTargets = params.analysisTargets;
+      var frontendCategories = (extra && extra.categories) || [];
+      var frontendTiers = (extra && extra.tiers) || [];
+      var hasMultiTargets = (llmTargets && Array.isArray(llmTargets) && llmTargets.length > 1)
+        || frontendCategories.length > 1
+        || frontendTiers.length > 1;
+
+      if (hasMultiTargets) {
+        // Determine the effective entities and filters
+        var entities = llmTargets && Array.isArray(llmTargets) && llmTargets.length > 1
+          ? llmTargets : (frontendCategories.length > 1 ? frontendCategories : frontendTiers);
+        var isMerchantComparison = analysisType === "merchant" && entities && Array.isArray(entities) && entities.length > 1;
+        var isCategoryComparison = (analysisType === "category" || frontendCategories.length > 1) && !isMerchantComparison;
+        var isTierComparison = (analysisType === "tier" || frontendTiers.length > 1) && !isMerchantComparison;
+        var tierFilter = frontendTiers.length > 0 ? frontendTiers[0] : null;
+        var categoryFilter = frontendCategories.length > 0 ? frontendCategories[0] : null;
+
+        // If LLM said analysisType is category but entities came from tiers, swap
+        if (frontendTiers.length > 1 && frontendCategories.length <= 1) {
+          isCategoryComparison = false;
+          isTierComparison = true;
+          tierFilter = null;
+          categoryFilter = frontendCategories.length > 0 ? frontendCategories[0] : null;
+        }
+
+        console.log("[analysis] multi-entity:", entities, "isCategoryComparison:", isCategoryComparison, "tierFilter:", tierFilter, "categoryFilter:", categoryFilter);
+
+        var summary = null;
+        if (isMerchantComparison) {
+          summary = analyzeMerchantComparison(entities);
+        } else if (isCategoryComparison || (!isTierComparison && analysisType !== "tier")) {
+          summary = analyzeMultiCategory(entities, tierFilter);
+        } else {
+          summary = analyzeMultiTier(entities, categoryFilter);
+        }
+
+        if (!summary) {
+          return zh
+            ? ("未找到 <strong>" + escapeHtml(entities.join(" vs ")) + "</strong> 的数据。请检查名称是否正确。")
+            : ("No data found for <strong>" + escapeHtml(entities.join(" vs ")) + "</strong>. Please check the names.");
+        }
+
+        // No context set for multi-entity (too broad), render directly
+        var tableHtml = renderAnalysisTable(summary);
+        var narrativeId = "analysis-narrative-" + Date.now();
+        var loadingText = zh ? "正在生成分析…" : "Generating analysis…";
+        var html = tableHtml + "<div id=\"" + narrativeId + "\" class=\"analysis-narrative-placeholder\"><p><em>" + loadingText + "</em></p></div>";
+
+        setTimeout(function() {
+          var container = document.getElementById(narrativeId);
+          if (!container) { console.warn("[analysis] container not found:", narrativeId); return; }
+          (async function() {
+            try {
+              var text = await fetchAnalysisText(summary, language);
+              if (!text) text = fallbackAnalysisText(summary, language);
+              container.innerHTML = "";
+              renderAnalysisNarrative(container, text);
+            } catch (e) {
+              console.error("[analysis] async narrative error:", e);
+              container.innerHTML = "<p>" + escapeHtml(fallbackAnalysisText(summary, language)) + "</p>";
+            }
+          })();
+        }, 0);
+
+        return html;
+      }
+
+      // ── Single-entity path (original logic) ──
 
       // If analysis type or target not specified, try to infer from prompt.
       // LLMs sometimes return {analysisType:"merchant"} without analysisTarget,
@@ -4344,7 +5644,10 @@
     const metricSort = extractMetricSortIntent(userMessage);
     const metricFilters = extractMetricFilters(userMessage);
     const keywordRequest = keywordSearchRequest(userMessage);
-    if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category") return zhIntent;
+    // Analysis keywords take priority over zhIntent's tier/merchant detection.
+    // e.g. "分析Tier2的beauty和electronics" should route to analysis, not tier.
+    const hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到|对比|比较|和.*对比|与.*相比/.test(userMessage) || /\b(?:analyze|analyse|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade|compare|comparison|vs|versus)\b/i.test(lower);
+    if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category" && !hasAnalysisKeywords) return zhIntent;
     // keyword 搜索：仅当没有匹配到类别时，才优先于 merchant/category
     if (!category && keywordRequest && hasKeywordSearchIntent(userMessage, keywordRequest, { category })) return "keyword";
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
@@ -4353,8 +5656,8 @@
     if (metricSort) return "recommendation";
     if (metricFilters.length) return "recommendation";
     if (/recommend|push|focus|best|should we/.test(lower) || /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(userMessage) || wantsRecommendationList(userMessage)) return "recommendation";
-    if (/分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到/.test(userMessage)) return "analysis";
-    if (/\b(?:analyze|analyse|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade)\b/i.test(lower)) return "analysis";
+    if (/分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到|对比|比较|和.*对比|与.*相比/.test(userMessage)) return "analysis";
+    if (/\b(?:analyze|analyse|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade|compare|comparison|vs|versus)\b/i.test(lower)) return "analysis";
     if (tierFromPrompt(userMessage)) return "tier";
     if (category || zhIntent === "category") return "category";
     if (contextFollowup(lower)) return "merchant";
@@ -4693,6 +5996,15 @@
     return { type: "payment", items: rows, summary, filters: { prompt } };
   }
 
+  function buildTrendContext(summary) {
+    return {
+      type: "trend",
+      summary: summary,
+      target: summary.target || "",
+      estimated: summary.estimated || false
+    };
+  }
+
   function monthStatus(month, rows) {
     const checkDate = calculatePaymentAvailabilityDate(month);
     const checkable = dateOnly(checkDate) ? PAYMENT_TODAY >= dateOnly(checkDate) : false;
@@ -4908,7 +6220,8 @@
       category: [t("context.categoryTitle", "Category Overview"), query],
       keyword: ["Keyword Search Overview", query],
       tier: [t("context.tierTitle", "Tier Overview"), query],
-      payment: [t("context.paymentTitle", "Payment Overview"), query]
+      payment: [t("context.paymentTitle", "Payment Overview"), query],
+      trend: [t("context.trendTitle", "Trend Overview"), query]
     };
     const [title, subtitle] = titles[context.type] || titles.default;
     els.contextTitle.textContent = title;
@@ -4928,11 +6241,147 @@
       els.recBox.innerHTML = renderRecommendationStats(buildRecommendationContext(topRecommendations(context.items, { includeTier4: true, includeBlack: true }), context.filters));
     } else if (context.type === "recommendation") {
       els.recBox.innerHTML = renderRecommendationStats(context);
+    } else if (context.type === "trend") {
+      els.recBox.innerHTML = renderTrendContext(context.summary);
+      bindTrendChartControls();
     } else {
       const rows = getFiltered();
       const top = topRecommendations(rows, {});
       els.recBox.innerHTML = renderRecommendationStats(buildRecommendationContext(top, {}));
     }
+  }
+
+  /* ── Trend Context Panel (left panel SVG chart) ── */
+
+  function trendChartDataRows(summary, metricKey) {
+    if (!summary || !summary.months) return [];
+    var zh = state.language === "zh";
+    var monthNames = zh
+      ? []  // will use number + "月" format
+      : ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return summary.months.map(function(m) {
+      var monthStr = m.month || "";
+      var parts = monthStr.split("-");
+      var monthNum = parseInt(parts[1], 10);
+      var shortLabel;
+      if (zh) {
+        shortLabel = monthNum + "月";
+      } else {
+        shortLabel = (monthNum >= 1 && monthNum <= 12) ? monthNames[monthNum - 1] : monthStr;
+      }
+      var val = m[metricKey] || 0;
+      return {
+        label: monthStr,
+        shortLabel: shortLabel,
+        value: val,
+        detail: metricLabel(metricKey) + ": " + formatTargetMetricValue(metricKey, val)
+      };
+    });
+  }
+
+  function trendTrendChartSvg(summary, metricKey) {
+    var rows = trendChartDataRows(summary, metricKey);
+    if (!rows.length) return "";
+    var metric = { key: metricKey, label: metricLabel(metricKey) };
+    return targetTrendSvgHtml(rows, metric, "Monthly");
+  }
+
+  function formatTrendValue(val, metric) {
+    if (val == null) return "—";
+    if (metric === "revenue" || metric === "aov") return "$" + Number(val).toLocaleString(undefined, {maximumFractionDigits: 0});
+    if (metric === "epc") return "$" + Number(val).toFixed(2);
+    if (metric === "clicks" || metric === "orders") return Number(val).toLocaleString();
+    if (metric === "affiliatePayout" || metric === "commission") return "$" + Number(val).toLocaleString(undefined, {maximumFractionDigits: 0});
+    return Number(val).toLocaleString();
+  }
+
+  function renderTrendContext(s) {
+    _trendContextData = s;
+    var zh = state.language === "zh";
+    var metrics = s.metrics || ["revenue", "orders", "epc", "aov"];
+    var defaultMetric = metrics.indexOf("revenue") !== -1 ? "revenue" : metrics[0];
+
+    // Metric switch buttons
+    var btnHtml = "";
+    for (var i = 0; i < metrics.length; i++) {
+      var m = metrics[i];
+      var active = m === defaultMetric ? " active" : "";
+      btnHtml += "<button class=\"trend-chart-btn" + active + "\" data-trend-metric=\"" + m + "\">" + metricLabel(m) + "</button>";
+    }
+
+    // SVG chart
+    var svgHtml = trendTrendChartSvg(s, defaultMetric);
+
+    // Summary cards (first vs last month comparison)
+    var cardsHtml = "";
+    if (s.summary) {
+      var cardItems = [];
+      for (var i = 0; i < metrics.length; i++) {
+        var m = metrics[i];
+        var sum = s.summary[m];
+        if (!sum) continue;
+        var dir = sum.dir === "up" ? "↑" : (sum.dir === "down" ? "↓" : "→");
+        var cls = sum.dir === "up" ? "up" : (sum.dir === "down" ? "down" : "flat");
+        var firstVal = formatTrendValue(sum.first, m);
+        var lastVal = formatTrendValue(sum.last, m);
+        var pctText = sum.pct !== 0 ? (sum.pct > 0 ? "+" : "") + sum.pct.toFixed(1) + "%" : "—";
+        cardItems.push("<div class=\"trend-card\">"
+          + "<div class=\"trend-card-label\">" + metricLabel(m) + "</div>"
+          + "<div class=\"trend-card-values\">"
+          + "<span class=\"trend-card-first\">" + firstVal + "</span>"
+          + "<span class=\"trend-card-arrow\">→</span>"
+          + "<span class=\"trend-card-last\">" + lastVal + "</span>"
+          + "</div>"
+          + "<div class=\"trend-card-delta " + cls + "\">" + dir + " " + pctText + "</div>"
+          + "</div>");
+      }
+      if (cardItems.length) {
+        cardsHtml = "<div class=\"trend-card-grid\">" + cardItems.join("") + "</div>";
+      }
+    }
+
+    // Estimated notice
+    var noticeHtml = "";
+    if (s.estimated) {
+      noticeHtml = "<p class=\"trend-estimated-notice\">⚡ " + (zh ? "基于汇总历史估算（数据库未连接）" : "Estimated from aggregate data (DB not connected)") + "</p>";
+    }
+
+    // Detail table (compact)
+    var tableHtml = renderTrendTable(s);
+
+    return "<div class=\"trend-context-wrap\" data-trend-metric=\"" + defaultMetric + "\">"
+      + noticeHtml
+      + "<div class=\"trend-chart-controls\">" + btnHtml + "</div>"
+      + "<div class=\"trend-chart-svg\" data-trend-chart>" + svgHtml + "</div>"
+      + cardsHtml
+      + "<div class=\"trend-detail-table\">" + tableHtml + "</div>"
+      + "</div>";
+  }
+
+  function bindTrendChartControls() {
+    if (!els.recBox || els.recBox._trendBound) return;
+    els.recBox._trendBound = true;
+    els.recBox.addEventListener("click", function(e) {
+      var btn = e.target.closest("[data-trend-metric]");
+      if (!btn) return;
+      var metricKey = btn.getAttribute("data-trend-metric");
+      if (!metricKey || !_trendContextData) return;
+      var wrap = els.recBox.querySelector(".trend-context-wrap");
+      if (!wrap) return;
+
+      // Update active button state
+      var allBtns = wrap.querySelectorAll(".trend-chart-btn");
+      for (var i = 0; i < allBtns.length; i++) {
+        allBtns[i].classList.toggle("active", allBtns[i].getAttribute("data-trend-metric") === metricKey);
+      }
+      wrap.setAttribute("data-trend-metric", metricKey);
+
+      // Re-render SVG chart
+      var chartContainer = wrap.querySelector("[data-trend-chart]");
+      if (chartContainer) {
+        chartContainer.innerHTML = trendTrendChartSvg(_trendContextData, metricKey);
+      }
+    });
   }
 
   function paymentByMonthText(offer) {
@@ -6006,7 +7455,7 @@
     const exact = exactFromLLM
       ? offers.find(function(o) { return o.merchantId === exactFromLLM; }) || null
       : findByMerchantId(prompt);
-    if (exact) return merchantOverview(exact, "", language);
+    if (exact && intent !== "analysis") return merchantOverview(exact, "", language);
 
     // Payment cycle filter: LLM-extracted or regex
     const pcfLLM = p.paymentCycleFilter;
@@ -6080,7 +7529,7 @@
     }
 
     if (intent === "analysis") {
-      return analysisAnswer(prompt, p);
+      return analysisAnswer(prompt, p, { categories: categories, tiers: tiers });
     }
 
     if (!llmIndicatesRecommendation && intent !== "merchant" && hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
@@ -6229,25 +7678,55 @@
     return closestMatchesHtml(matches, prompt);
   }
 
-  function dbMerchantProductRows(products = []) {
-    return products.slice(0, 5).map((product) => {
+  function dbMerchantProductRows(products = [], monthlyMetrics = []) {
+    // Build ASIN → latest-month metrics map
+    var productMetrics = {};
+    if (monthlyMetrics && monthlyMetrics.length) {
+      var latest = monthlyMetrics[0];
+      if (latest && latest.asinMetrics) {
+        for (var key in latest.asinMetrics) {
+          if (Object.prototype.hasOwnProperty.call(latest.asinMetrics, key)) {
+            productMetrics[key] = latest.asinMetrics[key];
+          }
+        }
+      }
+    }
+    return products.slice(0, 8).map((product) => {
       const asin = product.asin || "-";
       const name = product.productName || product.title || "Unnamed product";
       const bsr = product.bsr || product.subCategoryBsr || "-";
-      return `<li><strong>${escapeHtml(asin)}</strong><span>${escapeHtml(name)}</span><small>BSR ${escapeHtml(bsr)}</small></li>`;
+      const pm = productMetrics[asin] || {};
+      const orders = pm.orders != null ? " · " + compactNumber(pm.orders) + " orders" : "";
+      const revenue = pm.revenue != null ? " · " + compactMoney(pm.revenue) + " rev" : "";
+      return `<li><strong>${escapeHtml(asin)}</strong><span>${escapeHtml(name)}</span><small>BSR ${escapeHtml(bsr)}${escapeHtml(orders)}${escapeHtml(revenue)}</small></li>`;
     }).join("");
   }
 
   function dbMerchantInsightHtml(payload, fallbackOffer = {}) {
     if (!payload || payload.ok === false) return "";
     const merchant = payload.merchant || {};
-    const monthly = Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics[0] : null;
+    const monthly = Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : [];
     const products = Array.isArray(payload.products) ? payload.products : [];
     const title = merchant.merchantName || fallbackOffer.brand || `Merchant ${payload.merchantId || ""}`;
     const productCount = merchant.productCount ?? products.length;
-    const monthLine = monthly
-      ? `${escapeHtml(monthly.month || "Latest month")}: ${compactNumber(monthly.orders || 0)} orders, ${compactMoney(monthly.revenue || 0)} revenue, EPC ${shortEpc(monthly.epc || 0)}`
+    const firstMonth = monthly[0] || null;
+    const monthLine = firstMonth
+      ? `${escapeHtml(firstMonth.month || "Latest month")}: ${compactNumber(firstMonth.orders || 0)} orders, ${compactMoney(firstMonth.revenue || 0)} revenue, EPC ${shortEpc(firstMonth.epc || 0)}`
       : "Monthly Amazon metrics are not available for this merchant yet.";
+
+    // Trend spark: compare first and last month of available data
+    var trendLine = "";
+    if (monthly.length >= 2) {
+      var lastMonth = monthly[monthly.length - 1];
+      var ordDelta = (firstMonth.orders || 0) - (lastMonth.orders || 0);
+      var revDelta = (firstMonth.revenue || 0) - (lastMonth.revenue || 0);
+      if (ordDelta !== 0 || revDelta !== 0) {
+        var ordDir = ordDelta > 0 ? " ↑" : " ↓";
+        var revDir = revDelta > 0 ? " ↑" : " ↓";
+        trendLine = " <span class=\"trend-mini\">MoM: orders " + compactNumber(Math.abs(ordDelta)) + ordDir + ", rev " + compactMoney(Math.abs(revDelta)) + revDir + "</span>";
+      }
+    }
+
     return `<section class="db-chat-card">
       <div class="db-chat-card-head">
         <strong>Live DB details</strong>
@@ -6255,9 +7734,9 @@
       </div>
       <div class="db-chat-facts">
         <span>${escapeHtml(String(productCount || 0))} products</span>
-        <span>${escapeHtml(monthLine)}</span>
+        <span>${escapeHtml(monthLine)}${trendLine}</span>
       </div>
-      ${products.length ? `<ul class="db-chat-products">${dbMerchantProductRows(products)}</ul>` : `<p>No product rows returned by DB for this merchant.</p>`}
+      ${products.length ? `<ul class="db-chat-products">${dbMerchantProductRows(products, monthly)}</ul>` : `<p>No product rows returned by DB for this merchant.</p>`}
     </section>`;
   }
 
@@ -6272,7 +7751,7 @@
     }
     dbMerchantLoading.add(merchantId);
     try {
-      const response = await fetch(`${DB_MERCHANT_UI_API}?merchantId=${encodeURIComponent(merchantId)}&limit=8&months=6`, { cache: "no-store" });
+      const response = await fetch(`${DB_MERCHANT_UI_API}?merchantId=${encodeURIComponent(merchantId)}&limit=12&months=6`, { cache: "no-store" });
       let payload = null;
       try {
         payload = await response.json();
@@ -6308,6 +7787,17 @@
   function dbMerchantOfferForPrompt(prompt) {
     const exact = findByMerchantId(prompt);
     if (exact) return exact;
+
+    // Product-keyword queries: "Shokz products", "Shokz ASIN", "Shokz 产品"
+    const lower = String(prompt || "").toLowerCase().trim();
+    const hasProductKeywords = /\b(product|products|asin|asins?)\b/.test(lower) || /产品|ASIN|asin|卖/.test(prompt);
+    if (hasProductKeywords) {
+      // Extract potential merchant name by removing product keywords
+      const cleaned = lower.replace(/\b(product|products|asin|asins?)\b/g, "").trim();
+      const merchantOffer = findOfferByMerchantName(cleaned || prompt);
+      if (merchantOffer) return merchantOffer;
+    }
+
     if (dbLookupSkipPrompt(prompt)) return null;
     const query = dbSearchQueryForPrompt(prompt);
     if (query.length < 2) return null;
