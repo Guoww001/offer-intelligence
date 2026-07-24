@@ -4683,7 +4683,7 @@
           }
           label = analysisTarget;
           // Timed fetch: if DB unavailable, quickly fall back to estimated
-          monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(catOffers, apiMonthCount), 8000, null);
+          monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(catOffers, apiMonthCount), 25000, null);
           if (monthlyMetrics && trimTarget > 0 && monthlyMetrics.length > trimTarget) {
             monthlyMetrics = monthlyMetrics.slice(0, trimTarget);
           }
