@@ -6455,3 +6455,458 @@ td strong {
   color: var(--muted);
   font-size: 15px;
 }
+
+/* ── Publishers 市场聚合概览 ── */
+
+.publishers-market-summary {
+  background:
+    radial-gradient(circle at 80% 12%, rgba(59, 130, 246, 0.07), transparent 28%),
+    radial-gradient(circle at 18% 10%, rgba(34, 197, 94, 0.05), transparent 24%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbfc 100%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.publishers-market-summary .panel-title {
+  border-bottom: 1px solid rgba(80, 101, 116, 0.1);
+  padding: 18px 24px 14px;
+}
+
+/* ── Overview 切换按钮 ── */
+.overview-toggle {
+  display: inline-flex;
+  background: rgba(80, 101, 116, 0.06);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+.overview-toggle-btn {
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.overview-toggle-btn:hover {
+  color: var(--ink);
+}
+.overview-toggle-btn.active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* ── 折叠展开按钮 ── */
+/* ── 返回按钮 ── */
+.overview-back {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(71, 85, 105, 0.22);
+  border-radius: 7px;
+  box-shadow: 0 8px 20px rgba(47, 95, 159, 0.08);
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+  white-space: nowrap;
+}
+.overview-back:hover {
+  background: #fff;
+  border-color: rgba(47, 128, 255, 0.42);
+  color: #1d5fbf;
+  transform: translateY(-1px);
+}
+.overview-back[hidden] {
+  display: none;
+}
+
+.overview-chevron {
+  background: none;
+  border: 1px solid rgba(80, 101, 116, 0.12);
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: background 150ms ease, color 150ms ease;
+  line-height: 1;
+  margin-left: auto;
+}
+.overview-chevron:hover {
+  background: rgba(80, 101, 116, 0.06);
+  color: var(--ink);
+}
+
+.publishers-market-summary.hidden {
+  display: none;
+}
+
+/* ── 上层容器：左饼图 + 右站点卡片 ── */
+.publishers-market-summary-layout {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 20px 40px;
+  min-height: 300px;
+  align-items: stretch;
+  position: relative;
+}
+.publishers-market-pie {
+  flex: 0 0 300px;
+  min-width: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.publishers-market-cards {
+  flex: 1;
+  max-width: 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+/* ── 下层：详细表格 ── */
+.publishers-market-detail {
+  border-top: 1px solid rgba(80, 101, 116, 0.08);
+  padding: 14px 24px 18px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+/* 市场表格内包装 — 卡片背景 */
+.publishers-market-detail-inner {
+  display: inline-block;
+  min-width: 700px;
+  max-width: 100%;
+  text-align: left;
+  background: #f9fbfc;
+  border: 1px solid rgba(80, 101, 116, 0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 市场表格 */
+.publishers-market-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.publishers-market-table th {
+  text-align: right;
+  padding: 8px 12px;
+  font-weight: 800;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(80, 101, 116, 0.1);
+  white-space: nowrap;
+}
+.publishers-market-table th:first-child {
+  text-align: left;
+}
+.publishers-market-table td {
+  text-align: right;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(80, 101, 116, 0.06);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.publishers-market-table td:first-child {
+  text-align: left;
+}
+.publishers-market-table tbody tr {
+  cursor: pointer;
+  transition: background 180ms ease;
+}
+.publishers-market-table tbody tr:hover {
+  background: rgba(34, 197, 94, 0.06);
+}
+.publishers-market-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.publishers-market-table tbody tr.market-table-total {
+  font-weight: 700;
+  border-top: 2px solid var(--ink);
+  cursor: default;
+}
+.publishers-market-table tbody tr.market-table-total td {
+  border-bottom: none;
+}
+.publishers-market-table tbody tr.market-table-total:hover {
+  background: none;
+}
+
+/* 饼图 visual — 变大 */
+.market-pie-visual {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  overflow: visible;
+  width: 100%;
+  max-width: 320px;
+}
+.market-pie-svg {
+  width: 260px;
+  height: 260px;
+  display: block;
+  overflow: visible;
+}
+.market-pie-track {
+  fill: none;
+  stroke: #e7edf2;
+  stroke-width: 20;
+  pointer-events: none;
+}
+.market-pie-slice {
+  fill: none;
+  stroke-width: 20;
+  cursor: pointer;
+  outline: none;
+  pointer-events: stroke;
+  stroke-linecap: butt;
+  transition: opacity 180ms ease, stroke-width 180ms ease, filter 180ms ease;
+}
+.market-pie-slice:hover,
+.market-pie-slice:focus-visible,
+.market-pie-slice.market-active {
+  filter: drop-shadow(0 7px 12px rgba(33, 48, 63, 0.18));
+  stroke-width: 24;
+}
+.market-pie-center {
+  position: absolute;
+  top: 130px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(80, 101, 116, 0.12);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 10px 26px rgba(31, 57, 85, 0.08);
+  display: grid;
+  width: 110px;
+  height: 110px;
+  place-items: center;
+  padding: 8px;
+}
+.market-pie-center strong {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.market-pie-center span {
+  display: block;
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.market-pie-center small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 800;
+  max-width: 90px;
+  line-height: 1.3;
+}
+.market-pie-legend {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  width: 100%;
+}
+.market-pie-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #f3f7fa;
+  border: 1px solid rgba(80, 101, 116, 0.1);
+  border-left: 4px solid var(--market-color, #3b82f6);
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+.market-pie-legend li:hover,
+.market-pie-legend li:focus-visible,
+.market-pie-legend li.market-active {
+  background: #fff;
+  border-color: color-mix(in srgb, var(--market-color, #3b82f6) 42%, #d7e1e7 58%);
+  transform: translateY(-1px);
+}
+.market-pie-legend li strong {
+  font-weight: 800;
+  font-size: 11px;
+}
+.market-pie-legend li span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.market-pie-legend-more {
+  background: transparent !important;
+  border: 1px dashed rgba(80, 101, 116, 0.18) !important;
+  border-left: 4px dashed rgba(80, 101, 116, 0.25) !important;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: default;
+}
+.market-pie-legend-more:hover {
+  transform: none !important;
+  background: transparent !important;
+}
+.market-pie-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.market-pie-visual > .market-pie-tooltip {
+  aspect-ratio: auto;
+  background: rgba(18, 31, 42, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 18px 38px rgba(17, 24, 39, 0.22);
+  color: #fff;
+  display: grid;
+  gap: 4px;
+  min-width: 200px;
+  max-width: 260px;
+  padding: 10px 12px;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  width: auto;
+  z-index: 6;
+}
+.market-pie-visual > .market-pie-tooltip[hidden] {
+  display: none;
+}
+.market-pie-visual > .market-pie-tooltip strong {
+  color: #fff;
+  font-size: 12px;
+}
+.market-pie-visual > .market-pie-tooltip span,
+.market-pie-visual > .market-pie-tooltip small {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* ── 站点百分比标签（右侧）── */
+
+.market-pct-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 150ms ease, transform 150ms ease;
+  background: transparent;
+  font-size: 13px;
+  user-select: none;
+}
+.market-pct-label:hover {
+  background: var(--tag-color, #3b82f6);
+  color: #fff;
+  transform: translateX(2px);
+}
+.market-pct-label:hover .market-pct-name,
+.market-pct-label:hover .market-pct-value {
+  color: #fff;
+}
+.market-pct-label:hover .market-pct-dot {
+  background: #fff !important;
+}
+
+.market-pct-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.market-pct-name {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 13px;
+  transition: color 150ms ease;
+}
+
+.market-pct-value {
+  margin-left: auto;
+  font-weight: 900;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  transition: color 150ms ease;
+}
+
+/* ── 悬停联动高亮 ── */
+[data-market-highlight].market-active.market-pct-label {
+  background: var(--tag-color, #3b82f6);
+  color: #fff;
+  transform: translateX(2px);
+}
+[data-market-highlight].market-active.market-pct-label .market-pct-name,
+[data-market-highlight].market-active.market-pct-label .market-pct-value {
+  color: #fff;
+}
+[data-market-highlight].market-active.market-pct-label .market-pct-dot {
+  background: #fff !important;
+}
+
+[data-market-highlight].market-dimmed {
+  opacity: 0.3;
+}
+
+[data-market-highlight].market-active.market-pie-slice {
+  filter: drop-shadow(0 7px 12px rgba(33, 48, 63, 0.18));
+  stroke-width: 24;
+}
+
+.publishers-market-table tbody tr[data-market-highlight].market-active {
+  background: rgba(34, 197, 94, 0.1);
+}
+.publishers-market-table tbody tr[data-market-highlight].market-dimmed {
+  opacity: 0.3;
+}

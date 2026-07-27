@@ -226,6 +226,10 @@
     publisherStartDate: "",
     publisherEndDate: "",
     publisherSort: { key: "", direction: "desc" },
+    publisherTablePage: 1,
+    publisherOverviewFocus: "",
+    publisherOverviewExpanded: true,
+    publisherOverviewType: "network",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -315,12 +319,20 @@
     publisherSearchBtn: document.getElementById("publisherSearchBtn"),
     publisherResetBtn: document.getElementById("publisherResetBtn"),
     publisherExportBtn: document.getElementById("publisherExportBtn"),
+    publisherMarketSummary: document.getElementById("publishersMarketSummary"),
+    publisherMarketPie: document.getElementById("publishersMarketPie"),
+    publisherMarketCards: document.getElementById("publishersMarketCards"),
+    publisherMarketBody: document.getElementById("publishersMarketBody"),
     publishersKpiRow: document.getElementById("publishersKpiRow"),
     publishersChart: document.getElementById("publishersChart"),
     publishersChartTitle: document.getElementById("publishersChartTitle"),
     publishersTableHead: document.getElementById("publishersTableHead"),
     publishersTableRows: document.getElementById("publishersTableRows"),
     publishersTableCount: document.getElementById("publishersTableCount"),
+    publisherPagination: document.getElementById("publisherPagination"),
+    publisherPagePrev: document.getElementById("publisherPagePrev"),
+    publisherPageNext: document.getElementById("publisherPageNext"),
+    publisherPageIndicator: document.getElementById("publisherPageIndicator"),
     sheetPage: document.getElementById("sheetPage"),
     categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
@@ -10086,6 +10098,8 @@
     return agg;
   }
 
+  var PUBLISHER_TABLE_PAGE_SIZE = 100;
+
   var PUBLISHER_CHART_METRIC_COLORS = {
     clicks: "#66b3ff",
     dpv: "#22c55e",
@@ -10173,7 +10187,7 @@
     { key: "grossProfit", label: "Gross Profit", render: function(r) { return money(r.grossProfit); } },
   ];
 
-  function renderPublishersTable(filteredPubs, market, totals) {
+  function renderPublishersTable(filteredPubs, market, totals, page) {
     // 可排序表头
     els.publishersTableHead.innerHTML = "<tr>" + PUBLISHER_TABLE_COLUMNS.map(function (c) {
       return sortableHeaderHtml(c.key, state.publisherSort, "publisher");
@@ -10227,18 +10241,390 @@
       grossProfit: totals.grossProfit,
     };
 
+    // ── 分页 ──
+    var safePage = Math.max(1, Number(page) || 1);
+    var pagination = tierTablePagination(rows, safePage, PUBLISHER_TABLE_PAGE_SIZE);
+    // 合计行始终显示在最前面，不参与分页
+    var displayRows = [totalRow].concat(pagination.rows);
+
     els.publishersTableCount.textContent = "Total: " + filteredPubs.length.toLocaleString();
 
-    var allRows = [totalRow].concat(rows);
-    els.publishersTableRows.innerHTML = allRows.map(function (r, i) {
+    els.publishersTableRows.innerHTML = displayRows.map(function (r, i) {
       var cls = i === 0 ? ' class="total-row"' : "";
       return "<tr" + cls + ">" + PUBLISHER_TABLE_COLUMNS.map(function (c) {
         return "<td>" + c.render(r) + "</td>";
       }).join("") + "</tr>";
     }).join("");
+
+    // ── 更新分页控件 ──
+    renderPublishersPagination(pagination);
   }
 
+  function renderPublishersPagination(pagination) {
+    if (!els.publisherPagination || !els.publisherPagePrev || !els.publisherPageNext || !els.publisherPageIndicator) return;
+    var visible = pagination.totalPages > 1;
+    els.publisherPagination.classList.toggle("hidden", !visible);
+    if (!visible) return;
+    els.publisherPageIndicator.textContent = "Page " + pagination.page.toLocaleString() + " of " + pagination.totalPages.toLocaleString();
+    els.publisherPagePrev.disabled = pagination.page <= 1;
+    els.publisherPageNext.disabled = pagination.page >= pagination.totalPages;
+  }
+
+  // ── 市场悬停联动（饼图 + 标签 + 表格）──
+  function setMarketHighlight(target) {
+    var container = els.publisherMarketSummary;
+    if (!container || !target) return;
+    var key = target.getAttribute("data-market-highlight") || "";
+    container.querySelectorAll("[data-market-highlight]").forEach(function (item) {
+      item.classList.toggle("market-active", item.getAttribute("data-market-highlight") === key);
+      item.classList.toggle("market-dimmed", item.getAttribute("data-market-highlight") !== key);
+    });
+    // 更新饼图中心文案
+    var center = container.querySelector("[data-market-center]");
+    if (center && key) {
+      var pct = target.getAttribute("data-pct");
+      var rawVal = target.getAttribute("data-value");
+      var metricKey = center.getAttribute("data-metric") || "clicks";
+      // 查找当前指标格式函数
+      var md = null;
+      for (var si = 0; si < PUBLISHER_KPI_METRICS.length; si++) {
+        if (PUBLISHER_KPI_METRICS[si].key === metricKey) { md = PUBLISHER_KPI_METRICS[si]; break; }
+      }
+      var fmt = md ? md.format : number;
+      center.querySelector(".market-center-total").textContent = fmt(Number(rawVal) || 0);
+      center.querySelector(".market-center-leader").textContent = (pct ? parseFloat(pct).toFixed(1) : "0") + "% of total";
+    }
+  }
+
+  function clearMarketHighlight() {
+    var container = els.publisherMarketSummary;
+    if (!container) return;
+    container.querySelectorAll("[data-market-highlight]").forEach(function (item) {
+      item.classList.remove("market-active", "market-dimmed");
+    });
+    // 恢复饼图中心默认文案
+    var center = container.querySelector("[data-market-center]");
+    if (center) {
+      var total = center.getAttribute("data-market-total");
+      var metricKey = center.getAttribute("data-metric") || "clicks";
+      var md = null;
+      for (var si = 0; si < PUBLISHER_KPI_METRICS.length; si++) {
+        if (PUBLISHER_KPI_METRICS[si].key === metricKey) { md = PUBLISHER_KPI_METRICS[si]; break; }
+      }
+      var fmt = md ? md.format : number;
+      center.querySelector(".market-center-total").textContent = fmt(Number(total) || 0);
+      if (center.getAttribute("data-market-leader")) {
+        center.querySelector(".market-center-leader").textContent = center.getAttribute("data-market-leader");
+      }
+    }
+  }
+
+  function renderPublisherMarketSummary(filteredPubs, allPublishers) {
+    if (!els.publisherMarketSummary || !els.publisherMarketPie || !els.publisherMarketBody) return;
+    var overviewType = state.publisherOverviewType || "market";
+    // 当前选中的指标（与 KPI 联动）
+    var activeMetric = state.publisherChartMetric || "clicks";
+    var metricDef = null;
+    for (var mi = 0; mi < PUBLISHER_KPI_METRICS.length; mi++) {
+      if (PUBLISHER_KPI_METRICS[mi].key === activeMetric) { metricDef = PUBLISHER_KPI_METRICS[mi]; break; }
+    }
+    var metricLabel = metricDef ? metricDef.label : "Clicks";
+    var metricFormat = metricDef ? metricDef.format : number;
+    // 概览始终可见（类似 Category 页面行为）
+    els.publisherMarketSummary.classList.remove("hidden");
+
+    // ── 初始化切换按钮状态 ──
+    els.publisherMarketSummary.querySelectorAll(".overview-toggle-btn").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-overview-type") === overviewType);
+    });
+
+    // ── 返回按钮状态 ──
+    var focusKey = state.publisherOverviewFocus || "";
+    var backBtn = els.publisherMarketSummary.querySelector("[data-overview-back]");
+    if (backBtn) {
+      if (focusKey) {
+        backBtn.hidden = false;
+        backBtn.querySelector("span").textContent = "All " + (overviewType === "network" ? "Networks" : "Markets");
+      } else {
+        backBtn.hidden = true;
+      }
+    }
+
+    // ── 折叠/展开 ──
+    var expanded = state.publisherOverviewExpanded !== false;
+    var contentEls = els.publisherMarketSummary.querySelectorAll(".publishers-market-summary-layout, .publishers-market-detail");
+    contentEls.forEach(function (el) { el.style.display = expanded ? "" : "none"; });
+    var chevron = els.publisherMarketSummary.querySelector(".overview-chevron");
+    if (chevron) chevron.textContent = expanded ? "\u25BC" : "\u25B6";
+
+    if (!expanded) {
+      els.publisherMarketPie.innerHTML = "";
+      if (els.publisherMarketCards) els.publisherMarketCards.innerHTML = "";
+      els.publisherMarketBody.innerHTML = "";
+      return;
+    }
+
+    var MARKET_COLORS = [
+      "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6",
+      "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#06b6d4",
+      "#84cc16", "#d946ef", "#0ea5e9", "#eab308", "#a855f7"
+    ];
+    var MARKET_ORDER = ["amazon.com","amazon.co.uk","amazon.de","amazon.fr","amazon.ca","amazon.it","amazon.com.mx","amazon.es","amazon.nl"];
+
+    // ── 聚合数据 ──
+    var sorted, totals, leader, COLORS;
+    if (overviewType === "network") {
+      // 按联盟网络聚合
+      var networkTotals = {};
+      allPublishers.forEach(function (pub) {
+        var nets = pub.networks || [];
+        if (nets.length === 0) nets = ["Unknown"];
+        nets.forEach(function (net) {
+          if (!networkTotals[net]) {
+            networkTotals[net] = { publishers: new Set(), clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0 };
+          }
+          var t = pub.total || {};
+          networkTotals[net].publishers.add(pub.userId);
+          networkTotals[net].clicks += t.clicks || 0;
+          networkTotals[net].dpv += t.dpv || 0;
+          networkTotals[net].atc += t.atc || 0;
+          networkTotals[net].orders += t.orders || 0;
+          networkTotals[net].sales += t.sales || 0;
+          networkTotals[net].allCommission += t.allCommission || 0;
+        });
+      });
+      sorted = Object.keys(networkTotals).map(function (net) {
+        var t = networkTotals[net];
+        return { key: net, clicks: t.clicks, dpv: t.dpv, atc: t.atc, publisherCount: t.publishers.size, orders: t.orders, sales: t.sales, allCommission: t.allCommission, value: t[activeMetric] || 0 };
+      }).sort(function (a, b) { return b.value - a.value; });
+      COLORS = MARKET_COLORS;
+    } else {
+      // 按市场聚合（原有逻辑）
+      var MARKET_ORDER = ["amazon.com","amazon.co.uk","amazon.de","amazon.fr","amazon.ca","amazon.it","amazon.com.mx","amazon.es","amazon.nl"];
+      var marketTotals = {};
+      allPublishers.forEach(function (pub) {
+        Object.keys(pub.markets || {}).forEach(function (mkt) {
+          var m = pub.markets[mkt];
+          if (!m) return;
+          if (!marketTotals[mkt]) {
+            marketTotals[mkt] = { publishers: new Set(), clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0 };
+          }
+          marketTotals[mkt].publishers.add(pub.userId);
+          marketTotals[mkt].clicks += m.clicks || 0;
+          marketTotals[mkt].dpv += m.dpv || 0;
+          marketTotals[mkt].atc += m.atc || 0;
+          marketTotals[mkt].orders += m.orders || 0;
+          marketTotals[mkt].sales += m.sales || 0;
+          marketTotals[mkt].allCommission += m.allCommission || 0;
+        });
+      });
+      sorted = Object.keys(marketTotals).map(function (mkt) {
+        var t = marketTotals[mkt];
+        return { key: mkt, clicks: t.clicks, dpv: t.dpv, atc: t.atc, publisherCount: t.publishers.size, orders: t.orders, sales: t.sales, allCommission: t.allCommission, value: t[activeMetric] || 0 };
+      }).sort(function (a, b) {
+        var ai = MARKET_ORDER.indexOf(a.key);
+        var bi = MARKET_ORDER.indexOf(b.key);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return b.value - a.value;
+      });
+      COLORS = MARKET_COLORS;
+    }
+
+    // ── 提前分配颜色（在焦点筛选之前），确保聚焦后保留原色 ──
+    var colorByKey = {};
+    sorted.forEach(function (m, idx) {
+      colorByKey[m.key] = COLORS[idx % COLORS.length];
+    });
+
+    // ── 焦点筛选（点击标签后聚焦） ──
+    focusKey = state.publisherOverviewFocus || "";
+    if (focusKey) {
+      sorted = sorted.filter(function (m) { return m.key === focusKey; });
+    }
+
+    var totalValue = sorted.reduce(function (s, m) { return s + m.value; }, 0) || 1;
+    totals = sorted.reduce(function (s, m) {
+      s.clicks += m.clicks; s.orders += m.orders; s.allCommission += m.allCommission;
+      return s;
+    }, { clicks: 0, orders: 0, allCommission: 0 });
+    leader = sorted[0];
+
+    if (!sorted.length) {
+      els.publisherMarketPie.innerHTML = "";
+      if (els.publisherMarketCards) els.publisherMarketCards.innerHTML = "";
+      els.publisherMarketBody.innerHTML = '<tr><td colspan="5">' + escapeHtml(t("publishers.noData", "No data")) + '</td></tr>';
+      return;
+    }
+
+    // ── 饼图 ──
+    var current = 0;
+    var pieR = 45;
+    var pieHtml = '<svg class="market-pie-svg" viewBox="0 0 100 100" role="img" aria-label="' + metricLabel + ' distribution">' +
+      '<circle class="market-pie-track" cx="50" cy="50" r="' + pieR + '"></circle><g transform="rotate(-90 50 50)">';
+    sorted.forEach(function (m, idx) {
+      var pct = totalValue > 0 ? m.value / totalValue : 0;
+      var dash = Math.max(0.1, pct * 100);
+      var offset = -current; current += dash;
+      var color = colorByKey[m.key];
+      var escKey = escapeHtml(m.key);
+      pieHtml += '<circle class="market-pie-slice" cx="50" cy="50" r="' + pieR + '" pathLength="100" ' +
+        'stroke="' + color + '" stroke-dasharray="' + dash.toFixed(4) + ' ' + (100 - dash).toFixed(4) + '" ' +
+        'stroke-dashoffset="' + offset.toFixed(4) + '" ' +
+        'data-market-key="' + escKey + '" ' +
+        'data-market-highlight="' + escKey + '" tabindex="0" role="button" ' +
+        'data-pct="' + (pct * 100).toFixed(1) + '" ' +
+        'data-value="' + m.value + '" ' +
+        'data-clicks="' + m.clicks + '" ' +
+        'data-orders="' + m.orders + '" ' +
+        'data-allCommission="' + m.allCommission + '" ' +
+        'data-metric="' + activeMetric + '" ' +
+        'aria-label="Show only ' + escKey + '">' +
+        '<title>' + escKey + ': ' + metricFormat(m.value) + ' ' + metricLabel + ' (' + shortPct(pct) + ')</title></circle>';
+    });
+    pieHtml += '</g></svg>';
+
+    var leaderPct = totalValue > 0 ? (leader.value / totalValue) * 100 : 0;
+    pieHtml += '<div class="market-pie-center" data-market-center data-market-total="' + totalValue + '" data-market-leader="' + escapeHtml(leader.key) + ' leads at ' + leaderPct.toFixed(1) + '%" data-metric="' + activeMetric + '">' +
+      '<strong>' + escapeHtml(metricLabel) + '</strong>' +
+      '<span class="market-center-total">' + metricFormat(totalValue) + '</span>' +
+      '<small class="market-center-leader">' + escapeHtml(leader.key) + ' leads at ' + leaderPct.toFixed(1) + '%</small></div>';
+
+    els.publisherMarketPie.innerHTML = '<div class="market-pie-visual">' + pieHtml + '<div class="market-pie-tooltip" hidden></div></div>';
+
+    // ── 右侧百分比标签 ──
+    if (els.publisherMarketCards) {
+      var cardsHtml = sorted.map(function (m) {
+        var color = colorByKey[m.key] || COLORS[0];
+        var pct = totalValue > 0 ? (m.value / totalValue) * 100 : 0;
+        return '<span class="market-pct-label" data-pct="' + pct.toFixed(1) + '" data-value="' + m.value + '" data-market-key="' + escapeHtml(m.key) + '" data-market-highlight="' + escapeHtml(m.key) + '" tabindex="0" role="button" aria-label="Show only ' + escapeHtml(m.key) + '" style="--tag-color: ' + color + '">' +
+          '<span class="market-pct-dot" style="background:' + color + '"></span>' +
+          '<span class="market-pct-name">' + escapeHtml(m.key) + '</span>' +
+          '<span class="market-pct-value">' + shortPct(pct / 100) + '</span>' +
+        '</span>';
+      }).join("");
+      els.publisherMarketCards.innerHTML = cardsHtml;
+    }
+
+    // ── 详细表格 ──
+    var labelKey = overviewType === "network" ? "publishers.network" : "publishers.market";
+    var labelText = overviewType === "network" ? "Network" : "Market";
+    var tableHtml = sorted.map(function (m) {
+      var trPct = totalValue > 0 ? (m.value / totalValue * 100).toFixed(1) : "0";
+      return '<tr data-pct="' + trPct + '" data-value="' + m.value + '" data-market-key="' + escapeHtml(m.key) + '" data-market-highlight="' + escapeHtml(m.key) + '" tabindex="0" role="button" aria-label="Show only ' + escapeHtml(m.key) + '">' +
+        '<td><strong>' + escapeHtml(m.key) + '</strong></td><td>' + number(m.publisherCount) + '</td><td>' + metricFormat(m.value) + '</td><td>' + number(m.orders) + '</td><td>' + money(m.allCommission) + '</td></tr>';
+    }).join("");
+
+    var totalPublishers = new Set();
+    allPublishers.forEach(function (pub) { totalPublishers.add(pub.userId); });
+    tableHtml += '<tr class="market-table-total"><td><strong>' + escapeHtml(t("publishers.total", "Total")) + '</strong></td><td>' + number(totalPublishers.size) + '</td><td>' + metricFormat(totalValue) + '</td><td>' + number(totals.orders) + '</td><td>' + money(totals.allCommission) + '</td></tr>';
+    els.publisherMarketBody.innerHTML = tableHtml;
+
+    // ── 更新表头（第三列显示当前指标名称） ──
+    var tableHeader = els.publisherMarketSummary.querySelector(".publishers-market-table thead tr");
+    if (tableHeader) {
+      var firstTh = tableHeader.querySelector("th");
+      if (firstTh) firstTh.textContent = labelText;
+      var headerThs = tableHeader.querySelectorAll("th");
+      if (headerThs.length >= 3) headerThs[2].textContent = metricLabel;
+    }
+
+    // ── 点击：同时设置下拉筛选 + 饼图聚焦 ──
+    var clickHandler = function (e) {
+      var el = e.target.closest("[data-market-key]");
+      if (!el) return;
+      var key = el.getAttribute("data-market-key");
+      if (!key) return;
+      var isNetwork = (state.publisherOverviewType || "market") === "network";
+      var currentFilter = isNetwork ? state.publisherNetwork : state.publisherMarket;
+      var currentFocus = state.publisherOverviewFocus || "";
+      if (key === currentFocus || key === currentFilter) {
+        // 已选中 → 全部重置
+        if (isNetwork) {
+          state.publisherNetwork = "all";
+          els.publisherNetworkFilter.value = "all";
+        } else {
+          state.publisherMarket = "all";
+          els.publisherMarketFilter.value = "all";
+        }
+        state.publisherOverviewFocus = "";
+      } else {
+        if (isNetwork) {
+          state.publisherNetwork = key;
+          els.publisherNetworkFilter.value = key;
+        } else {
+          state.publisherMarket = key;
+          els.publisherMarketFilter.value = key;
+        }
+        state.publisherOverviewFocus = key;
+      }
+      renderPublishersPage();
+    };
+
+    // 饼图点击
+    var oldPie = els.publisherMarketPie;
+    var newPie = oldPie.cloneNode(true);
+    oldPie.parentNode.replaceChild(newPie, oldPie);
+    els.publisherMarketPie = newPie;
+    els.publisherMarketPie.addEventListener("click", clickHandler);
+
+    // 标签点击
+    if (els.publisherMarketCards) {
+      var oldCards = els.publisherMarketCards;
+      var newCards = oldCards.cloneNode(true);
+      oldCards.parentNode.replaceChild(newCards, oldCards);
+      els.publisherMarketCards = newCards;
+      els.publisherMarketCards.addEventListener("click", clickHandler);
+    }
+
+    // 表格点击
+    var oldBody = els.publisherMarketBody;
+    var newBody = oldBody.cloneNode(true);
+    oldBody.parentNode.replaceChild(newBody, oldBody);
+    els.publisherMarketBody = newBody;
+    els.publisherMarketBody.addEventListener("click", clickHandler);
+
+    // ── 悬停联动 ──
+    var highlightHandler = function (e) {
+      var target = e.target.closest("[data-market-highlight]");
+      if (target) setMarketHighlight(target);
+      else clearMarketHighlight();
+    };
+    var leaveHandler = function () { clearMarketHighlight(); };
+
+    els.publisherMarketPie.addEventListener("pointermove", highlightHandler);
+    els.publisherMarketPie.addEventListener("pointerleave", leaveHandler);
+    if (els.publisherMarketCards) {
+      els.publisherMarketCards.addEventListener("pointermove", highlightHandler);
+      els.publisherMarketCards.addEventListener("pointerleave", leaveHandler);
+    }
+    els.publisherMarketBody.addEventListener("pointermove", highlightHandler);
+    els.publisherMarketBody.addEventListener("pointerleave", leaveHandler);
+  }
+
+  var _lastPubFilterHash = "";
+
   function renderPublishersPage() {
+    // 检测筛选条件是否变化，若变化则重置到第1页
+    var filterHash = [
+      state.publisherNetwork || "",
+      state.publisherLinkType || "",
+      state.publisherMarket || "",
+      state.publisherStartDate || "",
+      state.publisherEndDate || "",
+      state.publisherManagerSearch || "",
+      state.publisherMerchantSearch || "",
+      state.publisherProductSearch || "",
+      state.publisherSiteSearch || "",
+      state.publisherTrackSearch || "",
+      state.publisherSort ? state.publisherSort.key + "|" + state.publisherSort.direction : "",
+    ].join("||");
+    if (filterHash !== _lastPubFilterHash) {
+      state.publisherTablePage = 1;
+      _lastPubFilterHash = filterHash;
+    }
+
     els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-loading">' +
       escapeHtml(t("publishers.loading", "Loading...")) + '</td></tr>';
 
@@ -10282,14 +10668,17 @@
       var market = state.publisherMarket || "all";
       var agg = aggregatePublisherMetrics(filtered, market);
 
+      // 市场聚合概览
+      renderPublisherMarketSummary(filtered, data.publishers);
+
       // KPI
       renderPublishersKpi(agg);
 
       // 柱状图（按当前市场排序）
       renderPublishersChart(filtered, market);
 
-      // 表格
-      renderPublishersTable(filtered, market, agg);
+      // 表格（带分页）
+      renderPublishersTable(filtered, market, agg, state.publisherTablePage);
     }).catch(function (err) {
       els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-empty">' +
         escapeHtml(t("publishers.error", "Error: ") + err.message) + '</td></tr>';
@@ -13944,8 +14333,36 @@
     els.languageToggle.addEventListener("click", toggleLanguage);
     if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
+    // ── Overview 切换 / 折叠 ──
+    els.publisherMarketSummary.addEventListener("click", function (e) {
+      var toggleBtn = e.target.closest(".overview-toggle-btn");
+      if (toggleBtn) {
+        var type = toggleBtn.getAttribute("data-overview-type");
+        if (type && type !== state.publisherOverviewType) {
+          state.publisherOverviewType = type;
+          els.publisherMarketSummary.querySelectorAll(".overview-toggle-btn").forEach(function (b) {
+            b.classList.toggle("active", b.getAttribute("data-overview-type") === type);
+          });
+          renderPublishersPage();
+        }
+        return;
+      }
+      var chevron = e.target.closest(".overview-chevron");
+      if (chevron) {
+        state.publisherOverviewExpanded = !state.publisherOverviewExpanded;
+        renderPublishersPage();
+        return;
+      }
+      var backBtn = e.target.closest("[data-overview-back]");
+      if (backBtn) {
+        state.publisherOverviewFocus = "";
+        renderPublishersPage();
+        return;
+      }
+    });
     els.publisherNetworkFilter.addEventListener("change", function () {
       state.publisherNetwork = els.publisherNetworkFilter.value;
+      state.publisherOverviewFocus = "";
       renderPublishersPage();
     });
     els.publisherLinkTypeFilter.addEventListener("change", function () {
@@ -13962,6 +14379,7 @@
     });
     els.publisherMarketFilter.addEventListener("change", function () {
       state.publisherMarket = els.publisherMarketFilter.value;
+      state.publisherOverviewFocus = "";
       renderPublishersPage();
     });
     // 经理组合框：输入过滤 + 即时渲染
@@ -14075,6 +14493,56 @@
         renderPublishersPage();
       }
     });
+    // 表格分页：上一页 / 下一页
+    if (els.publisherPagePrev) {
+      els.publisherPagePrev.addEventListener("click", function () {
+        state.publisherTablePage = Math.max(1, (Number(state.publisherTablePage) || 1) - 1);
+        renderPublishersPage();
+      });
+    }
+    if (els.publisherPageNext) {
+      els.publisherPageNext.addEventListener("click", function () {
+        state.publisherTablePage = Math.max(1, (Number(state.publisherTablePage) || 1) + 1);
+        renderPublishersPage();
+      });
+    }
+    // 市场饼图 tooltip（随当前指标联动）
+    window._marketShowTooltip = function (slice, event) {
+      var visual = document.querySelector(".market-pie-visual");
+      if (!visual) return;
+      var tooltipEl = visual.querySelector(".market-pie-tooltip");
+      if (!tooltipEl) return;
+      var mkt = slice.getAttribute("data-market-key");
+      var rawVal = slice.getAttribute("data-value");
+      var metric = slice.getAttribute("data-metric") || "clicks";
+      var orders = slice.getAttribute("data-orders");
+      var allCommission = slice.getAttribute("data-allCommission");
+      var pct = slice.getAttribute("data-pct");
+      if (!mkt) return;
+      // 查找当前指标格式
+      var md = null;
+      for (var ti = 0; ti < PUBLISHER_KPI_METRICS.length; ti++) {
+        if (PUBLISHER_KPI_METRICS[ti].key === metric) { md = PUBLISHER_KPI_METRICS[ti]; break; }
+      }
+      var metaFmt = md ? md.format : number;
+      var metaLabel = md ? md.label : "Clicks";
+      tooltipEl.hidden = false;
+      tooltipEl.innerHTML = '<strong>' + escapeHtml(mkt) + '</strong>' +
+        '<span>' + escapeHtml(metaLabel) + ': ' + metaFmt(Number(rawVal)) + ' (' + pct + '%)</span>' +
+        '<span>' + escapeHtml(t("publishers.orders", "Orders")) + ': ' + number(Number(orders)) + '</span>' +
+        '<small>' + escapeHtml(t("publishers.commission", "Commission")) + ': ' + money(Number(allCommission)) + '</small>';
+      var rect = visual.getBoundingClientRect();
+      var x = event.clientX - rect.left + 12;
+      var y = event.clientY - rect.top - 10;
+      if (x + 220 > rect.width) x = rect.width - 230;
+      if (y < 0) y = 0;
+      tooltipEl.style.left = x + "px";
+      tooltipEl.style.top = y + "px";
+    };
+    window._marketHideTooltip = function () {
+      var tooltipEl = document.querySelector(".market-pie-tooltip");
+      if (tooltipEl) tooltipEl.hidden = true;
+    };
     els.paymentDownload.addEventListener("click", downloadPaymentsXlsx);
     if (els.sheetDownload) els.sheetDownload.addEventListener("click", downloadSheetTargetsXlsx);
     els.tierDownload.addEventListener("click", downloadTierSheetXlsx);

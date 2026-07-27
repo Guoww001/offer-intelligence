@@ -42,6 +42,21 @@ AMAZON_DOMAIN_MAP = {
     "www.amazon.nl": "amazon.nl",
 }
 
+# Country → market fallback when URL is empty
+# advert_store_country_name format: e.g. "US/United States(US)" or "UK"
+COUNTRY_TO_MARKET = {
+    "US": "amazon.com",
+    "GB": "amazon.co.uk",
+    "UK": "amazon.co.uk",
+    "DE": "amazon.de",
+    "FR": "amazon.fr",
+    "CA": "amazon.ca",
+    "IT": "amazon.it",
+    "ES": "amazon.es",
+    "MX": "amazon.com.mx",
+    "NL": "amazon.nl",
+}
+
 # Build SQL CASE expression for market extraction from advert URL
 # Note: ORDER matters — more specific patterns should come first
 # Use %% to escape % for PyMySQL's mogrify
@@ -50,11 +65,25 @@ _MARKET_WHEN_SQL = "\n".join(
     for domain, code in AMAZON_DOMAIN_MAP.items()
 )
 
+# Fallback: check redirect domains when advert_url_real is empty
+_REDIRECT_WHEN_SQL = "\n".join(
+    f"      WHEN a.last_redirect_domain LIKE '%%{domain}%%' THEN '{code}'"
+    for domain, code in AMAZON_DOMAIN_MAP.items()
+)
+
+# Fallback: check advert_store_country_name from advert_all
+_COUNTRY_WHEN_SQL = "\n".join(
+    f"      WHEN aa.advert_store_country_name LIKE '{code.upper()}%%' THEN '{market}'"
+    for code, market in COUNTRY_TO_MARKET.items()
+)
+
 AGG_SQL = f"""
 SELECT
   o.user_id,
   CASE
 {_MARKET_WHEN_SQL}
+{_REDIRECT_WHEN_SQL}
+{_COUNTRY_WHEN_SQL}
       ELSE 'Unknown'
   END AS market,
   SUM(o.clicks) AS clicks,
@@ -66,6 +95,7 @@ SELECT
   SUM(o.aff_payout) AS aff_commission
 FROM cnpscy_amazon_order o
 LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+LEFT JOIN cnpscy_advert_all aa ON o.advert_id = aa.advert_id
 WHERE o.user_id IS NOT NULL AND o.user_id > 0
 GROUP BY o.user_id, market
 """
@@ -123,6 +153,8 @@ SELECT
   CAST(o.order_time_day AS CHAR) AS day,
   CASE
 {_MARKET_WHEN_SQL}
+{_REDIRECT_WHEN_SQL}
+{_COUNTRY_WHEN_SQL}
       ELSE 'Unknown'
   END AS market,
   SUM(o.clicks) AS clicks,
@@ -134,6 +166,7 @@ SELECT
   SUM(o.aff_payout) AS aff_commission
 FROM cnpscy_amazon_order o
 LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+LEFT JOIN cnpscy_advert_all aa ON o.advert_id = aa.advert_id
 WHERE o.user_id IS NOT NULL AND o.user_id > 0
   AND o.order_time_day IS NOT NULL
 GROUP BY o.user_id, day, market
@@ -277,11 +310,15 @@ def build_publishers_payload() -> dict:
             summary["totalAffCommission"] += pub["total"]["affCommission"]
         summary["totalPublishers"] = len(publishers)
 
+        # 清理 publisher 层级中的 Unknown 市场条目
+        for pub in publishers.values():
+            pub["markets"].pop("Unknown", None)
+
         payload = {
             "generatedAt": utc_now_iso(),
             "publishers": sorted(publishers.values(), key=lambda p: p["total"]["clicks"], reverse=True),
             "summary": summary,
-            "markets": sorted(m for m in markets_set if m != "Unknown") + (["Unknown"] if "Unknown" in markets_set else []),
+            "markets": sorted(m for m in markets_set if m != "Unknown"),
             "networks": sorted(all_networks_set),
             "linkTypes": sorted(all_link_types_set),
             "merchantNameMap": {str(k): v for k, v in merchant_name_map.items()},
