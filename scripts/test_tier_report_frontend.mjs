@@ -234,4 +234,28 @@ assertEqual(
   "missing tier AOV should remain blank"
 );
 
+const tierRevenueCases = [
+  ["Tier 1", { Revenue: "18279.55", COUNTRY: "US" }, "$18,279.55"],
+  ["Tier 2", { Revenue: "457.5", COUNTRY: "UK" }, "£457.50"],
+  ["Tier 3", { Revenue: "4778.14", COUNTRY: "DE" }, "€4,778.14"],
+  ["Tier 4", { Revenue: "3035.89", COUNTRY: "FR" }, "€3,035.89"]
+];
+for (const [tierName, row, expected] of tierRevenueCases) {
+  assertEqual(
+    hooks.formatTierSheetCell(tierName, row, "Revenue"),
+    expected,
+    `${tierName} revenue should show its original-currency symbol with two decimal places`
+  );
+}
+assertEqual(
+  hooks.formatTierSheetCell("Tier 4", { Revenue: "20", COUNTRY: "US", Currency: "GBP" }, "Revenue"),
+  "£20.00",
+  "explicit revenue currency should take precedence over country"
+);
+assertEqual(
+  hooks.formatTierSheetCell("Tier 1", { Revenue: "", COUNTRY: "US" }, "Revenue"),
+  "",
+  "missing tier revenue should remain blank"
+);
+
 console.log("Tier report frontend checks passed");
