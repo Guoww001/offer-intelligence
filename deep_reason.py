@@ -229,6 +229,22 @@ def execute_query_plan(plan: dict) -> dict:
     entities = plan.get("entities", [])
     metrics = plan.get("metrics", [])
     comparison_type = plan.get("comparisonType")
+    analysis_type = plan.get("analysisType", "overview")
+
+    # Trend analysis: always try DB for historical monthly data
+    if analysis_type == "trend" and entity_type == "merchant":
+        trend_months = max(months, 3)
+        result = _execute_from_db(entity_type, entities, metrics, trend_months, comparison_type, plan)
+        if result.get("historicalData"):
+            return result
+        # DB unavailable, fall back to cache with note
+        cache_result = _execute_from_cache(entity_type, entities, metrics, comparison_type, plan)
+        cache_result["warning"] = _text(
+            plan.get("language", "zh"),
+            "数据库历史数据不可用，趋势分析基于当前快照数据。",
+            "Historical data unavailable. Trend analysis uses current snapshot data."
+        )
+        return cache_result
 
     if months <= 2:
         return _execute_from_cache(entity_type, entities, metrics, comparison_type, plan)
@@ -494,6 +510,7 @@ def _execute_from_db(entity_type: str, entities: list, metrics: list,
         "entities": entities,
         "timeRangeMonths": months,
         "historicalData": [],
+        "productData": [],
         "warning": None,
     }
 
@@ -519,6 +536,14 @@ def _execute_from_db(entity_type: str, entities: list, metrics: list,
                         "brand": match.get("brand"),
                         "monthlyMetrics": payload.get("monthlyAmazonMetrics", []),
                     })
+                    # Capture product data
+                    products = payload.get("products", [])
+                    if products:
+                        results["productData"].append({
+                            "merchantId": match["merchantId"],
+                            "brand": match.get("brand"),
+                            "products": products,
+                        })
                 except Exception as exc:
                     lang = plan.get("language", "zh")
                     results["warning"] = _text(lang, f"查询 {entity_name} 历史数据失败: {exc}", f"Failed to query historical data for {entity_name}: {exc}")
@@ -811,6 +836,189 @@ def _generate_entity_comparison_report(data: dict, plan: dict, language: str) ->
     }
 
 
+def _generate_trend_report(data: dict, plan: dict, language: str) -> dict:
+    """Pre-computed trend report from historical monthly data — exact numbers, no LLM.
+
+    Shows month-by-month metrics with MoM deltas and overall summary.
+    """
+    hist_data = data.get("historicalData", [])
+    if not hist_data:
+        return _data_only_report(data, plan, language)
+
+    is_en = language == "en"
+    entity_type = plan.get("entityType", "merchant")
+    el = _entity_labels(entity_type, language)
+
+    sections = []
+
+    for entry in hist_data:
+        brand = entry.get("brand", "Unknown")
+        monthly = entry.get("monthlyMetrics", [])
+        if not monthly or len(monthly) < 2:
+            continue
+
+        # Sort by month ASC
+        sorted_m = sorted(monthly, key=lambda m: m.get("month", ""))
+
+        # Determine which metrics to show
+        trend_metrics = ["revenue", "orders", "epc", "aov"]
+        display_metrics = []
+        for m in trend_metrics:
+            if any(row.get(m) is not None for row in sorted_m):
+                display_metrics.append(m)
+
+        # Build month data rows
+        metric_labels = {
+            "revenue": _text(language, "销售额", "Revenue"),
+            "orders": _text(language, "订单", "Orders"),
+            "epc": "EPC",
+            "aov": "AOV",
+            "clicks": _text(language, "点击", "Clicks"),
+        }
+
+        # Table headers: Month + metric columns + delta columns
+        headers = [_text(language, "月份", "Month")]
+        for m in display_metrics:
+            headers.append(metric_labels.get(m, m))
+            headers.append("Δ " + metric_labels.get(m, m))
+
+        rows = []
+        prev_row = None
+        for m_row in sorted_m:
+            row = [m_row.get("month", "")]
+            for m in display_metrics:
+                val = m_row.get(m, 0) or 0
+                if m == "revenue":
+                    row.append(f"${val:,.2f}" if val else "-")
+                elif m == "orders":
+                    row.append(f"{int(val):,}" if val else "-")
+                elif m == "epc":
+                    row.append(f"${val:.3f}" if val else "-")
+                elif m == "aov":
+                    row.append(f"${val:.2f}" if val else "-")
+                else:
+                    row.append(str(val) if val else "-")
+
+                # Delta column
+                if prev_row is not None:
+                    prev_val = prev_row.get(m, 0) or 0
+                    if prev_val and val:
+                        pct = ((val - prev_val) / prev_val) * 100
+                        arrow = "↑" if pct > 0 else ("↓" if pct < 0 else "→")
+                        row.append(f"{pct:+.1f}% {arrow}" if pct != 0 else "→")
+                    else:
+                        row.append("-")
+                else:
+                    row.append("—")
+            rows.append(row)
+            prev_row = m_row
+
+        # Summary: first vs last
+        first = sorted_m[0]
+        last = sorted_m[-1]
+        findings = []
+        for m in display_metrics:
+            fv = first.get(m, 0) or 0
+            lv = last.get(m, 0) or 0
+            if fv and lv and lv != fv:
+                pct = ((lv - fv) / fv) * 100
+                direction = _text(language, "增长", "up") if pct > 0 else _text(language, "下降", "down")
+                lbl = metric_labels.get(m, m)
+                findings.append(
+                    _text(language,
+                        f"{lbl} 从 {fv:,.2f} 到 {lv:,.2f}，整体{direction} {abs(pct):.1f}%",
+                        f"{lbl} from {fv:,.2f} to {lv:,.2f}, {direction} {abs(pct):.1f}%")
+                    if isinstance(fv, (int, float)) and not isinstance(fv, bool)
+                    else f"{lbl}: {fv} → {lv}"
+                )
+
+        if not findings:
+            findings.append(_text(language, "各指标趋势平稳，无明显变化。", "Metrics are stable with no significant changes."))
+
+        sections.append({
+            "type": "trend",
+            "title": _text(language, f"趋势分析：{brand}", f"Trend: {brand}"),
+            "findings": findings,
+            "table": {"headers": headers, "rows": rows},
+            "severity": "medium",
+        })
+
+    # Overall summary
+    summary_parts = []
+    if hist_data:
+        names = [h.get("brand", "") for h in hist_data if h.get("brand")]
+        summary_parts.append(
+            _text(language,
+                f"{'、'.join(names)} 的历史趋势分析，共 {len(hist_data)} 个商户。",
+                f"Trend analysis for {' & '.join(names)}, {len(hist_data)} merchants.")
+        )
+
+    title_entities = " vs ".join(plan.get("entities", []))
+    cache_month = data.get("cacheMonth", "")
+    if cache_month:
+        summary_parts.append(
+            _text(language, f"数据周期至 {cache_month}", f"Data period through {cache_month}")
+        )
+
+    return {
+        "title": _text(language, f"{title_entities} 趋势分析", f"{title_entities} Trend Analysis"),
+        "summary": " | ".join(summary_parts) if summary_parts else "",
+        "sections": sections,
+    }
+
+
+def _add_product_section(data: dict, plan: dict, language: str, sections: list):
+    """Add product detail sections to the report when product data is available."""
+    product_data = data.get("productData", [])
+    if not product_data:
+        return
+
+    is_en = language == "en"
+    for entry in product_data:
+        products = entry.get("products", [])
+        if not products:
+            continue
+        brand = entry.get("brand", "Unknown")
+        product_rows = []
+        for p in products[:8]:
+            asin = p.get("asin", "-")
+            name = p.get("productName") or p.get("title", "Unnamed product")
+            bsr = p.get("bsr") or p.get("subCategoryBsr", "-")
+            # Format price if available
+            price = p.get("price", "")
+            price_str = f"${price}" if price else "-"
+            product_rows.append([
+                asin,
+                (name[:40] + "...") if len(name) > 40 else name,
+                str(bsr),
+                price_str,
+            ])
+
+        if product_rows:
+            sections.append({
+                "type": "overview",
+                "title": _text(language, f"产品详情：{brand}", f"Products: {brand}"),
+                "findings": [
+                    _text(language,
+                        f"共 {len(products)} 个产品",
+                        f"{len(products)} products"),
+                    _text(language,
+                        f"Top {min(len(product_rows), 8)} 个产品按 BSR 排序展示",
+                        f"Top {min(len(product_rows), 8)} products by BSR"),
+                ],
+                "table": {
+                    "headers": [
+                        _text(language, "ASIN", "ASIN"),
+                        _text(language, "产品名称", "Product Name"),
+                        _text(language, "BSR", "BSR"),
+                        _text(language, "价格", "Price"),
+                    ],
+                    "rows": product_rows,
+                },
+                "severity": "low",
+            })
+
+
 def generate_report(data: dict, plan: dict, language: str = "zh") -> dict:
     """Stage 3: Generate structured analysis report.
 
@@ -820,7 +1028,19 @@ def generate_report(data: dict, plan: dict, language: str = "zh") -> dict:
     """
     # Comparison / multi-entity queries: pre-compute report to avoid LLM hallucination
     if "entityBreakdown" in data and len(data["entityBreakdown"]) >= 2:
-        return _generate_entity_comparison_report(data, plan, language)
+        report = _generate_entity_comparison_report(data, plan, language)
+        # Add product section for merchant comparison when available
+        if plan.get("entityType") == "merchant":
+            _add_product_section(data, plan, language, report.get("sections", []))
+        return report
+
+    # Trend analysis: pre-compute report from historical monthly data
+    if data.get("historicalData") and plan.get("analysisType") == "trend":
+        report = _generate_trend_report(data, plan, language)
+        # Add product section for merchant trend when available
+        if plan.get("entityType") == "merchant":
+            _add_product_section(data, plan, language, report.get("sections", []))
+        return report
 
     # Single-entity queries: use LLM with temperature=0
     data_summary = _prepare_data_summary(data, plan)
@@ -874,10 +1094,17 @@ Data summary:
     try:
         report = json.loads(json_str)
         _validate_report(report)
+        # Add product section for merchant reports
+        if plan.get("entityType") == "merchant":
+            _add_product_section(data, plan, language, report.get("sections", []))
         return report
     except (json.JSONDecodeError, ValueError):
         # Fallback to data-only
-        return _data_only_report(data, plan, language)
+        report = _data_only_report(data, plan, language)
+        # Add product section for merchant reports
+        if plan.get("entityType") == "merchant":
+            _add_product_section(data, plan, language, report.get("sections", []))
+        return report
 
 
 REPORT_SYSTEM_PROMPT_ZH = """你是一个电商数据分析师。你将收到一组结构化数据，请基于这些数据生成分析报告。

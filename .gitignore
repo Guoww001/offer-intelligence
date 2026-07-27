@@ -13,3 +13,6 @@ tests/
 .playwright-mcp
 .superpowers/
 .pytest_cache
+.agents/
+skills-lock.json
+package-lock.json
