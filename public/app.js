@@ -2527,7 +2527,7 @@
     if (TIER_INTEGER_METRIC_HEADERS.has(normalizedHeader) && numeric !== null) {
       return numeric.toLocaleString(undefined, { maximumFractionDigits: 0 });
     }
-    if (normalizedHeader === "aov" && numeric !== null) {
+    if (["aov", "revenue"].includes(normalizedHeader) && numeric !== null) {
       return `${tierCurrencySymbol(row)}${numeric.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
