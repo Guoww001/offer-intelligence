@@ -49,6 +49,7 @@ TIER_VISUAL_STATUS_SOURCE_KEYS = [
 
 OFFERS_CACHE_PATH = ROOT / "protected_data" / "db_offers_cache.json"
 FEISHU_CATEGORIES_PATH = ROOT / "data" / "feishu_merchant_categories.csv"
+TIER1_AGENCIES_PATH = ROOT / "data" / "tier1_agencies.csv"
 
 
 def load_offers_from_cache() -> list[dict]:
@@ -84,6 +85,15 @@ def load_feishu_csv() -> list[dict]:
         )
         return []
     with FEISHU_CATEGORIES_PATH.open(encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def load_tier1_agencies_csv() -> list[dict]:
+    """Read the Merchant ID -> Agency snapshot sourced from Google Sheet Tier 1."""
+    if not TIER1_AGENCIES_PATH.exists():
+        print(f"[warn] Tier 1 agency CSV not found at {TIER1_AGENCIES_PATH}, skipping")
+        return []
+    with TIER1_AGENCIES_PATH.open(encoding="utf-8-sig", newline="") as f:
         return list(csv.DictReader(f))
 
 
@@ -587,6 +597,7 @@ SHEET_BEST_SUB_BSR_KEYS = ["Best Sub Category BSR", "bestSubCategoryBsr", "Best 
 SHEET_PAYMENT_CYCLE_KEYS = ["Payment Cycle", "paymentCycle", "paymentCycleDays", "Payment Term Days"]
 SHEET_COUNTRY_KEYS = ["COUNTRY", "Country", "country", "Region", "region"]
 SHEET_CATEGORY_KEYS = ["Sheet Category", "Category", "category"]
+SHEET_AGENCY_KEYS = ["Agency", "Agency ", "agency"]
 
 
 def _sheet_value(row: dict, keys: list) -> str:
@@ -598,7 +609,12 @@ def _sheet_value(row: dict, keys: list) -> str:
     return ""
 
 
-def sync_sheet_metadata(conn, sheets: list[dict], offers: list[dict]) -> int:
+def sync_sheet_metadata(
+    conn,
+    sheets: list[dict],
+    offers: list[dict],
+    tier1_agencies: list[dict] | None = None,
+) -> int:
     """从 sheet_report_data.js 的 tier sheet 行和 chatbot_data offers
     提取运营元数据 → cnpscy_oi_offer_sheet_metadata。
     """
@@ -672,6 +688,20 @@ def sync_sheet_metadata(conn, sheets: list[dict], offers: list[dict]) -> int:
 
             merchant_rows[mid] = existing
 
+    # Source 1b: exact Tier 1 Merchant ID -> Agency values from the live Google Sheet snapshot.
+    # Blank values are preserved as NULL instead of being replaced with a fallback network.
+    agency_rows = load_tier1_agencies_csv() if tier1_agencies is None else tier1_agencies
+    for row in agency_rows:
+        mid = str(row.get("merchantId") or row.get("Merchant ID") or "").strip()
+        if not mid:
+            continue
+        existing = merchant_rows.get(mid) or {}
+        existing["merchantId"] = mid
+        existing["agency"] = _sheet_value(row, SHEET_AGENCY_KEYS) or None
+        if not existing.get("sourceSheet"):
+            existing["sourceSheet"] = "Tier 1"
+        merchant_rows[mid] = existing
+
     # 来源 2: chatbot_data.js offers 中的计算字段
     for o in offers:
         mid = str(o.get("merchantId", "")).strip()
@@ -733,6 +763,7 @@ def sync_sheet_metadata(conn, sheets: list[dict], offers: list[dict]) -> int:
     for mid, info in merchant_rows.items():
         all_rows.append({
             "merchantId": mid,
+            "agency": info.get("agency") or None,
             "reason": info.get("reason") or None,
             "recommendation": info.get("recommendation") or None,
             "recommendedLink": info.get("recommendedLink") or None,

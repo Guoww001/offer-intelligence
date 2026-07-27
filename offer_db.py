@@ -2189,21 +2189,25 @@ def tier_sheet_payload(
         return cached[1]
 
     with db_connection() as conn:
+        metadata_columns = table_columns(conn, "cnpscy_oi_offer_sheet_metadata")
+        agency_expression = "MAX(sm.agency)" if "agency" in metadata_columns else "NULL"
         if compact:
             base_rows = fetch_all(
                 conn,
-                """
+                f"""
                 SELECT
                     MAX(COALESCE(CAST(a.advert_id AS CHAR), t.merchantId)) AS `Merchant ID`,
                     MAX(a.advert_name) AS `Merchant Name`,
                     MAX(a.advert_name) AS `Brand`,
                     MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown')) AS `Network`,
+                    {agency_expression} AS `Agency`,
                     MAX(a.advert_money) AS `Commission Rate`
                 FROM cnpscy_oi_tier_assignments t
                 LEFT JOIN cnpscy_advert a
                     ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
                 LEFT JOIN cnpscy_advert_type at
                     ON a.advert_advertiser = at.advert_type_id AND at.advert_type_parent_id = 53
+                LEFT JOIN cnpscy_oi_offer_sheet_metadata sm ON t.merchantId = sm.merchantId
                 WHERE t.tier = %s
                 GROUP BY t.merchantId
                 ORDER BY CAST(t.merchantId AS UNSIGNED)
@@ -2213,12 +2217,13 @@ def tier_sheet_payload(
         else:
             base_rows = fetch_all(
             conn,
-            """
+            f"""
             SELECT
                 MAX(COALESCE(CAST(a.advert_id AS CHAR), t.merchantId)) AS `Merchant ID`,
                 MAX(a.advert_name) AS `Merchant Name`,
                 MAX(a.advert_name) AS `Brand`,
                 MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), pr_net.network, 'Unknown')) AS `Network`,
+                {agency_expression} AS `Agency`,
                 MAX(a.advert_money) AS `Commission Rate`,
                 MAX(vs.color) AS `Color`,
                 MAX(vs.reason_code) AS `Visual Status Code`,
@@ -2313,7 +2318,7 @@ def tier_sheet_payload(
             "report": "YeahPromos Amazon Report",
             "dimension": "advert_id",
             "metricsTables": ["cnpscy_amazon_order", "cnpscy_amazon_click"],
-            "merchantTables": ["cnpscy_advert", "cnpscy_advert_type"],
+            "merchantTables": ["cnpscy_advert", "cnpscy_advert_type", "cnpscy_oi_offer_sheet_metadata"],
             "tierTable": "cnpscy_oi_tier_assignments",
         },
     }

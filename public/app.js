@@ -11591,6 +11591,10 @@
       const matchedHeader = candidates.find((header) => available.has(header));
       if (matchedHeader && !selected.includes(matchedHeader)) selected.push(matchedHeader);
     });
+    if (sheet.name === "Tier 1" && available.has("Agency") && !selected.includes("Agency")) {
+      const networkIndex = selected.indexOf("Network");
+      selected.splice(networkIndex >= 0 ? networkIndex + 1 : 0, 0, "Agency");
+    }
     return selected.length ? selected : allHeaders;
   }
 
@@ -11662,7 +11666,8 @@
       if (header === "Original Rank") row[header] = offer.originalRank || "";
       else if (header === "Merchant ID") row[header] = offer.merchantId || "";
       else if (header === "Merchant Name") row[header] = offer.brand || "";
-      else if (header === "Agency" || header === "Network") row[header] = offer.network || "";
+      else if (header === "Network") row[header] = offer.network || "";
+      else if (header === "Agency") row[header] = offer.agency || "";
       else if (header === "Clicks") row[header] = number(offer.clicks).toLocaleString();
       else if (header === "Conversion") row[header] = shortPct(offer.conversionRate);
       else if (header === "DPV") row[header] = number(offer.dpv).toLocaleString();
