@@ -38,6 +38,8 @@ from api.tier_moves import handle_tier_moves
 from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, _read_json_body
 from offer_db import (
     DIGITS_RE,
+    OfferDbConfigError,
+    OfferDbError,
     first_query_value,
     int_query_value,
     merchant_payload,
@@ -975,7 +977,20 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 limit = int_query_value(query, "limit", 20, 1, 50)
                 months = int_query_value(query, "months", 12, 1, 24)
-                self.send_json(200, merchant_payload(merchant_id, product_limit=limit, months=months))
+                try:
+                    payload = merchant_payload(merchant_id, product_limit=limit, months=months)
+                except (OfferDbConfigError, OfferDbError) as e:
+                    self.send_json(200, {
+                        "ok": False,
+                        "error": str(e),
+                        "merchantId": merchant_id,
+                        "merchant": None,
+                        "products": [],
+                        "monthlyAmazonMetrics": [],
+                        "monthlyAggregateMetrics": [],
+                    })
+                    return
+                self.send_json(200, payload)
                 return
 
             if parsed.path == "/api/ui/db/search":
