@@ -69,8 +69,8 @@ def test_date_ranges():
 
 def test_report_payload():
     base_rows = [
-        {"Merchant ID": "101", "Merchant Name": "Order Click Merchant", "Brand": "Order Click Merchant", "Network": "Archer"},
-        {"Merchant ID": "202", "Merchant Name": "Tracked Click Merchant", "Brand": "Tracked Click Merchant", "Network": "Levanta"},
+        {"Merchant ID": "101", "Merchant Name": "Order Click Merchant", "Brand": "Order Click Merchant", "Network": "Archer", "Agency": "Bluefocus"},
+        {"Merchant ID": "202", "Merchant Name": "Tracked Click Merchant", "Brand": "Tracked Click Merchant", "Network": "Levanta", "Agency": None},
     ]
     order_rows = [
         {"merchantId": "101", "orders": 2, "revenue": 80, "payout": 8, "affiliatePayout": 6, "dpv": 20, "atc": 5, "orderClicks": 10},
@@ -88,6 +88,8 @@ def test_report_payload():
 
     def fake_fetch_all(_conn, sql, params=None):
         calls.append((sql, params))
+        if "SHOW COLUMNS FROM `cnpscy_oi_offer_sheet_metadata`" in sql:
+            return [{"Field": "agency"}]
         if "FROM cnpscy_amazon_order" in sql:
             return order_rows
         if "FROM cnpscy_amazon_click" in sql:
@@ -100,6 +102,7 @@ def test_report_payload():
     original_fetch_all = offer_db.fetch_all
     offer_db.db_connection = fake_connection
     offer_db.fetch_all = fake_fetch_all
+    offer_db.TABLE_COLUMNS_CACHE.clear()
     offer_db._tier_sheet_cache.clear()
     try:
         payload = offer_db.tier_sheet_payload(
@@ -111,6 +114,7 @@ def test_report_payload():
     finally:
         offer_db.db_connection = original_connection
         offer_db.fetch_all = original_fetch_all
+        offer_db.TABLE_COLUMNS_CACHE.clear()
         offer_db._tier_sheet_cache.clear()
 
     assert_equal(payload["startDate"], "2026-06-01", "payload start date")
@@ -121,6 +125,8 @@ def test_report_payload():
     assert "June Revenue" not in payload["headers"], payload["headers"]
     assert_equal(payload["rows"][0]["Clicks"], "10.0", "order click source")
     assert_equal(payload["rows"][0]["Revenue"], "80.0", "order revenue")
+    assert_equal(payload["rows"][0]["Agency"], "Bluefocus", "sheet agency")
+    assert_equal(payload["rows"][1]["Agency"], "", "missing agency stays blank")
     assert_equal(payload["rows"][0]["Backend EPC"], "8.0", "order EPC")
     assert_equal(payload["rows"][1]["Clicks"], "50.0", "tracked click fallback")
     assert_equal(payload["rows"][1]["Conversion Rate"], "0.1", "tracked conversion")
@@ -129,6 +135,7 @@ def test_report_payload():
     assert_equal(len(amazon_calls), 2, "Amazon metric query count")
     for _sql, params in amazon_calls:
         assert_equal(params, ("Tier 2", 20260601, 20260715), "inclusive date parameters")
+    assert any("MAX(sm.agency) AS `Agency`" in sql for sql, _params in calls), "agency query is missing"
 
 
 def test_frontend_contract():

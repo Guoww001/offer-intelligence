@@ -23,6 +23,13 @@ PAYMENT_RECORD_COLUMN_MIGRATIONS = {
     ),
 }
 
+OFFER_SHEET_METADATA_COLUMN_MIGRATIONS = {
+    "agency": (
+        "ALTER TABLE cnpscy_oi_offer_sheet_metadata "
+        "ADD COLUMN agency VARCHAR(128) DEFAULT NULL AFTER merchantId"
+    ),
+}
+
 
 def db_connection():
     """?? MySQL ????? offer_db.py ???????"""
@@ -145,6 +152,7 @@ def main():
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS cnpscy_oi_offer_sheet_metadata (
                       merchantId          VARCHAR(32) NOT NULL,
+                      agency              VARCHAR(128) DEFAULT NULL,
                       reason              TEXT DEFAULT NULL,
                       recommendation      TEXT DEFAULT NULL,
                       recommendedLink     VARCHAR(512) DEFAULT NULL,
@@ -184,6 +192,15 @@ def main():
             print("  ? created")
         else:
             print("[ddl] cnpscy_oi_offer_sheet_metadata already exists, skipping")
+
+        for column, ddl in OFFER_SHEET_METADATA_COLUMN_MIGRATIONS.items():
+            if not column_exists(conn, "cnpscy_oi_offer_sheet_metadata", column):
+                print(f"[ddl] ALTER TABLE cnpscy_oi_offer_sheet_metadata ADD COLUMN {column} ...")
+                with conn.cursor() as cur:
+                    cur.execute(ddl)
+                print("  ? added")
+            else:
+                print(f"[ddl] cnpscy_oi_offer_sheet_metadata.{column} already exists, skipping")
 
         # ?? 3. cnpscy_oi_category: add categoryNameCn ??
         if not column_exists(conn, "cnpscy_oi_category", "categoryNameCn"):

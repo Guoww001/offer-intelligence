@@ -1,0 +1,43 @@
+name: Sync Tier 1 agencies
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-tier1-agencies:
+    name: Migrate and sync Tier 1 Agency
+    if: github.repository == 'Yeahpromos/offer-intelligence'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyMySQL
+        run: pip install PyMySQL==1.1.1
+
+      - name: Ensure Agency database column
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+        run: python scripts/ensure_oi_schema.py
+
+      - name: Sync Tier 1 Agency values
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+        run: python scripts/sync_tier1_agencies.py

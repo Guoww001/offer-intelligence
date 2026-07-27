@@ -36,6 +36,17 @@ The application expects these database objects:
 - `oi_levanta_monthly_metrics`: historical Levanta CPS/CPC metrics. Payment status still comes from the Levanta API path.
 - `oi_tier_assignments`: merchant tier state and move provenance.
 - `oi_tier_visual_status`: merchant color state with `color`, `reason_code`, `reason_text`, and `source`.
+- `cnpscy_oi_offer_sheet_metadata.agency`: nullable Tier 1 Agency from the Google Sheet, joined by `merchantId`.
+
+The versioned Agency snapshot is `data/tier1_agencies.csv`, sourced from
+spreadsheet `1Q8Ee_bf2sw-pVqJ64zNWeLsRYC3d8C042AMAFNGxwKs`, range
+`Tier 1!B10:D66`. Apply the nullable column migration and the scoped Agency-only
+database update with:
+
+```bash
+python scripts/ensure_oi_schema.py
+python scripts/sync_tier1_agencies.py
+```
 
 ## Server API
 
