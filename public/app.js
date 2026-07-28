@@ -280,9 +280,12 @@
     downloadSequence: 0,
     reportsOpen: true,
     language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en",
-    deepMode: false,
+    deepMode: true,
     deepReport: null,
-    deepHistory: []
+    deepHistory: [],
+    chatHistory: [],
+    reportMemory: [],
+    reportMemoryContext: null
   };
 
   const llmClassifyCache = new Map();
@@ -310,6 +313,7 @@
     table: document.getElementById("offerRows"),
     tableCount: document.getElementById("tableCount"),
     chatLog: document.getElementById("chatLog"),
+    chatLogChat: document.getElementById("chatLogChat"),
     chatForm: document.getElementById("chatForm"),
     chatInput: document.getElementById("chatInput"),
     quickActions: document.getElementById("quickActions"),
@@ -8074,15 +8078,53 @@
     newTop = Math.max(0, Math.min(newTop, window.innerHeight - 60));
     panel.el.style.left = newLeft + "px";
     panel.el.style.top = newTop + "px";
+
+    // collision detection: only minimized panels can be dropped into memory bar
+    if (!panel.minimized) {
+      if (panel._overDropTarget) {
+        panel._overDropTarget = false;
+        var _dz = els.chatMemoryBar;
+        if (_dz) _dz.classList.remove("drop-highlight");
+      }
+    } else {
+      var dropZone = els.chatMemoryBar;
+      if (dropZone && !dropZone.classList.contains("hidden")) {
+      var panelRect = panel.el.getBoundingClientRect();
+      var dropRect = dropZone.getBoundingClientRect();
+      var isOver = !(
+        panelRect.right < dropRect.left ||
+        panelRect.left > dropRect.right ||
+        panelRect.bottom < dropRect.top ||
+        panelRect.top > dropRect.bottom
+      );
+      if (isOver && !panel._overDropTarget) {
+        panel._overDropTarget = true;
+        dropZone.classList.add("drop-highlight");
+      } else if (!isOver && panel._overDropTarget) {
+        panel._overDropTarget = false;
+        dropZone.classList.remove("drop-highlight");
+      }
+    }
+    }
   }
 
   function _onPanelDragEnd() {
     var panel = _deepPanels.find(function (p) { return p.dragState; });
     if (panel) {
       var wasMinClick = panel.minimized && !panel.dragState.moved;
+      // drop on memory bar?
+      if (panel.dragState.moved && panel._overDropTarget) {
+        _addMemoryFromPanel(panel);
+      }
+      // cleanup drop highlight
+      if (panel._overDropTarget) {
+        panel._overDropTarget = false;
+        var dz = els.chatMemoryBar;
+        if (dz) dz.classList.remove("drop-highlight");
+      }
       panel.dragState = null;
       panel.el.classList.remove("dragging");
-      // 点击最小化药丸（未拖动）→ 展开
+      // click on minimized pill (no drag) -> expand
       if (wasMinClick) {
         _expandDeepPanel(panel.id);
         return;
@@ -8100,15 +8142,17 @@
 
   // === 最小化 / 展开（动画版）===
 
-  function _getPillTarget() {
-    // 计算右下角药丸位置
+    function _getPillTarget(panelId) {
     var pillW = 220;
     var pillH = 48;
     var right = 24;
     var bottom = 24;
+    // count already-minimized panels for cascade offset
+    var stacked = _deepPanels.filter(function (p) { return p.minimized && p.id !== panelId; }).length;
+    var offset = stacked * 35;
     return {
-      left: window.innerWidth - pillW - right,
-      top: window.innerHeight - pillH - bottom,
+      left: window.innerWidth - pillW - right - offset,
+      top: window.innerHeight - pillH - bottom - offset,
       width: pillW,
       height: pillH
     };
@@ -8120,7 +8164,7 @@
 
     var el = panel.el;
     var rect = el.getBoundingClientRect();
-    var target = _getPillTarget();
+    var target = _getPillTarget(panel.id);
 
     // 保存原始位置用于展开恢复
     panel._origLeft = parseInt(el.style.left, 10) || rect.left;
@@ -8134,14 +8178,14 @@
     var _pid = panel.id;
 
     // 设置过渡
-    el.style.transition = 'transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 550ms cubic-bezier(0.32, 0.72, 0, 1), opacity 400ms ease';
+    el.style.transition = 'transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 220ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease';
     el.style.willChange = 'transform';
     el.classList.add('panel-animating');
     el.style.transform = 'translate(0, 0)';
 
     // 隐藏骨架/内容——用 opacity 渐变而非 display
     var body = el.querySelector('.deep-window-body');
-    if (body) body.style.transition = 'opacity 350ms ease';
+    if (body) body.style.transition = 'opacity 200ms ease';
     if (body) body.style.opacity = '0';
 
     // 锁死最小化状态（动画完成后触发）
@@ -8215,13 +8259,13 @@
     void el.offsetHeight;
 
     // Step 3: 开启动画过渡
-    el.style.transition = 'transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 550ms cubic-bezier(0.32, 0.72, 0, 1), opacity 400ms ease';
+    el.style.transition = 'transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 220ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease';
     el.style.willChange = 'transform';
     el.classList.add('panel-animating');
 
     // 恢复 body 显示
     var body = el.querySelector('.deep-window-body');
-    if (body) { body.style.transition = 'opacity 350ms ease 200ms'; body.style.opacity = '1'; }
+    if (body) { body.style.transition = 'opacity 200ms ease 100ms'; body.style.opacity = '1'; }
 
     var _pid = panel.id;
 
@@ -8456,7 +8500,10 @@
     if (panel.contentEl) panel.contentEl.classList.remove("hidden");
     if (panel.errorEl) panel.errorEl.classList.add("hidden");
 
-    panel.title = t("deep.report.defaultTitle", "Analysis Report");
+    // use the user prompt as the panel title instead of hardcoded "Analysis Report"
+    var shortTitle = prompt.slice(0, 50);
+    if (shortTitle.length < prompt.length) shortTitle += "\u2026";
+    panel.title = shortTitle;
     if (panel.titleEl) panel.titleEl.textContent = panel.title;
     if (panel.summaryEl) {
       panel.summaryEl.style.display = "none";
@@ -8596,7 +8643,100 @@
   }
 
   // 数字列关键词——用于表格渲染时智能对齐
-  var _NUMERIC_COL_PATTERNS = [
+  function _syncChatLogVisibility() {
+    var chatLog = els.chatLog;
+    var chatLogChat = els.chatLogChat;
+    var isChat = !state.deepMode;
+    if (chatLog) chatLog.classList.toggle("hidden", isChat);
+    if (chatLogChat) chatLogChat.classList.toggle("hidden", !isChat);
+  }
+
+  function _renderMemoryBar() {
+    var bar = els.chatMemoryBar;
+    var chips = els.chatMemoryChips;
+    if (!bar || !chips) return;
+    if (!state.deepMode) {
+      bar.classList.remove("hidden");
+      chips.innerHTML = state.reportMemory.length > 0
+        ? state.reportMemory.map(function (m) {
+            return '<div class="chat-memory-chip" title="' + escapeHtml(m.textContent.slice(0, 100)) + '">' +
+              '<span class="chat-memory-chip-label">' + escapeHtml(m.title) + '</span>' +
+              '<button class="chat-memory-chip-remove" data-memory-id="' + m.id + '" type="button">✕</button>' +
+              '</div>';
+          }).join("")
+        : "";
+      chips.querySelectorAll(".chat-memory-chip-remove").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          _removeReportMemory(btn.dataset.memoryId);
+        });
+      });
+      _updateMemoryContext();
+    } else {
+      bar.classList.add("hidden");
+      chips.innerHTML = "";
+    }
+  }
+
+  function _removeReportMemory(id) {
+    state.reportMemory = state.reportMemory.filter(function (m) { return m.id !== id; });
+    _renderMemoryBar();
+  }
+
+  function _extractPanelMemory(panel) {
+    // check if panel has a download card with full data rows
+    var extraText = "";
+    if (panel.sectionsEl) {
+      var downloadBtn = panel.sectionsEl.querySelector(".download-xlsx-button");
+      if (downloadBtn) {
+        var downloadId = downloadBtn.getAttribute("data-download-id");
+        if (downloadId && state.recommendationDownloads[downloadId]) {
+          var fullRows = state.recommendationDownloads[downloadId].rows;
+          if (fullRows && fullRows.length > 0) {
+            extraText = "\n\n=== Full Data (" + fullRows.length + " rows) ===\n" +
+              fullRows.map(function (r) {
+                return (r.brand || "") + " | Tier: " + (r.tier || "") + " | EPC: " + (r.epc || "") + " | AOV: " + (r.aov || "") + " | Category: " + (r.category || "");
+              }).join("\n") + "\n=== End Full Data ===";
+          }
+        }
+      }
+    }
+    var title = panel.title || panel.prompt || "Untitled";
+    var sectionsEl = panel.sectionsEl;
+    var textContent = "";
+    var htmlContent = "";
+    if (sectionsEl) {
+      textContent = sectionsEl.textContent.replace(/\s+/g, " ").trim();
+      htmlContent = sectionsEl.innerHTML;
+    }
+    return {
+      id: "mem-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+      title: title,
+      textContent: (textContent + (extraText ? "\n\n" + extraText : "")).slice(0, 8000),
+      html: htmlContent,
+      timestamp: Date.now(),
+      panelId: panel.id
+    };
+  }
+
+  function _addMemoryFromPanel(panel) {
+    if (!panel || panel.state === "loading") return;
+    var memory = _extractPanelMemory(panel);
+    state.reportMemory.push(memory);
+    _renderMemoryBar();
+  }
+
+  function _updateMemoryContext() {
+    if (state.reportMemory.length > 0) {
+      state.reportMemoryContext = state.reportMemory.map(function (m) {
+        return "[Report: " + m.title + "] " + m.textContent.slice(0, 8000);
+      }).join("\n---\n");
+    } else {
+      state.reportMemoryContext = null;
+    }
+  }
+
+var _NUMERIC_COL_PATTERNS = [
     /^epc$/i, /^avg\s*epc$/i, /^revenue$/i, /^sales$/i, /^orders$/i,
     /^aov$/i, /^commission$/i, /^rate$/i, /^amount$/i, /^count$/i,
     /^fee$/i, /^price$/i, /^profit$/i, /^cost$/i, /^total$/i,
@@ -8656,21 +8796,151 @@
     var panel = null;
     var isDeep = state.deepMode;
 
+    // ════════════════════════════════════════
+    // Chat Mode: 流式 LLM 回答（独立聊天区）
+    // ════════════════════════════════════════
+    if (!isDeep) {
+      _syncChatLogVisibility();
+      var _chatLog = els.chatLogChat || els.chatLog;
+
+      // 保存用户消息
+      state.chatHistory.push({ role: "user", content: prompt });
+      var _userMsg = document.createElement("div");
+      _userMsg.className = "message user";
+      _userMsg.textContent = prompt;
+      _chatLog.appendChild(_userMsg);
+      _chatLog.scrollTop = _chatLog.scrollHeight;
+
+      const loadingText = language === "zh" ? "正在思考…" : "Thinking…";
+      var loadingMsg = document.createElement("div");
+      loadingMsg.className = "message assistant loading-indicator";
+      loadingMsg.textContent = loadingText;
+      _chatLog.appendChild(loadingMsg);
+      _chatLog.scrollTop = _chatLog.scrollHeight;
+
+      // 记忆上下文
+      var memoryText = null;
+      if (state.reportMemory.length > 0) {
+        memoryText = state.reportMemory.map(function (m) {
+          return "[上下文: " + m.title + "] " + m.textContent.slice(0, 8000);
+        }).join("\n---\n");
+      }
+
+      try {
+        var responseStream = await fetch("/api/chat/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: prompt,
+            memory: memoryText,
+            language: language,
+            history: state.chatHistory.slice(0, -1)
+          })
+        });
+        loadingMsg.remove();
+
+        if (!responseStream.ok) {
+          var _failMsg = document.createElement("div");
+          _failMsg.className = "message assistant";
+          _failMsg.textContent = language === "zh" ? "请求失败，请稍后重试。" : "Request failed, please retry.";
+          _chatLog.appendChild(_failMsg);
+          _chatLog.scrollTop = _chatLog.scrollHeight;
+          return;
+        }
+
+        var msgEl = document.createElement("div");
+        msgEl.className = "message assistant";
+        var msgContent = document.createElement("div");
+        msgContent.className = "chat-stream-text";
+        msgEl.appendChild(msgContent);
+        var statusBar = document.createElement("div");
+        statusBar.className = "chat-stream-status";
+        msgEl.appendChild(statusBar);
+        _chatLog.appendChild(msgEl);
+        _chatLog.scrollTop = _chatLog.scrollHeight;
+
+        var tokenCount = 0;
+        var fullResponse = "";
+        var streamStartTime = Date.now();
+
+        var thinkingZh = ["思考中", "分析中", "处理中", "生成中", "整合中"];
+        var thinkingEn = ["thinking", "analyzing", "processing", "generating", "compiling"];
+        var thinkIdx = 0;
+        var thinkTicks = 0;
+        var timerTick = setInterval(function () {
+          var e = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+          thinkTicks++;
+          if (thinkTicks % 30 === 0) {
+            thinkIdx = (thinkIdx + 1) % (language === "zh" ? thinkingZh.length : thinkingEn.length);
+          }
+          var word = language === "zh" ? thinkingZh[thinkIdx] : thinkingEn[thinkIdx];
+          var timeUnit = language === "zh" ? "秒" : "s";
+          statusBar.textContent = "\u23f1 " + e + timeUnit + " \u00b7 " + word + "…";
+        }, 100);
+
+        var reader = responseStream.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+        var doneReading = false;
+
+        while (!doneReading) {
+          var readResult = await reader.read();
+          if (readResult.done) break;
+          buffer += decoder.decode(readResult.value, { stream: true });
+          var lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (var j = 0; j < lines.length; j++) {
+            var line = lines[j];
+            if (line.startsWith("data: ")) {
+              var payload = line.slice(6).trim();
+              if (payload === "[DONE]") { doneReading = true; break; }
+              try {
+                var parsed = JSON.parse(payload);
+                if (parsed.token) {
+                  msgContent.textContent += parsed.token;
+                  fullResponse += parsed.token;
+                  tokenCount++;
+                  _chatLog.scrollTop = _chatLog.scrollHeight;
+                }
+              } catch (e) { /* skip malformed SSE */ }
+            }
+          }
+        }
+
+        state.chatHistory.push({ role: "assistant", content: fullResponse });
+        clearInterval(timerTick);
+        var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+        statusBar.textContent = language === "zh"
+          ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
+          : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens";
+        _chatLog.scrollTop = _chatLog.scrollHeight;
+      } catch (error) {
+        loadingMsg.remove();
+        console.error("[chat-stream] fetch error:", error);
+        var _errMsg = document.createElement("div");
+        _errMsg.className = "message assistant";
+        _errMsg.textContent = (language === "zh" ? "网络错误，请稍后重试。" : "Network error, please retry.")
+          + " (" + (error.message || "") + ")";
+        _chatLog.appendChild(_errMsg);
+        _chatLog.scrollTop = _chatLog.scrollHeight;
+      }
+      return;
+    }
+
+    // ════════════════════════════════════════
+    // Report Mode (Deep): 面板 + 现有分析管道
+    // ════════════════════════════════════════
+
+    // 用户消息用原有 addMessage（Report Mode 聊天区）
     addMessage("user", escapeHtml(prompt));
 
-    // ★ Deep Mode: create panel early so skeleton shows during LLM classify
     if (isDeep) {
       panel = _createDeepPanel(prompt);
       _showPanelSkeleton(panel, false);
-      // Yield to let the browser paint the skeleton before sync computation
       await new Promise(function (r) { setTimeout(r, 50); });
     }
 
-    // Skip the LLM classification call when regex alone can confidently
-    // determine intent + extract parameters (ASIN, merchant ID, tier,
-    // category, payment status, metric filters, attribute filters, etc.).
-    // The analysis narrative text (/api/chat/analyze) is a separate
-    // async call inside analysisAnswer() and is NOT affected by this.
     if (state.llmEnabled !== false && !canSkipLLMClassify(prompt)) {
       const loadingText = language === "zh" ? "正在理解你的问题…" : "Understanding your question…";
       const loadingMsg = document.createElement("div");
@@ -8683,16 +8953,13 @@
       state.llmClassifyResult = result;
     } else {
       state.llmClassifyResult = null;
-      if (state.llmEnabled !== false) {
-        console.log("[LLM] skipped — regex classification is sufficient for: " + prompt.slice(0, 60));
-      }
     }
+    state.reportMemoryContext = null;
+
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     try {
       var html = answerPrompt(prompt);
-
       if (isDeep && panel) {
-        // Deep Mode: render Quick Mode result in Deep Window
         _showQuickResultInDeepPanel(panel, html, prompt);
         addMessage("assistant", _deepQuickSummaryHtml(panel, prompt));
       } else {
@@ -10477,21 +10744,27 @@
   };
 
   var PUBLISHER_KPI_METRICS = [
-    { key: "clicks", label: "Clicks", format: function(v) { return number(v); } },
-    { key: "dpv", label: "DPV", format: function(v) { return number(v); } },
-    { key: "atc", label: "ATC", format: function(v) { return number(v); } },
-    { key: "orders", label: "Orders", format: function(v) { return number(v); } },
-    { key: "sales", label: "Sales", format: function(v) { return money(v); } },
-    { key: "allCommission", label: "Commission", format: function(v) { return money(v); } },
+    { key: "clicks", label: "Clicks", format: compactNumber, fullFormat: number, icon: "C", tone: "blue" },
+    { key: "dpv", label: "DPV", format: compactNumber, fullFormat: number, icon: "V", tone: "violet" },
+    { key: "atc", label: "ATC", format: compactNumber, fullFormat: number, icon: "A", tone: "amber" },
+    { key: "orders", label: "Orders", format: compactNumber, fullFormat: number, icon: "O", tone: "green" },
+    { key: "sales", label: "Sales", format: compactMoney, fullFormat: money, icon: "$", tone: "teal" },
+    { key: "allCommission", label: "Commission", format: compactMoney, fullFormat: money, icon: "‡", tone: "rose" },
   ];
 
   function renderPublishersKpi(agg) {
     var activeMetric = state.publisherChartMetric || "clicks";
-    els.publishersKpiRow.innerHTML = PUBLISHER_KPI_METRICS.map(function (m) {
+    els.publishersKpiRow.innerHTML = PUBLISHER_KPI_METRICS.map(function (m, index) {
       var val = agg[m.key] != null ? agg[m.key] : 0;
       var activeClass = m.key === activeMetric ? ' metric-active' : '';
-      return '<div class="metric' + activeClass + '" data-publisher-kpi="' + m.key + '"><span>' +
-        escapeHtml(m.label) + '</span><strong>' + m.format(val) + '</strong></div>';
+      return '<article class="metric' + activeClass + '" data-publisher-kpi="' + m.key + '" style="--i:' + index + '">' +
+        '<div class="metric-icon ' + escapeHtml(m.tone) + '">' + escapeHtml(m.icon) + '</div>' +
+        '<div class="metric-body">' +
+          '<span class="metric-label">' + escapeHtml(m.label) + '</span>' +
+          '<strong class="metric-value">' + m.format(val) + '</strong>' +
+          '<span class="metric-full">' + escapeHtml(m.fullFormat(val)) + '</span>' +
+        '</div>' +
+      '</article>';
     }).join("");
   }
 
@@ -11086,37 +11359,35 @@
     var targetId = insertBefore ? insertBefore.getAttribute("data-layout-id") : null;
     var toIdx;
     if (targetId === null) {
-      // 拖到末尾：toIdx = layout.length（最后一个元素之后）
       toIdx = layout.length;
     } else {
       toIdx = layout.indexOf(targetId);
       if (toIdx === -1 || toIdx === fromIdx) { _clearDragTransforms(); return; }
     }
 
-    // 拖到原位置相邻处 — 不需要位移（间隙自然存在或被占用）
-    if (toIdx === fromIdx + 1 || (toIdx === fromIdx - 1)) { _clearDragTransforms(); return; }
-
     var shiftAmount = _customDragData.sectionHeight;
-
-    // 清除所有已有 transform，然后重新计算
-    layout.forEach(function (id) {
-      var el = document.querySelector('.publishers-page [data-layout-id="' + id + '"]');
-      if (el && !el.classList.contains("dragging")) el.style.transform = "";
-    });
+    var displaced = {};
 
     if (toIdx < fromIdx) {
-      // 向上拖：碰撞目标位置 → 从 toIdx 到 fromIdx-1 的所有区块向下位移
+      // 向上拖：从 toIdx 到 fromIdx-1 的区块向下位移
       for (var i = toIdx; i < fromIdx; i++) {
-        var el = document.querySelector('.publishers-page [data-layout-id="' + layout[i] + '"]');
-        if (el) el.style.transform = "translateY(" + shiftAmount + "px)";
+        displaced[layout[i]] = "translateY(" + shiftAmount + "px)";
       }
-    } else {
-      // 向下拖：从 fromIdx+1 到 toIdx-1 的所有区块向上位移
+    } else if (toIdx > fromIdx) {
+      // 向下拖：从 fromIdx+1 到 toIdx-1 的区块向上位移
       for (var i = fromIdx + 1; i < toIdx; i++) {
-        var el = document.querySelector('.publishers-page [data-layout-id="' + layout[i] + '"]');
-        if (el) el.style.transform = "translateY(" + (-shiftAmount) + "px)";
+        displaced[layout[i]] = "translateY(" + (-shiftAmount) + "px)";
       }
     }
+    // toIdx === fromIdx ± 1（相邻）：displaced 为空 → 所有非拖拽元素自然归位
+
+    // 精准更新：需要位移的设 transform，不需要的清空（CSS transition 平滑过渡）
+    layout.forEach(function (id) {
+      if (id === draggedId) return;
+      var el = document.querySelector('.publishers-page [data-layout-id="' + id + '"]');
+      if (!el) return;
+      el.style.transform = displaced[id] !== undefined ? displaced[id] : "";
+    });
   }
 
   function _loadPublisherLayout() {
@@ -15397,6 +15668,9 @@
     els.modeFastBtn = els.chatModeToggle?.querySelector('[data-mode="fast"]');
     els.modeDeepBtn = els.chatModeToggle?.querySelector('[data-mode="deep"]');
 
+    els.chatMemoryBar = document.getElementById("chatMemoryBar");
+    els.chatMemoryChips = document.getElementById("chatMemoryChips");
+
     if (els.tier) fillSelect(els.tier, uniqueValues("tier"));
     if (els.network) fillSelect(els.network, uniqueValues("network"));
     if (els.category) fillSelect(els.category, uniqueCategoryValues());
@@ -15876,6 +16150,8 @@
       els.modeFastBtn.classList.add("active");
       els.modeDeepBtn.classList.remove("active");
       els.chatInput.placeholder = t("chat.placeholder", "Ask about EPC, tiers, AOV, conversion, unpaid offers...");
+      _syncChatLogVisibility();
+      _renderMemoryBar();
     });
 
     els.modeDeepBtn?.addEventListener("click", () => {
@@ -15883,6 +16159,8 @@
       els.modeDeepBtn.classList.add("active");
       els.modeFastBtn.classList.remove("active");
       els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
+      _syncChatLogVisibility();
+      _renderMemoryBar();
     });
 
     // 浮动深度分析按钮——聚焦最上层面板或切换深度模式
@@ -15902,6 +16180,8 @@
         els.modeDeepBtn?.classList.add("active");
         els.modeFastBtn?.classList.remove("active");
         els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
+        _syncChatLogVisibility();
+        _renderMemoryBar();
       }
       els.chatInput?.focus();
       els.chatInput?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -15955,6 +16235,12 @@
     });
 
     addMessage("assistant", `Loaded <strong>${offers.length.toLocaleString()}</strong> internal offers. Search merchant name, merchant ID, ASIN, category, payment status, or ask for recommendations.`);
+    if (els.chatLogChat) {
+      var _welcomeChat = document.createElement("div");
+      _welcomeChat.className = "message assistant";
+      _welcomeChat.innerHTML = `Loaded <strong>${offers.length.toLocaleString()}</strong> internal offers.`;
+      els.chatLogChat.appendChild(_welcomeChat);
+    }
     state.currentContext = { type: "default", items: [], summary: {}, filters: {} };
     syncPaymentControls();
     renderAll();
