@@ -10436,21 +10436,27 @@
   };
 
   var PUBLISHER_KPI_METRICS = [
-    { key: "clicks", label: "Clicks", format: function(v) { return number(v); } },
-    { key: "dpv", label: "DPV", format: function(v) { return number(v); } },
-    { key: "atc", label: "ATC", format: function(v) { return number(v); } },
-    { key: "orders", label: "Orders", format: function(v) { return number(v); } },
-    { key: "sales", label: "Sales", format: function(v) { return money(v); } },
-    { key: "allCommission", label: "Commission", format: function(v) { return money(v); } },
+    { key: "clicks", label: "Clicks", format: compactNumber, fullFormat: number, icon: "C", tone: "blue" },
+    { key: "dpv", label: "DPV", format: compactNumber, fullFormat: number, icon: "V", tone: "violet" },
+    { key: "atc", label: "ATC", format: compactNumber, fullFormat: number, icon: "A", tone: "amber" },
+    { key: "orders", label: "Orders", format: compactNumber, fullFormat: number, icon: "O", tone: "green" },
+    { key: "sales", label: "Sales", format: compactMoney, fullFormat: money, icon: "$", tone: "teal" },
+    { key: "allCommission", label: "Commission", format: compactMoney, fullFormat: money, icon: "‡", tone: "rose" },
   ];
 
   function renderPublishersKpi(agg) {
     var activeMetric = state.publisherChartMetric || "clicks";
-    els.publishersKpiRow.innerHTML = PUBLISHER_KPI_METRICS.map(function (m) {
+    els.publishersKpiRow.innerHTML = PUBLISHER_KPI_METRICS.map(function (m, index) {
       var val = agg[m.key] != null ? agg[m.key] : 0;
       var activeClass = m.key === activeMetric ? ' metric-active' : '';
-      return '<div class="metric' + activeClass + '" data-publisher-kpi="' + m.key + '"><span>' +
-        escapeHtml(m.label) + '</span><strong>' + m.format(val) + '</strong></div>';
+      return '<article class="metric' + activeClass + '" data-publisher-kpi="' + m.key + '" style="--i:' + index + '">' +
+        '<div class="metric-icon ' + escapeHtml(m.tone) + '">' + escapeHtml(m.icon) + '</div>' +
+        '<div class="metric-body">' +
+          '<span class="metric-label">' + escapeHtml(m.label) + '</span>' +
+          '<strong class="metric-value">' + m.format(val) + '</strong>' +
+          '<span class="metric-full">' + escapeHtml(m.fullFormat(val)) + '</span>' +
+        '</div>' +
+      '</article>';
     }).join("");
   }
 
@@ -11045,37 +11051,35 @@
     var targetId = insertBefore ? insertBefore.getAttribute("data-layout-id") : null;
     var toIdx;
     if (targetId === null) {
-      // 拖到末尾：toIdx = layout.length（最后一个元素之后）
       toIdx = layout.length;
     } else {
       toIdx = layout.indexOf(targetId);
       if (toIdx === -1 || toIdx === fromIdx) { _clearDragTransforms(); return; }
     }
 
-    // 拖到原位置相邻处 — 不需要位移（间隙自然存在或被占用）
-    if (toIdx === fromIdx + 1 || (toIdx === fromIdx - 1)) { _clearDragTransforms(); return; }
-
     var shiftAmount = _customDragData.sectionHeight;
-
-    // 清除所有已有 transform，然后重新计算
-    layout.forEach(function (id) {
-      var el = document.querySelector('.publishers-page [data-layout-id="' + id + '"]');
-      if (el && !el.classList.contains("dragging")) el.style.transform = "";
-    });
+    var displaced = {};
 
     if (toIdx < fromIdx) {
-      // 向上拖：碰撞目标位置 → 从 toIdx 到 fromIdx-1 的所有区块向下位移
+      // 向上拖：从 toIdx 到 fromIdx-1 的区块向下位移
       for (var i = toIdx; i < fromIdx; i++) {
-        var el = document.querySelector('.publishers-page [data-layout-id="' + layout[i] + '"]');
-        if (el) el.style.transform = "translateY(" + shiftAmount + "px)";
+        displaced[layout[i]] = "translateY(" + shiftAmount + "px)";
       }
-    } else {
-      // 向下拖：从 fromIdx+1 到 toIdx-1 的所有区块向上位移
+    } else if (toIdx > fromIdx) {
+      // 向下拖：从 fromIdx+1 到 toIdx-1 的区块向上位移
       for (var i = fromIdx + 1; i < toIdx; i++) {
-        var el = document.querySelector('.publishers-page [data-layout-id="' + layout[i] + '"]');
-        if (el) el.style.transform = "translateY(" + (-shiftAmount) + "px)";
+        displaced[layout[i]] = "translateY(" + (-shiftAmount) + "px)";
       }
     }
+    // toIdx === fromIdx ± 1（相邻）：displaced 为空 → 所有非拖拽元素自然归位
+
+    // 精准更新：需要位移的设 transform，不需要的清空（CSS transition 平滑过渡）
+    layout.forEach(function (id) {
+      if (id === draggedId) return;
+      var el = document.querySelector('.publishers-page [data-layout-id="' + id + '"]');
+      if (!el) return;
+      el.style.transform = displaced[id] !== undefined ? displaced[id] : "";
+    });
   }
 
   function _loadPublisherLayout() {
