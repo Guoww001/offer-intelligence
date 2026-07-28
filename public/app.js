@@ -8627,9 +8627,11 @@
   }
 
   // ★ Deep Mode: summary card for chat (click to bring panel to front)
-  function _deepQuickSummaryHtml(panel, prompt) {
+  function _deepQuickSummaryHtml(panel, prompt, html) {
     var cardKey = ++_deepCardKeyCounter;
     panel._cardKey = cardKey;
+    // 缓存面板 HTML，支持关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, html: html };
     var prefix = t("deep.chat.summaryPrefix", "📊 Deep Analysis: ");
     var title = panel.title || t("deep.report.defaultTitle", "Analysis Report");
     var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
@@ -8961,7 +8963,7 @@ var _NUMERIC_COL_PATTERNS = [
       var html = answerPrompt(prompt);
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
-        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt));
+        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
         addMessage("assistant", html);
       }
@@ -16224,12 +16226,18 @@ var _NUMERIC_COL_PATTERNS = [
         }
         return;
       }
-      // 面板已关闭，尝试从缓存重建（仅适用于旧版 deep reasoning 报告）
+      // 面板已关闭，尝试从缓存重建
       var cached = _deepReportCache[key];
       if (cached) {
         var newPanel = _createDeepPanel(cached.prompt);
         newPanel._cardKey = key;
-        _renderPanelReport(newPanel, cached.report);
+        if (cached.html) {
+          // 简化 Deep Mode：直接还原 HTML 内容
+          _showQuickResultInDeepPanel(newPanel, cached.html, cached.prompt);
+        } else if (cached.report) {
+          // 旧版 deep reasoning 报告路径
+          _renderPanelReport(newPanel, cached.report);
+        }
         _bringPanelToFront(newPanel);
       }
     });
