@@ -11,6 +11,8 @@ __pycache__/
 specs/
 tests/
 .playwright-mcp
+.playwright-cli/
+output/playwright/
 .superpowers/
 .pytest_cache
 .agents/

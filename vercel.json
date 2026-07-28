@@ -90,6 +90,18 @@
       ]
     },
     {
+      "src": "^/api/ui/db/tier1-merchants/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-tier1-merchants"
+        }
+      ]
+    },
+    {
       "src": "^/api/ui/db/publishers/?$",
       "dest": "/api/db/index",
       "transforms": [

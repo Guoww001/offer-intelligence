@@ -35,6 +35,7 @@ The application expects these database objects:
 - `oi_offer_monthly_aggregate_metrics`: offer-level aggregate metrics only. Do not expose `user_id` or `site_id`.
 - `oi_levanta_monthly_metrics`: historical Levanta CPS/CPC metrics. Payment status still comes from the Levanta API path.
 - `oi_tier_assignments`: merchant tier state and move provenance.
+- `oi_tier_move_history`: immutable merchant tier migration events (`sourceTier`, `targetTier`, `movedAt`, and `movedBy`).
 - `oi_tier_visual_status`: merchant color state with `color`, `reason_code`, `reason_text`, and `source`.
 - `cnpscy_oi_offer_sheet_metadata.agency`: nullable Tier 1 Agency from the Google Sheet, joined by `merchantId`.
 
@@ -47,6 +48,13 @@ database update with:
 python scripts/ensure_oi_schema.py
 python scripts/sync_tier1_agencies.py
 ```
+
+The Tier 1 merchant-management endpoint reads active merchants from
+`cnpscy_advert`, updates `cnpscy_oi_tier_assignments`, and appends
+`cnpscy_oi_tier_move_history` in one transaction. Its database account therefore
+needs `SELECT` on the lookup tables plus `SELECT`, `INSERT`, and `UPDATE` on the
+assignment table and `SELECT` and `INSERT` on the history table. Run
+`scripts/ensure_oi_schema.py` before enabling this endpoint.
 
 ## Server API
 

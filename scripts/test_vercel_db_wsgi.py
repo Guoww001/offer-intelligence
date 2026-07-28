@@ -1,4 +1,6 @@
 import importlib.util
+from io import BytesIO
+import json
 import os
 import sys
 from pathlib import Path
@@ -24,7 +26,8 @@ def load_app_module():
     return module
 
 
-def request(app, route, query="", method="GET", token="unit-test-token", cookie=""):
+def request(app, route, query="", method="GET", token="unit-test-token", cookie="", body=None):
+    encoded_body = json.dumps(body or {}).encode("utf-8") if body is not None else b""
     environ = {
         "REQUEST_METHOD": method,
         "PATH_INFO": "/api/db/index",
@@ -33,6 +36,9 @@ def request(app, route, query="", method="GET", token="unit-test-token", cookie=
         "SERVER_PORT": "80",
         "wsgi.url_scheme": "http",
         "HTTP_X_OI_DB_ROUTE": route,
+        "CONTENT_LENGTH": str(len(encoded_body)),
+        "CONTENT_TYPE": "application/json",
+        "wsgi.input": BytesIO(encoded_body),
     }
     if token:
         environ["HTTP_AUTHORIZATION"] = f"Bearer {token}"
@@ -90,6 +96,23 @@ def main():
             "endDate": end_date,
             "compact": compact,
         }
+        module.tier1_merchant_search_payload = lambda text, limit: {
+            "route": "ui-tier1-merchant-search",
+            "q": text,
+            "limit": limit,
+        }
+        module.tier1_additions_payload = lambda limit: {
+            "route": "ui-tier1-additions",
+            "additions": [{"merchantId": "42"}],
+            "limit": limit,
+        }
+        module.add_merchant_to_tier1 = lambda merchant_id, updated_by, expected_tier: {
+            "ok": True,
+            "route": "ui-tier1-add",
+            "merchantId": merchant_id,
+            "updatedBy": updated_by,
+            "expectedTier": expected_tier,
+        }
 
         status = request(module.app, "status", "action=search&month=202607")
         assert_equal(status["status"], 200, "status response code")
@@ -133,6 +156,48 @@ def main():
 
         missing_tier = request(module.app, "ui-tier-sheet", token="")
         assert_equal(missing_tier["status"], 400, "missing tier response code")
+
+        tier1_search = request(
+            module.app,
+            "ui-tier1-merchants",
+            "action=search&q=coffee&limit=8",
+            token="",
+        )
+        assert_equal(tier1_search["status"], 200, "Tier 1 merchant search response code")
+        assert b'"route":"ui-tier1-merchant-search"' in tier1_search["body"], tier1_search["body"]
+
+        tier1_additions = request(
+            module.app,
+            "ui-tier1-merchants",
+            "action=additions",
+            token="",
+        )
+        assert_equal(tier1_additions["status"], 200, "Tier 1 additions response code")
+        assert b'"route":"ui-tier1-additions"' in tier1_additions["body"], tier1_additions["body"]
+
+        tier1_add = request(
+            module.app,
+            "ui-tier1-merchants",
+            method="POST",
+            token="",
+            body={"merchantId": "42", "expectedTier": "Tier 2"},
+        )
+        assert_equal(tier1_add["status"], 200, "Tier 1 merchant add response code")
+        assert b'"route":"ui-tier1-add"' in tier1_add["body"], tier1_add["body"]
+        assert b'"expectedTier":"Tier 2"' in tier1_add["body"], tier1_add["body"]
+
+        tier1_options = request(
+            module.app,
+            "ui-tier1-merchants",
+            method="OPTIONS",
+            token="",
+        )
+        assert_equal(tier1_options["status"], 204, "Tier 1 merchant OPTIONS response code")
+        assert_equal(
+            dict(tier1_options["headers"]).get("Access-Control-Allow-Methods"),
+            "GET, POST, OPTIONS",
+            "Tier 1 merchant allowed methods",
+        )
 
         os.environ["OI_AUTH_ENABLED"] = "1"
         os.environ["OI_ADMIN_PASSWORD"] = "unit-test-password"

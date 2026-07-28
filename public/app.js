@@ -131,6 +131,7 @@
   const DB_SEARCH_UI_API = "/api/ui/db/search";
   const DB_TIER_SUMMARY_API = "/api/ui/db/tier-summary";
   const DB_TIER_SHEET_UI_API = "/api/ui/db/tier_sheet";
+  const DB_TIER1_MERCHANTS_UI_API = "/api/ui/db/tier1-merchants";
   const DB_STATUS_AUTO_REFRESH_MS = 5 * 60 * 1000;
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const DEFAULT_TIER_REPORT_END_DATE = localDateKey(new Date());
@@ -190,6 +191,21 @@
     sharedTierMovesLoading: false,
     tierMoveTarget: "",
     tierMoveStatus: "",
+    tier1Management: {
+      additions: [],
+      additionsLoaded: false,
+      additionsLoading: false,
+      additionsError: "",
+      panelOpen: false,
+      query: "",
+      results: [],
+      selectedMerchant: null,
+      searchLoading: false,
+      submitting: false,
+      searchSequence: 0,
+      additionsRestoreFocus: null,
+      restoreFocus: null
+    },
     tierSheetFilters: {
       search: "",
       network: "all",
@@ -359,6 +375,31 @@
     tierPage: document.getElementById("tierPage"),
     tierPageTitle: document.getElementById("tierPageTitle"),
     tierPageSubtitle: document.getElementById("tierPageSubtitle"),
+    tier1ManagementActions: document.getElementById("tier1ManagementActions"),
+    tier1AdditionsToggle: document.getElementById("tier1AdditionsToggle"),
+    tier1AdditionsCount: document.getElementById("tier1AdditionsCount"),
+    tier1AdditionsPanel: document.getElementById("tier1AdditionsPanel"),
+    tier1AdditionsClose: document.getElementById("tier1AdditionsClose"),
+    tier1AdditionsStatus: document.getElementById("tier1AdditionsStatus"),
+    tier1AdditionsList: document.getElementById("tier1AdditionsList"),
+    tier1AddMerchant: document.getElementById("tier1AddMerchant"),
+    tier1MerchantDialog: document.getElementById("tier1MerchantDialog"),
+    tier1MerchantClose: document.getElementById("tier1MerchantClose"),
+    tier1MerchantCancel: document.getElementById("tier1MerchantCancel"),
+    tier1MerchantSearchForm: document.getElementById("tier1MerchantSearchForm"),
+    tier1MerchantQuery: document.getElementById("tier1MerchantQuery"),
+    tier1MerchantSearchButton: document.getElementById("tier1MerchantSearchButton"),
+    tier1MerchantStatus: document.getElementById("tier1MerchantStatus"),
+    tier1MerchantResults: document.getElementById("tier1MerchantResults"),
+    tier1MerchantConfirmation: document.getElementById("tier1MerchantConfirmation"),
+    tier1SelectedMerchantName: document.getElementById("tier1SelectedMerchantName"),
+    tier1SelectedMerchantId: document.getElementById("tier1SelectedMerchantId"),
+    tier1SelectedMerchantNetwork: document.getElementById("tier1SelectedMerchantNetwork"),
+    tier1SelectedMerchantTier: document.getElementById("tier1SelectedMerchantTier"),
+    tier1SelectedMerchantContext: document.getElementById("tier1SelectedMerchantContext"),
+    tier1MerchantConfirmationNotice: document.getElementById("tier1MerchantConfirmationNotice"),
+    tier1MerchantBack: document.getElementById("tier1MerchantBack"),
+    tier1MerchantConfirm: document.getElementById("tier1MerchantConfirm"),
     tierPageSummary: document.getElementById("tierPageSummary"),
     tierPageNotes: document.getElementById("tierPageNotes"),
     tierCategorySummary: document.getElementById("tierCategorySummary"),
@@ -12052,6 +12093,456 @@
     )).join("");
   }
 
+  function formatTier1AddedAt(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "Time not recorded";
+    const parsed = new Date(raw.includes("T") ? raw : raw.replace(" ", "T"));
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+
+  function renderTier1Additions() {
+    const management = state.tier1Management;
+    const additions = management.additions || [];
+    if (els.tier1AdditionsCount) els.tier1AdditionsCount.textContent = additions.length.toLocaleString();
+    if (els.tier1AdditionsToggle) {
+      els.tier1AdditionsToggle.setAttribute("aria-expanded", management.panelOpen ? "true" : "false");
+    }
+    if (els.tier1AdditionsPanel) {
+      els.tier1AdditionsPanel.classList.toggle("hidden", !management.panelOpen);
+    }
+    document.documentElement.classList.toggle("tier1-additions-open", management.panelOpen);
+    document.body.classList.toggle("tier1-additions-open", management.panelOpen);
+    if (els.tier1AdditionsStatus) {
+      els.tier1AdditionsStatus.classList.toggle("error", Boolean(management.additionsError));
+      els.tier1AdditionsStatus.textContent = management.additionsLoading
+        ? "Loading added merchants..."
+        : management.additionsError;
+    }
+    if (!els.tier1AdditionsList) return;
+    if (management.additionsLoading && !management.additionsLoaded) {
+      els.tier1AdditionsList.innerHTML = `<div class="tier1-additions-empty">Loading the Tier 1 addition history...</div>`;
+      return;
+    }
+    if (!additions.length) {
+      const emptyMessage = management.additionsError
+        ? "Migration history is unavailable until the database connection is restored."
+        : "No merchants have been added through this tool yet.";
+      els.tier1AdditionsList.innerHTML = `<div class="tier1-additions-empty">${escapeHtml(emptyMessage)}</div>`;
+      return;
+    }
+    els.tier1AdditionsList.innerHTML = additions.map((item) => {
+      const movement = item.previousTier ? `${item.previousTier} to Tier 1` : "New Tier 1 assignment";
+      const addedBy = item.addedBy ? `Added by ${item.addedBy}` : "Added through Offer Intelligence";
+      const currentTier = item.currentTier && item.currentTier !== "Tier 1"
+        ? ` / Current tier: ${item.currentTier}`
+        : "";
+      return `<article class="tier1-addition-row">
+        <strong>${escapeHtml(item.merchantName || item.merchantId || "Unknown merchant")}<small>ID ${escapeHtml(item.merchantId || "-")}</small></strong>
+        <span>${escapeHtml(item.network || "Unknown")}</span>
+        <span class="tier1-addition-meta">${escapeHtml(movement)}${escapeHtml(currentTier)}<br>${escapeHtml(formatTier1AddedAt(item.addedAt))} / ${escapeHtml(addedBy)}</span>
+      </article>`;
+    }).join("");
+  }
+
+  function openTier1AdditionsOverlay() {
+    if (state.selectedTierPage !== "Tier 1" || !els.tier1AdditionsPanel) return;
+    const management = state.tier1Management;
+    management.additionsRestoreFocus = document.activeElement;
+    management.panelOpen = true;
+    renderTier1Additions();
+    loadTier1Additions({ force: Boolean(management.additionsError) });
+    window.requestAnimationFrame(() => {
+      if (els.tier1AdditionsClose) els.tier1AdditionsClose.focus();
+    });
+  }
+
+  function closeTier1AdditionsOverlay({ restoreFocus = true } = {}) {
+    const management = state.tier1Management;
+    management.panelOpen = false;
+    renderTier1Additions();
+    if (
+      restoreFocus
+      && management.additionsRestoreFocus
+      && typeof management.additionsRestoreFocus.focus === "function"
+    ) {
+      management.additionsRestoreFocus.focus();
+    }
+  }
+
+  async function loadTier1Additions({ force = false } = {}) {
+    const management = state.tier1Management;
+    if (management.additionsLoading || (management.additionsLoaded && !force)) return;
+    management.additionsLoading = true;
+    management.additionsError = "";
+    renderTier1Additions();
+    try {
+      const params = new URLSearchParams({ action: "additions", limit: "250" });
+      const response = await fetch(`${DB_TIER1_MERCHANTS_UI_API}?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `Could not load added merchants (${response.status})`);
+      }
+      management.additions = Array.isArray(payload.additions) ? payload.additions : [];
+      management.additionsLoaded = true;
+    } catch (error) {
+      management.additionsError = error && error.message ? error.message : String(error);
+    } finally {
+      management.additionsLoading = false;
+      renderTier1Additions();
+    }
+  }
+
+  function renderTier1Management(tierName) {
+    const isTier1 = tierName === "Tier 1";
+    if (els.tier1ManagementActions) els.tier1ManagementActions.classList.toggle("hidden", !isTier1);
+    if (!isTier1) {
+      state.tier1Management.panelOpen = false;
+    } else if (!state.tier1Management.additionsLoaded && !state.tier1Management.additionsLoading) {
+      loadTier1Additions();
+    }
+    renderTier1Additions();
+  }
+
+  function trapTier1AdditionsOverlayFocus(event) {
+    if (
+      event.key !== "Tab"
+      || !els.tier1AdditionsPanel
+      || els.tier1AdditionsPanel.classList.contains("hidden")
+    ) return false;
+    const focusable = Array.from(els.tier1AdditionsPanel.querySelectorAll(
+      "button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    )).filter((element) => !element.closest(".hidden"));
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
+
+  function setTier1MerchantStatus(message, type = "") {
+    if (!els.tier1MerchantStatus) return;
+    els.tier1MerchantStatus.textContent = message || "";
+    els.tier1MerchantStatus.classList.toggle("error", type === "error");
+    els.tier1MerchantStatus.classList.toggle("success", type === "success");
+  }
+
+  function resetTier1MerchantDialog() {
+    const management = state.tier1Management;
+    management.query = "";
+    management.results = [];
+    management.selectedMerchant = null;
+    management.searchLoading = false;
+    management.submitting = false;
+    management.searchSequence += 1;
+    if (els.tier1MerchantQuery) els.tier1MerchantQuery.value = "";
+    if (els.tier1MerchantSearchForm) els.tier1MerchantSearchForm.classList.remove("hidden");
+    if (els.tier1MerchantConfirmation) els.tier1MerchantConfirmation.classList.add("hidden");
+    if (els.tier1MerchantResults) {
+      els.tier1MerchantResults.classList.remove("hidden");
+      els.tier1MerchantResults.innerHTML = "";
+    }
+    if (els.tier1MerchantSearchButton) {
+      els.tier1MerchantSearchButton.disabled = false;
+      els.tier1MerchantSearchButton.textContent = "Find merchant";
+    }
+    if (els.tier1MerchantConfirm) {
+      els.tier1MerchantConfirm.disabled = true;
+      els.tier1MerchantConfirm.textContent = "Add to Tier 1";
+    }
+    if (els.tier1MerchantCancel) els.tier1MerchantCancel.textContent = "Cancel";
+    setTier1MerchantStatus("");
+  }
+
+  function openTier1MerchantDialog() {
+    if (state.selectedTierPage !== "Tier 1" || !els.tier1MerchantDialog) return;
+    state.tier1Management.restoreFocus = document.activeElement;
+    resetTier1MerchantDialog();
+    els.tier1MerchantDialog.classList.remove("hidden");
+    document.body.classList.add("tier1-merchant-open");
+    window.requestAnimationFrame(() => {
+      if (els.tier1MerchantQuery) els.tier1MerchantQuery.focus();
+    });
+  }
+
+  function closeTier1MerchantDialog({ restoreFocus = true } = {}) {
+    if (!els.tier1MerchantDialog) return;
+    state.tier1Management.searchSequence += 1;
+    els.tier1MerchantDialog.classList.add("hidden");
+    document.body.classList.remove("tier1-merchant-open");
+    if (
+      restoreFocus
+      && state.tier1Management.restoreFocus
+      && typeof state.tier1Management.restoreFocus.focus === "function"
+    ) {
+      state.tier1Management.restoreFocus.focus();
+    }
+  }
+
+  function renderTier1MerchantResults() {
+    const management = state.tier1Management;
+    if (!els.tier1MerchantResults) return;
+    if (management.searchLoading) {
+      els.tier1MerchantResults.innerHTML = `<div class="tier1-result-skeleton"></div><div class="tier1-result-skeleton"></div><div class="tier1-result-skeleton"></div>`;
+      return;
+    }
+    els.tier1MerchantResults.innerHTML = management.results.map((merchant) => {
+      const currentTier = merchant.currentTier || "Not assigned";
+      const alreadyTier1 = currentTier === "Tier 1";
+      const context = [merchant.category, merchant.country].filter(Boolean).join(" / ") || "No category details";
+      return `<button
+        class="tier1-merchant-result"
+        type="button"
+        role="option"
+        data-tier1-merchant-id="${escapeHtml(merchant.merchantId || "")}"
+        aria-label="${escapeHtml(alreadyTier1 ? `${merchant.merchantName || merchant.merchantId} is already in Tier 1` : `Review ${merchant.merchantName || merchant.merchantId}`)}"
+        ${alreadyTier1 ? "disabled" : ""}
+      >
+        <strong>${escapeHtml(merchant.merchantName || "Unnamed merchant")}<small>ID ${escapeHtml(merchant.merchantId || "-")}</small></strong>
+        <span>${escapeHtml(merchant.network || "Unknown")}</span>
+        <span>${escapeHtml(currentTier)}</span>
+        <span class="tier1-result-action">${alreadyTier1 ? "Already in Tier 1" : "Review match"}</span>
+        <span class="hidden">${escapeHtml(context)}</span>
+      </button>`;
+    }).join("");
+  }
+
+  function selectTier1Merchant(merchantId) {
+    const merchant = state.tier1Management.results.find((item) => String(item.merchantId || "") === String(merchantId || ""));
+    if (!merchant) return;
+    state.tier1Management.selectedMerchant = merchant;
+    if (els.tier1MerchantSearchForm) els.tier1MerchantSearchForm.classList.add("hidden");
+    if (els.tier1MerchantResults) els.tier1MerchantResults.classList.add("hidden");
+    if (els.tier1MerchantConfirmation) els.tier1MerchantConfirmation.classList.remove("hidden");
+    if (els.tier1SelectedMerchantName) els.tier1SelectedMerchantName.textContent = merchant.merchantName || "Unnamed merchant";
+    if (els.tier1SelectedMerchantId) els.tier1SelectedMerchantId.textContent = merchant.merchantId || "-";
+    if (els.tier1SelectedMerchantNetwork) els.tier1SelectedMerchantNetwork.textContent = merchant.network || "Unknown";
+    if (els.tier1SelectedMerchantTier) els.tier1SelectedMerchantTier.textContent = merchant.currentTier || "Not assigned";
+    if (els.tier1SelectedMerchantContext) {
+      els.tier1SelectedMerchantContext.textContent = [merchant.category, merchant.country].filter(Boolean).join(" / ") || "Not available";
+    }
+    const currentTier = merchant.currentTier || "";
+    const alreadyTier1 = currentTier === "Tier 1";
+    if (els.tier1MerchantConfirmationNotice) {
+      els.tier1MerchantConfirmationNotice.className = "tier1-confirmation-notice";
+      if (alreadyTier1) {
+        els.tier1MerchantConfirmationNotice.classList.add("blocked");
+        els.tier1MerchantConfirmationNotice.textContent = "This merchant is already assigned to Tier 1. No change will be made.";
+      } else if (currentTier) {
+        els.tier1MerchantConfirmationNotice.classList.add("warning");
+        els.tier1MerchantConfirmationNotice.textContent = `Confirming will move this merchant from ${currentTier} to Tier 1.`;
+      } else {
+        els.tier1MerchantConfirmationNotice.textContent = "Confirming will create a Tier 1 assignment for this merchant.";
+      }
+    }
+    if (els.tier1MerchantConfirm) els.tier1MerchantConfirm.disabled = alreadyTier1;
+    setTier1MerchantStatus("");
+    window.requestAnimationFrame(() => {
+      if (alreadyTier1 && els.tier1MerchantBack) els.tier1MerchantBack.focus();
+      else if (els.tier1MerchantConfirm) els.tier1MerchantConfirm.focus();
+    });
+  }
+
+  function showTier1MerchantSearch() {
+    state.tier1Management.selectedMerchant = null;
+    if (els.tier1MerchantConfirmation) els.tier1MerchantConfirmation.classList.add("hidden");
+    if (els.tier1MerchantSearchForm) els.tier1MerchantSearchForm.classList.remove("hidden");
+    if (els.tier1MerchantResults) els.tier1MerchantResults.classList.remove("hidden");
+    if (els.tier1MerchantConfirm) els.tier1MerchantConfirm.disabled = true;
+    setTier1MerchantStatus("");
+    window.requestAnimationFrame(() => {
+      if (els.tier1MerchantQuery) els.tier1MerchantQuery.focus();
+    });
+  }
+
+  async function searchTier1Merchants() {
+    const management = state.tier1Management;
+    const query = String(els.tier1MerchantQuery && els.tier1MerchantQuery.value || "").trim();
+    if (query.length < 2) {
+      setTier1MerchantStatus("Enter at least 2 characters or a full merchant ID.", "error");
+      if (els.tier1MerchantQuery) els.tier1MerchantQuery.focus();
+      return;
+    }
+    management.query = query;
+    management.selectedMerchant = null;
+    management.searchLoading = true;
+    management.results = [];
+    const sequence = ++management.searchSequence;
+    if (els.tier1MerchantSearchButton) {
+      els.tier1MerchantSearchButton.disabled = true;
+      els.tier1MerchantSearchButton.textContent = "Searching...";
+    }
+    setTier1MerchantStatus("Searching the YeahPromos database...");
+    renderTier1MerchantResults();
+    try {
+      const params = new URLSearchParams({ action: "search", q: query, limit: "10" });
+      const response = await fetch(`${DB_TIER1_MERCHANTS_UI_API}?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `Search failed (${response.status})`);
+      }
+      if (sequence !== management.searchSequence) return;
+      management.results = Array.isArray(payload.results) ? payload.results : [];
+      management.searchLoading = false;
+      renderTier1MerchantResults();
+      if (!management.results.length) {
+        setTier1MerchantStatus("No active merchants matched that ID or name.", "error");
+        return;
+      }
+      setTier1MerchantStatus(`${management.results.length.toLocaleString()} merchant match${management.results.length === 1 ? "" : "es"} found. Select one to review.`);
+      const exactIdMatch = /^\d+$/.test(query)
+        ? management.results.find((item) => String(item.merchantId || "") === query)
+        : null;
+      if (exactIdMatch) selectTier1Merchant(exactIdMatch.merchantId);
+    } catch (error) {
+      if (sequence !== management.searchSequence) return;
+      management.searchLoading = false;
+      management.results = [];
+      renderTier1MerchantResults();
+      setTier1MerchantStatus(error && error.message ? error.message : String(error), "error");
+    } finally {
+      if (sequence === management.searchSequence && els.tier1MerchantSearchButton) {
+        els.tier1MerchantSearchButton.disabled = false;
+        els.tier1MerchantSearchButton.textContent = "Find merchant";
+      }
+    }
+  }
+
+  async function refreshTier1ReportAfterAdd() {
+    state.tierReport.payloads.clear();
+    state.tierReport.activeKeys.clear();
+    state.tierReport.errors.clear();
+    await loadTierReport("Tier 1", state.tierReport.startDate, state.tierReport.endDate);
+    if (state.page === "tier" && state.selectedTierPage === "Tier 1") renderTierPage("Tier 1");
+  }
+
+  async function confirmTier1MerchantAdd() {
+    const management = state.tier1Management;
+    const merchant = management.selectedMerchant;
+    if (!merchant || merchant.currentTier === "Tier 1" || management.submitting) return;
+    management.submitting = true;
+    if (els.tier1MerchantConfirm) {
+      els.tier1MerchantConfirm.disabled = true;
+      els.tier1MerchantConfirm.textContent = "Adding...";
+    }
+    setTier1MerchantStatus("Saving the Tier 1 assignment...");
+    try {
+      const response = await fetch(DB_TIER1_MERCHANTS_UI_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          merchantId: merchant.merchantId,
+          expectedTier: merchant.currentTier || ""
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        const error = new Error(payload.error || `Could not add merchant (${response.status})`);
+        error.payload = payload;
+        throw error;
+      }
+      if (Array.isArray(payload.additions)) {
+        management.additions = payload.additions;
+        management.additionsLoaded = true;
+        management.additionsError = "";
+        renderTier1Additions();
+      }
+      const confirmedMerchant = {
+        ...merchant,
+        ...(payload.merchant || {}),
+        currentTier: "Tier 1"
+      };
+      management.results = management.results.map((item) => (
+        String(item.merchantId || "") === String(confirmedMerchant.merchantId || "")
+          ? confirmedMerchant
+          : item
+      ));
+      selectTier1Merchant(merchant.merchantId);
+      if (els.tier1MerchantConfirmationNotice) {
+        els.tier1MerchantConfirmationNotice.className = "tier1-confirmation-notice";
+        els.tier1MerchantConfirmationNotice.textContent = merchant.currentTier
+          ? `Migration recorded: ${merchant.currentTier} to Tier 1.`
+          : "Tier 1 assignment created and recorded in the database.";
+      }
+      if (els.tier1MerchantConfirm) {
+        els.tier1MerchantConfirm.disabled = true;
+        els.tier1MerchantConfirm.textContent = "Added";
+      }
+      const successMessage = merchant.currentTier
+        ? `${merchant.merchantName || merchant.merchantId} was migrated from ${merchant.currentTier} to Tier 1.`
+        : `${merchant.merchantName || merchant.merchantId} was added to Tier 1.`;
+      setTier1MerchantStatus(successMessage, "success");
+      if (els.tier1MerchantCancel) els.tier1MerchantCancel.textContent = "Close";
+      await refreshTier1ReportAfterAdd();
+    } catch (error) {
+      const payload = error && error.payload;
+      if (payload && payload.merchant) {
+        management.results = management.results.map((item) => (
+          String(item.merchantId || "") === String(payload.merchant.merchantId || "")
+            ? { ...item, ...payload.merchant }
+            : item
+        ));
+        showTier1MerchantSearch();
+        renderTier1MerchantResults();
+      }
+      setTier1MerchantStatus(error && error.message ? error.message : String(error), "error");
+    } finally {
+      management.submitting = false;
+      if (els.tier1MerchantConfirm && management.selectedMerchant) {
+        const added = management.selectedMerchant.currentTier === "Tier 1";
+        els.tier1MerchantConfirm.disabled = added;
+        els.tier1MerchantConfirm.textContent = added ? "Added" : "Add to Tier 1";
+      }
+    }
+  }
+
+  function trapTier1MerchantDialogFocus(event) {
+    if (
+      event.key !== "Tab"
+      || !els.tier1MerchantDialog
+      || els.tier1MerchantDialog.classList.contains("hidden")
+    ) return false;
+    const focusable = Array.from(els.tier1MerchantDialog.querySelectorAll(
+      "button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    )).filter((element) => !element.closest(".hidden"));
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
+
   function columnLabel(index) {
     let label = "";
     let value = index + 1;
@@ -12885,6 +13376,7 @@
   }
 
   function renderTierReportPending(tierName, message) {
+    renderTier1Management(tierName);
     els.tierPageTitle.textContent = tierName;
     els.tierPageSubtitle.textContent = `${tierReportRangeLabel(state.tierReport.startDate, state.tierReport.endDate)} / YeahPromos Amazon report database`;
     els.tierPageSummary.innerHTML = "";
@@ -12904,6 +13396,7 @@
   }
 
   function renderTierPage(tierName) {
+    renderTier1Management(tierName);
     setTierReportControls(tierName);
     if (STANDARD_CATEGORY_REPORT_TIERS.includes(tierName)) {
       const dependencies = tierReportDependencyTiers(tierName);
@@ -14980,6 +15473,28 @@
         switchPage("tier");
       });
     });
+    els.tier1AdditionsToggle.addEventListener("click", openTier1AdditionsOverlay);
+    els.tier1AdditionsClose.addEventListener("click", () => closeTier1AdditionsOverlay());
+    els.tier1AdditionsPanel.addEventListener("click", (event) => {
+      if (event.target === els.tier1AdditionsPanel) closeTier1AdditionsOverlay();
+    });
+    els.tier1AddMerchant.addEventListener("click", openTier1MerchantDialog);
+    els.tier1MerchantSearchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      searchTier1Merchants();
+    });
+    els.tier1MerchantResults.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-tier1-merchant-id]");
+      if (!button || button.disabled) return;
+      selectTier1Merchant(button.dataset.tier1MerchantId);
+    });
+    els.tier1MerchantBack.addEventListener("click", showTier1MerchantSearch);
+    els.tier1MerchantConfirm.addEventListener("click", confirmTier1MerchantAdd);
+    els.tier1MerchantCancel.addEventListener("click", () => closeTier1MerchantDialog());
+    els.tier1MerchantClose.addEventListener("click", () => closeTier1MerchantDialog());
+    els.tier1MerchantDialog.addEventListener("click", (event) => {
+      if (event.target === els.tier1MerchantDialog) closeTier1MerchantDialog();
+    });
     els.tierSheetSearch.addEventListener("input", () => { state.tierSheetFilters.search = els.tierSheetSearch.value; resetTierTablePage(); renderTierPage(state.selectedTierPage); });
     els.tierDateApply.addEventListener("click", applyTierReportDateRange);
     [els.tierStartDate, els.tierEndDate].forEach((input) => {
@@ -15047,6 +15562,16 @@
     els.tierOverlayClose.addEventListener("click", () => closeTierSheetOverlay());
     els.sheetExpandedBackdrop.addEventListener("click", () => closeTierSheetOverlay());
     document.addEventListener("keydown", (event) => {
+      if (trapTier1AdditionsOverlayFocus(event)) return;
+      if (trapTier1MerchantDialogFocus(event)) return;
+      if (event.key === "Escape" && state.tier1Management.panelOpen) {
+        closeTier1AdditionsOverlay();
+        return;
+      }
+      if (event.key === "Escape" && els.tier1MerchantDialog && !els.tier1MerchantDialog.classList.contains("hidden")) {
+        closeTier1MerchantDialog();
+        return;
+      }
       if (event.key === "Escape" && els.tierMoveDialog && !els.tierMoveDialog.classList.contains("hidden")) {
         closeTierMoveDialog();
         return;
