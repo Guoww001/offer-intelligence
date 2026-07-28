@@ -229,6 +229,9 @@
     publisherTablePage: 1,
     publisherOverviewFocus: "",
     publisherOverviewExpanded: true,
+    publisherChartExpanded: true,
+    publisherLayoutEditing: false,
+    publisherLayout: _loadPublisherLayout(),
     publisherOverviewType: "network",
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
@@ -324,8 +327,10 @@
     publisherMarketCards: document.getElementById("publishersMarketCards"),
     publisherMarketBody: document.getElementById("publishersMarketBody"),
     publishersKpiRow: document.getElementById("publishersKpiRow"),
+    publishersChartPanel: document.getElementById("publishersChartPanel"),
     publishersChart: document.getElementById("publishersChart"),
     publishersChartTitle: document.getElementById("publishersChartTitle"),
+    publishersChartChevron: document.getElementById("publishersChartChevron"),
     publishersTableHead: document.getElementById("publishersTableHead"),
     publishersTableRows: document.getElementById("publishersTableRows"),
     publishersTableCount: document.getElementById("publishersTableCount"),
@@ -333,6 +338,11 @@
     publisherPagePrev: document.getElementById("publisherPagePrev"),
     publisherPageNext: document.getElementById("publisherPageNext"),
     publisherPageIndicator: document.getElementById("publisherPageIndicator"),
+    publisherLayoutBtn: document.getElementById("publisherLayoutBtn"),
+    publisherLayoutToolbar: document.getElementById("publisherLayoutToolbar"),
+    publisherLayoutSave: document.getElementById("publisherLayoutSave"),
+    publisherLayoutCancel: document.getElementById("publisherLayoutCancel"),
+    publisherLayoutReset: document.getElementById("publisherLayoutReset"),
     sheetPage: document.getElementById("sheetPage"),
     categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
@@ -655,17 +665,19 @@
       "deep.title": "深度分析",
       "deep.export": "导出",
       "deep.close": "关闭",
-      "deep.skeleton.step1": "正在理解你的问题…",
-      "deep.skeleton.step2": "正在查询数据…",
-      "deep.skeleton.step3": "正在生成分析报告…",
+      "deep.skeleton.step1": "正在分析数据…",
+      "deep.skeleton.step2": "",
+      "deep.skeleton.step3": "",
       "deep.error": "分析失败，请稍后重试。",
       "deep.mode.fast": "快速模式",
-      "deep.mode.deep": "深度推理",
-      "deep.placeholder": "输入复杂分析问题（支持对比、趋势、多维分析…）",
+      "deep.mode.deep": "深度视图",
+      "deep.placeholder": "在 Deep Window 中查看分析结果…",
       "deep.fast.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer…",
       "deep.report.defaultTitle": "分析报告",
       "deep.chat.summaryPrefix": "📊 深度分析：",
       "deep.chat.errorPrefix": "📊 深度分析失败：",
+      "deep.chat.clickToExpand": "点击查看完整分析",
+      "deep.chart.title": "趋势图表",
       "deep.error.http": "分析请求失败（{status}），请稍后重试。",
       "deep.error.return": "分析返回异常，请稍后重试。",
       "deep.error.network": "网络请求失败，请检查连接后重试。",
@@ -8045,28 +8057,168 @@
     panel.el.style.zIndex = panel.zIndex;
   }
 
-  // === 最小化 / 展开 ===
+  // === 最小化 / 展开（动画版）===
+
+  function _getPillTarget() {
+    // 计算右下角药丸位置
+    var pillW = 220;
+    var pillH = 48;
+    var right = 24;
+    var bottom = 24;
+    return {
+      left: window.innerWidth - pillW - right,
+      top: window.innerHeight - pillH - bottom,
+      width: pillW,
+      height: pillH
+    };
+  }
 
   function _minimizeDeepPanel(id) {
     var panel = _deepPanels.find(function (p) { return p.id === id; });
     if (!panel || panel.state === "loading" || panel.minimized) return;
-    panel.minimized = true;
-    panel.el.classList.add("minimized");
-    // 切换最小化按钮为展开图标
-    var minBtn = panel.el.querySelector(".deep-window-minimize");
-    if (minBtn) { minBtn.textContent = "▢"; minBtn.title = "Expand"; }
-    _bringPanelToFront(panel);
+
+    var el = panel.el;
+    var rect = el.getBoundingClientRect();
+    var target = _getPillTarget();
+
+    // 保存原始位置用于展开恢复
+    panel._origLeft = parseInt(el.style.left, 10) || rect.left;
+    panel._origTop = parseInt(el.style.top, 10) || rect.top;
+
+    // 计算从当前位置到右下角的位移
+    var dx = target.left - rect.left;
+    var dy = target.top - rect.top;
+
+    // 保存 panel 引用用于回调
+    var _pid = panel.id;
+
+    // 设置过渡
+    el.style.transition = 'transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 550ms cubic-bezier(0.32, 0.72, 0, 1), opacity 400ms ease';
+    el.style.willChange = 'transform';
+    el.classList.add('panel-animating');
+    el.style.transform = 'translate(0, 0)';
+
+    // 隐藏骨架/内容——用 opacity 渐变而非 display
+    var body = el.querySelector('.deep-window-body');
+    if (body) body.style.transition = 'opacity 350ms ease';
+    if (body) body.style.opacity = '0';
+
+    // 锁死最小化状态（动画完成后触发）
+    function _settleMin() {
+      var p = _deepPanels.find(function (q) { return q.id === _pid; });
+      if (!p || p.minimized) return;
+      el.style.transition = '';
+      el.style.willChange = '';
+      el.style.transform = '';
+      el.style.left = target.left + 'px';
+      el.style.top = target.top + 'px';
+      el.classList.remove('panel-animating');
+      p.minimized = true;
+      el.classList.add('minimized');
+      if (body) { body.style.transition = ''; body.style.opacity = ''; }
+      var minBtn = el.querySelector(".deep-window-minimize");
+      if (minBtn) { minBtn.textContent = "▢"; minBtn.title = "Expand"; }
+      _bringPanelToFront(p);
+    }
+
+    // primary: transitionend 事件
+    function _onMinEnd(e) {
+      if (e.propertyName !== 'transform') return;
+      el.removeEventListener('transitionend', _onMinEnd);
+      clearTimeout(panel._animTO);
+      _settleMin();
+    }
+    el.addEventListener('transitionend', _onMinEnd);
+    // fallback: 800ms 后强制完成
+    panel._animTO = setTimeout(_settleMin, 800);
+
+    // 下一帧触发实际变形（从 translate(0,0) → translate(dx,dy)）
+    requestAnimationFrame(function () {
+      setTimeout(function () {
+        el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+        el.style.borderRadius = '100px';
+      }, 20);
+    });
   }
 
   function _expandDeepPanel(id) {
     var panel = _deepPanels.find(function (p) { return p.id === id; });
     if (!panel) return;
-    panel.minimized = false;
-    panel.el.classList.remove("minimized");
-    // 恢复最小化按钮图标
-    var minBtn = panel.el.querySelector(".deep-window-minimize");
-    if (minBtn) { minBtn.textContent = "─"; minBtn.title = "Minimize"; }
-    _bringPanelToFront(panel);
+
+    var el = panel.el;
+    var rect = el.getBoundingClientRect();
+
+    // 先解除最小化状态（但要锁住尺寸防止闪变）
+    el.classList.remove('minimized');
+    var pw = rect.width, ph = rect.height;
+    el.style.width = pw + 'px';
+    el.style.minWidth = '';
+    el.style.maxWidth = '';
+    el.style.height = ph + 'px';
+
+    var origLeft = panel._origLeft || Math.max(12, (window.innerWidth - 760) / 2);
+    var origTop = panel._origTop || Math.max(12, (window.innerHeight - 720) / 2);
+
+    // 从当前位置到原始位置的位移
+    var dx = rect.left - origLeft;
+    var dy = rect.top - origTop;
+
+    // Step 1: 先设初始位置 + 禁过渡（防闪现）
+    el.style.transition = 'none';
+    el.style.left = origLeft + 'px';
+    el.style.top = origTop + 'px';
+    el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+    el.style.borderRadius = '100px';
+
+    // Step 2: 强制 layout
+    void el.offsetHeight;
+
+    // Step 3: 开启动画过渡
+    el.style.transition = 'transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 550ms cubic-bezier(0.32, 0.72, 0, 1), opacity 400ms ease';
+    el.style.willChange = 'transform';
+    el.classList.add('panel-animating');
+
+    // 恢复 body 显示
+    var body = el.querySelector('.deep-window-body');
+    if (body) { body.style.transition = 'opacity 350ms ease 200ms'; body.style.opacity = '1'; }
+
+    var _pid = panel.id;
+
+    function _settleExp() {
+      var p = _deepPanels.find(function (q) { return q.id === _pid; });
+      if (!p) return;
+      el.style.transition = '';
+      el.style.willChange = '';
+      el.style.transform = '';
+      el.style.width = '';
+      el.style.minWidth = '';
+      el.style.maxWidth = '';
+      el.style.height = '';
+      el.classList.remove('panel-animating');
+      if (body) { body.style.transition = ''; body.style.opacity = ''; }
+      el.style.borderRadius = '';
+      p.minimized = false;
+      var minBtn = el.querySelector(".deep-window-minimize");
+      if (minBtn) { minBtn.textContent = "─"; minBtn.title = "Minimize"; }
+      _bringPanelToFront(p);
+    }
+
+    function _onExpEnd(e) {
+      if (e.propertyName !== 'transform') return;
+      el.removeEventListener('transitionend', _onExpEnd);
+      clearTimeout(panel._animTO);
+      _settleExp();
+    }
+    el.addEventListener('transitionend', _onExpEnd);
+    panel._animTO = setTimeout(_settleExp, 800);
+
+    // Step 4: 下一帧触发反向动画（transform → 0,0）
+    requestAnimationFrame(function () {
+      setTimeout(function () {
+        el.style.transform = 'translate(0, 0)';
+        el.style.borderRadius = '';
+      }, 20);
+    });
   }
 
   function _removeDeepPanel(id) {
@@ -8076,6 +8228,14 @@
     if (panel.abortController) {
       panel.abortController.abort();
     }
+    // Clean up context panel observer
+    var obs = panel._contextObserver;
+    if (obs && typeof obs.disconnect === "function") {
+      obs.disconnect();
+    }
+    panel._contextObserver = null;
+    // Clean up animation timeout
+    if (panel._animTO) { clearTimeout(panel._animTO); panel._animTO = null; }
     panel.el.remove();
     _deepPanels.splice(idx, 1);
   }
@@ -8246,6 +8406,154 @@
     '</div>';
   }
 
+  // ★ Deep Mode (simplified): render Quick Mode HTML in Deep Window
+  function _showQuickResultInDeepPanel(panel, html, prompt) {
+    // Panel may have been closed by user during computation
+    if (!panel.el.isConnected) return;
+    panel.state = "content";
+    if (panel.skeletonEl) panel.skeletonEl.classList.add("hidden");
+    if (panel.contentEl) panel.contentEl.classList.remove("hidden");
+    if (panel.errorEl) panel.errorEl.classList.add("hidden");
+
+    panel.title = t("deep.report.defaultTitle", "Analysis Report");
+    if (panel.titleEl) panel.titleEl.textContent = panel.title;
+    if (panel.summaryEl) {
+      panel.summaryEl.style.display = "none";
+      panel.summaryEl.textContent = "";
+    }
+
+    if (panel.sectionsEl) {
+      panel.sectionsEl.innerHTML = '<div class="deep-quick-result">' + html + '</div>';
+    }
+
+    // Restore buttons
+    panel.el.querySelector(".deep-window-stop")?.classList.add("hidden");
+    panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
+    panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+    panel.el.classList.remove("generating");
+
+    // Watch context panel for async trend chart updates (e.g. SVG line chart)
+    _syncContextChartToDeepPanel(panel);
+  }
+
+  // ★ Deep Mode: sync context panel's trend chart (SVG) into Deep Window
+  function _syncContextChartToDeepPanel(panel) {
+    if (!els.recBox || panel._chartSyncActive) return;
+    panel._chartSyncActive = true;
+
+    // Immediately capture any existing context content
+    _updateDeepPanelFromContext(panel);
+
+    // Watch for async updates (trend data loads via setTimeout/fetch)
+    var observer = new MutationObserver(function () {
+      if (!panel.el.isConnected) {
+        observer.disconnect();
+        return;
+      }
+      if (panel.state !== "content") return;
+      _updateDeepPanelFromContext(panel);
+    });
+
+    observer.observe(els.recBox, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: false,
+    });
+    panel._contextObserver = observer;
+  }
+
+  // ★ Deep Mode: copy context panel trend chart content into Deep Window
+  function _updateDeepPanelFromContext(panel) {
+    var contextHtml = els.recBox ? els.recBox.innerHTML : "";
+    if (!contextHtml || contextHtml.length < 30) return;
+
+    // Only sync trend-chart content (contains SVG + metric controls)
+    if (contextHtml.indexOf("trend-chart-svg") === -1 && contextHtml.indexOf("trend-context-wrap") === -1) return;
+
+    var sectionsEl = panel.sectionsEl;
+    if (!sectionsEl) return;
+
+    var container = sectionsEl.querySelector(".deep-context-chart");
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "deep-context-chart";
+      container.innerHTML = '<h4 class="deep-chart-heading">' + t("deep.chart.title", "趋势图表") + '</h4>';
+      sectionsEl.appendChild(container);
+    }
+
+    // Clone the trend chart portion (extract SVG + controls, avoid duplicating table)
+    var temp = document.createElement("div");
+    temp.innerHTML = contextHtml;
+    var chartContent = temp.querySelector(".trend-context-wrap");
+    if (!chartContent) {
+      // Fallback: just show the whole context
+      container.innerHTML = '<h4 class="deep-chart-heading">' + t("deep.chart.title", "趋势图表") + '</h4>'
+        + contextHtml;
+      return;
+    }
+
+    var chartHtml = chartContent.innerHTML;
+    if (container._lastChartHtml === chartHtml) return;
+    container._lastChartHtml = chartHtml;
+
+    // Keep heading, replace chart body
+    var heading = container.querySelector(".deep-chart-heading");
+    container.innerHTML = "";
+    if (heading) container.appendChild(heading);
+
+    // Deep clone the chart content and bind metric switch events
+    var chartClone = document.createElement("div");
+    chartClone.className = "trend-context-wrap cloned";
+    chartClone.innerHTML = chartHtml;
+    container.appendChild(chartClone);
+
+    // Bind metric switch buttons inside the cloned chart
+    _bindDeepPanelChartControls(container, chartClone);
+  }
+
+  // ★ Deep Mode: bind trend metric switch buttons inside Deep Window
+  function _bindDeepPanelChartControls(container, chartWrap) {
+    if (!chartWrap) return;
+    chartWrap.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-trend-metric]");
+      if (!btn) return;
+
+      var metric = btn.getAttribute("data-trend-metric");
+      if (!metric) return;
+
+      // Update active button state
+      chartWrap.querySelectorAll("[data-trend-metric]").forEach(function (b) {
+        b.classList.remove("active");
+      });
+      btn.classList.add("active");
+
+      // Fetch chart SVG from the global trend context data
+      if (!_trendContextData) return;
+      var svgHtml = trendTrendChartSvg(_trendContextData, metric);
+      var svgContainer = chartWrap.querySelector("[data-trend-chart]");
+      if (svgContainer) {
+        svgContainer.innerHTML = svgHtml;
+      }
+    });
+  }
+
+  // ★ Deep Mode: summary card for chat (click to bring panel to front)
+  function _deepQuickSummaryHtml(panel, prompt) {
+    var cardKey = ++_deepCardKeyCounter;
+    panel._cardKey = cardKey;
+    var prefix = t("deep.chat.summaryPrefix", "📊 Deep Analysis: ");
+    var title = panel.title || t("deep.report.defaultTitle", "Analysis Report");
+    var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
+    return '<div class="deep-summary-card" onclick="(function(){ ' +
+      'var evt = new CustomEvent(\'deep-expand-panel\', {detail: {key: ' + cardKey + ', panelId: \'' + panel.id + '\'}}); ' +
+      'document.dispatchEvent(evt); })()">' +
+      '<h4>' + prefix + escapeHtml(title) + '</h4>' +
+      '<p>' + promptPreview + '</p>' +
+      '<small style="color:var(--muted);font-size:11px">' + t("deep.chat.clickToExpand", "Click to view full analysis") + '</small>' +
+    '</div>';
+  }
+
   // 数字列关键词——用于表格渲染时智能对齐
   var _NUMERIC_COL_PATTERNS = [
     /^epc$/i, /^avg\s*epc$/i, /^revenue$/i, /^sales$/i, /^orders$/i,
@@ -8303,14 +8611,20 @@
   // renderDeepReport 和 deepSummaryHtml 已移至 _renderPanelReport 和 _deepPanelSummaryHtml
 
   async function applyPrompt(prompt) {
-    // ★ Deep reasoning mode routing
-    if (state.deepMode) {
-      addMessage("user", escapeHtml(prompt));
-      await submitDeepReasoning(prompt);
-      return;
+    const language = responseLanguageFor(prompt);
+    var panel = null;
+    var isDeep = state.deepMode;
+
+    addMessage("user", escapeHtml(prompt));
+
+    // ★ Deep Mode: create panel early so skeleton shows during LLM classify
+    if (isDeep) {
+      panel = _createDeepPanel(prompt);
+      _showPanelSkeleton(panel, false);
+      // Yield to let the browser paint the skeleton before sync computation
+      await new Promise(function (r) { setTimeout(r, 50); });
     }
 
-    const language = responseLanguageFor(prompt);
     // Skip the LLM classification call when regex alone can confidently
     // determine intent + extract parameters (ASIN, merchant ID, tier,
     // category, payment status, metric filters, attribute filters, etc.).
@@ -8333,14 +8647,26 @@
       }
     }
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
-    addMessage("user", escapeHtml(prompt));
     try {
-      addMessage("assistant", answerPrompt(prompt));
+      var html = answerPrompt(prompt);
+
+      if (isDeep && panel) {
+        // Deep Mode: render Quick Mode result in Deep Window
+        _showQuickResultInDeepPanel(panel, html, prompt);
+        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt));
+      } else {
+        addMessage("assistant", html);
+      }
     } catch (error) {
       console.error("[analysis] answerPrompt error:", error);
-      addMessage("assistant", (language === "zh"
+      var errMsg = (language === "zh"
         ? "抱歉，分析过程出错。请稍后重试。"
-        : "Sorry, an error occurred. Please try again.") + " (" + escapeHtml(error.message || "unknown") + ")");
+        : "Sorry, an error occurred. Please try again.") + " (" + escapeHtml(error.message || "unknown") + ")";
+      if (isDeep && panel) {
+        _showPanelError(panel, errMsg);
+      } else {
+        addMessage("assistant", errMsg);
+      }
     }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
     else loadDbSearchInsight(prompt);
@@ -10669,20 +10995,402 @@
       var agg = aggregatePublisherMetrics(filtered, market);
 
       // 市场聚合概览
-      renderPublisherMarketSummary(filtered, data.publishers);
+      renderPublisherMarketSummary(filtered, filtered);
 
       // KPI
       renderPublishersKpi(agg);
+
+      // ── 柱状图折叠/展开 ──
+      var chartExpanded = state.publisherChartExpanded !== false;
+      if (els.publishersChart) {
+        els.publishersChart.style.display = chartExpanded ? "" : "none";
+      }
+      if (els.publishersChartChevron) {
+        els.publishersChartChevron.textContent = chartExpanded ? "▼" : "▶";
+        els.publishersChartChevron.classList.toggle("collapsed", !chartExpanded);
+      }
 
       // 柱状图（按当前市场排序）
       renderPublishersChart(filtered, market);
 
       // 表格（带分页）
       renderPublishersTable(filtered, market, agg, state.publisherTablePage);
+
+      // 应用自定义布局顺序
+      _applyPublisherLayout();
     }).catch(function (err) {
       els.publishersTableRows.innerHTML = '<tr><td colspan="13" class="publishers-empty">' +
         escapeHtml(t("publishers.error", "Error: ") + err.message) + '</td></tr>';
     });
+  }
+
+  /* ── 自定义布局（拖拽排序） ───────────────────────────────── */
+  var _customDragData = null;
+
+  /* 清除所有区块的流体位移变换 */
+  function _clearDragTransforms() {
+    document.querySelectorAll('.publishers-page [data-layout-id]').forEach(function (s) {
+      s.style.transform = "";
+    });
+  }
+
+  /* 计算并应用流体挤开位移 — 拖拽物悬停某位置时，周围区块像水波一样平滑分开 */
+  function _applyFluidShift(insertBefore, draggedId) {
+    if (!draggedId || !_customDragData) { _clearDragTransforms(); return; }
+    var layout = state.publisherLayout;
+    if (!layout || !layout.length) { _clearDragTransforms(); return; }
+    var fromIdx = layout.indexOf(draggedId);
+    if (fromIdx === -1) { _clearDragTransforms(); return; }
+
+    var targetId = insertBefore ? insertBefore.getAttribute("data-layout-id") : null;
+    var toIdx;
+    if (targetId === null) {
+      // 拖到末尾：toIdx = layout.length（最后一个元素之后）
+      toIdx = layout.length;
+    } else {
+      toIdx = layout.indexOf(targetId);
+      if (toIdx === -1 || toIdx === fromIdx) { _clearDragTransforms(); return; }
+    }
+
+    // 拖到原位置相邻处 — 不需要位移（间隙自然存在或被占用）
+    if (toIdx === fromIdx + 1 || (toIdx === fromIdx - 1)) { _clearDragTransforms(); return; }
+
+    var shiftAmount = _customDragData.sectionHeight;
+
+    // 清除所有已有 transform，然后重新计算
+    layout.forEach(function (id) {
+      var el = document.querySelector('.publishers-page [data-layout-id="' + id + '"]');
+      if (el && !el.classList.contains("dragging")) el.style.transform = "";
+    });
+
+    if (toIdx < fromIdx) {
+      // 向上拖：碰撞目标位置 → 从 toIdx 到 fromIdx-1 的所有区块向下位移
+      for (var i = toIdx; i < fromIdx; i++) {
+        var el = document.querySelector('.publishers-page [data-layout-id="' + layout[i] + '"]');
+        if (el) el.style.transform = "translateY(" + shiftAmount + "px)";
+      }
+    } else {
+      // 向下拖：从 fromIdx+1 到 toIdx-1 的所有区块向上位移
+      for (var i = fromIdx + 1; i < toIdx; i++) {
+        var el = document.querySelector('.publishers-page [data-layout-id="' + layout[i] + '"]');
+        if (el) el.style.transform = "translateY(" + (-shiftAmount) + "px)";
+      }
+    }
+  }
+
+  function _loadPublisherLayout() {
+    var DEFAULT_ORDER = ["filters", "kpi", "overview", "chart", "table"];
+    try {
+      var saved = localStorage.getItem("publisherLayoutOrder");
+      if (saved) {
+        var parsed = JSON.parse(saved);
+        if (DEFAULT_ORDER.every(function (id) { return parsed.indexOf(id) >= 0; }) && parsed.length === DEFAULT_ORDER.length) {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return DEFAULT_ORDER.slice();
+  }
+
+  function _savePublisherLayout() {
+    try {
+      localStorage.setItem("publisherLayoutOrder", JSON.stringify(state.publisherLayout));
+    } catch (_) {}
+  }
+
+  function _applyPublisherLayout() {
+    var layout = state.publisherLayout;
+    if (!layout || !layout.length) return;
+    layout.forEach(function (id, idx) {
+      var section = document.querySelector('.publishers-page [data-layout-id="' + id + '"]');
+      if (section) section.style.order = idx;
+    });
+  }
+
+  function _resetPublisherLayout() {
+    var DEFAULT_ORDER = ["filters", "kpi", "overview", "chart", "table"];
+    state.publisherLayout = DEFAULT_ORDER.slice();
+    _clearDragTransforms();
+    _applyPublisherLayout();
+    // 移除残留指示器和动画类
+    var indicator = document.querySelector(".drag-drop-indicator");
+    if (indicator) indicator.remove();
+    document.querySelectorAll(".publishers-page [data-layout-id].layout-snap").forEach(function (s) {
+      s.classList.remove("layout-snap");
+    });
+  }
+
+  function _addDragHandles() {
+    els.publishersPage.querySelectorAll("[data-layout-id]").forEach(function (section) {
+      if (section.querySelector(".drag-handle")) return;
+      var handle = document.createElement("div");
+      handle.className = "drag-handle";
+      handle.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="9" cy="5" r="1.5" fill="currentColor"/><circle cx="15" cy="5" r="1.5" fill="currentColor"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><circle cx="9" cy="19" r="1.5" fill="currentColor"/><circle cx="15" cy="19" r="1.5" fill="currentColor"/></svg>';
+      section.insertBefore(handle, section.firstChild);
+    });
+    // 绑定鼠标拖拽
+    els.publishersPage.addEventListener("mousedown", _onDragHandleMouseDown);
+  }
+
+  function _removeDragHandles() {
+    els.publishersPage.removeEventListener("mousedown", _onDragHandleMouseDown);
+    els.publishersPage.querySelectorAll(".drag-handle").forEach(function (h) { h.remove(); });
+  }
+
+  function _onDragHandleMouseDown(e) {
+    var handle = e.target.closest(".drag-handle");
+    if (!handle) return;
+    if (!state.publisherLayoutEditing) return;
+    e.preventDefault();
+
+    var section = handle.closest("[data-layout-id]");
+    if (!section) return;
+
+    var rect = section.getBoundingClientRect();
+    var id = section.getAttribute("data-layout-id");
+
+    // ── 克隆真实区域内容并去除重复 ID ──
+    var inner = section.cloneNode(true);
+    inner.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
+    if (inner.id) inner.removeAttribute("id");
+    // 移除克隆内部的拖拽手柄（避免视觉重叠）
+    var innerHandle = inner.querySelector(".drag-handle");
+    if (innerHandle) innerHandle.remove();
+    // 清除可能冲突的内联样式
+    inner.style.position = "";
+    inner.style.width = "";
+    inner.style.height = "";
+    inner.style.margin = "";
+    inner.style.padding = "";
+    inner.classList.remove("dragging");
+
+    // 外层壳提供定位 + 阴影 + 圆角
+    var clone = document.createElement("div");
+    clone.className = "drag-clone";
+    clone.style.width = rect.width + "px";
+    clone.style.height = rect.height + "px";
+    clone.style.left = rect.left + "px";
+    clone.style.top = rect.top + "px";
+    clone.appendChild(inner);
+    document.body.appendChild(clone);
+
+    // 入场微动画
+    clone.style.transform = "scale(0.96) rotate(0deg)";
+    clone.style.opacity = "0.7";
+    requestAnimationFrame(function () {
+      clone.style.transform = "scale(1.02) rotate(0.5deg)";
+      clone.style.opacity = "1";
+    });
+
+    section.classList.add("dragging");
+
+    _customDragData = {
+      draggedId: id,
+      clone: clone,
+      section: section,
+      sectionHeight: rect.height,
+      mouseOffsetY: e.clientY - rect.top,
+      mouseOffsetX: e.clientX - rect.left,
+      lastInsertBefore: null,
+      lastTargetEl: null,
+      targetX: rect.left,
+      targetY: rect.top,
+      currentX: rect.left,
+      currentY: rect.top,
+      bodyUserSelect: document.body.style.userSelect,
+      rafId: null
+    };
+
+    document.body.style.userSelect = "none";
+    document.body.style.webkitUserSelect = "none";
+
+    document.addEventListener("mousemove", _onDragMouseMove);
+    document.addEventListener("mouseup", _onDragMouseUp);
+
+    _customDragData.rafId = requestAnimationFrame(_dragSmoothFollow);
+  }
+
+  function _onDragMouseMove(e) {
+    if (!_customDragData) return;
+    var data = _customDragData;
+
+    data.targetX = e.clientX - data.mouseOffsetX;
+    data.targetY = e.clientY - data.mouseOffsetY;
+
+    // 计算插入位置
+    var sections = Array.from(document.querySelectorAll('.publishers-page [data-layout-id]'))
+      .filter(function (s) { return !s.classList.contains("dragging"); })
+      .sort(function (a, b) {
+        return (parseInt(a.style.order) || 0) - (parseInt(b.style.order) || 0);
+      });
+
+    var insertBefore = null;
+    for (var i = 0; i < sections.length; i++) {
+      var sr = sections[i].getBoundingClientRect();
+      if (e.clientY < sr.top + sr.height / 2) {
+        insertBefore = sections[i];
+        break;
+      }
+    }
+
+    // 流体挤开：所有相关区块平滑位移（类似 iOS 桌面 App 替换）
+    _applyFluidShift(insertBefore, data.draggedId);
+
+    // 更新 drag-target（视觉高亮 + 指示线）
+    if (insertBefore !== data.lastTargetEl) {
+      if (data.lastTargetEl) data.lastTargetEl.classList.remove("drag-target");
+      if (insertBefore) insertBefore.classList.add("drag-target");
+      data.lastTargetEl = insertBefore;
+    }
+
+    if (insertBefore !== data.lastInsertBefore) {
+      data.lastInsertBefore = insertBefore;
+      _updateDropIndicator(insertBefore);
+    }
+  }
+
+  function _dragSmoothFollow() {
+    if (!_customDragData) return;
+    var data = _customDragData;
+    var clone = data.clone;
+
+    // 惯性插值（lerp），模拟物理质量感
+    var dx = data.targetX - data.currentX;
+    var dy = data.targetY - data.currentY;
+    var ease = 0.22; // 越低越有"重量感"
+    data.currentX += dx * ease;
+    data.currentY += dy * ease;
+
+    // 微小的弹性偏移：速度越快偏移越大
+    var velocity = Math.sqrt(dx * dx + dy * dy);
+    var tilt = Math.min(velocity * 0.004, 1.8);
+    // 拖尾时轻微旋转
+    clone.style.transform = "scale(1.02) rotate(" + (0.5 + tilt) + "deg)";
+
+    clone.style.left = data.currentX + "px";
+    clone.style.top = data.currentY + "px";
+
+    data.rafId = requestAnimationFrame(_dragSmoothFollow);
+  }
+
+  function _onDragMouseUp(e) {
+    document.removeEventListener("mousemove", _onDragMouseMove);
+    document.removeEventListener("mouseup", _onDragMouseUp);
+
+    if (!_customDragData) return;
+
+    var data = _customDragData;
+    if (data.rafId) cancelAnimationFrame(data.rafId);
+    document.body.style.userSelect = data.bodyUserSelect || "";
+    document.body.style.webkitUserSelect = data.bodyUserSelect || "";
+
+    // 先清除所有流体位移变换（让区块弹簧归位）
+    _clearDragTransforms();
+
+    // 移除浮动克隆
+    if (data.clone && data.clone.parentNode) data.clone.parentNode.removeChild(data.clone);
+    data.section.classList.remove("dragging");
+
+    // 移除指示器 & drag-target
+    var indicator = document.querySelector(".drag-drop-indicator");
+    if (indicator) indicator.remove();
+    document.querySelectorAll(".publishers-page [data-layout-id].drag-target").forEach(function (s) {
+      s.classList.remove("drag-target");
+    });
+
+    // 执行排序（支持拖到末尾）
+    var insertBefore = data.lastInsertBefore;
+    var layout = state.publisherLayout.slice();
+    var fromIdx = layout.indexOf(data.draggedId);
+    if (fromIdx === -1) { _customDragData = null; return; }
+
+    layout.splice(fromIdx, 1);
+
+    if (insertBefore) {
+      var targetId = insertBefore.getAttribute("data-layout-id");
+      var toIdx = layout.indexOf(targetId);
+      if (toIdx !== -1) {
+        layout.splice(toIdx, 0, data.draggedId);
+      } else {
+        // fallback: append at end
+        layout.push(data.draggedId);
+      }
+    } else {
+      // 拖到末尾
+      layout.push(data.draggedId);
+    }
+
+    state.publisherLayout = layout;
+    _applyPublisherLayout();
+
+    // 落位弹簧动画（松手后区块平滑弹入新位置）
+    var snapEls = document.querySelectorAll('.publishers-page [data-layout-id]');
+    snapEls.forEach(function (el) {
+      el.classList.add("layout-snap");
+      el.addEventListener("animationend", function handler() {
+        el.classList.remove("layout-snap");
+        el.removeEventListener("animationend", handler);
+      });
+    });
+
+    _customDragData = null;
+  }
+
+  function _updateDropIndicator(insertBefore) {
+    var oldIndicator = document.querySelector(".drag-drop-indicator");
+    if (oldIndicator) oldIndicator.remove();
+
+    var indicator = document.createElement("div");
+    indicator.className = "drag-drop-indicator";
+
+    if (insertBefore) {
+      insertBefore.parentNode.insertBefore(indicator, insertBefore);
+    } else {
+      // 拖到末尾：指示器放在页面末尾
+      els.publishersPage.appendChild(indicator);
+    }
+  }
+
+  function _enterPublisherLayoutEditMode() {
+    state.publisherLayoutEditing = true;
+    els.publishersPage.classList.add("layout-editing");
+    els.publisherLayoutBtn.classList.add("active");
+    els.publisherLayoutBtn.querySelector("span").textContent = "编辑中...";
+    els.publisherLayoutToolbar.classList.remove("hidden");
+    _addDragHandles();
+  }
+
+  function _exitPublisherLayoutEditMode(save) {
+    state.publisherLayoutEditing = false;
+    els.publishersPage.classList.remove("layout-editing");
+    els.publisherLayoutBtn.classList.remove("active");
+    els.publisherLayoutBtn.querySelector("span").textContent = "自定义布局";
+    els.publisherLayoutToolbar.classList.add("hidden");
+    _removeDragHandles();
+    // 清理流体位移变换
+    _clearDragTransforms();
+    // 清理可能残留的指示器、动画类和状态类
+    var indicator = document.querySelector(".drag-drop-indicator");
+    if (indicator) indicator.remove();
+    document.querySelectorAll(".publishers-page [data-layout-id].dragging, .publishers-page [data-layout-id].drag-target, .publishers-page [data-layout-id].layout-snap").forEach(function (s) {
+      s.classList.remove("dragging", "drag-target", "layout-snap");
+    });
+
+    if (save) {
+      _savePublisherLayout();
+    } else {
+      state.publisherLayout = _loadPublisherLayout();
+      _applyPublisherLayout();
+    }
+    _customDragData = null;
+  }
+
+  function _togglePublisherLayoutMode() {
+    if (state.publisherLayoutEditing) {
+      _exitPublisherLayoutEditMode(false);
+    } else {
+      _enterPublisherLayoutEditMode();
+    }
   }
 
   function _applyDateFilterToData(data, startDate, endDate) {
@@ -13665,12 +14373,27 @@
     const gridTicks = [0, 0.25, 0.5, 0.75, 1];
     const dailyStep = points.length > 1 ? innerWidth / (points.length - 1) : innerWidth;
     const dailyBarWidth = Math.max(5, Math.min(18, dailyStep * 0.58));
+    // Gradient area fill for monthly trend charts
+    var gradientId = "trendGradient";
+    var trendAreaPath = "";
+    if (!isDaily) {
+      var validForArea = points.filter(function(p) { return p.hasValue; });
+      if (validForArea.length >= 2) {
+        var areaPoints = validForArea.map(function(p) { return p.x.toFixed(2) + "," + p.y.toFixed(2); });
+        var bottomY = height - pad.bottom;
+        trendAreaPath = "M" + validForArea[0].x.toFixed(2) + "," + bottomY.toFixed(2)
+          + " L" + areaPoints.join(" L")
+          + " L" + validForArea[validForArea.length - 1].x.toFixed(2) + "," + bottomY.toFixed(2) + " Z";
+      }
+    }
     return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(viewLabel)} ${escapeHtml(metric.label)} trend" data-trend-aggregation="${isDaily ? "daily-independent" : "monthly"}">
+      ${!isDaily ? `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2468f2" stop-opacity="0.35"/><stop offset="100%" stop-color="#2468f2" stop-opacity="0"/></linearGradient></defs>` : ""}
       ${gridTicks.map((ratio) => {
         const y = pad.top + innerHeight - ratio * innerHeight;
         const value = min + ratio * range;
         return `<g class="trend-grid"><line x1="${pad.left}" y1="${y.toFixed(2)}" x2="${width - pad.right}" y2="${y.toFixed(2)}"></line><text x="${pad.left - 12}" y="${(y + 4).toFixed(2)}" text-anchor="end">${escapeHtml(formatTargetMetricValue(metric.key, value))}</text></g>`;
       }).join("")}
+      ${!isDaily && trendAreaPath ? `<path d="${trendAreaPath}" class="trend-area"></path>` : ""}
       ${isDaily ? "" : `<polyline points="${polyline}" class="trend-line"></polyline>`}
       ${points.map((point, index) => {
         const lastPointIndex = points.length - 1;
@@ -14135,6 +14858,10 @@
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
+    // 离开 Publishers 页面时退出布局编辑模式
+    if (page !== "publishers" && state.publisherLayoutEditing) {
+      _exitPublisherLayoutEditMode(false);
+    }
     els.sheetPage.classList.toggle("hidden", !isSheets);
     els.categoryPage.classList.toggle("hidden", !isCategory);
     els.tierPage.classList.toggle("hidden", !isTier);
@@ -14361,13 +15088,34 @@
       var backBtn = e.target.closest("[data-overview-back]");
       if (backBtn) {
         state.publisherOverviewFocus = "";
+        // 同时重置下拉筛选
+        var overviewType = state.publisherOverviewType || "market";
+        if (overviewType === "network") {
+          state.publisherNetwork = "all";
+          if (els.publisherNetworkFilter) els.publisherNetworkFilter.value = "all";
+        } else {
+          state.publisherMarket = "all";
+          if (els.publisherMarketFilter) els.publisherMarketFilter.value = "all";
+        }
         renderPublishersPage();
         return;
       }
     });
+    // ── 柱状图折叠 ──
+    if (els.publishersChartChevron) {
+      els.publishersChartChevron.addEventListener("click", function (e) {
+        state.publisherChartExpanded = !state.publisherChartExpanded;
+        renderPublishersPage();
+        e.stopPropagation();
+      });
+    }
     els.publisherNetworkFilter.addEventListener("change", function () {
       state.publisherNetwork = els.publisherNetworkFilter.value;
-      state.publisherOverviewFocus = "";
+      state.publisherOverviewFocus = state.publisherNetwork === "all" ? "" : state.publisherNetwork;
+      // 自动切换到 Network 视图
+      if (state.publisherNetwork !== "all" && state.publisherOverviewType !== "network") {
+        state.publisherOverviewType = "network";
+      }
       renderPublishersPage();
     });
     els.publisherLinkTypeFilter.addEventListener("change", function () {
@@ -14384,7 +15132,11 @@
     });
     els.publisherMarketFilter.addEventListener("change", function () {
       state.publisherMarket = els.publisherMarketFilter.value;
-      state.publisherOverviewFocus = "";
+      state.publisherOverviewFocus = state.publisherMarket === "all" ? "" : state.publisherMarket;
+      // 自动切换到 Market 视图
+      if (state.publisherMarket !== "all" && state.publisherOverviewType !== "market") {
+        state.publisherOverviewType = "market";
+      }
       renderPublishersPage();
     });
     // 经理组合框：输入过滤 + 即时渲染
@@ -14511,6 +15263,27 @@
         renderPublishersPage();
       });
     }
+    // ── 自定义布局按钮 ──
+    if (els.publisherLayoutBtn) {
+      els.publisherLayoutBtn.addEventListener("click", function () {
+        _togglePublisherLayoutMode();
+      });
+    }
+    if (els.publisherLayoutSave) {
+      els.publisherLayoutSave.addEventListener("click", function () {
+        _exitPublisherLayoutEditMode(true);
+      });
+    }
+    if (els.publisherLayoutCancel) {
+      els.publisherLayoutCancel.addEventListener("click", function () {
+        _exitPublisherLayoutEditMode(false);
+      });
+    }
+    if (els.publisherLayoutReset) {
+      els.publisherLayoutReset.addEventListener("click", function () {
+        _resetPublisherLayout();
+      });
+    }
     // 市场饼图 tooltip（随当前指标联动）
     window._marketShowTooltip = function (slice, event) {
       var visual = document.querySelector(".market-pie-visual");
@@ -14584,7 +15357,7 @@
       state.deepMode = true;
       els.modeDeepBtn.classList.add("active");
       els.modeFastBtn.classList.remove("active");
-      els.chatInput.placeholder = t("deep.placeholder", "Enter complex analysis queries (comparison, trends, multi-dimensional analysis…)");
+      els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
     });
 
     // 浮动深度分析按钮——聚焦最上层面板或切换深度模式
@@ -14603,7 +15376,7 @@
         state.deepMode = true;
         els.modeDeepBtn?.classList.add("active");
         els.modeFastBtn?.classList.remove("active");
-        els.chatInput.placeholder = t("deep.placeholder", "Enter complex analysis queries (comparison, trends, multi-dimensional analysis…)");
+        els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
       }
       els.chatInput?.focus();
       els.chatInput?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -14625,9 +15398,19 @@
     // 监听聊天摘要中的展开事件（支持重建已关闭的面板）
     document.addEventListener("deep-expand-panel", function (e) {
       var key = e.detail.key;
+      var panelId = e.detail.panelId;
+      // 优先通过 panelId 查找（简化后的 Deep Mode）
+      if (panelId) {
+        var p = _deepPanels.find(function (p2) { return p2.id === panelId; });
+        if (p) {
+          if (p.minimized) _expandDeepPanel(p.id);
+          else _bringPanelToFront(p);
+          return;
+        }
+      }
       if (!key) return;
-      // 先找现有面板
-      var panel = _deepPanels.find(function (p) { return p._cardKey === key; });
+      // 再通过 cardKey 查找
+      var panel = _deepPanels.find(function (p2) { return p2._cardKey === key; });
       if (panel) {
         if (panel.minimized) {
           _expandDeepPanel(panel.id);
@@ -14636,7 +15419,7 @@
         }
         return;
       }
-      // 面板已关闭，尝试从缓存重建
+      // 面板已关闭，尝试从缓存重建（仅适用于旧版 deep reasoning 报告）
       var cached = _deepReportCache[key];
       if (cached) {
         var newPanel = _createDeepPanel(cached.prompt);
