@@ -35,8 +35,9 @@ _load_dotenv()
 # ------------------------------------
 
 from api.tier_moves import handle_tier_moves
-from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, _read_json_body
+from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, session_payload, _read_json_body
 from offer_db import (
+    add_merchant_to_tier1,
     DIGITS_RE,
     OfferDbConfigError,
     OfferDbError,
@@ -50,6 +51,8 @@ from offer_db import (
     read_static_merchant_ids,
     search_payload,
     status_payload,
+    tier1_additions_payload,
+    tier1_merchant_search_payload,
     tier_sheet_payload,
     tier_summary_payload,
 )
@@ -856,7 +859,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/ui/db/"):
             self.send_response(204)
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -877,6 +880,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/tier_moves":
             handle_tier_moves(self, "POST")
+            return
+        if parsed.path == "/api/ui/db/tier1-merchants":
+            if not require_auth(self):
+                return
+            self.handle_tier1_merchant_add()
             return
         if parsed.path == "/api/chat/classify":
             if not require_auth(self):
@@ -1023,6 +1031,22 @@ class Handler(BaseHTTPRequestHandler):
                 ))
                 return
 
+            if parsed.path == "/api/ui/db/tier1-merchants":
+                action = first_query_value(query, "action", "additions").lower()
+                if action == "search":
+                    self.send_json(200, tier1_merchant_search_payload(
+                        first_query_value(query, "q"),
+                        limit=int_query_value(query, "limit", 10, 1, 25),
+                    ))
+                    return
+                if action == "additions":
+                    self.send_json(200, tier1_additions_payload(
+                        limit=int_query_value(query, "limit", 100, 1, 250),
+                    ))
+                    return
+                self.send_json(400, {"ok": False, "error": "Unsupported Tier 1 merchant action"})
+                return
+
             if parsed.path == "/api/ui/db/publishers":
                 force = first_query_value(query, "refresh") == "1"
                 self.send_json(200, publishers_payload(force_refresh=force))
@@ -1035,6 +1059,26 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.send_json(404, {"ok": False, "error": "Unknown DB UI endpoint"})
+
+    def handle_tier1_merchant_add(self):
+        try:
+            body = _read_json_body(self)
+            user = session_payload(self.headers) or {}
+            result = add_merchant_to_tier1(
+                str(body.get("merchantId") or ""),
+                updated_by=str(user.get("sub") or "offer-intelligence-ui"),
+                expected_tier=str(body.get("expectedTier") or ""),
+            )
+            if result.get("ok"):
+                result["additions"] = tier1_additions_payload(limit=250).get("additions", [])
+                self.send_json(200, result)
+                return
+            status = 404 if result.get("code") == "merchant_not_found" else 409
+            self.send_json(status, result)
+        except (ValueError, json.JSONDecodeError):
+            self.send_json(400, {"ok": False, "error": "Invalid Tier 1 merchant request"})
+        except Exception as error:
+            self.send_db_error(error)
 
     def handle_payments_api(self, parsed):
         api_key = os.environ.get("LEVANTA_API_KEY", "").strip()

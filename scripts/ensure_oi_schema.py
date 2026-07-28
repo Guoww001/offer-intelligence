@@ -87,6 +87,32 @@ def main():
     print("[db] connected\n")
 
     try:
+        # Tier movement history is immutable and is written in the same
+        # transaction as cnpscy_oi_tier_assignments.
+        if not table_exists(conn, "cnpscy_oi_tier_move_history"):
+            print("[ddl] CREATE TABLE cnpscy_oi_tier_move_history ...")
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS cnpscy_oi_tier_move_history (
+                      eventId       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                      merchantId    VARCHAR(32) NOT NULL,
+                      merchantName  VARCHAR(255) DEFAULT NULL,
+                      sourceTier    VARCHAR(32) DEFAULT NULL,
+                      targetTier    VARCHAR(32) NOT NULL,
+                      source        VARCHAR(64) NOT NULL,
+                      movedAt       DATETIME NOT NULL,
+                      movedBy       VARCHAR(128) DEFAULT NULL,
+                      createdAt     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      PRIMARY KEY (eventId),
+                      KEY idx_tier_move_merchant (merchantId),
+                      KEY idx_tier_move_target_time (targetTier, movedAt),
+                      KEY idx_tier_move_source (source)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """)
+            print("  created")
+        else:
+            print("[ddl] cnpscy_oi_tier_move_history already exists, skipping")
+
         # ?? 1. cnpscy_oi_payment_records ??
         if not table_exists(conn, "cnpscy_oi_payment_records"):
             print("[ddl] CREATE TABLE cnpscy_oi_payment_records ...")

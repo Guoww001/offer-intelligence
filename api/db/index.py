@@ -1,8 +1,10 @@
 from http import HTTPStatus
 from io import BytesIO
+import json
 
-from auth import require_auth
+from auth import _read_json_body, require_auth, session_payload
 from offer_db import (
+    add_merchant_to_tier1,
     first_query_value,
     handle_options,
     int_query_value,
@@ -16,6 +18,8 @@ from offer_db import (
     send_db_error,
     send_json,
     status_payload,
+    tier1_additions_payload,
+    tier1_merchant_search_payload,
     tier_sheet_payload,
     tier_summary_payload,
 )
@@ -27,6 +31,8 @@ class WsgiTarget:
         query = str(environ.get("QUERY_STRING") or "")
         self.path = f"{path}?{query}" if query else path
         self.headers = self._request_headers(environ)
+        self.headers["Content-Length"] = str(environ.get("CONTENT_LENGTH") or "")
+        self.rfile = environ.get("wsgi.input")
         self.status = 500
         self.response_headers = []
         self.wfile = BytesIO()
@@ -162,6 +168,60 @@ def handle_ui_tier_sheet(target, query):
         send_db_error(target, error)
 
 
+def handle_ui_tier1_merchants(target, query, method):
+    if method == "GET":
+        action = first_query_value(query, "action", "additions").lower()
+        try:
+            if action == "search":
+                send_json(
+                    target,
+                    200,
+                    tier1_merchant_search_payload(
+                        first_query_value(query, "q"),
+                        limit=int_query_value(query, "limit", 10, 1, 25),
+                    ),
+                )
+                return
+            if action == "additions":
+                send_json(
+                    target,
+                    200,
+                    tier1_additions_payload(
+                        limit=int_query_value(query, "limit", 100, 1, 250),
+                    ),
+                )
+                return
+            send_json(target, 400, {"ok": False, "error": "Unsupported Tier 1 merchant action"})
+        except ValueError as error:
+            send_json(target, 400, {"ok": False, "error": str(error)})
+        except Exception as error:
+            send_db_error(target, error)
+        return
+
+    if method != "POST":
+        send_json(target, 405, {"ok": False, "error": "Method not allowed"})
+        return
+
+    try:
+        body = _read_json_body(target)
+        user = session_payload(target.headers) or {}
+        result = add_merchant_to_tier1(
+            str(body.get("merchantId") or ""),
+            updated_by=str(user.get("sub") or "offer-intelligence-ui"),
+            expected_tier=str(body.get("expectedTier") or ""),
+        )
+        if result.get("ok"):
+            result["additions"] = tier1_additions_payload(limit=250).get("additions", [])
+            send_json(target, 200, result, methods="GET, POST, OPTIONS")
+            return
+        status = 404 if result.get("code") == "merchant_not_found" else 409
+        send_json(target, status, result, methods="GET, POST, OPTIONS")
+    except (ValueError, json.JSONDecodeError):
+        send_json(target, 400, {"ok": False, "error": "Invalid Tier 1 merchant request"})
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def app(environ, start_response):
     target = WsgiTarget(environ)
     method = str(environ.get("REQUEST_METHOD") or "GET").upper()
@@ -169,7 +229,13 @@ def app(environ, start_response):
     query = parse_query(target)
 
     if method == "OPTIONS":
-        handle_options(target)
+        handle_options(
+            target,
+            methods="GET, POST, OPTIONS" if route == "ui-tier1-merchants" else "GET, OPTIONS",
+        )
+    elif route == "ui-tier1-merchants":
+        if require_auth(target):
+            handle_ui_tier1_merchants(target, query, method)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
     elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-tier-summary", "ui-publishers"}:
