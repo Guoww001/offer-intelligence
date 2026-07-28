@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any
+from typing import Any, Generator
 
 DEFAULT_PROVIDER = "deepseek"
 DEFAULT_MODEL_DEEPSEEK = "deepseek-chat"
@@ -171,3 +171,89 @@ def call_llm(
     except Exception as exc:
         print(f"[llm_provider] {provider}: error — {exc}", file=sys.stderr)
         return None
+
+
+def stream_chat(
+    user_message: str,
+    system_prompt: str,
+    max_tokens: int = 1024,
+    timeout: float | None = None,
+    temperature: float = 0.7,
+    history: list | None = None,
+) -> Generator[str, None, None] | None:
+    """Stream a chat completion token by token from the configured LLM provider.
+
+    Yields individual text tokens as the model generates them.
+    Returns None (no tokens) if the API key is missing.
+
+    Args:
+        user_message: The user's prompt text.
+        system_prompt: System-level instructions for the model.
+        max_tokens: Maximum output tokens.
+        timeout: API call timeout in seconds.  Defaults to 60 for streaming.
+        temperature: Sampling temperature.
+        history: Optional list of {role, content} dicts for conversation context.
+    """
+    provider = _provider()
+    api_key = _api_key()
+    if not api_key:
+        print(f"[llm_provider] {provider}: API key is not set — stream_chat skipped", file=sys.stderr)
+        return
+
+    if timeout is None:
+        timeout = 60.0
+
+    history_count = len(history) if history else 0
+    print(
+        f"[llm_provider] → stream {provider} {_model_name()} "
+        f"timeout={timeout}s temp={temperature} max_tokens={max_tokens} "
+        f"user_len={len(user_message)} history={history_count}",
+        file=sys.stderr,
+    )
+
+    try:
+        if provider == "deepseek":
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=timeout)
+            messages = [{"role": "system", "content": system_prompt}]
+            if history:
+                for msg in history:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": user_message})
+
+            response = client.chat.completions.create(
+                model=_model_name(),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+                messages=messages,
+            )
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        else:
+            import anthropic
+
+            client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+            messages = []
+            if history:
+                for msg in history:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": user_message})
+
+            with client.messages.stream(
+                model=_model_name(),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=messages,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+
+        print(f"[llm_provider] ← stream {provider} complete", file=sys.stderr)
+
+    except Exception as exc:
+        print(f"[llm_provider] stream {provider}: error — {exc}", file=sys.stderr)
+        # Yield nothing on error — caller handles via [DONE] or error event

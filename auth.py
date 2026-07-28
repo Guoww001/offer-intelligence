@@ -260,11 +260,11 @@ def require_auth(target, allow_payment_sync_token: bool = False) -> bool:
     return False
 
 
-def _read_json_body(target) -> dict[str, Any]:
+def _read_json_body(target, max_size=65536) -> dict[str, Any]:
     length = int(target.headers.get("Content-Length") or 0)
     if length <= 0:
         return {}
-    if length > 4096:
+    if length > max_size:
         raise ValueError("Request body is too large")
     raw = target.rfile.read(length).decode("utf-8")
     return json.loads(raw or "{}")
