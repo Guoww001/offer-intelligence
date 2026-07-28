@@ -55,7 +55,6 @@ from offer_db import (
 )
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
-from deep_reason import run_deep_reasoning
 
 
 ROOT = Path(__file__).resolve().parent
@@ -923,20 +922,6 @@ class Handler(BaseHTTPRequestHandler):
             body = _read_json_body(self)
         except (ValueError, Exception):
             self.send_json(400, {"ok": False, "error": "Invalid JSON body"})
-            return
-
-        mode = str(body.get("mode") or "fast").strip()
-
-        if mode == "deep":
-            prompt = str(body.get("prompt") or "").strip()
-            if not prompt:
-                self.send_json(400, {"ok": False, "error": "prompt is required for deep reasoning mode"})
-                return
-            language = str(body.get("language") or "zh").strip()
-            if language not in ("en", "zh"):
-                language = "zh"
-            report = run_deep_reasoning(prompt, language)
-            self.send_json(200, {"ok": True, "mode": "deep", "report": report})
             return
 
         summary = body.get("summary")

@@ -1,0 +1,53 @@
+- generic [ref=e30]:
+  - complementary [ref=e31]:
+    - generic [ref=e34]:
+      - heading "YeahPromos" [level=1] [ref=e35]
+      - paragraph [ref=e36]: Amazon tier analysis
+    - button "Chinese" [ref=e37] [cursor=pointer]
+    - button "Sign out" [ref=e38] [cursor=pointer]
+    - navigation "Pages" [ref=e39]:
+      - button "Dashboard" [ref=e40] [cursor=pointer]
+      - button "Payments" [ref=e45] [cursor=pointer]
+      - button "Publishers" [ref=e50] [cursor=pointer]
+      - generic [ref=e55]:
+        - button "Reports" [expanded] [ref=e56] [cursor=pointer]
+        - generic "Report pages" [ref=e63]:
+          - button "Targets" [ref=e64] [cursor=pointer]
+          - button "Category" [ref=e69] [cursor=pointer]
+          - button "Tier 1" [ref=e73] [cursor=pointer]
+          - button "Tier 2" [ref=e77] [cursor=pointer]
+          - button "Tier 3" [ref=e81] [cursor=pointer]
+          - button "Tier 4" [ref=e85] [cursor=pointer]
+          - button "Black Tier" [ref=e89] [cursor=pointer]
+    - region "Source status" [ref=e95]:
+      - generic [ref=e96]: Status
+      - generic [ref=e98]:
+        - generic [ref=e99]: YeahPromos
+        - strong [ref=e100]: Backend EPC
+      - generic [ref=e101]:
+        - generic [ref=e102]: Levanta
+        - strong [ref=e103]: Feb-Jun payments
+      - generic [ref=e104]:
+        - generic [ref=e105]: Sheets
+        - strong [ref=e106]: Tier logic loaded
+  - main [ref=e107]:
+    - generic "Loading dashboard data":
+      - paragraph: Loading offer data…
+    - generic [ref=e109]:
+      - heading "Recommendation Chatbot" [level=2] [ref=e110]
+      - paragraph
+    - generic [ref=e111]:
+      - region "Insights" [ref=e112]:
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - heading "Context Overview" [level=3] [ref=e115]
+            - paragraph [ref=e116]: Ask a question to update this panel
+          - button "Download current overview as Excel" [ref=e117] [cursor=pointer]:
+            - generic [ref=e118]: Download
+      - region "Chat" [ref=e120]:
+        - generic [ref=e122]:
+          - button "Quick Mode" [ref=e123] [cursor=pointer]
+          - button "Deep View" [ref=e126] [cursor=pointer]
+        - generic [ref=e129]:
+          - textbox "Ask about EPC, tiers, AOV, conversion, unpaid offers..." [ref=e130]
+          - button "Send" [ref=e131] [cursor=pointer]

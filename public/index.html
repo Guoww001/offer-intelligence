@@ -213,7 +213,7 @@
               </button>
               <button class="mode-btn mode-deep" data-mode="deep" type="button">
                 <span class="mode-indicator"></span>
-                <span data-i18n="deep.mode.deep">Deep Reasoning</span>
+                <span data-i18n="deep.mode.deep">Deep View</span>
               </button>
             </div>
             <form class="chat-input" id="chatForm">
@@ -319,10 +319,26 @@
               <h2 data-i18n="publishers.title">Publishers</h2>
               <p data-i18n="publishers.subtitle">Publisher performance aggregation by market</p>
             </div>
+            <div class="publishers-header-actions">
+              <button class="layout-customize-btn" id="publisherLayoutBtn" type="button" title="自定义布局">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 8h16M4 16h16"/><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/></svg>
+                <span>自定义布局</span>
+              </button>
+            </div>
+          </div>
+          <!-- 布局编辑工具栏（仅在编辑模式显示） -->
+          <div class="layout-toolbar hidden" id="publisherLayoutToolbar">
+            <span class="layout-toolbar-hint">拖动区域左侧手柄 ↔ 调整顺序</span>
+            <div class="layout-toolbar-actions">
+              <button class="layout-reset-btn" id="publisherLayoutReset" type="button">重置布局</button>
+              <div class="layout-toolbar-divider"></div>
+              <button class="layout-cancel-btn" id="publisherLayoutCancel" type="button">取消</button>
+              <button class="layout-save-btn" id="publisherLayoutSave" type="button">确定</button>
+            </div>
           </div>
 
           <!-- 筛选区 -->
-          <section class="panel publishers-filters" aria-label="Publisher filters">
+          <section class="panel publishers-filters" data-layout-id="filters" aria-label="Publisher filters">
             <!-- 第一行：日期范围 + 市场 + 联盟 + 链接类型 + 商家 + 商品 -->
             <div class="publishers-filter-row row-1">
               <div class="publishers-filter-group">
@@ -408,12 +424,12 @@
           </section>
 
           <!-- KPI 指标卡 -->
-          <section class="publishers-kpi" id="publishersKpi" aria-label="Publisher KPI summary">
+          <section class="publishers-kpi" id="publishersKpi" data-layout-id="kpi" aria-label="Publisher KPI summary">
             <div class="publishers-kpi-row" id="publishersKpiRow"></div>
           </section>
 
           <!-- 市场聚合概览 -->
-          <section class="panel publishers-market-summary hidden" id="publishersMarketSummary" aria-label="Market aggregate summary">
+          <section class="panel publishers-market-summary hidden" id="publishersMarketSummary" data-layout-id="overview" aria-label="Market aggregate summary">
             <div class="panel-title">
               <h3 data-i18n="publishers.marketSummary">Overview</h3>
               <span class="overview-toggle">
@@ -444,15 +460,16 @@
           </section>
 
           <!-- 横向柱状图 -->
-          <section class="panel publishers-chart-panel" aria-label="Publisher clicks chart">
+          <section class="panel publishers-chart-panel" id="publishersChartPanel" data-layout-id="chart" aria-label="Publisher clicks chart">
             <div class="panel-title">
               <h3 id="publishersChartTitle" data-i18n="publishers.chartTitle">Clicks by Publisher</h3>
+              <button class="chart-chevron" id="publishersChartChevron" type="button" title="折叠/展开">▼</button>
             </div>
             <div class="publishers-chart" id="publishersChart"></div>
           </section>
 
           <!-- 数据表格 -->
-          <section class="panel table-panel publishers-table-panel" aria-label="Publisher data table">
+          <section class="panel table-panel publishers-table-panel" data-layout-id="table" aria-label="Publisher data table">
             <div class="table-toolbar">
               <div>
                 <h3 data-i18n="publishers.tableTitle">Publisher Records</h3>
