@@ -31,6 +31,9 @@ DEFAULT_REPORTING_DELAY_DAYS = 2
 DEFAULT_DAILY_TREND_DAYS = 14
 DEFAULT_MONTHLY_TREND_MONTHS = 6
 MAX_TIER_REPORT_RANGE_DAYS = 366
+TIER1_MANUAL_SOURCE = "offer-intelligence-tier1-add"
+TIER1_NAME = "Tier 1"
+MANAGED_TIER_NAMES = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
 
 
 class OfferDbError(RuntimeError):
@@ -1435,6 +1438,263 @@ def search_payload(query_text: str, limit: int = 25) -> dict[str, Any]:
         }
     _search_cache[cache_key] = (now, result)
     return result
+
+
+def tier1_merchant_search_payload(query_text: str, limit: int = 10) -> dict[str, Any]:
+    """Search active YeahPromos merchants for the Tier 1 management flow."""
+    query_text = str(query_text or "").strip()
+    if len(query_text) < 2:
+        return {"ok": True, "checkedAt": utc_now_iso(), "query": query_text, "results": []}
+
+    with db_connection() as conn:
+        params: list[Any] = []
+        predicates = []
+        if DIGITS_RE.match(query_text):
+            predicates.append("a.advert_id = %s")
+            params.append(query_text)
+        predicates.append("a.advert_name LIKE %s")
+        params.append(f"%{query_text}%")
+        rows = fetch_all(
+            conn,
+            f"""
+            SELECT
+                CAST(a.advert_id AS CHAR) AS merchantId,
+                a.advert_name AS merchantName,
+                COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown') AS network,
+                t.tier AS currentTier,
+                COALESCE(NULLIF(TRIM(sm.sheetCategory), ''), 'Uncategorized') AS category,
+                COALESCE(NULLIF(TRIM(sm.region), ''), '') AS country
+            FROM cnpscy_advert a
+            LEFT JOIN cnpscy_advert_type at
+                ON a.advert_advertiser = at.advert_type_id
+                AND at.advert_type_parent_id = 53
+            LEFT JOIN cnpscy_oi_tier_assignments t
+                ON t.merchantId = CAST(a.advert_id AS CHAR)
+            LEFT JOIN cnpscy_oi_offer_sheet_metadata sm
+                ON sm.merchantId = CAST(a.advert_id AS CHAR)
+            WHERE a.advert_isdel = 1
+              AND ({" OR ".join(predicates)})
+            ORDER BY
+                CASE
+                    WHEN CAST(a.advert_id AS CHAR) = %s THEN 0
+                    WHEN LOWER(TRIM(a.advert_name)) = LOWER(%s) THEN 1
+                    ELSE 2
+                END,
+                a.advert_name ASC,
+                a.advert_id ASC
+            LIMIT {int(max(1, min(limit, 25)))}
+            """,
+            tuple(params + [query_text, query_text]),
+        )
+
+    return {
+        "ok": True,
+        "checkedAt": utc_now_iso(),
+        "query": query_text,
+        "results": [compact_api_row(row) for row in rows],
+    }
+
+
+def tier1_additions_payload(limit: int = 100) -> dict[str, Any]:
+    """Return the latest Tier 1 migration record for each merchant added by this tool."""
+    with db_connection() as conn:
+        rows = fetch_all(
+            conn,
+            f"""
+            SELECT
+                h.eventId AS migrationId,
+                h.merchantId,
+                COALESCE(NULLIF(TRIM(a.advert_name), ''), NULLIF(TRIM(h.merchantName), ''), h.merchantId) AS merchantName,
+                COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown') AS network,
+                h.sourceTier AS previousTier,
+                h.targetTier AS targetTier,
+                t.tier AS currentTier,
+                h.movedAt AS addedAt,
+                h.movedBy AS addedBy
+            FROM cnpscy_oi_tier_move_history h
+            INNER JOIN (
+                SELECT merchantId, MAX(eventId) AS eventId
+                FROM cnpscy_oi_tier_move_history
+                WHERE targetTier = %s
+                  AND source = %s
+                GROUP BY merchantId
+            ) latest
+                ON latest.eventId = h.eventId
+            LEFT JOIN cnpscy_oi_tier_assignments t
+                ON t.merchantId = h.merchantId
+            LEFT JOIN cnpscy_advert a
+                ON a.advert_id = CAST(h.merchantId AS UNSIGNED)
+                AND a.advert_isdel = 1
+            LEFT JOIN cnpscy_advert_type at
+                ON a.advert_advertiser = at.advert_type_id
+                AND at.advert_type_parent_id = 53
+            ORDER BY h.movedAt DESC, h.eventId DESC
+            LIMIT {int(max(1, min(limit, 250)))}
+            """,
+            (TIER1_NAME, TIER1_MANUAL_SOURCE),
+        )
+
+    additions = [compact_api_row(row) for row in rows]
+    return {
+        "ok": True,
+        "checkedAt": utc_now_iso(),
+        "tier": TIER1_NAME,
+        "count": len(additions),
+        "additions": additions,
+    }
+
+
+def add_merchant_to_tier1(
+    merchant_id: str,
+    updated_by: str,
+    expected_tier: str | None = None,
+) -> dict[str, Any]:
+    """Assign an active YeahPromos merchant to Tier 1 with provenance."""
+    merchant_id = str(merchant_id or "").strip()
+    if not DIGITS_RE.match(merchant_id):
+        raise ValueError("merchantId must be numeric")
+
+    expected_tier = str(expected_tier or "").strip()
+    updated_by = str(updated_by or "offer-intelligence-ui").strip()[:128] or "offer-intelligence-ui"
+    moved_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+
+    with db_connection() as conn:
+        try:
+            conn.begin()
+            merchant = fetch_one(
+                conn,
+                """
+                SELECT
+                    CAST(a.advert_id AS CHAR) AS merchantId,
+                    a.advert_name AS merchantName,
+                    COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown') AS network
+                FROM cnpscy_advert a
+                LEFT JOIN cnpscy_advert_type at
+                    ON a.advert_advertiser = at.advert_type_id
+                    AND at.advert_type_parent_id = 53
+                WHERE a.advert_id = %s
+                  AND a.advert_isdel = 1
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (merchant_id,),
+            )
+            if not merchant:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "merchant_not_found",
+                    "error": "Merchant was not found or is inactive.",
+                }
+
+            assignment = fetch_one(
+                conn,
+                """
+                SELECT merchantId, tier
+                FROM cnpscy_oi_tier_assignments
+                WHERE merchantId = %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (merchant_id,),
+            )
+            current_tier = str((assignment or {}).get("tier") or "").strip()
+            merchant = {
+                **merchant,
+                "currentTier": current_tier,
+            }
+
+            if current_tier and current_tier not in MANAGED_TIER_NAMES:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "unsupported_tier",
+                    "error": f"Merchant has an unsupported current tier: {current_tier}.",
+                    "merchant": compact_api_row(merchant),
+                }
+
+            if expected_tier != current_tier:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "tier_changed",
+                    "error": "Merchant tier changed after search. Search again before confirming.",
+                    "merchant": compact_api_row(merchant),
+                }
+
+            if current_tier == TIER1_NAME:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "already_tier1",
+                    "error": "Merchant is already in Tier 1.",
+                    "merchant": compact_api_row(merchant),
+                }
+
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO cnpscy_oi_tier_assignments
+                        (merchantId, tier, source, movedFromTier, movedAt, updatedBy)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        tier = VALUES(tier),
+                        source = VALUES(source),
+                        movedFromTier = VALUES(movedFromTier),
+                        movedAt = VALUES(movedAt),
+                        updatedBy = VALUES(updatedBy)
+                    """,
+                    (
+                        merchant_id,
+                        TIER1_NAME,
+                        TIER1_MANUAL_SOURCE,
+                        current_tier or None,
+                        moved_at,
+                        updated_by,
+                    ),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO cnpscy_oi_tier_move_history
+                        (merchantId, merchantName, sourceTier, targetTier, source, movedAt, movedBy)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        merchant_id,
+                        str(merchant.get("merchantName") or "").strip() or None,
+                        current_tier or None,
+                        TIER1_NAME,
+                        TIER1_MANUAL_SOURCE,
+                        moved_at,
+                        updated_by,
+                    ),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    _tier_sheet_cache.clear()
+    return {
+        "ok": True,
+        "tier": TIER1_NAME,
+        "merchant": compact_api_row({
+            **merchant,
+            "previousTier": current_tier,
+            "currentTier": TIER1_NAME,
+            "addedAt": moved_at,
+            "addedBy": updated_by,
+        }),
+        "migration": compact_api_row({
+            "merchantId": merchant_id,
+            "merchantName": merchant.get("merchantName"),
+            "sourceTier": current_tier,
+            "targetTier": TIER1_NAME,
+            "movedAt": moved_at,
+            "movedBy": updated_by,
+            "source": TIER1_MANUAL_SOURCE,
+        }),
+    }
 
 
 # ?? payload cache ????????????????????????????????????????????????????

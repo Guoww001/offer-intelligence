@@ -26,6 +26,22 @@ CREATE TABLE cnpscy_oi_tier_assignments (
   KEY idx_cnpscy_oi_tier_assignments_tier (tier)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS cnpscy_oi_tier_move_history (
+  eventId       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  merchantId    VARCHAR(32) NOT NULL,
+  merchantName  VARCHAR(255) DEFAULT NULL,
+  sourceTier    VARCHAR(32) DEFAULT NULL,
+  targetTier    VARCHAR(32) NOT NULL,
+  source        VARCHAR(64) NOT NULL,
+  movedAt       DATETIME NOT NULL,
+  movedBy       VARCHAR(128) DEFAULT NULL,
+  createdAt     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (eventId),
+  KEY idx_tier_move_merchant (merchantId),
+  KEY idx_tier_move_target_time (targetTier, movedAt),
+  KEY idx_tier_move_source (source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 2. ???????
 DROP TABLE IF EXISTS cnpscy_oi_tier_visual_status;
 CREATE TABLE cnpscy_oi_tier_visual_status (

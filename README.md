@@ -168,6 +168,13 @@ operator explicitly passes `--sync-tier-assignments` or
 `--sync-visual-status`. The dashboard's manual Tier Move controls remain
 available.
 
+Tier 1 also has a database-backed **Add merchant** flow. Confirming a merchant
+updates `cnpscy_oi_tier_assignments` and appends an immutable event to
+`cnpscy_oi_tier_move_history` in the same transaction. Existing Tier 2, Tier 3,
+or Tier 4 assignments are migrated rather than copied, and the Tier 1
+**Added merchants** banner reads the recorded source tier, timestamp, and actor
+from the database.
+
 ### Shared Tier Moves
 
 The tier pages include move controls for changing merchant tier placement. By default, moves are applied immediately in the current browser so the operator can preview the result. To make tier moves visible to everyone, configure the shared write path:

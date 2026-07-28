@@ -564,6 +564,24 @@
               <h2 id="tierPageTitle">Tier</h2>
               <p id="tierPageSubtitle">Google Sheet report view</p>
             </div>
+            <div class="tier1-management-actions hidden" id="tier1ManagementActions">
+              <button
+                class="tier1-additions-toggle"
+                id="tier1AdditionsToggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="tier1AdditionsPanel"
+                aria-haspopup="dialog"
+              >
+                <span class="tier1-info-mark" aria-hidden="true">i</span>
+                <span>Added merchants</span>
+                <span class="tier1-additions-count" id="tier1AdditionsCount">0</span>
+              </button>
+              <button class="tier1-add-merchant-button" id="tier1AddMerchant" type="button">
+                <span aria-hidden="true">+</span>
+                Add merchant
+              </button>
+            </div>
           </div>
           <section class="tier-summary" id="tierPageSummary"></section>
           <section class="panel sheet-notes" id="tierPageNotes"></section>
@@ -650,6 +668,29 @@
       </main>
     </div>
     <div class="sheet-expanded-backdrop" id="sheetExpandedBackdrop" aria-hidden="true"></div>
+    <div
+      class="tier1-additions-overlay hidden"
+      id="tier1AdditionsPanel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tier1AdditionsTitle"
+      aria-describedby="tier1AdditionsDescription"
+    >
+      <section class="tier1-additions-panel" aria-label="Tier 1 migration history">
+        <div class="tier1-additions-header">
+          <div>
+            <span class="tier1-additions-eyebrow">Tier 1 / database history</span>
+            <h3 id="tier1AdditionsTitle">Merchant migration history</h3>
+            <p id="tier1AdditionsDescription">Every merchant added through this management tool, with its source tier, timestamp, and operator.</p>
+          </div>
+          <button class="tier1-additions-close" id="tier1AdditionsClose" type="button" aria-label="Close migration history">
+            Close
+          </button>
+        </div>
+        <p class="tier1-additions-status" id="tier1AdditionsStatus" aria-live="polite"></p>
+        <div class="tier1-additions-list" id="tier1AdditionsList"></div>
+      </section>
+    </div>
     <div class="tier-move-dialog hidden" id="tierMoveDialog" role="dialog" aria-modal="true" aria-labelledby="tierMoveTitle">
       <div class="tier-move-card">
         <div class="tier-move-header">
@@ -664,6 +705,67 @@
         <div class="tier-move-footer">
           <button class="secondary-button" id="cancelTierMove" type="button">Cancel</button>
           <button class="secondary-button tier-move-confirm" id="confirmTierMove" type="button">Move merchants</button>
+        </div>
+      </div>
+    </div>
+    <div
+      class="tier1-merchant-dialog hidden"
+      id="tier1MerchantDialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tier1MerchantDialogTitle"
+    >
+      <div class="tier1-merchant-card">
+        <div class="tier1-merchant-header">
+          <div>
+            <h3 id="tier1MerchantDialogTitle">Add merchant to Tier 1</h3>
+            <p>Find an active merchant in the YeahPromos database, review the match, then confirm the assignment.</p>
+          </div>
+          <button class="tier1-merchant-close" id="tier1MerchantClose" type="button" aria-label="Close add merchant dialog">
+            Close
+          </button>
+        </div>
+
+        <form class="tier1-merchant-search-form" id="tier1MerchantSearchForm">
+          <label for="tier1MerchantQuery">
+            <span>Merchant ID or merchant name</span>
+            <div class="tier1-merchant-search-row">
+              <input
+                id="tier1MerchantQuery"
+                type="search"
+                autocomplete="off"
+                placeholder="Enter a merchant ID or name"
+                required
+              />
+              <button id="tier1MerchantSearchButton" type="submit">Find merchant</button>
+            </div>
+            <small>Searches active merchants in the YeahPromos offer database.</small>
+          </label>
+        </form>
+
+        <p class="tier1-merchant-status" id="tier1MerchantStatus" aria-live="polite"></p>
+        <div class="tier1-merchant-results" id="tier1MerchantResults" role="listbox" aria-label="Merchant search results"></div>
+
+        <section class="tier1-merchant-confirmation hidden" id="tier1MerchantConfirmation" aria-label="Confirm Tier 1 assignment">
+          <div class="tier1-confirmation-heading">
+            <div>
+              <span>Confirm merchant</span>
+              <h4 id="tier1SelectedMerchantName"></h4>
+            </div>
+            <button id="tier1MerchantBack" type="button">Change selection</button>
+          </div>
+          <dl class="tier1-confirmation-details">
+            <div><dt>Merchant ID</dt><dd id="tier1SelectedMerchantId"></dd></div>
+            <div><dt>Network</dt><dd id="tier1SelectedMerchantNetwork"></dd></div>
+            <div><dt>Current tier</dt><dd id="tier1SelectedMerchantTier"></dd></div>
+            <div><dt>Category / country</dt><dd id="tier1SelectedMerchantContext"></dd></div>
+          </dl>
+          <p class="tier1-confirmation-notice" id="tier1MerchantConfirmationNotice"></p>
+        </section>
+
+        <div class="tier1-merchant-footer">
+          <button class="secondary-button" id="tier1MerchantCancel" type="button">Cancel</button>
+          <button class="tier1-merchant-confirm" id="tier1MerchantConfirm" type="button" disabled>Add to Tier 1</button>
         </div>
       </div>
     </div>
