@@ -38,7 +38,12 @@ const sandbox = {
   URLSearchParams,
   window: { __OFFER_INTELLIGENCE_TEST__: true },
   localStorage: {
-    getItem() { return null; },
+    getItem(key) {
+      if (key === "offerTierVisibleColumns.v4") {
+        return JSON.stringify({ "Tier 1": ["Merchant ID", "Business Manager"] });
+      }
+      return null;
+    },
     setItem() {},
     removeItem() {}
   },
@@ -180,14 +185,19 @@ assertEqual(
   "default tier fields should support legacy Network and Conversion header aliases"
 );
 assertEqual(
-  hooks.defaultTierHeadersForSheet("Tier 1", ["Clicks", "Business Manager", "Agency", "Network", "Merchant ID"]),
-  ["Merchant ID", "Network", "Agency", "Business Manager", "Clicks"],
-  "Tier 1 should show Agency and Business Manager separately after Network"
+  hooks.defaultTierHeadersForSheet("Tier 1", ["Clicks", "BD", "Agency", "Network", "Merchant ID"]),
+  ["Merchant ID", "Network", "Agency", "BD", "Clicks"],
+  "Tier 1 should show Agency and BD separately after Network"
 );
 assertEqual(
-  hooks.defaultTierHeadersForSheet("Tier 2", ["Clicks", "Business Manager", "Agency", "Network", "Merchant ID"]),
+  hooks.defaultTierHeadersForSheet("Tier 2", ["Clicks", "BD", "Agency", "Network", "Merchant ID"]),
   ["Merchant ID", "Network", "Clicks"],
-  "Business Manager should not become a default column outside Tier 1"
+  "BD should not become a default column outside Tier 1"
+);
+assertEqual(
+  hooks.visibleTierHeadersForSheet("Tier 1", ["Merchant ID", "BD", "Clicks"]),
+  ["Merchant ID", "BD"],
+  "saved Tier 1 Business Manager visibility should migrate to BD"
 );
 
 for (const tierName of ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]) {
