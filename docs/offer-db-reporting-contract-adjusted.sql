@@ -128,7 +128,7 @@ DROP TABLE IF EXISTS cnpscy_oi_offer_sheet_metadata;
 CREATE TABLE cnpscy_oi_offer_sheet_metadata (
   merchantId          VARCHAR(32) NOT NULL,
   agency              VARCHAR(128) DEFAULT NULL COMMENT 'Google Sheet Tier 1 Agency',
-  businessManager     VARCHAR(128) DEFAULT NULL COMMENT 'Tier 1 merchant business manager',
+  businessManager     VARCHAR(128) DEFAULT NULL COMMENT 'Google Sheet Tier 1 BD',
   reason              TEXT DEFAULT NULL COMMENT 'Tier ?? / ?????',
   recommendation      TEXT DEFAULT NULL COMMENT '????',
   recommendedLink     VARCHAR(512) DEFAULT NULL COMMENT '????',

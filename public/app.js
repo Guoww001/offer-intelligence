@@ -750,7 +750,6 @@
   }
 
   function labelText(label) {
-    if (label === "Business Manager" && state.language === "zh") return "\u4e1a\u52a1\u7ecf\u7406";
     return t(`label.${label}`, label);
   }
 
@@ -1037,7 +1036,13 @@
   function loadTierVisibleColumns() {
     try {
       const parsed = JSON.parse(localStorage.getItem(TIER_COLUMN_KEY) || "{}");
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      if (Array.isArray(parsed["Tier 1"])) {
+        parsed["Tier 1"] = parsed["Tier 1"].map((header) => (
+          header === "Business Manager" ? "BD" : header
+        ));
+      }
+      return parsed;
     } catch (error) {
       return {};
     }
@@ -13393,11 +13398,11 @@ var _NUMERIC_COL_PATTERNS = [
       const networkIndex = selected.indexOf("Network");
       selected.splice(networkIndex >= 0 ? networkIndex + 1 : 0, 0, "Agency");
     }
-    if (sheet.name === "Tier 1" && available.has("Business Manager") && !selected.includes("Business Manager")) {
+    if (sheet.name === "Tier 1" && available.has("BD") && !selected.includes("BD")) {
       const agencyIndex = selected.indexOf("Agency");
       const networkIndex = selected.indexOf("Network");
       const insertAfter = agencyIndex >= 0 ? agencyIndex : networkIndex;
-      selected.splice(insertAfter >= 0 ? insertAfter + 1 : 0, 0, "Business Manager");
+      selected.splice(insertAfter >= 0 ? insertAfter + 1 : 0, 0, "BD");
     }
     return selected.length ? selected : allHeaders;
   }
@@ -13472,7 +13477,7 @@ var _NUMERIC_COL_PATTERNS = [
       else if (header === "Merchant Name") row[header] = offer.brand || "";
       else if (header === "Network") row[header] = offer.network || "";
       else if (header === "Agency") row[header] = offer.agency || "";
-      else if (header === "Business Manager") row[header] = offer.businessManager || "";
+      else if (header === "BD") row[header] = offer.businessManager || offer.bd || "";
       else if (header === "Clicks") row[header] = number(offer.clicks).toLocaleString();
       else if (header === "Conversion") row[header] = shortPct(offer.conversionRate);
       else if (header === "DPV") row[header] = number(offer.dpv).toLocaleString();

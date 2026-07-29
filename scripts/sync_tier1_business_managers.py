@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and upsert Tier 1 merchant business-manager values from a CSV."""
+"""Validate and upsert Tier 1 merchant BD values from a CSV."""
 
 from __future__ import annotations
 
@@ -12,56 +12,56 @@ from sync_oi_tables import db_connection
 
 
 DIGITS_RE = re.compile(r"^\d+$")
-MANAGER_KEYS = ("businessManager", "Business Manager", "\u4e1a\u52a1\u7ecf\u7406")
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CSV_PATH = ROOT / "data" / "tier1_bd.csv"
+BD_KEYS = ("BD", "bd")
+DEFAULT_BD = "Timmy"
 
 
-def load_business_manager_csv(path: Path) -> list[dict]:
+def load_bd_csv(path: Path) -> list[dict]:
     with path.open(encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
         headers = set(reader.fieldnames or [])
-        if not any(key in headers for key in MANAGER_KEYS):
-            raise ValueError(
-                "CSV must include a Business Manager, businessManager, or \u4e1a\u52a1\u7ecf\u7406 column"
-            )
+        if not any(key in headers for key in BD_KEYS):
+            raise ValueError("CSV must include a BD or bd column")
         return list(reader)
 
 
-def normalized_business_manager_rows(rows: list[dict]) -> list[tuple[str, str | None, str]]:
+def normalized_bd_rows(rows: list[dict]) -> list[tuple[str, str, str]]:
     if rows and not any(
         key in row
         for row in rows
-        for key in MANAGER_KEYS
+        for key in BD_KEYS
     ):
-        raise ValueError(
-            "CSV rows must include a Business Manager, businessManager, or \u4e1a\u52a1\u7ecf\u7406 field"
-        )
-    normalized: list[tuple[str, str | None, str]] = []
+        raise ValueError("CSV rows must include a BD or bd field")
+    normalized: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for row in rows:
         merchant_id = str(row.get("merchantId") or row.get("Merchant ID") or "").strip()
         if not DIGITS_RE.match(merchant_id):
-            raise ValueError(f"Invalid Tier 1 business-manager Merchant ID: {merchant_id!r}")
+            raise ValueError(f"Invalid Tier 1 BD Merchant ID: {merchant_id!r}")
         if merchant_id in seen:
-            raise ValueError(f"Duplicate Tier 1 business-manager Merchant ID: {merchant_id}")
+            raise ValueError(f"Duplicate Tier 1 BD Merchant ID: {merchant_id}")
         seen.add(merchant_id)
 
-        manager = ""
-        for key in MANAGER_KEYS:
+        bd = ""
+        for key in BD_KEYS:
             if row.get(key) is not None:
-                manager = str(row.get(key) or "").strip()
+                bd = str(row.get(key) or "").strip()
                 break
-        if len(manager) > 128:
-            raise ValueError(f"Business Manager is longer than 128 characters for Merchant ID {merchant_id}")
-        normalized.append((merchant_id, manager or None, "Tier 1"))
+        bd = bd or DEFAULT_BD
+        if len(bd) > 128:
+            raise ValueError(f"BD is longer than 128 characters for Merchant ID {merchant_id}")
+        normalized.append((merchant_id, bd, "Tier 1"))
     return normalized
 
 
-def sync_tier1_business_managers(conn, rows: list[dict]) -> dict[str, int]:
-    normalized = normalized_business_manager_rows(rows)
+def sync_tier1_bd(conn, rows: list[dict]) -> dict[str, int]:
+    normalized = normalized_bd_rows(rows)
     if not normalized:
-        return {"rows": 0, "nonblank": 0, "blank": 0}
+        return {"rows": 0, "bryan": 0, "timmy": 0, "other": 0}
 
-    merchant_ids = [merchant_id for merchant_id, _manager, _source_sheet in normalized]
+    merchant_ids = [merchant_id for merchant_id, _bd, _source_sheet in normalized]
     placeholders = ", ".join(["%s"] * len(merchant_ids))
     try:
         conn.begin()
@@ -83,7 +83,7 @@ def sync_tier1_business_managers(conn, rows: list[dict]) -> dict[str, int]:
             missing = [merchant_id for merchant_id in merchant_ids if merchant_id not in tier1_ids]
             if missing:
                 raise ValueError(
-                    "Business Manager can only be assigned to current Tier 1 merchants: "
+                    "BD can only be assigned to current Tier 1 merchants: "
                     + ", ".join(missing)
                 )
 
@@ -102,13 +102,31 @@ def sync_tier1_business_managers(conn, rows: list[dict]) -> dict[str, int]:
         conn.rollback()
         raise
 
-    nonblank = sum(1 for _merchant_id, manager, _source_sheet in normalized if manager)
-    return {"rows": len(normalized), "nonblank": nonblank, "blank": len(normalized) - nonblank}
+    bryan = sum(1 for _merchant_id, bd, _source_sheet in normalized if bd.casefold() == "bryan")
+    timmy = sum(1 for _merchant_id, bd, _source_sheet in normalized if bd.casefold() == "timmy")
+    return {
+        "rows": len(normalized),
+        "bryan": bryan,
+        "timmy": timmy,
+        "other": len(normalized) - bryan - timmy,
+    }
+
+
+# Backward-compatible Python entry points; the user-facing and CSV field is BD.
+load_business_manager_csv = load_bd_csv
+normalized_business_manager_rows = normalized_bd_rows
+sync_tier1_business_managers = sync_tier1_bd
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("csv_path", type=Path, help="UTF-8 CSV with Merchant ID and Business Manager columns")
+    parser.add_argument(
+        "csv_path",
+        nargs="?",
+        type=Path,
+        default=DEFAULT_CSV_PATH,
+        help="UTF-8 CSV with Merchant ID and BD columns (default: data/tier1_bd.csv)",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -119,24 +137,27 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    rows = load_business_manager_csv(args.csv_path)
-    normalized = normalized_business_manager_rows(rows)
-    nonblank = sum(1 for _merchant_id, manager, _source_sheet in normalized if manager)
+    rows = load_bd_csv(args.csv_path)
+    normalized = normalized_bd_rows(rows)
+    bryan = sum(1 for _merchant_id, bd, _source_sheet in normalized if bd.casefold() == "bryan")
+    timmy = sum(1 for _merchant_id, bd, _source_sheet in normalized if bd.casefold() == "timmy")
     if args.dry_run:
         print(
-            "Tier 1 business managers validated: "
-            f"{len(normalized)} rows, {nonblank} nonblank, {len(normalized) - nonblank} blank"
+            "Tier 1 BD values validated: "
+            f"{len(normalized)} rows, {bryan} Bryan, {timmy} Timmy, "
+            f"{len(normalized) - bryan - timmy} other"
         )
         return
 
     conn = db_connection()
     try:
-        result = sync_tier1_business_managers(conn, rows)
+        result = sync_tier1_bd(conn, rows)
     finally:
         conn.close()
     print(
-        "Tier 1 business managers synced to cnpscy_oi_offer_sheet_metadata: "
-        f"{result['rows']} rows, {result['nonblank']} nonblank, {result['blank']} blank"
+        "Tier 1 BD values synced to cnpscy_oi_offer_sheet_metadata.businessManager: "
+        f"{result['rows']} rows, {result['bryan']} Bryan, {result['timmy']} Timmy, "
+        f"{result['other']} other"
     )
 
 

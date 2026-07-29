@@ -75,7 +75,7 @@ def test_report_payload():
             "Brand": "Order Click Merchant",
             "Network": "Archer",
             "Agency": "Bluefocus",
-            "Business Manager": "Alice",
+            "BD": "Bryan",
             "COUNTRY": "UK",
         },
         {
@@ -84,7 +84,7 @@ def test_report_payload():
             "Brand": "Tracked Click Merchant",
             "Network": "Levanta",
             "Agency": None,
-            "Business Manager": None,
+            "BD": None,
         },
     ]
     order_rows = [
@@ -142,8 +142,8 @@ def test_report_payload():
     assert_equal(payload["rows"][0]["Revenue"], "80.0", "order revenue")
     assert_equal(payload["rows"][0]["Agency"], "Bluefocus", "sheet agency")
     assert_equal(payload["rows"][1]["Agency"], "", "missing agency stays blank")
-    assert_equal(payload["rows"][0]["Business Manager"], "Alice", "Tier 1 business manager")
-    assert_equal(payload["rows"][1]["Business Manager"], "", "missing business manager stays blank")
+    assert_equal(payload["rows"][0]["BD"], "Bryan", "Tier 1 BD")
+    assert_equal(payload["rows"][1]["BD"], "", "missing BD stays blank")
     assert_equal(payload["rows"][0]["COUNTRY"], "UK", "compact country metadata")
     assert_equal(payload["rows"][0]["Backend EPC"], "8.0", "order EPC")
     assert_equal(payload["rows"][1]["Clicks"], "50.0", "tracked click fallback")
@@ -155,9 +155,9 @@ def test_report_payload():
         assert_equal(params, ("Tier 1", 20260601, 20260715), "inclusive date parameters")
     assert any("MAX(sm.agency) AS `Agency`" in sql for sql, _params in calls), "agency query is missing"
     assert any(
-        "MAX(sm.businessManager) AS `Business Manager`" in sql
+        "MAX(sm.businessManager) AS `BD`" in sql
         for sql, _params in calls
-    ), "business manager query is missing"
+    ), "BD query is missing"
     assert any("MAX(sm.region) AS `COUNTRY`" in sql for sql, _params in calls), "compact country query is missing"
 
 
