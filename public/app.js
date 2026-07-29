@@ -1233,8 +1233,10 @@
                .replace(/</g, '&lt;')
                .replace(/>/g, '&gt;');
 
-    // 4. 处理行内格式：加粗、斜体、删除线、链接
-    // 先处理链接 [text](url)，避免内部标记被处理
+    // 4. 处理行内格式：加粗、斜体、删除线、链接、图片
+    // 图片 ![alt](url) — 必须在链接之前处理，避免 ![ 被链接正则捕获
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%">');
+    // 链接 [text](url)
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     // 加粗+斜体 *** ***
     text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -1270,11 +1272,10 @@
     }
 
     function flushTable() {
-      if (tableBuffer.length) {
-        html += '<table>\n' + tableBuffer.join('\n') + '\n</table>\n';
-        tableBuffer = [];
+      if (inTable) {
+        html += '</tbody>\n</table>\n</div>\n';
+        inTable = false;
       }
-      inTable = false;
     }
 
     function flushBlockquote() {
@@ -1340,7 +1341,14 @@
           inList = true;
           listType = 'ul';
         }
-        listBuffer.push('<li>' + ulMatch[1] + '</li>');
+        var _liContent = ulMatch[1];
+        var _taskMatch = _liContent.match(/^\[(x| )\]\s+(.*)$/i);
+        if (_taskMatch) {
+          var _checked = _taskMatch[1].toLowerCase() === 'x';
+          listBuffer.push('<li class="task-list-item' + (_checked ? ' done' : '') + '">' + (_checked ? '<input type="checkbox" checked disabled> ' : '<input type="checkbox" disabled> ') + _taskMatch[2] + '</li>');
+        } else {
+          listBuffer.push('<li>' + _liContent + '</li>');
+        }
         continue;
       }
 
@@ -1367,7 +1375,7 @@
           inTable = true;
           // 表头
           var cells = tableRowMatch[1].split('|').map(function(c) { return c.trim(); });
-          html += '<thead><tr>';
+          html += '<div class="table-wrap">\n<table>\n<thead><tr>';
           cells.forEach(function(c) { html += '<th>' + c + '</th>'; });
           html += '</tr></thead>\n<tbody>\n';
         } else {
@@ -1397,8 +1405,10 @@
     flushTable();
     flushBlockquote();
 
-    // 7. 恢复代码块占位符
+    // 7. 恢复代码块占位符（移除包裹的空 &lt;p&gt;）
     codeBlocks.forEach(function(item) {
+      html = html.replace('<p>' + item.ph + '</p>', item.html);
+      html = html.replace('<p>' + item.ph + '</p>', item.html); // second pass handles adjacent blocks
       html = html.replace(item.ph, item.html);
     });
 
@@ -5043,10 +5053,10 @@
 
         summary.target = label;
 
-        // Render the trend table in chat bubble
-        container.innerHTML = renderTrendTable(summary);
+        // Trend table only appears in the left context panel, not here
+        container.innerHTML = "<p class=\"info\">" + (zh ? "趋势数据已加载，详见左侧面板" : "Trend data loaded, see left panel for details.") + "</p>";
 
-        // Update the left context panel with trend chart
+        // Update the left context panel with trend chart + table
         setContext(buildTrendContext(summary));
 
         // Append narrative (non-blocking)
@@ -5068,10 +5078,9 @@
     summary.estimated = true;
     container.innerHTML = "<div class=\"analysis-section\">"
       + "<p class=\"info\" style=\"margin-bottom:8px;font-size:0.85em;color:#888;\">"
-      + (zh ? "⚡ 数据库未连接，趋势数据基于汇总历史估算。连接数据库后可获取精确月度指标。" : "⚡ Database not connected; trend data estimated from aggregate totals. Connect DB for precise monthly metrics.")
+      + (zh ? "⚡ 数据库未连接，趋势数据基于汇总历史估算（详见左侧面板）。连接数据库后可获取精确月度指标。" : "⚡ Database not connected; trend data estimated from aggregate totals (see left panel). Connect DB for precise monthly metrics.")
       + "</p>"
-      + "</div>"
-      + renderTrendTable(summary);
+      + "</div>";
     setContext(buildTrendContext(summary));
     appendTrendNarrative(container, summary, zh, language);
   }
@@ -8995,7 +9004,23 @@
           if (fullRows && fullRows.length > 0) {
             extraText = "\n\n=== Full Data (" + fullRows.length + " rows) ===\n" +
               fullRows.map(function (r) {
-                return (r.brand || "") + " | Tier: " + (r.tier || "") + " | EPC: " + (r.epc || "") + " | AOV: " + (r.aov || "") + " | Category: " + (r.category || "");
+                var _epc = r.epc, _aov = r.aov, _rev = r.salesAmount, _clicks = r.clicks, _orders = r.orders, _cvr = r.conversionRate, _dpv = r.dpv, _atc = r.atc, _comm = r.affCommission, _commRate = r.commissionRate;
+                var parts = [
+                  "Brand: " + (r.brand || ""),
+                  "Tier: " + (r.tier || ""),
+                  "EPC: " + (_epc != null && _epc !== "" ? _epc : "-"),
+                  "AOV: " + (_aov != null && _aov !== "" ? _aov : "-"),
+                  "Revenue: " + (_rev != null && _rev !== "" ? _rev : "-"),
+                  "Clicks: " + (_clicks != null && _clicks !== "" ? _clicks : "-"),
+                  "Orders: " + (_orders != null && _orders !== "" ? _orders : "-"),
+                  "CVR: " + (_cvr != null && _cvr !== "" ? _cvr : "-"),
+                  "DPV: " + (_dpv != null && _dpv !== "" ? _dpv : "-"),
+                  "ATC: " + (_atc != null && _atc !== "" ? _atc : "-"),
+                  "Commission: " + (_comm != null && _comm !== "" ? _comm : "-"),
+                  "CommRate: " + (_commRate != null && _commRate !== "" ? _commRate : "-"),
+                  "Category: " + (r.category || ""),
+                ];
+                return parts.join(" | ");
               }).join("\n") + "\n=== End Full Data ===";
           }
         }
