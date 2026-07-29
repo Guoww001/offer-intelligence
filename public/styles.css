@@ -977,7 +977,6 @@ body.dashboard-mode .chat-panel {
   border-radius: 14px;
   font-size: 13px;
   line-height: 1.55;
-  overflow: hidden;
   /* 入场动画：淡入 + 微上移 */
   animation: messageIn 0.45s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
@@ -6583,14 +6582,29 @@ td strong {
   word-break: normal;
 }
 
-.chat-stream-text table {
-  border-collapse: collapse;
+.chat-stream-text .table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-width: 100%;
+  max-height: 480px;
   margin: 0.75em 0;
+}
+
+.chat-stream-text .table-wrap table {
+  border-collapse: collapse;
   font-size: 0.92em;
   width: auto;
-  max-width: 100%;
-  overflow-x: auto;
-  display: block;
+  min-width: 100%;
+}
+
+.chat-stream-text .table-wrap th,
+.chat-stream-text .table-wrap td {
+  white-space: nowrap;
+}
+
+.chat-stream-text .table-wrap th {
+  background: #f0f5fe;
+  font-weight: 600;
 }
 
 .chat-stream-text th,
@@ -6645,6 +6659,30 @@ td strong {
 .chat-stream-text del {
   text-decoration: line-through;
   opacity: 0.7;
+}
+
+.chat-stream-text img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5em 0;
+}
+
+.chat-stream-text .task-list-item {
+  list-style: none;
+  margin-left: -1.5em;
+}
+
+.chat-stream-text .task-list-item input[type="checkbox"] {
+  margin-right: 0.4em;
+  transform: scale(0.9);
+  vertical-align: middle;
+  pointer-events: none;
+}
+
+.chat-stream-text .task-list-item.done {
+  opacity: 0.75;
+  text-decoration: line-through;
 }
 
 /* 实时状态栏：计时 + Token 计数 */
