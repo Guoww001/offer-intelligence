@@ -28,6 +28,10 @@ OFFER_SHEET_METADATA_COLUMN_MIGRATIONS = {
         "ALTER TABLE cnpscy_oi_offer_sheet_metadata "
         "ADD COLUMN agency VARCHAR(128) DEFAULT NULL AFTER merchantId"
     ),
+    "businessManager": (
+        "ALTER TABLE cnpscy_oi_offer_sheet_metadata "
+        "ADD COLUMN businessManager VARCHAR(128) DEFAULT NULL AFTER agency"
+    ),
 }
 
 
@@ -179,6 +183,7 @@ def main():
                     CREATE TABLE IF NOT EXISTS cnpscy_oi_offer_sheet_metadata (
                       merchantId          VARCHAR(32) NOT NULL,
                       agency              VARCHAR(128) DEFAULT NULL,
+                      businessManager     VARCHAR(128) DEFAULT NULL,
                       reason              TEXT DEFAULT NULL,
                       recommendation      TEXT DEFAULT NULL,
                       recommendedLink     VARCHAR(512) DEFAULT NULL,

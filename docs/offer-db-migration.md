@@ -38,6 +38,7 @@ The application expects these database objects:
 - `oi_tier_move_history`: immutable merchant tier migration events (`sourceTier`, `targetTier`, `movedAt`, and `movedBy`).
 - `oi_tier_visual_status`: merchant color state with `color`, `reason_code`, `reason_text`, and `source`.
 - `cnpscy_oi_offer_sheet_metadata.agency`: nullable Tier 1 Agency from the Google Sheet, joined by `merchantId`.
+- `cnpscy_oi_offer_sheet_metadata.businessManager`: nullable Tier 1 business manager, joined one-to-one by `merchantId`.
 
 The versioned Agency snapshot is `data/tier1_agencies.csv`, sourced from
 spreadsheet `1Q8Ee_bf2sw-pVqJ64zNWeLsRYC3d8C042AMAFNGxwKs`, range
@@ -48,6 +49,20 @@ database update with:
 python scripts/ensure_oi_schema.py
 python scripts/sync_tier1_agencies.py
 ```
+
+Business-manager values are intentionally updated through a scoped import so
+unspecified merchants keep their existing value. After applying the schema
+migration, import a UTF-8 CSV containing `Merchant ID` and `Business Manager`
+columns with:
+
+```bash
+python scripts/apply_tier1_business_manager_schema.py
+python scripts/sync_tier1_business_managers.py path/to/tier1_business_managers.csv
+```
+
+Only merchants currently assigned to Tier 1 are accepted. A blank value
+explicitly clears that merchant's business manager; merchants omitted from the
+CSV are not changed.
 
 The Tier 1 merchant-management endpoint reads active merchants from
 `cnpscy_advert`, updates `cnpscy_oi_tier_assignments`, and appends
