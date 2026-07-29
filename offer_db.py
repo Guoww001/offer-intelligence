@@ -2461,7 +2461,8 @@ def tier_sheet_payload(
                     MAX(a.advert_name) AS `Brand`,
                     MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown')) AS `Network`,
                     {agency_expression} AS `Agency`,
-                    MAX(a.advert_money) AS `Commission Rate`
+                    MAX(a.advert_money) AS `Commission Rate`,
+                    MAX(sm.region) AS `COUNTRY`
                 FROM cnpscy_oi_tier_assignments t
                 LEFT JOIN cnpscy_advert a
                     ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1

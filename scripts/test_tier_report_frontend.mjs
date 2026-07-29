@@ -258,6 +258,11 @@ assertEqual(
   "explicit revenue currency should take precedence over country"
 );
 assertEqual(
+  hooks.formatTierSheetCell("Tier 4", { Revenue: "20" }, "Revenue"),
+  "20.00",
+  "unknown tier revenue currency should not default to dollars"
+);
+assertEqual(
   hooks.formatTierSheetCell("Tier 1", { Revenue: "", COUNTRY: "US" }, "Revenue"),
   "",
   "missing tier revenue should remain blank"
