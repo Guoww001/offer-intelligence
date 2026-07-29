@@ -1036,7 +1036,13 @@
   function loadTierVisibleColumns() {
     try {
       const parsed = JSON.parse(localStorage.getItem(TIER_COLUMN_KEY) || "{}");
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      if (Array.isArray(parsed["Tier 1"])) {
+        parsed["Tier 1"] = parsed["Tier 1"].map((header) => (
+          header === "Business Manager" ? "BD" : header
+        ));
+      }
+      return parsed;
     } catch (error) {
       return {};
     }
@@ -2789,12 +2795,13 @@
       JPY: "¥"
     };
     if (currencySymbols[currency]) return currencySymbols[currency];
+    if (["US", "USA", "UNITED STATES"].includes(country)) return "$";
     if (["UK", "GB", "UNITED KINGDOM"].includes(country)) return "£";
     if (["DE", "FR", "EU", "GERMANY", "FRANCE"].includes(country)) return "€";
     if (["CA", "CANADA"].includes(country)) return "C$";
     if (["AU", "AUSTRALIA"].includes(country)) return "A$";
     if (["JP", "JAPAN"].includes(country)) return "¥";
-    return "$";
+    return "";
   }
 
   function numericSheetCellValue(value) {
@@ -13416,6 +13423,12 @@ var _NUMERIC_COL_PATTERNS = [
       const networkIndex = selected.indexOf("Network");
       selected.splice(networkIndex >= 0 ? networkIndex + 1 : 0, 0, "Agency");
     }
+    if (sheet.name === "Tier 1" && available.has("BD") && !selected.includes("BD")) {
+      const agencyIndex = selected.indexOf("Agency");
+      const networkIndex = selected.indexOf("Network");
+      const insertAfter = agencyIndex >= 0 ? agencyIndex : networkIndex;
+      selected.splice(insertAfter >= 0 ? insertAfter + 1 : 0, 0, "BD");
+    }
     return selected.length ? selected : allHeaders;
   }
 
@@ -13489,6 +13502,7 @@ var _NUMERIC_COL_PATTERNS = [
       else if (header === "Merchant Name") row[header] = offer.brand || "";
       else if (header === "Network") row[header] = offer.network || "";
       else if (header === "Agency") row[header] = offer.agency || "";
+      else if (header === "BD") row[header] = offer.businessManager || offer.bd || "";
       else if (header === "Clicks") row[header] = number(offer.clicks).toLocaleString();
       else if (header === "Conversion") row[header] = shortPct(offer.conversionRate);
       else if (header === "DPV") row[header] = number(offer.dpv).toLocaleString();

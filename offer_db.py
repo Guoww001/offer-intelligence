@@ -2451,6 +2451,11 @@ def tier_sheet_payload(
     with db_connection() as conn:
         metadata_columns = table_columns(conn, "cnpscy_oi_offer_sheet_metadata")
         agency_expression = "MAX(sm.agency)" if "agency" in metadata_columns else "NULL"
+        bd_expression = (
+            "MAX(sm.businessManager)"
+            if tier_name == TIER1_NAME and "businessManager" in metadata_columns
+            else "NULL"
+        )
         if compact:
             base_rows = fetch_all(
                 conn,
@@ -2461,7 +2466,9 @@ def tier_sheet_payload(
                     MAX(a.advert_name) AS `Brand`,
                     MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown')) AS `Network`,
                     {agency_expression} AS `Agency`,
-                    MAX(a.advert_money) AS `Commission Rate`
+                    {bd_expression} AS `BD`,
+                    MAX(a.advert_money) AS `Commission Rate`,
+                    MAX(sm.region) AS `COUNTRY`
                 FROM cnpscy_oi_tier_assignments t
                 LEFT JOIN cnpscy_advert a
                     ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
@@ -2484,6 +2491,7 @@ def tier_sheet_payload(
                 MAX(a.advert_name) AS `Brand`,
                 MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), pr_net.network, 'Unknown')) AS `Network`,
                 {agency_expression} AS `Agency`,
+                {bd_expression} AS `BD`,
                 MAX(a.advert_money) AS `Commission Rate`,
                 MAX(vs.color) AS `Color`,
                 MAX(vs.reason_code) AS `Visual Status Code`,
@@ -2527,6 +2535,9 @@ def tier_sheet_payload(
             """,
             (tier_name,),
             )
+        if tier_name != TIER1_NAME:
+            for row in base_rows:
+                row.pop("BD", None)
         order_rows = fetch_all(
             conn,
             """

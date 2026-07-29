@@ -38,6 +38,7 @@ The application expects these database objects:
 - `oi_tier_move_history`: immutable merchant tier migration events (`sourceTier`, `targetTier`, `movedAt`, and `movedBy`).
 - `oi_tier_visual_status`: merchant color state with `color`, `reason_code`, `reason_text`, and `source`.
 - `cnpscy_oi_offer_sheet_metadata.agency`: nullable Tier 1 Agency from the Google Sheet, joined by `merchantId`.
+- `cnpscy_oi_offer_sheet_metadata.businessManager`: nullable physical storage for the Tier 1 `BD` field, joined one-to-one by `merchantId`.
 
 The versioned Agency snapshot is `data/tier1_agencies.csv`, sourced from
 spreadsheet `1Q8Ee_bf2sw-pVqJ64zNWeLsRYC3d8C042AMAFNGxwKs`, range
@@ -48,6 +49,24 @@ database update with:
 python scripts/ensure_oi_schema.py
 python scripts/sync_tier1_agencies.py
 ```
+
+The versioned BD snapshot is `data/tier1_bd.csv`, sourced from spreadsheet
+`1Q8Ee_bf2sw-pVqJ64zNWeLsRYC3d8C042AMAFNGxwKs`, range `Tier 1!B10:F67`.
+Blank source-sheet BD cells are normalized to `Timmy`. After applying the
+schema migration, sync the UTF-8 CSV containing `Merchant ID` and `BD` columns
+with:
+
+```bash
+python scripts/apply_tier1_business_manager_schema.py
+python scripts/sync_tier1_business_managers.py
+```
+
+Only merchants currently assigned to Tier 1 are accepted. A blank `BD` value is
+treated as `Timmy`; merchants omitted from the CSV are not changed.
+`data/tier1_bd_unmatched.csv` records source rows that cannot be joined safely
+because the Google Sheet has no Merchant ID.
+`data/tier1_bd_corrections.csv` records the verified Level8 source-ID correction
+from `4027338` to the active `cnpscy_advert.advert_id` value `402733`.
 
 The Tier 1 merchant-management endpoint reads active merchants from
 `cnpscy_advert`, updates `cnpscy_oi_tier_assignments`, and appends

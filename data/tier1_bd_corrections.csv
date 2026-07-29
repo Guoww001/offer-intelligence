@@ -1,0 +1,2 @@
+sourceMerchantId,resolvedMerchantId,merchantName,reason
+4027338,402733,Level8,Google Sheet ID has an extra trailing digit; resolved by exact active cnpscy_advert name match
