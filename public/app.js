@@ -457,7 +457,6 @@
     paymentSort: document.getElementById("paymentSortFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
     languageToggle: document.getElementById("languageToggle"),
-    deepAnalysisFab: null,
     chatModeToggle: null,
     modeFastBtn: null,
     modeDeepBtn: null
@@ -727,8 +726,7 @@
       "deep.error.return": "分析返回异常，请稍后重试。",
       "deep.error.network": "网络请求失败，请检查连接后重试。",
       "deep.stop": "停止",
-      "deep.stopAborted": "分析已取消。",
-      "deep.fab": "🔬"
+      "deep.stopAborted": "分析已取消。"
     }
   };
 
@@ -15647,8 +15645,6 @@ var _NUMERIC_COL_PATTERNS = [
         _minimizeDeepPanel(p.id);
       }
     });
-    // 浮动深度分析按钮只在 dashboard 页面显示
-    els.deepAnalysisFab?.classList.toggle("hidden", page !== "dashboard");
     if (page === "payments") {
       renderPaymentsPage();
       if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
@@ -15664,8 +15660,7 @@ var _NUMERIC_COL_PATTERNS = [
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
 
-    // 浮动深度分析按钮 & 模式切换
-    els.deepAnalysisFab = document.getElementById("deepAnalysisFab");
+    // 模式切换
     els.chatModeToggle = document.getElementById("chatModeToggle");
     els.modeFastBtn = els.chatModeToggle?.querySelector('[data-mode="fast"]');
     els.modeDeepBtn = els.chatModeToggle?.querySelector('[data-mode="deep"]');
@@ -16165,30 +16160,6 @@ var _NUMERIC_COL_PATTERNS = [
       _renderMemoryBar();
     });
 
-    // 浮动深度分析按钮——聚焦最上层面板或切换深度模式
-    els.deepAnalysisFab?.addEventListener("click", () => {
-      if (_deepPanels.length > 0) {
-        var topPanel = _deepPanels[_deepPanels.length - 1];
-        _bringPanelToFront(topPanel);
-        // 如果是最小化状态，展开它
-        if (topPanel.minimized) {
-          _expandDeepPanel(topPanel.id);
-        }
-        return;
-      }
-      // 无面板时切换到深度模式准备提问
-      if (!state.deepMode) {
-        state.deepMode = true;
-        els.modeDeepBtn?.classList.add("active");
-        els.modeFastBtn?.classList.remove("active");
-        els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
-        _syncChatLogVisibility();
-        _renderMemoryBar();
-      }
-      els.chatInput?.focus();
-      els.chatInput?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-
     // Escape 最小化最上层非推理中的面板
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
@@ -16252,8 +16223,6 @@ var _NUMERIC_COL_PATTERNS = [
     state.currentContext = { type: "default", items: [], summary: {}, filters: {} };
     syncPaymentControls();
     renderAll();
-    // 初始页面为 dashboard，显示浮动深度分析按钮
-    if (state.page === "dashboard") els.deepAnalysisFab?.classList.remove("hidden");
     renderPaymentsPage();
     rerenderForLanguage();
     document.body.classList.remove("app-loading");

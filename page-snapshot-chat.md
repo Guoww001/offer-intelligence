@@ -1,0 +1,53 @@
+- generic [ref=f3e30]:
+  - complementary [ref=f3e31]:
+    - generic [ref=f3e34]:
+      - heading "YeahPromos" [level=1] [ref=f3e35]
+      - paragraph [ref=f3e36]: Amazon tier analysis
+    - button "Chinese" [ref=f3e37] [cursor=pointer]
+    - button "Sign out" [ref=f3e38] [cursor=pointer]
+    - navigation "Pages" [ref=f3e39]:
+      - button "Dashboard" [ref=f3e40] [cursor=pointer]
+      - button "Payments" [ref=f3e45] [cursor=pointer]
+      - button "Publishers" [ref=f3e50] [cursor=pointer]
+      - generic [ref=f3e55]:
+        - button "Reports" [expanded] [ref=f3e56] [cursor=pointer]
+        - generic "Report pages" [ref=f3e63]:
+          - button "Targets" [ref=f3e64] [cursor=pointer]
+          - button "Category" [ref=f3e69] [cursor=pointer]
+          - button "Tier 1" [ref=f3e73] [cursor=pointer]
+          - button "Tier 2" [ref=f3e77] [cursor=pointer]
+          - button "Tier 3" [ref=f3e81] [cursor=pointer]
+          - button "Tier 4" [ref=f3e85] [cursor=pointer]
+          - button "Black Tier" [ref=f3e89] [cursor=pointer]
+    - region "Source status" [ref=f3e95]:
+      - generic [ref=f3e96]: Status
+      - generic [ref=f3e98]:
+        - generic [ref=f3e99]: YeahPromos
+        - strong [ref=f3e100]: Backend EPC
+      - generic [ref=f3e101]:
+        - generic [ref=f3e102]: Levanta
+        - strong [ref=f3e103]: Feb-Jun payments
+      - generic [ref=f3e104]:
+        - generic [ref=f3e105]: Sheets
+        - strong [ref=f3e106]: Tier logic loaded
+  - main [ref=f3e107]:
+    - generic "Loading dashboard data":
+      - paragraph: Loading offer data…
+    - generic [ref=f3e109]:
+      - heading "Recommendation Chatbot" [level=2] [ref=f3e110]
+      - paragraph
+    - generic [ref=f3e111]:
+      - region "Insights" [ref=f3e112]:
+        - generic [ref=f3e113]:
+          - generic [ref=f3e114]:
+            - heading "Context Overview" [level=3] [ref=f3e115]
+            - paragraph [ref=f3e116]: Ask a question to update this panel
+          - button "Download current overview as Excel" [ref=f3e117] [cursor=pointer]: Download
+      - region "Chat" [ref=f3e119]:
+        - generic [ref=f3e121]:
+          - button "Chat Mode" [ref=f3e122] [cursor=pointer]
+          - button "Report Mode" [ref=f3e125] [cursor=pointer]
+        - generic [ref=f3e128]:
+          - textbox "Ask about EPC, tiers, AOV, conversion, unpaid offers..." [ref=f3e129]
+          - button "Send" [ref=f3e130] [cursor=pointer]
+    - text: ↕
