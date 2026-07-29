@@ -138,6 +138,20 @@
   const DEFAULT_TIER_REPORT_START_DATE = `${DEFAULT_TIER_REPORT_END_DATE.slice(0, 7)}-01`;
   const originalTierSheetRows = new Map();
   const originalTierSheetRowIndex = new Map();
+  // tier-sheet API 列名 → offer 字段名 映射（Report Mode 实时数据增强用）
+  const TIER_SHEET_TO_OFFER_METRIC = {
+    "Backend EPC": "epc",
+    "AOV": "aov",
+    "Revenue": "salesAmount",
+    "Conversion Rate": "conversionRate",
+    "Clicks": "clicks",
+    "Order count": "orders",
+    "DPV": "dpv",
+    "ATC": "atc",
+    "Commission Rate": "commissionRate",
+    "Payout": "payout",
+    "Affiliate Payout": "affiliatePayout"
+  };
   const dbMerchantCache = new Map();
   const dbMerchantLoading = new Set();
   const dbSearchCache = new Map();
@@ -457,7 +471,6 @@
     paymentSort: document.getElementById("paymentSortFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
     languageToggle: document.getElementById("languageToggle"),
-    deepAnalysisFab: null,
     chatModeToggle: null,
     modeFastBtn: null,
     modeDeepBtn: null
@@ -727,8 +740,7 @@
       "deep.error.return": "分析返回异常，请稍后重试。",
       "deep.error.network": "网络请求失败，请检查连接后重试。",
       "deep.stop": "停止",
-      "deep.stopAborted": "分析已取消。",
-      "deep.fab": "🔬"
+      "deep.stopAborted": "分析已取消。"
     }
   };
 
@@ -1181,6 +1193,215 @@
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+  }
+
+  /**
+   * 将 Markdown 文本渲染为 HTML（轻量级渲染器）
+   * 支持：代码块、行内代码、标题、加粗/斜体、链接、列表、表格、引用、水平线
+   */
+  function markdownToHtml(md) {
+    if (!md) return "";
+    var text = String(md);
+
+    // 1. 提取围栏代码块，用占位符替换
+    var codeBlocks = [];
+    var placeholderIdx = 0;
+    text = text.replace(/```(\w*)\s*\n([\s\S]*?)```/g, function(_, lang, code) {
+      var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
+      var html = '<pre><code' + langClass + '>' + escapeHtml(code.replace(/\n$/, '')) + '</code></pre>';
+      var ph = '%%%CODEBLOCK' + (placeholderIdx++) + '%%%';
+      codeBlocks.push({ ph: ph, html: html });
+      return ph;
+    });
+
+    // 2. 提取行内代码
+    var inlineCodeBlocks = [];
+    text = text.replace(/`([^`]+)`/g, function(_, code) {
+      var html = '<code>' + escapeHtml(code) + '</code>';
+      var ph = '%%%INLINECODE' + (placeholderIdx++) + '%%%';
+      inlineCodeBlocks.push({ ph: ph, html: html });
+      return ph;
+    });
+
+    // 3. 转义 HTML 特殊字符（代码块和行内代码已经处理过，不转义）
+    text = text.replace(/&(?!amp;|lt;|gt;|quot;|#39;)/g, '&amp;')
+               .replace(/</g, '&lt;')
+               .replace(/>/g, '&gt;');
+
+    // 4. 处理行内格式：加粗、斜体、删除线、链接
+    // 先处理链接 [text](url)，避免内部标记被处理
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // 加粗+斜体 *** ***
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    // 加粗 ** **
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // 斜体 * * （但不是被 ** 包围的）
+    text = text.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+    // 删除线 ~~ ~~
+    text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+
+    // 5. 恢复行内代码占位符
+    inlineCodeBlocks.forEach(function(item) {
+      text = text.replace(item.ph, item.html);
+    });
+
+    // 6. 处理块级元素
+    var lines = text.split('\n');
+    var html = '';
+    var inList = false;      // true 时正在 ul/ol 中
+    var listType = null;     // 'ul' 或 'ol'
+    var listBuffer = [];
+    var inTable = false;
+    var tableBuffer = [];
+    var inBlockquote = false;
+
+    function flushList() {
+      if (listBuffer.length) {
+        html += '<' + listType + '>\n' + listBuffer.join('\n') + '\n</' + listType + '>\n';
+        listBuffer = [];
+      }
+      inList = false;
+      listType = null;
+    }
+
+    function flushTable() {
+      if (tableBuffer.length) {
+        html += '<table>\n' + tableBuffer.join('\n') + '\n</table>\n';
+        tableBuffer = [];
+      }
+      inTable = false;
+    }
+
+    function flushBlockquote() {
+      if (inBlockquote) {
+        html += '</blockquote>\n';
+        inBlockquote = false;
+      }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var trimmed = line.trim();
+
+      // 空行
+      if (!trimmed) {
+        flushList();
+        flushTable();
+        flushBlockquote();
+        html += '\n';
+        continue;
+      }
+
+      // 水平线
+      if (/^-{3,}$/.test(trimmed) || /^\*{3,}$/.test(trimmed)) {
+        flushList();
+        flushTable();
+        flushBlockquote();
+        html += '<hr>\n';
+        continue;
+      }
+
+      // 标题
+      var headerMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+      if (headerMatch) {
+        flushList();
+        flushTable();
+        flushBlockquote();
+        var level = headerMatch[1].length;
+        html += '<h' + level + '>' + headerMatch[2] + '</h' + level + '>\n';
+        continue;
+      }
+
+      // 引用（> 已被 HTML 转义为 &gt;，两者都匹配）
+      var bqMatch = trimmed.match(/^(&gt;|>)\s?(.*)$/);
+      if (bqMatch) {
+        flushList();
+        flushTable();
+        if (!inBlockquote) {
+          html += '<blockquote>\n';
+          inBlockquote = true;
+        }
+        html += '<p>' + (bqMatch[2] || '<br>') + '</p>\n';
+        continue;
+      }
+
+      // 无序列表
+      var ulMatch = trimmed.match(/^[-*+]\s+(.+)$/);
+      if (ulMatch) {
+        flushTable();
+        flushBlockquote();
+        if (!inList || listType !== 'ul') {
+          flushList();
+          inList = true;
+          listType = 'ul';
+        }
+        listBuffer.push('<li>' + ulMatch[1] + '</li>');
+        continue;
+      }
+
+      // 有序列表
+      var olMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+      if (olMatch) {
+        flushTable();
+        flushBlockquote();
+        if (!inList || listType !== 'ol') {
+          flushList();
+          inList = true;
+          listType = 'ol';
+        }
+        listBuffer.push('<li>' + olMatch[1] + '</li>');
+        continue;
+      }
+
+      // 表格（检测表头行，如 | col1 | col2 |）
+      var tableRowMatch = trimmed.match(/^\|(.+)\|$/);
+      if (tableRowMatch) {
+        flushList();
+        flushBlockquote();
+        if (!inTable) {
+          inTable = true;
+          // 表头
+          var cells = tableRowMatch[1].split('|').map(function(c) { return c.trim(); });
+          html += '<thead><tr>';
+          cells.forEach(function(c) { html += '<th>' + c + '</th>'; });
+          html += '</tr></thead>\n<tbody>\n';
+        } else {
+          // 检查是否是分隔行（|---|）
+          if (/^[\s\|:-]+$/.test(trimmed)) continue;
+          var cells = tableRowMatch[1].split('|').map(function(c) { return c.trim(); });
+          html += '<tr>';
+          cells.forEach(function(c) { html += '<td>' + c + '</td>'; });
+          html += '</tr>\n';
+        }
+        continue;
+      } else {
+        if (inTable) {
+          flushTable();
+        }
+      }
+
+      // 普通段落
+      flushList();
+      flushTable();
+      flushBlockquote();
+      html += '<p>' + line + '</p>\n';
+    }
+
+    // 清理末尾未关闭的块
+    flushList();
+    flushTable();
+    flushBlockquote();
+
+    // 7. 恢复代码块占位符
+    codeBlocks.forEach(function(item) {
+      html = html.replace(item.ph, item.html);
+    });
+
+    // 清理多余的空白段落
+    html = html.replace(/<p>\s*<\/p>\n?/g, '');
+    html = html.replace(/\n{2,}/g, '\n');
+
+    return html.trim();
   }
 
   function escapeRegExp(value) {
@@ -6665,7 +6886,8 @@
         </div>
         <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(downloadId)}">Download Excel</button>
       </div>` +
-      resultTable(top, topMetricColumns);
+      // 使用 contextColumns（与左侧 Overview 表格一致）替代 topMetricColumns
+      resultTable(top, contextColumnsFor());
   }
 
   function keywordScopeLabel(request) {
@@ -7286,7 +7508,16 @@
     const label = language === "zh"
       ? context.category ? `（${escapeHtml(context.category)}）` : context.tier ? `（${escapeHtml(context.tier)}）` : ""
       : context.category ? ` for ${escapeHtml(context.category)}` : context.tier ? ` from ${escapeHtml(context.tier)}` : "";
-    const downloadId = registerRecommendationDownload(exportRows, localizedContext, requestedCount);
+    const compactDownloadColumns = [
+      ["Merchant ID", (offer) => offer.merchantId || ""],
+      ["Brand", (offer) => offer.brand || ""],
+      ["AOV", (offer) => number(offer.aov)],
+      ["Commission Rate", (offer) => number(offer.commissionRate)],
+      ["Payment Cycle", (offer) => offer.paymentCycle || ""],
+      ["Main Category", (offer) => offer.mainCategory || ""],
+      ["Subcategory", (offer) => offer.subCategory || ""]
+    ];
+    const downloadId = registerRecommendationDownload(exportRows, { ...localizedContext, downloadColumns: compactDownloadColumns }, requestedCount);
     const exportNote = language === "zh"
       ? exportRows.length < requestedCount
         ? chatFormat(copy.exportPartial, { count: exportRows.length.toLocaleString() })
@@ -7642,7 +7873,7 @@
       var tierLabel = tiers.join(" + ");
       setContext(buildTierContext(tierLabel, rows));
       var topRows = topRecommendations(rows, { tier: tierLabel, includeTier4: true, includeBlack: true });
-      var columns = tiers.length === 1 && tiers[0] === "Tier 2" ? tier2CompactColumns : compactColumns;
+      var columns = contextColumnsFor();
       var catLabel = categories.length ? categories.join(" + ") : "";
       var title = language === "zh"
         ? `${escapeHtml(tierLabel)}${catLabel ? " " + escapeHtml(catLabel) : ""} ${escapeHtml(copy.tierOverview)}`
@@ -8629,9 +8860,11 @@
   }
 
   // ★ Deep Mode: summary card for chat (click to bring panel to front)
-  function _deepQuickSummaryHtml(panel, prompt) {
+  function _deepQuickSummaryHtml(panel, prompt, html) {
     var cardKey = ++_deepCardKeyCounter;
     panel._cardKey = cardKey;
+    // 缓存面板 HTML，支持关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, html: html };
     var prefix = t("deep.chat.summaryPrefix", "📊 Deep Analysis: ");
     var title = panel.title || t("deep.report.defaultTitle", "Analysis Report");
     var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
@@ -8645,6 +8878,66 @@
   }
 
   // 数字列关键词——用于表格渲染时智能对齐
+  // ── Live tier data enrichment helpers ──
+
+  /**
+   * 从 tier-sheet API 响应行构建 Map<merchantId, {field: numericValue}>
+   * 只包含 TIER_SHEET_TO_OFFER_METRIC 中定义的字段
+   */
+  function _buildLiveTierMetrics(sheetRows) {
+    var map = new Map();
+    sheetRows.forEach(function(row) {
+      var mid = String(row["Merchant ID"] || "").trim();
+      if (!mid) return;
+      var metrics = {};
+      for (var col in TIER_SHEET_TO_OFFER_METRIC) {
+        if (!TIER_SHEET_TO_OFFER_METRIC.hasOwnProperty(col)) continue;
+        var val = row[col];
+        if (val !== undefined && val !== null && val !== "") {
+          metrics[TIER_SHEET_TO_OFFER_METRIC[col]] = number(val);
+        }
+      }
+      map.set(mid, metrics);
+    });
+    return map;
+  }
+
+  /**
+   * 用实时指标临时覆盖 offer 对象对应字段，保存原始值
+   * 返回 [{ merchantId, field: originalValue, ... }] 用于恢复
+   */
+  function _applyLiveTierMetrics(liveMap) {
+    if (!liveMap || liveMap.size === 0) return [];
+    var saved = [];
+    offers.forEach(function(o) {
+      var live = liveMap.get(o.merchantId);
+      if (!live) return;
+      var entry = { merchantId: o.merchantId };
+      for (var field in live) {
+        if (!live.hasOwnProperty(field)) continue;
+        entry[field] = o[field];
+        o[field] = live[field];
+      }
+      saved.push(entry);
+    });
+    return saved;
+  }
+
+  /**
+   * 恢复被实时数据覆盖的 offer 原始指标
+   */
+  function _restoreOfferMetrics(savedList) {
+    if (!savedList || !savedList.length) return;
+    savedList.forEach(function(entry) {
+      var offer = offers.find(function(o) { return o.merchantId === entry.merchantId; });
+      if (!offer) return;
+      for (var field in entry) {
+        if (field !== "merchantId") offer[field] = entry[field];
+      }
+    });
+  }
+
+
   function _syncChatLogVisibility() {
     var chatLog = els.chatLog;
     var chatLogChat = els.chatLogChat;
@@ -8912,6 +9205,15 @@ var _NUMERIC_COL_PATTERNS = [
 
         state.chatHistory.push({ role: "assistant", content: fullResponse });
         clearInterval(timerTick);
+        
+
+        // 流式完成后将 Markdown 渲染为 HTML
+        if (fullResponse.trim()) {
+          var renderedHtml = markdownToHtml(fullResponse);
+          if (renderedHtml) {
+            msgContent.innerHTML = renderedHtml;
+          }
+        }
         var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
         statusBar.textContent = language === "zh"
           ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
@@ -8958,12 +9260,41 @@ var _NUMERIC_COL_PATTERNS = [
     }
     state.reportMemoryContext = null;
 
+    // ── Report Mode: 用 tier-sheet API 实时数据增强 offer 指标 ──
+    var _savedMetrics = [];
+    if (isDeep) {
+      var _tier = tierFromPrompt(prompt);
+      if (_tier && TIER_MOVE_OPTIONS.indexOf(_tier) !== -1) {
+        try {
+          var _start = state.tierReport.startDate || DEFAULT_TIER_REPORT_START_DATE;
+          var _end = state.tierReport.endDate || DEFAULT_TIER_REPORT_END_DATE;
+          // 不使用 compact=1，获取全量列（含 Backend EPC、AOV、Revenue 等指标）
+          var _url = DB_TIER_SHEET_UI_API + '?tier=' + encodeURIComponent(_tier) + '&start_date=' + encodeURIComponent(_start) + '&end_date=' + encodeURIComponent(_end);
+          var _resp = await fetch(_url, { cache: "no-store", credentials: "same-origin" });
+          if (_resp.ok) {
+            var _data = await _resp.json();
+            if (_data && _data.rows && _data.rows.length) {
+              var _liveMap = _buildLiveTierMetrics(_data.rows);
+              _savedMetrics = _applyLiveTierMetrics(_liveMap);
+              if (_savedMetrics.length) {
+                console.log('[live-metrics] enriched ' + _savedMetrics.length + ' offers for ' + _tier);
+              }
+            }
+          }
+        } catch (_e) {
+          // API 失败不阻塞——静默回退到缓存 offer 数据
+          console.warn('[live-metrics] fetch failed for ' + _tier, _e);
+        }
+      }
+    }
+    // ── 结束增强 ──
+
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     try {
       var html = answerPrompt(prompt);
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
-        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt));
+        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
         addMessage("assistant", html);
       }
@@ -8977,6 +9308,8 @@ var _NUMERIC_COL_PATTERNS = [
       } else {
         addMessage("assistant", errMsg);
       }
+    } finally {
+      _restoreOfferMetrics(_savedMetrics);
     }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
     else loadDbSearchInsight(prompt);
@@ -9931,10 +10264,15 @@ var _NUMERIC_COL_PATTERNS = [
     const scope = context.exportScope || context.category || context.tier || "top";
     const prefix = context.filePrefix || (type === "payments" ? "payment_records" : type === "sheet" ? "sheet_records" : "offer_recommendations");
     const rowLabel = type === "payments" ? "records" : type === "sheet" ? "rows" : "offers";
-    const columns = context.downloadColumns || (type === "payments" ? paymentExportColumns() : type === "offers" ? chatbotOfferExportColumns() : recommendationExportColumns());
+    const columns = context.downloadColumns || (type === "payments" ? paymentExportColumns() : recommendationExportColumns());
     const sheetName = type === "offers" ? "offer list" : context.sheetName || (type === "payments" ? "Payments" : type === "sheet" ? "Sheet Records" : "Recommendations");
+    // 深拷贝行数据，防止 offer 对象后续被恢复影响下载（如 Report Mode 实时数据增强后的恢复）
+    var snapshotRows = rows.map(function(r) {
+      if (r && typeof r === "object" && !Array.isArray(r)) return Object.assign({}, r);
+      return r;
+    });
     state.recommendationDownloads[id] = {
-      rows,
+      rows: snapshotRows,
       context: { ...context, columns, sheetName },
       requestedCount,
       columns,
@@ -9994,18 +10332,6 @@ var _NUMERIC_COL_PATTERNS = [
       ["Why Recommended", (offer, index, context) => whyRecommended(offer, context)],
       ["Best Traffic Angle", (offer, index, context) => bestAngle(offer, context)],
       ["Caution", (offer, index, context) => caution(offer, context.language || state.language)]
-    ];
-  }
-
-  function chatbotOfferExportColumns() {
-    return [
-      ["Merchant ID", (offer) => offer.merchantId || ""],
-      ["Name", (offer) => offer.brand || offer.merchantName || ""],
-      ["AOV", (offer) => number(offer.aov)],
-      ["Commission Rate", (offer) => (Number(offer.commissionRate) || 0).toFixed(2) + "%"],
-      ["Payment Cycle", (offer) => offer.paymentCycle || ""],
-      ["Main Category", (offer) => offer.mainCategory || ""],
-      ["Subcategory", (offer) => offer.subCategory || ""]
     ];
   }
 
@@ -10793,7 +11119,7 @@ var _NUMERIC_COL_PATTERNS = [
     for (var i = 0; i < PUBLISHER_KPI_METRICS.length; i++) {
       if (PUBLISHER_KPI_METRICS[i].key === metric) { metricDef = PUBLISHER_KPI_METRICS[i]; break; }
     }
-    var formatFn = metricDef ? metricDef.format : number;
+    var formatFn = metricDef ? metricDef.fullFormat : number;
     var barColor = PUBLISHER_CHART_METRIC_COLORS[metric] || "#66b3ff";
     var html = "";
     topN.forEach(function (pub, idx) {
@@ -15654,8 +15980,6 @@ var _NUMERIC_COL_PATTERNS = [
         _minimizeDeepPanel(p.id);
       }
     });
-    // 浮动深度分析按钮只在 dashboard 页面显示
-    els.deepAnalysisFab?.classList.toggle("hidden", page !== "dashboard");
     if (page === "payments") {
       renderPaymentsPage();
       if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
@@ -15671,8 +15995,7 @@ var _NUMERIC_COL_PATTERNS = [
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
 
-    // 浮动深度分析按钮 & 模式切换
-    els.deepAnalysisFab = document.getElementById("deepAnalysisFab");
+    // 模式切换
     els.chatModeToggle = document.getElementById("chatModeToggle");
     els.modeFastBtn = els.chatModeToggle?.querySelector('[data-mode="fast"]');
     els.modeDeepBtn = els.chatModeToggle?.querySelector('[data-mode="deep"]');
@@ -16152,6 +16475,14 @@ var _NUMERIC_COL_PATTERNS = [
       if (!button) return;
       downloadRecommendationXlsx(button.dataset.downloadId);
     });
+    // Report Mode 浮窗面板中的下载按钮 — 面板挂在 document.body 下，冒泡不到 chatLog
+    document.addEventListener("click", (event) => {
+      var button = event.target.closest("[data-download-id]");
+      if (!button) return;
+      // 防止 chatLog 内的按钮被重复触发（chatLog 监听器已经处理过了）
+      if (els.chatLog && els.chatLog.contains(button)) return;
+      downloadRecommendationXlsx(button.dataset.downloadId);
+    });
 
     // 模式切换
     els.modeFastBtn?.addEventListener("click", () => {
@@ -16170,30 +16501,6 @@ var _NUMERIC_COL_PATTERNS = [
       els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
       _syncChatLogVisibility();
       _renderMemoryBar();
-    });
-
-    // 浮动深度分析按钮——聚焦最上层面板或切换深度模式
-    els.deepAnalysisFab?.addEventListener("click", () => {
-      if (_deepPanels.length > 0) {
-        var topPanel = _deepPanels[_deepPanels.length - 1];
-        _bringPanelToFront(topPanel);
-        // 如果是最小化状态，展开它
-        if (topPanel.minimized) {
-          _expandDeepPanel(topPanel.id);
-        }
-        return;
-      }
-      // 无面板时切换到深度模式准备提问
-      if (!state.deepMode) {
-        state.deepMode = true;
-        els.modeDeepBtn?.classList.add("active");
-        els.modeFastBtn?.classList.remove("active");
-        els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
-        _syncChatLogVisibility();
-        _renderMemoryBar();
-      }
-      els.chatInput?.focus();
-      els.chatInput?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
 
     // Escape 最小化最上层非推理中的面板
@@ -16233,12 +16540,18 @@ var _NUMERIC_COL_PATTERNS = [
         }
         return;
       }
-      // 面板已关闭，尝试从缓存重建（仅适用于旧版 deep reasoning 报告）
+      // 面板已关闭，尝试从缓存重建
       var cached = _deepReportCache[key];
       if (cached) {
         var newPanel = _createDeepPanel(cached.prompt);
         newPanel._cardKey = key;
-        _renderPanelReport(newPanel, cached.report);
+        if (cached.html) {
+          // 简化 Deep Mode：直接还原 HTML 内容
+          _showQuickResultInDeepPanel(newPanel, cached.html, cached.prompt);
+        } else if (cached.report) {
+          // 旧版 deep reasoning 报告路径
+          _renderPanelReport(newPanel, cached.report);
+        }
         _bringPanelToFront(newPanel);
       }
     });
@@ -16253,8 +16566,6 @@ var _NUMERIC_COL_PATTERNS = [
     state.currentContext = { type: "default", items: [], summary: {}, filters: {} };
     syncPaymentControls();
     renderAll();
-    // 初始页面为 dashboard，显示浮动深度分析按钮
-    if (state.page === "dashboard") els.deepAnalysisFab?.classList.remove("hidden");
     renderPaymentsPage();
     rerenderForLanguage();
     document.body.classList.remove("app-loading");

@@ -1,0 +1,193 @@
+- generic [ref=f3e30] [box=0,0,1280,720]:
+  - complementary [ref=f3e31] [box=0,0,236,720]:
+    - generic [ref=f3e34] [box=66,19,118,34]:
+      - heading "YeahPromos" [level=1] [ref=f3e35] [box=66,19,118,19]
+      - paragraph [ref=f3e36] [box=66,38,118,15]: Amazon tier analysis
+    - button "中文简体" [ref=f3e132] [cursor=pointer] [box=12,86,212,32]
+    - button "Sign out" [ref=f3e38] [cursor=pointer] [box=12,124,212,32]
+    - navigation "Pages" [ref=f3e39] [box=12,174,212,376]:
+      - button "Dashboard" [ref=f3e40] [cursor=pointer] [box=12,174,212,34]
+      - button "Payments" [ref=f3e45] [cursor=pointer] [box=12,213,212,34]
+      - button "Publishers" [ref=f3e50] [cursor=pointer] [box=12,252,212,34]
+      - generic [ref=f3e55] [box=12,291,212,259]:
+        - button "Reports" [expanded] [ref=f3e56] [cursor=pointer] [box=12,291,212,34]
+        - generic "Report pages" [ref=f3e63] [box=29,329,195,221]:
+          - button "Targets" [ref=f3e64] [cursor=pointer] [box=38,329,186,29]
+          - button "Category" [ref=f3e69] [cursor=pointer] [box=38,361,186,29]
+          - button "Tier 1" [ref=f3e73] [cursor=pointer] [box=38,393,186,29]
+          - button "Tier 2" [ref=f3e77] [cursor=pointer] [box=38,425,186,29]
+          - button "Tier 3" [ref=f3e81] [cursor=pointer] [box=38,457,186,29]
+          - button "Tier 4" [ref=f3e85] [cursor=pointer] [box=38,489,186,29]
+          - button "Black Tier" [ref=f3e89] [cursor=pointer] [box=38,521,186,29]
+    - region "Source status" [ref=f3e95] [box=12,568,212,144]:
+      - generic [ref=f3e96] [box=24,580,188,16]: Status
+      - generic [ref=f3e98] [box=24,604,188,32]:
+        - generic [ref=f3e99] [box=24,613,71,15]: YeahPromos
+        - strong [ref=f3e100] [box=135,613,77,15]: Backend EPC
+      - generic [ref=f3e101] [box=24,636,188,32]:
+        - generic [ref=f3e102] [box=24,645,44,15]: Levanta
+        - strong [ref=f3e103] [box=101,645,111,15]: Feb-Jun payments
+      - generic [ref=f3e104] [box=24,668,188,32]:
+        - generic [ref=f3e105] [box=24,677,38,15]: Sheets
+        - strong [ref=f3e106] [box=111,677,101,15]: Tier logic loaded
+  - main [ref=f3e107] [box=236,0,1044,720]:
+    - generic [ref=f3e108] [box=254,18,1008,72]:
+      - generic [ref=f3e109] [box=254,26,313,56]:
+        - heading "Recommendation Chatbot" [level=2] [ref=f3e110] [box=254,26,313,26]
+        - paragraph [ref=f3e133] [box=254,52,313,30]: 6,279 offers loaded / generated 2026-07-23T06:05:56.425242+00:00
+      - generic [ref=f3e134] [box=585,18,677,72]:
+        - button "Aiper" [ref=f3e135] [cursor=pointer] [box=594,18,55,32]
+        - button "Recommend 5 beauty offers" [ref=f3e136] [cursor=pointer] [box=657,18,193,32]
+        - button "Tier 2" [ref=f3e137] [cursor=pointer] [box=858,18,56,32]
+        - button "Which offers are unpaid?" [ref=f3e138] [cursor=pointer] [box=922,18,173,32]
+        - button "April unpaid payments" [ref=f3e139] [cursor=pointer] [box=1103,18,159,32]
+        - button "Find ASIN B0D2HKCMBP" [ref=f3e140] [cursor=pointer] [box=1090,58,172,32]
+    - generic [ref=f3e111] [box=254,104,1008,598]:
+      - region "Insights" [ref=f3e112] [box=254,104,477,598]:
+        - generic [ref=f3e113] [box=269,119,447,37]:
+          - generic [ref=f3e114] [box=269,119,133,37]:
+            - heading "Context Overview" [level=3] [ref=f3e115] [box=269,119,133,20]
+            - paragraph [ref=f3e116] [box=269,142,133,14]: General offer snapshot
+          - button "Download current overview as Excel" [ref=f3e117] [cursor=pointer] [box=633,129,84,17]: Download
+        - generic [ref=f3e118] [box=269,178,447,510]:
+          - generic [ref=f3e141] [box=269,178,431,120]:
+            - generic [ref=f3e142] [box=269,178,138,56]:
+              - generic [ref=f3e143] [box=281,189,114,11]: Offers
+              - strong [ref=f3e144] [box=281,205,114,18]: "5"
+            - generic [ref=f3e145] [box=415,178,138,56]:
+              - generic [ref=f3e146] [box=427,189,114,11]: Revenue made
+              - strong [ref=f3e147] [box=427,205,114,18]: $198,142.65
+            - generic [ref=f3e148] [box=562,178,138,56]:
+              - generic [ref=f3e149] [box=574,189,114,11]: Commission made
+              - strong [ref=f3e150] [box=574,205,114,18]: $18,035.09
+            - generic [ref=f3e151] [box=269,242,138,56]:
+              - generic [ref=f3e152] [box=281,253,114,11]: Orders
+              - strong [ref=f3e153] [box=281,269,114,18]: 24,876
+            - generic [ref=f3e154] [box=415,242,138,56]:
+              - generic [ref=f3e155] [box=427,253,114,11]: Blended EPC
+              - strong [ref=f3e156] [box=427,269,114,18]: $0.950
+            - generic [ref=f3e157] [box=562,242,138,56]:
+              - generic [ref=f3e158] [box=574,253,114,11]: Average CVR
+              - strong [ref=f3e159] [box=574,269,114,18]: 131.06%
+          - generic [ref=f3e160] [box=269,306,431,61]:
+            - strong [ref=f3e161] [box=282,319,98,15]: "Tier breakdown:"
+            - text: "Tier 1: 1, Tier 3: 2, Core Tier 2: 2"
+            - strong [ref=f3e162] [box=282,337,102,15]: "Tier 2 highlights:"
+            - text: "Yellow publisher expansion: 2"
+          - table [ref=f3e164] [box=270,376,786,411]:
+            - rowgroup [ref=f3e165] [box=270,376,786,43]:
+              - row [ref=f3e166] [box=270,376,786,43]:
+                - columnheader "Merchant" [ref=f3e167] [box=270,376,83,43]
+                - columnheader "Tier" [ref=f3e168] [box=353,376,45,43]
+                - columnheader "Highlight" [ref=f3e169] [box=398,376,91,43]
+                - columnheader "Category" [ref=f3e170] [box=489,376,78,43]
+                - columnheader "AOV" [ref=f3e171] [box=567,376,55,43]
+                - columnheader "EPC" [ref=f3e172] [box=622,376,61,43]
+                - columnheader "CVR" [ref=f3e173] [box=683,376,65,43]
+                - columnheader "Orders" [ref=f3e174] [box=748,376,64,43]
+                - columnheader "Revenue" [ref=f3e175] [box=812,376,77,43]
+                - columnheader "Commission made" [ref=f3e176] [box=889,376,95,43]
+                - columnheader "Payment cycle" [ref=f3e177] [box=984,376,73,43]
+            - rowgroup [ref=f3e178] [box=270,419,786,368]:
+              - row [ref=f3e179] [box=270,419,786,77]:
+                - cell [ref=f3e180] [box=270,419,83,77]:
+                  - strong [ref=f3e181] [box=280,427,63,32]: Shokz Official
+                  - text: "362653"
+                - cell "Tier 1" [ref=f3e182] [box=353,419,45,77]
+                - cell "Strategic push" [ref=f3e183] [box=398,419,91,77]
+                - cell "Electronics" [ref=f3e184] [box=489,419,78,77]
+                - cell "$8.43" [ref=f3e185] [box=567,419,55,77]
+                - cell "$6.238" [ref=f3e186] [box=622,419,61,77]
+                - cell "74.04%" [ref=f3e187] [box=683,419,65,77]
+                - cell "8,452" [ref=f3e188] [box=748,419,64,77]
+                - cell "$71,210.69" [ref=f3e189] [box=812,419,77,77]
+                - cell "$5,342.69" [ref=f3e190] [box=889,419,95,77]
+                - cell "88 days" [ref=f3e191] [box=984,419,73,77]
+              - row [ref=f3e192] [box=270,496,786,77]:
+                - cell [ref=f3e193] [box=270,496,83,77]:
+                  - strong [ref=f3e194] [box=280,504,63,32]: Beatbot Amazon
+                  - text: "385602"
+                - cell "Tier 3" [ref=f3e195] [box=353,496,45,77]
+                - cell "Development push" [ref=f3e196] [box=398,496,91,77]
+                - cell "Patio, Lawn & Garden" [ref=f3e197] [box=489,496,78,77]
+                - cell "$69.4" [ref=f3e198] [box=567,496,55,77]
+                - cell "$0.000" [ref=f3e199] [box=622,496,61,77]
+                - cell "0.00%" [ref=f3e200] [box=683,496,65,77]
+                - cell "513" [ref=f3e201] [box=748,496,64,77]
+                - cell "$35,600.99" [ref=f3e202] [box=812,496,77,77]
+                - cell "$2,670.07" [ref=f3e203] [box=889,496,95,77]
+                - cell "61 days" [ref=f3e204] [box=984,496,73,77]
+              - row [ref=f3e205] [box=270,573,786,61]:
+                - cell [ref=f3e206] [box=270,573,83,61]:
+                  - strong [ref=f3e207] [box=280,581,63,16]: Our Place
+                  - text: "369290"
+                - cell "Core Tier 2" [ref=f3e208] [box=353,573,45,61]
+                - cell "Yellow publisher expansion" [ref=f3e209] [box=398,573,91,61]
+                - cell "Kitchen & Dining" [ref=f3e210] [box=489,573,78,61]
+                - cell "$4.23" [ref=f3e211] [box=567,573,55,61]
+                - cell "$5.537" [ref=f3e212] [box=622,573,61,61]
+                - cell "130.96%" [ref=f3e213] [box=683,573,65,61]
+                - cell "7,910" [ref=f3e214] [box=748,573,64,61]
+                - cell "$33,442.51" [ref=f3e215] [box=812,573,77,61]
+                - cell "$4,213.4" [ref=f3e216] [box=889,573,95,61]
+                - cell "89 days" [ref=f3e217] [box=984,573,73,61]
+              - row [ref=f3e218] [box=270,634,786,77]:
+                - cell [ref=f3e219] [box=270,634,83,77]:
+                  - strong [ref=f3e220] [box=280,642,63,32]: True Classic
+                  - text: "369227"
+                - cell "Core Tier 2" [ref=f3e221] [box=353,634,45,77]
+                - cell "Yellow publisher expansion" [ref=f3e222] [box=398,634,91,77]
+                - cell "Clothing, Shoes & Jewelry" [ref=f3e223] [box=489,634,78,77]
+                - cell "$5.4" [ref=f3e224] [box=567,634,55,77]
+                - cell "$19.616" [ref=f3e225] [box=622,634,61,77]
+                - cell "363.41%" [ref=f3e226] [box=683,634,65,77]
+                - cell "5,542" [ref=f3e227] [box=748,634,64,77]
+                - cell "$29,914.88" [ref=f3e228] [box=812,634,77,77]
+                - cell "$4,862.69" [ref=f3e229] [box=889,634,95,77]
+                - cell "112 days" [ref=f3e230] [box=984,634,73,77]
+              - row [ref=f3e231] [box=270,711,786,76]:
+                - cell [ref=f3e232] [box=270,711,83,76]:
+                  - strong [ref=f3e233] [box=280,719,63,32]: eufy Security
+                  - text: "386853"
+                - cell "Tier 3" [ref=f3e234] [box=353,711,45,76]
+                - cell "Development push" [ref=f3e235] [box=398,711,91,76]
+                - cell "Electronics" [ref=f3e236] [box=489,711,78,76]
+                - cell "$11.38" [ref=f3e237] [box=567,711,55,76]
+                - cell "$0.000" [ref=f3e238] [box=622,711,61,76]
+                - cell "0.00%" [ref=f3e239] [box=683,711,65,76]
+                - cell "2,459" [ref=f3e240] [box=748,711,64,76]
+                - cell "$27,973.58" [ref=f3e241] [box=812,711,77,76]
+                - cell "$946.23" [ref=f3e242] [box=889,711,95,76]
+                - cell "66 days" [ref=f3e243] [box=984,711,73,76]
+          - generic [ref=f3e244] [box=269,796,431,183]:
+            - paragraph [ref=f3e245] [box=282,808,405,19]:
+              - strong [ref=f3e246] [box=282,810,74,15]: "Best by EPC:"
+              - text: True Classic ($19.616)
+            - paragraph [ref=f3e247] [box=282,832,405,19]:
+              - strong [ref=f3e248] [box=282,834,77,15]: "Best by CVR:"
+              - text: True Classic (363.41%)
+            - paragraph [ref=f3e249] [box=282,856,405,19]:
+              - strong [ref=f3e250] [box=282,858,102,15]: "Highest revenue:"
+              - text: Shokz Official ($71,210.69)
+            - paragraph [ref=f3e251] [box=282,880,405,19]:
+              - strong [ref=f3e252] [box=282,882,126,15]: "Highest commission:"
+              - text: Shokz Official ($5,342.69)
+            - paragraph [ref=f3e253] [box=282,904,405,19]:
+              - strong [ref=f3e254] [box=282,906,82,15]: "Payment risk:"
+              - text: "True Classic: 2026-05 Not Paid"
+            - paragraph [ref=f3e255] [box=282,929,405,38]:
+              - strong [ref=f3e256] [box=282,931,90,15]: "Needs caution:"
+              - text: "Beatbot Amazon: CVR is below 1%; use high-intent traffic."
+      - region "Chat" [ref=f3e119] [box=745,104,517,598]:
+        - generic [ref=f3e257] [box=760,121,448,66]:
+          - text: Loaded
+          - strong [ref=f3e258] [box=825,136,36,16]: 6,279
+          - text: internal offers. Search merchant name, merchant ID, ASIN, category, payment status, or ask for recommendations.
+        - generic [ref=f3e121] [box=746,598,515,38]:
+          - button "Chat Mode" [ref=f3e122] [cursor=pointer] [box=758,605,104,27]
+          - button "Report Mode" [ref=f3e125] [cursor=pointer] [box=866,605,117,27]
+        - generic [ref=f3e128] [box=746,636,515,65]:
+          - textbox "Ask about EPC, tiers, AOV, conversion, unpaid offers..." [ref=f3e129] [box=756,645,435,44]
+          - button "Send" [ref=f3e130] [cursor=pointer] [box=1199,645,52,44]
+    - text: ↕
+    - button "Deep Analysis" [ref=f3e259] [cursor=pointer] [box=1188,540,60,60]: 🔬
