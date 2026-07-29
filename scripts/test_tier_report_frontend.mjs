@@ -180,9 +180,14 @@ assertEqual(
   "default tier fields should support legacy Network and Conversion header aliases"
 );
 assertEqual(
-  hooks.defaultTierHeadersForSheet("Tier 1", ["Clicks", "Agency", "Network", "Merchant ID"]),
-  ["Merchant ID", "Network", "Agency", "Clicks"],
-  "Tier 1 should show Agency separately after Network"
+  hooks.defaultTierHeadersForSheet("Tier 1", ["Clicks", "Business Manager", "Agency", "Network", "Merchant ID"]),
+  ["Merchant ID", "Network", "Agency", "Business Manager", "Clicks"],
+  "Tier 1 should show Agency and Business Manager separately after Network"
+);
+assertEqual(
+  hooks.defaultTierHeadersForSheet("Tier 2", ["Clicks", "Business Manager", "Agency", "Network", "Merchant ID"]),
+  ["Merchant ID", "Network", "Clicks"],
+  "Business Manager should not become a default column outside Tier 1"
 );
 
 for (const tierName of ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]) {

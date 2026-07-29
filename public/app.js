@@ -738,6 +738,7 @@
   }
 
   function labelText(label) {
+    if (label === "Business Manager" && state.language === "zh") return "\u4e1a\u52a1\u7ecf\u7406";
     return t(`label.${label}`, label);
   }
 
@@ -13065,6 +13066,12 @@ var _NUMERIC_COL_PATTERNS = [
       const networkIndex = selected.indexOf("Network");
       selected.splice(networkIndex >= 0 ? networkIndex + 1 : 0, 0, "Agency");
     }
+    if (sheet.name === "Tier 1" && available.has("Business Manager") && !selected.includes("Business Manager")) {
+      const agencyIndex = selected.indexOf("Agency");
+      const networkIndex = selected.indexOf("Network");
+      const insertAfter = agencyIndex >= 0 ? agencyIndex : networkIndex;
+      selected.splice(insertAfter >= 0 ? insertAfter + 1 : 0, 0, "Business Manager");
+    }
     return selected.length ? selected : allHeaders;
   }
 
@@ -13138,6 +13145,7 @@ var _NUMERIC_COL_PATTERNS = [
       else if (header === "Merchant Name") row[header] = offer.brand || "";
       else if (header === "Network") row[header] = offer.network || "";
       else if (header === "Agency") row[header] = offer.agency || "";
+      else if (header === "Business Manager") row[header] = offer.businessManager || "";
       else if (header === "Clicks") row[header] = number(offer.clicks).toLocaleString();
       else if (header === "Conversion") row[header] = shortPct(offer.conversionRate);
       else if (header === "DPV") row[header] = number(offer.dpv).toLocaleString();
