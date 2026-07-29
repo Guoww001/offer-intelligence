@@ -108,9 +108,7 @@ See `docs/chatbot-feature-report.md` for the full architecture — LLM intent cl
 
 ### Category system
 
-Main category resolution follows a priority chain: Google Sheet category → `mainCategory` field → Feishu main category → non-Feishu category → remaining category → `levantaCategory` → "Uncategorized". Feishu subcategory and category path data is searchable metadata but doesn't drive main-category grouping.
-
-The current branch (`feat/add-category-tables`) adds `oi_category` and `oi_merchant_category` tables for DB-backed category storage.
+Categories are DB-backed via `oi_category` (category definitions) and `oi_merchant_category` (merchant–category mapping) tables. Main category resolution priority chain: DB `sheetCategory` field → `mainCategory` field → Feishu main category → non-Feishu category → remaining category → `levantaCategory` → "Uncategorized". Feishu subcategory and category path data is searchable metadata but doesn't drive main-category grouping.
 
 ### Tier system
 
