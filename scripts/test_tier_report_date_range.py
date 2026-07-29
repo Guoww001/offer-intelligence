@@ -69,7 +69,7 @@ def test_date_ranges():
 
 def test_report_payload():
     base_rows = [
-        {"Merchant ID": "101", "Merchant Name": "Order Click Merchant", "Brand": "Order Click Merchant", "Network": "Archer", "Agency": "Bluefocus"},
+        {"Merchant ID": "101", "Merchant Name": "Order Click Merchant", "Brand": "Order Click Merchant", "Network": "Archer", "Agency": "Bluefocus", "COUNTRY": "UK"},
         {"Merchant ID": "202", "Merchant Name": "Tracked Click Merchant", "Brand": "Tracked Click Merchant", "Network": "Levanta", "Agency": None},
     ]
     order_rows = [
@@ -127,6 +127,7 @@ def test_report_payload():
     assert_equal(payload["rows"][0]["Revenue"], "80.0", "order revenue")
     assert_equal(payload["rows"][0]["Agency"], "Bluefocus", "sheet agency")
     assert_equal(payload["rows"][1]["Agency"], "", "missing agency stays blank")
+    assert_equal(payload["rows"][0]["COUNTRY"], "UK", "compact country metadata")
     assert_equal(payload["rows"][0]["Backend EPC"], "8.0", "order EPC")
     assert_equal(payload["rows"][1]["Clicks"], "50.0", "tracked click fallback")
     assert_equal(payload["rows"][1]["Conversion Rate"], "0.1", "tracked conversion")
@@ -136,6 +137,7 @@ def test_report_payload():
     for _sql, params in amazon_calls:
         assert_equal(params, ("Tier 2", 20260601, 20260715), "inclusive date parameters")
     assert any("MAX(sm.agency) AS `Agency`" in sql for sql, _params in calls), "agency query is missing"
+    assert any("MAX(sm.region) AS `COUNTRY`" in sql for sql, _params in calls), "compact country query is missing"
 
 
 def test_frontend_contract():
