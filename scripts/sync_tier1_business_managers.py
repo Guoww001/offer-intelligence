@@ -17,10 +17,24 @@ MANAGER_KEYS = ("businessManager", "Business Manager", "\u4e1a\u52a1\u7ecf\u7406
 
 def load_business_manager_csv(path: Path) -> list[dict]:
     with path.open(encoding="utf-8-sig", newline="") as file:
-        return list(csv.DictReader(file))
+        reader = csv.DictReader(file)
+        headers = set(reader.fieldnames or [])
+        if not any(key in headers for key in MANAGER_KEYS):
+            raise ValueError(
+                "CSV must include a Business Manager, businessManager, or \u4e1a\u52a1\u7ecf\u7406 column"
+            )
+        return list(reader)
 
 
 def normalized_business_manager_rows(rows: list[dict]) -> list[tuple[str, str | None, str]]:
+    if rows and not any(
+        key in row
+        for row in rows
+        for key in MANAGER_KEYS
+    ):
+        raise ValueError(
+            "CSV rows must include a Business Manager, businessManager, or \u4e1a\u52a1\u7ecf\u7406 field"
+        )
     normalized: list[tuple[str, str | None, str]] = []
     seen: set[str] = set()
     for row in rows:

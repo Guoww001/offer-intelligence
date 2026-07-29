@@ -2559,12 +2559,13 @@
       JPY: "¥"
     };
     if (currencySymbols[currency]) return currencySymbols[currency];
+    if (["US", "USA", "UNITED STATES"].includes(country)) return "$";
     if (["UK", "GB", "UNITED KINGDOM"].includes(country)) return "£";
     if (["DE", "FR", "EU", "GERMANY", "FRANCE"].includes(country)) return "€";
     if (["CA", "CANADA"].includes(country)) return "C$";
     if (["AU", "AUSTRALIA"].includes(country)) return "A$";
     if (["JP", "JAPAN"].includes(country)) return "¥";
-    return "$";
+    return "";
   }
 
   function numericSheetCellValue(value) {

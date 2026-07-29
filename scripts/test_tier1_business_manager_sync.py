@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -142,6 +143,23 @@ def main():
         raise AssertionError("duplicate Merchant IDs must be rejected")
     except ValueError as error:
         assert "Duplicate" in str(error)
+
+    try:
+        sync_tier1_business_managers.normalized_business_manager_rows([
+            {"Merchant ID": "101", "Manager": "Alice"},
+        ])
+        raise AssertionError("missing Business Manager header must be rejected")
+    except ValueError as error:
+        assert "Business Manager" in str(error)
+
+    with tempfile.TemporaryDirectory() as directory:
+        malformed_csv = Path(directory) / "missing-manager-header.csv"
+        malformed_csv.write_text("Merchant ID,Manager\n101,Alice\n", encoding="utf-8")
+        try:
+            sync_tier1_business_managers.load_business_manager_csv(malformed_csv)
+            raise AssertionError("CSV with a misspelled manager header must be rejected")
+        except ValueError as error:
+            assert "Business Manager" in str(error)
 
     print("Tier 1 business-manager sync checks passed")
 

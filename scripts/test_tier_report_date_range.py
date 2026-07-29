@@ -76,6 +76,7 @@ def test_report_payload():
             "Network": "Archer",
             "Agency": "Bluefocus",
             "Business Manager": "Alice",
+            "COUNTRY": "UK",
         },
         {
             "Merchant ID": "202",
@@ -143,6 +144,7 @@ def test_report_payload():
     assert_equal(payload["rows"][1]["Agency"], "", "missing agency stays blank")
     assert_equal(payload["rows"][0]["Business Manager"], "Alice", "Tier 1 business manager")
     assert_equal(payload["rows"][1]["Business Manager"], "", "missing business manager stays blank")
+    assert_equal(payload["rows"][0]["COUNTRY"], "UK", "compact country metadata")
     assert_equal(payload["rows"][0]["Backend EPC"], "8.0", "order EPC")
     assert_equal(payload["rows"][1]["Clicks"], "50.0", "tracked click fallback")
     assert_equal(payload["rows"][1]["Conversion Rate"], "0.1", "tracked conversion")
@@ -156,6 +158,7 @@ def test_report_payload():
         "MAX(sm.businessManager) AS `Business Manager`" in sql
         for sql, _params in calls
     ), "business manager query is missing"
+    assert any("MAX(sm.region) AS `COUNTRY`" in sql for sql, _params in calls), "compact country query is missing"
 
 
 def test_frontend_contract():
