@@ -7506,7 +7506,16 @@
     const label = language === "zh"
       ? context.category ? `（${escapeHtml(context.category)}）` : context.tier ? `（${escapeHtml(context.tier)}）` : ""
       : context.category ? ` for ${escapeHtml(context.category)}` : context.tier ? ` from ${escapeHtml(context.tier)}` : "";
-    const downloadId = registerRecommendationDownload(exportRows, localizedContext, requestedCount);
+    const compactDownloadColumns = [
+      ["Merchant ID", (offer) => offer.merchantId || ""],
+      ["Brand", (offer) => offer.brand || ""],
+      ["AOV", (offer) => number(offer.aov)],
+      ["Commission Rate", (offer) => number(offer.commissionRate)],
+      ["Payment Cycle", (offer) => offer.paymentCycle || ""],
+      ["Main Category", (offer) => offer.mainCategory || ""],
+      ["Subcategory", (offer) => offer.subCategory || ""]
+    ];
+    const downloadId = registerRecommendationDownload(exportRows, { ...localizedContext, downloadColumns: compactDownloadColumns }, requestedCount);
     const exportNote = language === "zh"
       ? exportRows.length < requestedCount
         ? chatFormat(copy.exportPartial, { count: exportRows.length.toLocaleString() })

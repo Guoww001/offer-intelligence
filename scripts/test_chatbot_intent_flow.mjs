@@ -271,7 +271,7 @@ assertMatch(
 assertEqual(latestDownload.sheetName, "offer list", "chatbot offer download sheet should always be named offer list");
 assertEqual(
   latestDownload.columns.map(([header]) => header).join("|"),
-  "Merchant ID|Name|AOV|Commission Rate|Payment Cycle|Main Category|Subcategory",
+  "Merchant ID|Brand|AOV|Commission Rate|Payment Cycle|Main Category|Subcategory",
   "chatbot offer download should use compact offer columns"
 );
 
