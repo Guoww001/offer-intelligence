@@ -1714,6 +1714,7 @@ _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_publisher_portfolio_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
 # In-memory cache for publishers payload
@@ -2673,6 +2674,249 @@ def _build_keywords_payload() -> dict[str, Any]:
 # ?? publishers cache ??????????????????????????????????????????????????
 
 
+PUBLISHER_PORTFOLIO_MARKET_SQL = """
+CASE
+    WHEN a.advert_url_real LIKE '%%www.amazon.co.uk%%' THEN 'amazon.co.uk'
+    WHEN a.advert_url_real LIKE '%%www.amazon.com.mx%%' THEN 'amazon.com.mx'
+    WHEN a.advert_url_real LIKE '%%www.amazon.com%%' THEN 'amazon.com'
+    WHEN a.advert_url_real LIKE '%%www.amazon.de%%' THEN 'amazon.de'
+    WHEN a.advert_url_real LIKE '%%www.amazon.fr%%' THEN 'amazon.fr'
+    WHEN a.advert_url_real LIKE '%%www.amazon.ca%%' THEN 'amazon.ca'
+    WHEN a.advert_url_real LIKE '%%www.amazon.it%%' THEN 'amazon.it'
+    WHEN a.advert_url_real LIKE '%%www.amazon.es%%' THEN 'amazon.es'
+    WHEN a.advert_url_real LIKE '%%www.amazon.nl%%' THEN 'amazon.nl'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.co.uk%%' THEN 'amazon.co.uk'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.com.mx%%' THEN 'amazon.com.mx'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.com%%' THEN 'amazon.com'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.de%%' THEN 'amazon.de'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.fr%%' THEN 'amazon.fr'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.ca%%' THEN 'amazon.ca'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.it%%' THEN 'amazon.it'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.es%%' THEN 'amazon.es'
+    WHEN a.last_redirect_domain LIKE '%%www.amazon.nl%%' THEN 'amazon.nl'
+    WHEN aa.advert_store_country_name LIKE 'US%%' THEN 'amazon.com'
+    WHEN aa.advert_store_country_name LIKE 'GB%%' THEN 'amazon.co.uk'
+    WHEN aa.advert_store_country_name LIKE 'UK%%' THEN 'amazon.co.uk'
+    WHEN aa.advert_store_country_name LIKE 'DE%%' THEN 'amazon.de'
+    WHEN aa.advert_store_country_name LIKE 'FR%%' THEN 'amazon.fr'
+    WHEN aa.advert_store_country_name LIKE 'CA%%' THEN 'amazon.ca'
+    WHEN aa.advert_store_country_name LIKE 'IT%%' THEN 'amazon.it'
+    WHEN aa.advert_store_country_name LIKE 'ES%%' THEN 'amazon.es'
+    WHEN aa.advert_store_country_name LIKE 'MX%%' THEN 'amazon.com.mx'
+    WHEN aa.advert_store_country_name LIKE 'NL%%' THEN 'amazon.nl'
+    ELSE 'Unknown'
+END
+""".strip()
+
+
+PUBLISHER_PORTFOLIO_SQL = f"""
+SELECT
+    o.user_id,
+    o.advert_id AS merchant_id,
+    MAX(a.advert_name) AS merchant_name,
+    MAX(COALESCE(NULLIF(TRIM(sm.sheetCategory), ''), cat.mainCategory, 'Uncategorized')) AS category,
+    MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown')) AS network,
+    MAX(a.advert_money) AS commission_rate,
+    {PUBLISHER_PORTFOLIO_MARKET_SQL} AS market,
+    MAX(o.clicks) AS clicks,
+    MAX(o.dpv) AS dpv,
+    MAX(o.atc) AS atc,
+    MAX(o.orders) AS orders,
+    MAX(o.sales) AS sales,
+    MAX(o.all_commission) AS all_commission,
+    MAX(o.aff_commission) AS aff_commission
+FROM (
+    SELECT
+        user_id,
+        advert_id,
+        SUM(COALESCE(clicks, 0)) AS clicks,
+        SUM(COALESCE(detail_page_views, 0)) AS dpv,
+        SUM(COALESCE(add_to_carts, 0)) AS atc,
+        SUM(COALESCE(total_purchases, 0)) AS orders,
+        SUM(COALESCE(amount, 0)) AS sales,
+        SUM(COALESCE(payout, 0)) AS all_commission,
+        SUM(COALESCE(aff_payout, 0)) AS aff_commission
+    FROM cnpscy_amazon_order
+    WHERE user_id = %s
+      AND advert_id IS NOT NULL
+      AND advert_id > 0
+      {{date_filter}}
+    GROUP BY user_id, advert_id
+) o
+LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
+LEFT JOIN (
+    SELECT advert_id, MAX(advert_store_country_name) AS advert_store_country_name
+    FROM cnpscy_advert_all
+    GROUP BY advert_id
+) aa ON o.advert_id = aa.advert_id
+LEFT JOIN cnpscy_advert_type at
+    ON a.advert_advertiser = at.advert_type_id AND at.advert_type_parent_id = 53
+LEFT JOIN cnpscy_oi_offer_sheet_metadata sm
+    ON CAST(o.advert_id AS CHAR) = sm.merchantId
+LEFT JOIN (
+    SELECT
+        mc2.merchantId,
+        MAX(c_main.categoryName) AS mainCategory
+    FROM cnpscy_oi_merchant_category mc2
+    LEFT JOIN cnpscy_oi_category c_main
+        ON mc2.categoryId = c_main.categoryId AND c_main.level = 1
+    GROUP BY mc2.merchantId
+) cat ON CAST(o.advert_id AS CHAR) = cat.merchantId
+GROUP BY o.user_id, o.advert_id, market
+"""
+
+
+def _publisher_metric_bucket() -> dict[str, Any]:
+    return {
+        "clicks": 0,
+        "dpv": 0,
+        "atc": 0,
+        "orders": 0,
+        "sales": 0.0,
+        "allCommission": 0.0,
+        "affCommission": 0.0,
+        "aov": None,
+        "effectiveCommissionRate": None,
+    }
+
+
+def _accumulate_publisher_metric(target: dict[str, Any], row: dict[str, Any]) -> None:
+    target["clicks"] += int(row.get("clicks") or 0)
+    target["dpv"] += int(row.get("dpv") or 0)
+    target["atc"] += int(row.get("atc") or 0)
+    target["orders"] += int(row.get("orders") or 0)
+    target["sales"] += float(row.get("sales") or 0)
+    target["allCommission"] += float(row.get("all_commission") or 0)
+    target["affCommission"] += float(row.get("aff_commission") or 0)
+
+
+def _finalize_publisher_metric(metric: dict[str, Any]) -> None:
+    orders = int(metric.get("orders") or 0)
+    sales = float(metric.get("sales") or 0)
+    commission = float(metric.get("allCommission") or 0)
+    metric["aov"] = sales / orders if orders > 0 else None
+    metric["effectiveCommissionRate"] = commission / sales * 100 if sales > 0 else None
+
+
+def publisher_portfolios_from_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[dict[int, list[dict[str, Any]]], dict[int, str]]:
+    """Aggregate publisher × merchant × market query rows into portfolio records."""
+    by_user: dict[int, dict[int, dict[str, Any]]] = {}
+    merchant_name_map: dict[int, str] = {}
+
+    for row in rows:
+        user_id = int(row.get("user_id") or 0)
+        merchant_id = int(row.get("merchant_id") or 0)
+        if user_id <= 0 or merchant_id <= 0:
+            continue
+
+        merchant_name = str(row.get("merchant_name") or merchant_id).strip()
+        merchant_name_map.setdefault(merchant_id, merchant_name)
+        user_merchants = by_user.setdefault(user_id, {})
+        merchant = user_merchants.get(merchant_id)
+        if merchant is None:
+            raw_rate = row.get("commission_rate")
+            merchant = {
+                "merchantId": merchant_id,
+                "merchantName": merchant_name,
+                "category": str(row.get("category") or "Uncategorized").strip() or "Uncategorized",
+                "network": str(row.get("network") or "Unknown").strip() or "Unknown",
+                "commissionRate": float(raw_rate) if raw_rate not in (None, "") else None,
+                "markets": {},
+                "total": _publisher_metric_bucket(),
+            }
+            user_merchants[merchant_id] = merchant
+
+        market = str(row.get("market") or "Unknown").strip() or "Unknown"
+        market_metric = merchant["markets"].setdefault(market, _publisher_metric_bucket())
+        _accumulate_publisher_metric(market_metric, row)
+        _accumulate_publisher_metric(merchant["total"], row)
+
+    result: dict[int, list[dict[str, Any]]] = {}
+    for user_id, user_merchants in by_user.items():
+        merchants = list(user_merchants.values())
+        for merchant in merchants:
+            _finalize_publisher_metric(merchant["total"])
+            for market_metric in merchant["markets"].values():
+                _finalize_publisher_metric(market_metric)
+        merchants.sort(
+            key=lambda merchant: (
+                float(merchant["total"].get("sales") or 0),
+                int(merchant["total"].get("orders") or 0),
+                merchant["merchantName"].lower(),
+            ),
+            reverse=True,
+        )
+        result[user_id] = merchants
+    return result, merchant_name_map
+
+
+def publisher_portfolio_summary(merchants: list[dict[str, Any]]) -> dict[str, Any]:
+    total = _publisher_metric_bucket()
+    category_stats: dict[str, dict[str, Any]] = {}
+    weighted_rate_numerator = 0.0
+    weighted_rate_denominator = 0.0
+    fallback_rates: list[float] = []
+
+    for merchant in merchants:
+        metrics = merchant.get("total") or {}
+        _accumulate_publisher_metric(
+            total,
+            {
+                "clicks": metrics.get("clicks"),
+                "dpv": metrics.get("dpv"),
+                "atc": metrics.get("atc"),
+                "orders": metrics.get("orders"),
+                "sales": metrics.get("sales"),
+                "all_commission": metrics.get("allCommission"),
+                "aff_commission": metrics.get("affCommission"),
+            },
+        )
+        category = str(merchant.get("category") or "Uncategorized")
+        category_row = category_stats.setdefault(
+            category,
+            {"category": category, "merchantCount": 0, "orders": 0, "sales": 0.0, "allCommission": 0.0},
+        )
+        category_row["merchantCount"] += 1
+        category_row["orders"] += int(metrics.get("orders") or 0)
+        category_row["sales"] += float(metrics.get("sales") or 0)
+        category_row["allCommission"] += float(metrics.get("allCommission") or 0)
+
+        rate = merchant.get("commissionRate")
+        if rate not in (None, ""):
+            numeric_rate = float(rate)
+            fallback_rates.append(numeric_rate)
+            sales = float(metrics.get("sales") or 0)
+            if sales > 0:
+                weighted_rate_numerator += numeric_rate * sales
+                weighted_rate_denominator += sales
+
+    _finalize_publisher_metric(total)
+    categories = sorted(
+        category_stats.values(),
+        key=lambda row: (float(row["sales"]), int(row["merchantCount"]), row["category"].lower()),
+        reverse=True,
+    )
+    total_sales = float(total["sales"] or 0)
+    for row in categories:
+        row["salesShare"] = float(row["sales"] or 0) / total_sales if total_sales > 0 else 0
+
+    weighted_rate = None
+    if weighted_rate_denominator > 0:
+        weighted_rate = weighted_rate_numerator / weighted_rate_denominator
+    elif fallback_rates:
+        weighted_rate = sum(fallback_rates) / len(fallback_rates)
+
+    return {
+        "merchantCount": len(merchants),
+        "total": total,
+        "weightedCommissionRate": weighted_rate,
+        "topCategory": categories[0]["category"] if categories else None,
+        "categories": categories,
+    }
+
+
 def publishers_payload(force_refresh: bool = False) -> dict[str, Any]:
     """? db_publishers_cache.json ??????????
 
@@ -2716,6 +2960,108 @@ def publishers_payload(force_refresh: bool = False) -> dict[str, Any]:
         return {"ok": False, "error": "Publishers cache not built yet. Run scripts/build_publishers_data.py first."}
     _publishers_memory_cache = (now, cached)
     return cached
+
+
+def publisher_portfolio_payload(
+    user_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    """Return one publisher's merchant portfolio, optionally for an exact date range."""
+    try:
+        normalized_user_id = int(user_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("userId must be a positive integer") from exc
+    if normalized_user_id <= 0:
+        raise ValueError("userId must be a positive integer")
+
+    raw_start = str(start_date or "").strip()
+    raw_end = str(end_date or "").strip()
+    range_start = parse_tier_report_date(raw_start)
+    range_end = parse_tier_report_date(raw_end)
+    if raw_start and range_start is None:
+        raise ValueError("startDate must use YYYY-MM-DD format")
+    if raw_end and range_end is None:
+        raise ValueError("endDate must use YYYY-MM-DD format")
+    if range_start and range_end:
+        if range_start > range_end:
+            raise ValueError("startDate cannot be after endDate")
+        if (range_end - range_start).days + 1 > MAX_TIER_REPORT_RANGE_DAYS:
+            raise ValueError(f"date range cannot exceed {MAX_TIER_REPORT_RANGE_DAYS} days")
+
+    cache_key = "|".join(
+        [
+            str(normalized_user_id),
+            range_start.isoformat() if range_start else "",
+            range_end.isoformat() if range_end else "",
+        ]
+    )
+    now = time.time()
+    cached = _publisher_portfolio_cache.get(cache_key)
+    if cached is not None and now - cached[0] < PUBLISHERS_CACHE_TTL:
+        return cached[1]
+
+    params: list[Any] = [normalized_user_id]
+    date_filter = ""
+    if range_start is not None and range_end is not None:
+        date_filter = "AND order_time_day BETWEEN %s AND %s"
+        params.extend(
+            [
+                int(range_start.strftime("%Y%m%d")),
+                int(range_end.strftime("%Y%m%d")),
+            ]
+        )
+    elif range_start is not None:
+        date_filter = "AND order_time_day >= %s"
+        params.append(int(range_start.strftime("%Y%m%d")))
+    elif range_end is not None:
+        date_filter = "AND order_time_day <= %s"
+        params.append(int(range_end.strftime("%Y%m%d")))
+
+    with db_connection() as conn:
+        rows = fetch_all(
+            conn,
+            PUBLISHER_PORTFOLIO_SQL.format(date_filter=date_filter),
+            tuple(params),
+        )
+        user_rows = fetch_all(
+            conn,
+            """
+            SELECT
+                u.user_id,
+                u.user_name,
+                COALESCE(ad.admin_name, 'Unknown') AS admin_name
+            FROM cnpscy_user u
+            LEFT JOIN cnpscy_admins ad
+                ON CAST(u.admin_id_look AS CHAR) = CAST(ad.admin_code AS CHAR)
+                AND ad.is_delete = 0
+            WHERE u.user_id = %s
+            LIMIT 1
+            """,
+            (normalized_user_id,),
+        )
+
+    merchants_by_user, _ = publisher_portfolios_from_rows(rows)
+    merchants = merchants_by_user.get(normalized_user_id, [])
+    user_row = user_rows[0] if user_rows else {}
+    result = {
+        "ok": True,
+        "generatedAt": utc_now_iso(),
+        "source": "cnpscy_amazon_order",
+        "dateRange": {
+            "startDate": range_start.isoformat() if range_start else None,
+            "endDate": range_end.isoformat() if range_end else None,
+        },
+        "publisher": {
+            "userId": normalized_user_id,
+            "userName": str(user_row.get("user_name") or normalized_user_id),
+            "adminName": str(user_row.get("admin_name") or "Unknown"),
+        },
+        "summary": publisher_portfolio_summary(merchants),
+        "merchants": merchants,
+    }
+    _publisher_portfolio_cache[cache_key] = (now, result)
+    return result
 
 
 def compact_api_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
