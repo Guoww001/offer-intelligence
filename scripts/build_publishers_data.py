@@ -184,7 +184,9 @@ WHERE o.user_id IS NOT NULL AND o.user_id > 0
 GROUP BY o.user_id, link_type
 """
 
-# 查询每个 publisher 关联的 merchants
+# 查询每个 publisher 关联的 merchant 轻量索引。
+# 完整 AOV / category / commission 指标由按需 portfolio API 从数据库读取，
+# 避免把相同的商家明细重复塞进全量 publisher 缓存。
 MERCHANT_SQL = f"""
 SELECT DISTINCT o.user_id, a.advert_id AS merchant_id, a.advert_name AS merchant_name
 FROM cnpscy_amazon_order o
@@ -283,15 +285,14 @@ def build_publishers_payload() -> dict:
         merchant_rows = fetch_all(conn, MERCHANT_SQL)
         merchants_by_user: dict[int, list[dict]] = {}
         merchant_name_map: dict[int, str] = {}
-        for mr in merchant_rows:
-            uid = int(mr["user_id"])
-            mid = int(mr["merchant_id"])
-            mname = str(mr["merchant_name"] or "")
-            if uid not in merchants_by_user:
-                merchants_by_user[uid] = []
-            if mid not in merchant_name_map:
-                merchant_name_map[mid] = mname
-            merchants_by_user[uid].append({"merchantId": mid, "merchantName": mname})
+        for merchant_row in merchant_rows:
+            user_id = int(merchant_row["user_id"])
+            merchant_id = int(merchant_row["merchant_id"])
+            merchant_name = str(merchant_row["merchant_name"] or "")
+            merchants_by_user.setdefault(user_id, []).append(
+                {"merchantId": merchant_id, "merchantName": merchant_name}
+            )
+            merchant_name_map.setdefault(merchant_id, merchant_name)
 
         # 6) 查询按天聚合数据（用于前端精确日期筛选）
         daily_rows = fetch_all(conn, DAILY_SQL)

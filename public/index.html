@@ -52,13 +52,44 @@
       </div>
     </section>
     <div class="app-shell hidden" id="appShell">
-      <aside class="sidebar">
+      <header class="mobile-shell-bar" id="mobileShellBar">
+        <button
+          class="mobile-nav-toggle"
+          id="mobileNavToggle"
+          type="button"
+          aria-label="Open navigation"
+          aria-controls="primarySidebar"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"></path>
+          </svg>
+        </button>
+        <div class="mobile-shell-identity" aria-label="YeahPromos">
+          <span class="mobile-shell-mark" aria-hidden="true"></span>
+          <strong>YeahPromos</strong>
+        </div>
+        <span class="mobile-current-page" id="mobileCurrentPage">Dashboard</span>
+      </header>
+
+      <div
+        class="nav-drawer-backdrop"
+        id="navDrawerBackdrop"
+        aria-hidden="true"
+      ></div>
+
+      <aside class="sidebar" id="primarySidebar" aria-label="Primary navigation">
         <div class="brand-mark">
           <div class="mark-grid" aria-hidden="true"></div>
           <div>
             <h1>YeahPromos</h1>
             <p data-i18n="brand.subtitle">Amazon tier analysis</p>
           </div>
+          <button class="mobile-nav-close" id="mobileNavClose" type="button" aria-label="Close navigation">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18"></path>
+            </svg>
+          </button>
         </div>
 
         <button class="language-toggle" id="languageToggle" type="button">Chinese</button>
@@ -324,8 +355,9 @@
         <section class="publishers-page hidden" id="publishersPage" aria-label="Publishers">
           <div class="publishers-header">
             <div>
-              <h2 data-i18n="publishers.title">Publishers</h2>
-              <p data-i18n="publishers.subtitle">Publisher performance aggregation by market</p>
+              <span class="publishers-eyebrow">PARTNER INTELLIGENCE</span>
+              <h2 data-i18n="publishers.title">Publisher Affinity</h2>
+              <p data-i18n="publishers.subtitle">Understand which merchants, categories, order values and commissions each publisher prefers.</p>
             </div>
             <div class="publishers-header-actions">
               <button class="layout-customize-btn" id="publisherLayoutBtn" type="button" title="自定义布局">
@@ -345,86 +377,105 @@
             </div>
           </div>
 
-          <!-- 筛选区 -->
-          <section class="panel publishers-filters" data-layout-id="filters" aria-label="Publisher filters">
-            <!-- 第一行：日期范围 + 市场 + 联盟 + 链接类型 + 商家 + 商品 -->
-            <div class="publishers-filter-row row-1">
-              <div class="publishers-filter-group">
-                <div class="publishers-filter-date-range">
-                  <input id="publisherStartDate" type="date" />
-                  <span class="date-separator">—</span>
-                  <input id="publisherEndDate" type="date" />
-                  <div class="date-quick-btns" id="publisherDateQuickBtns">
+          <!-- 媒体优先的筛选工作区 -->
+          <section class="panel publishers-filters publisher-lens-controls" data-layout-id="filters" aria-label="Publisher filters">
+            <div class="publisher-focus-selector">
+              <div class="publisher-focus-copy">
+                <span class="publisher-focus-step">01 · SELECT MEDIA</span>
+                <strong data-i18n="publishers.selectPublisher">选择要分析的媒体</strong>
+                <p data-i18n="publishers.selectPublisherHint">输入媒体名称或 ID，查看其合作商家与偏好。</p>
+              </div>
+              <label class="publisher-selector-field">
+                <span data-i18n="publishers.publisher">Publisher</span>
+                <div class="publishers-combobox publisher-selector-combobox">
+                  <input
+                    id="publisherSelectorSearch"
+                    type="text"
+                    placeholder="媒体名称或 ID"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="publisherSelectorDropdown"
+                    aria-expanded="false"
+                  />
+                  <div
+                    class="publishers-combobox-dropdown publisher-selector-dropdown"
+                    id="publisherSelectorDropdown"
+                    role="listbox"
+                  ></div>
+                </div>
+              </label>
+            </div>
+
+            <div class="publisher-filter-workspace">
+              <div class="publishers-filter-row row-1">
+                <div class="publishers-filter-group">
+                  <div class="publisher-date-field">
+                    <span class="publisher-field-label" data-i18n="publishers.period">Period</span>
+                    <div class="publishers-filter-date-range">
+                      <input id="publisherStartDate" type="date" aria-label="Start date" />
+                      <span class="date-separator">—</span>
+                      <input id="publisherEndDate" type="date" aria-label="End date" />
+                    </div>
+                  </div>
+                  <label>
+                    <span data-i18n="label.Market">Market</span>
+                    <select id="publisherMarketFilter">
+                      <option value="all">All markets</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="publishers.network">Affiliate Network</span>
+                    <select id="publisherNetworkFilter">
+                      <option value="all">All networks</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="publishers.linkType">Link Type</span>
+                    <select id="publisherLinkTypeFilter">
+                      <option value="all">All link types</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="publishers-filter-row row-2">
+                <div class="publishers-filter-group">
+                  <div class="date-quick-btns" id="publisherDateQuickBtns" aria-label="Quick date ranges">
                     <button type="button" data-quick="lastMonth">上月</button>
                     <button type="button" data-quick="past30">过去30天</button>
                     <button type="button" data-quick="past3m">过去3个月</button>
                     <button type="button" data-quick="past6m">过去6个月</button>
                   </div>
+                  <label>
+                    <span data-i18n="publishers.merchant">Merchant</span>
+                    <input id="publisherMerchantSearch" type="search" placeholder="商家名称或 ID" />
+                  </label>
+                  <label>
+                    <span data-i18n="publishers.manager">Manager</span>
+                    <div class="publishers-combobox">
+                      <input id="publisherManagerSearch" type="text" placeholder="经理名称" autocomplete="off" />
+                      <div class="publishers-combobox-dropdown" id="publisherManagerDropdown"></div>
+                    </div>
+                  </label>
                 </div>
-                <label>
-                  <span data-i18n="label.Market">Market</span>
-                  <select id="publisherMarketFilter">
-                    <option value="all">All markets</option>
-                  </select>
-                </label>
-                <label>
-                  <span data-i18n="publishers.network">Affiliate Network</span>
-                  <select id="publisherNetworkFilter">
-                    <option value="all">请选择所属联盟</option>
-                  </select>
-                </label>
-                <label>
-                  <span data-i18n="publishers.linkType">Link Type</span>
-                  <select id="publisherLinkTypeFilter">
-                    <option value="all">请选择链接类型</option>
-                  </select>
-                </label>
-                <label>
-                  <span data-i18n="publishers.merchant">Merchant</span>
-                  <input id="publisherMerchantSearch" type="search" placeholder="请选择商家" />
-                </label>
-                <label>
-                  <span data-i18n="publishers.product">Product</span>
-                  <input id="publisherProductSearch" type="search" placeholder="请选择商品" />
-                </label>
-              </div>
-            </div>
-            <!-- 第二行：媒介 + 站点 + track + 右侧操作按钮 -->
-            <div class="publishers-filter-row row-2">
-              <div class="publishers-filter-group">
-                <label>
-                  <span data-i18n="publishers.manager">Manager</span>
-                  <div class="publishers-combobox">
-                    <input id="publisherManagerSearch" type="text" placeholder="请选择媒介" autocomplete="off" />
-                    <div class="publishers-combobox-dropdown" id="publisherManagerDropdown"></div>
-                  </div>
-                </label>
-                <label>
-                  <span data-i18n="publishers.site">Site</span>
-                  <input id="publisherSiteSearch" type="search" placeholder="请选择站点" />
-                </label>
-                <label>
-                  <span data-i18n="publishers.track">Track</span>
-                  <input id="publisherTrackSearch" type="search" placeholder="track" />
-                </label>
-              </div>
-              <div class="publishers-filter-actions">
-                <button class="btn-search" id="publisherSearchBtn" type="button">
-                  <svg viewBox="0 0 24 24" width="16" height="16"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                  <span data-i18n="action.search">搜索</span>
-                </button>
-                <button class="btn-reset" id="publisherResetBtn" type="button">
-                  <svg viewBox="0 0 24 24" width="16" height="16"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-                  <span data-i18n="action.reset">重置</span>
-                </button>
-                <div class="btn-group">
-                  <button class="btn-export" id="publisherExportBtn" type="button" title="Export all">
-                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                    <span data-i18n="action.export">导出</span>
+                <div class="publishers-filter-actions">
+                  <button class="btn-search" id="publisherSearchBtn" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                    <span data-i18n="action.search">应用</span>
                   </button>
-                  <div class="btn-group-dropdown hidden" id="publisherExportDropdown">
-                    <button type="button" id="publisherExportPageBtn" data-i18n="publishers.exportPage">导出当前页</button>
-                    <button type="button" id="publisherExportAllBtn" data-i18n="publishers.exportAll">导出全部</button>
+                  <button class="btn-reset" id="publisherResetBtn" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                    <span data-i18n="action.reset">重置</span>
+                  </button>
+                  <div class="btn-group">
+                    <button class="btn-export" id="publisherExportBtn" type="button" title="Export all">
+                      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                      <span data-i18n="action.export">导出</span>
+                    </button>
+                    <div class="btn-group-dropdown hidden" id="publisherExportDropdown">
+                      <button type="button" id="publisherExportPageBtn" data-i18n="publishers.exportPage">导出当前页</button>
+                      <button type="button" id="publisherExportAllBtn" data-i18n="publishers.exportAll">导出全部</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -434,6 +485,102 @@
           <!-- KPI 指标卡 -->
           <section class="publishers-kpi" id="publishersKpi" data-layout-id="kpi" aria-label="Publisher KPI summary">
             <div class="publishers-kpi-row" id="publishersKpiRow"></div>
+          </section>
+
+          <!-- 媒体画像：选择媒体后显示完整商家组合与倾向 -->
+          <section class="panel publisher-affinity-panel" id="publisherAffinityPanel" data-layout-id="affinity" aria-label="Publisher merchant affinity">
+            <div class="publisher-affinity-empty" id="publisherAffinityEmpty">
+              <span class="publisher-affinity-empty-index">02</span>
+              <div>
+                <strong data-i18n="publishers.affinityEmptyTitle">选择媒体后生成倾向画像</strong>
+                <p data-i18n="publishers.affinityEmptyBody">系统会按该媒体实际合作的商家，计算品类贡献、AOV 区间与佣金偏好。</p>
+              </div>
+            </div>
+            <div class="publisher-affinity-content hidden" id="publisherAffinityContent">
+              <header class="publisher-affinity-header">
+                <div class="publisher-identity">
+                  <span class="publisher-avatar" id="publisherAffinityAvatar">P</span>
+                  <div>
+                    <span class="publisher-affinity-kicker">MEDIA PROFILE</span>
+                    <h3 id="publisherAffinityName">Publisher</h3>
+                    <p id="publisherAffinityMeta"></p>
+                  </div>
+                </div>
+                <button class="publisher-clear-focus" id="publisherClearSelection" type="button">
+                  <span aria-hidden="true">←</span>
+                  <span data-i18n="publishers.backToAll">返回全部媒体</span>
+                </button>
+              </header>
+
+              <div class="publisher-affinity-status hidden" id="publisherAffinityStatus" role="status" aria-live="polite"></div>
+              <div class="publisher-affinity-metrics" id="publisherAffinityMetrics"></div>
+
+              <div class="publisher-affinity-grid">
+                <article class="publisher-affinity-card">
+                  <div class="publisher-affinity-card-title">
+                    <div>
+                      <span class="publisher-section-index">A</span>
+                      <h4 data-i18n="publishers.categoryAffinity">品类倾向</h4>
+                    </div>
+                    <small data-i18n="publishers.bySales">按销售额贡献</small>
+                  </div>
+                  <div class="publisher-category-bars" id="publisherCategoryAffinity"></div>
+                </article>
+                <article class="publisher-affinity-card">
+                  <div class="publisher-affinity-card-title">
+                    <div>
+                      <span class="publisher-section-index">B</span>
+                      <h4 data-i18n="publishers.affinitySignals">倾向信号</h4>
+                    </div>
+                    <small data-i18n="publishers.signalHint">用于判断合作偏好</small>
+                  </div>
+                  <div class="publisher-affinity-signals" id="publisherAffinitySignals"></div>
+                </article>
+              </div>
+
+              <section class="publisher-portfolio">
+                <div class="publisher-portfolio-toolbar">
+                  <div>
+                    <span class="publisher-section-index">C</span>
+                    <h4 data-i18n="publishers.merchantPortfolio">合作商家组合</h4>
+                    <p id="publisherPortfolioCount"></p>
+                  </div>
+                  <div class="publisher-portfolio-controls">
+                    <input id="publisherPortfolioSearch" type="search" placeholder="搜索商家或 ID" />
+                    <select id="publisherPortfolioCategory" aria-label="Filter portfolio by category">
+                      <option value="all">全部品类</option>
+                    </select>
+                    <select id="publisherPortfolioSort" aria-label="Sort publisher portfolio">
+                      <option value="sales">销售额从高到低</option>
+                      <option value="orders">订单数从高到低</option>
+                      <option value="aov">AOV 从高到低</option>
+                      <option value="commissionRate">佣金率从高到低</option>
+                      <option value="allCommission">实际佣金从高到低</option>
+                      <option value="merchantName">商家名称</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="publisher-portfolio-table-wrap">
+                  <table class="publisher-portfolio-table">
+                    <thead>
+                      <tr>
+                        <th data-i18n="publishers.merchant">Merchant</th>
+                        <th data-i18n="publishers.networkMarket">Network / Market</th>
+                        <th data-i18n="label.Category">Category</th>
+                        <th>AOV</th>
+                        <th data-i18n="publishers.commissionRate">Commission rate</th>
+                        <th data-i18n="publishers.orders">Orders</th>
+                        <th data-i18n="publishers.sales">Sales</th>
+                        <th data-i18n="publishers.earnedCommission">Earned commission</th>
+                        <th data-i18n="publishers.portfolioShare">Sales share</th>
+                      </tr>
+                    </thead>
+                    <tbody id="publisherPortfolioRows"></tbody>
+                  </table>
+                </div>
+                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders；无订单时显示 N/A。佣金率来自商家配置，实际佣金来自媒体订单记录。</p>
+              </section>
+            </div>
           </section>
 
           <!-- 市场聚合概览 -->
@@ -477,7 +624,7 @@
           </section>
 
           <!-- 数据表格 -->
-          <section class="panel table-panel publishers-table-panel" data-layout-id="table" aria-label="Publisher data table">
+          <section class="panel table-panel publishers-table-panel" id="publishersTablePanel" data-layout-id="table" aria-label="Publisher data table">
             <div class="table-toolbar">
               <div>
                 <h3 data-i18n="publishers.tableTitle">Publisher Records</h3>

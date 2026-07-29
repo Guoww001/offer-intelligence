@@ -84,6 +84,16 @@ def main():
             "limit": limit,
         }
         module.product_keywords_payload = lambda: {"route": "ui-keywords"}
+        module.publishers_payload = lambda force_refresh=False: {
+            "route": "ui-publishers",
+            "forceRefresh": force_refresh,
+        }
+        module.publisher_portfolio_payload = lambda user_id, start_date=None, end_date=None: {
+            "route": "ui-publisher-portfolio",
+            "userId": int(user_id),
+            "startDate": start_date,
+            "endDate": end_date,
+        }
         module.offers_payload = lambda month=None: {
             "route": "ui-offers",
             "month": month,
@@ -141,6 +151,28 @@ def main():
         offers = request(module.app, "ui-offers", "month=2026-07", token="")
         assert_equal(offers["status"], 200, "UI offers response code")
         assert b'"month":"2026-07"' in offers["body"], offers["body"]
+
+        publishers = request(module.app, "ui-publishers", "refresh=1", token="")
+        assert_equal(publishers["status"], 200, "UI publishers response code")
+        assert b'"forceRefresh":true' in publishers["body"], publishers["body"]
+
+        publisher_portfolio = request(
+            module.app,
+            "ui-publishers",
+            "userId=7&startDate=2026-07-01&endDate=2026-07-28",
+            token="",
+        )
+        assert_equal(publisher_portfolio["status"], 200, "publisher portfolio response code")
+        assert b'"route":"ui-publisher-portfolio"' in publisher_portfolio["body"], publisher_portfolio["body"]
+        assert b'"startDate":"2026-07-01"' in publisher_portfolio["body"], publisher_portfolio["body"]
+
+        invalid_publisher = request(
+            module.app,
+            "ui-publishers",
+            "userId=invalid",
+            token="",
+        )
+        assert_equal(invalid_publisher["status"], 400, "invalid publisher response code")
 
         tier_sheet = request(
             module.app,
