@@ -39,6 +39,7 @@ from api.tier_moves import handle_tier_moves
 from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, session_payload, _read_json_body
 from offer_db import (
     add_merchant_to_tier1,
+    chatbot_offers_payload,
     delete_monthly_new_merchant,
     DIGITS_RE,
     OfferDbConfigError,
@@ -1015,7 +1016,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
             token_count = 0
-            for token in stream_chat(prompt, system_prompt, max_tokens=2048, temperature=0.7, history=history):
+            for token in stream_chat(prompt, system_prompt, max_tokens=2048, temperature=0.3, history=history):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()
@@ -1095,6 +1096,10 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/ui/db/offers":
                 force = first_query_value(query, "refresh") == "1"
                 self.send_json(200, offers_payload(month=first_query_value(query, "month") or None, force_refresh=force))
+                return
+
+            if parsed.path == "/api/ui/db/chatbot-offers":
+                self.send_json(200, chatbot_offers_payload())
                 return
 
             if parsed.path in {"/api/ui/db/tier-sheet", "/api/ui/db/tier_sheet"}:
@@ -1276,6 +1281,8 @@ class Handler(BaseHTTPRequestHandler):
             body = gzip.compress(body, compresslevel=6)
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        if content_type == "text/html":
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         if should_compress:
             self.send_header("Content-Encoding", "gzip")
             self.send_header("Vary", "Accept-Encoding")

@@ -1305,7 +1305,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
                    {sum_expr("o", order_cols, ["amount", "sales_amount", "revenue"], "revenue")},
                    {sum_expr("o", order_cols, ["payout", "commission"], "payout")},
                    {sum_expr("o", order_cols, ["aff_payout", "affiliate_payout"], "affiliatePayout")},
-                   {sum_expr("o", order_cols, ["clicks", "click_num"], "clicks")},
+                   {sum_expr("o", order_cols, ["total_clicks", "clicks", "click_num"], "clicks")},
                    {sum_expr("o", order_cols, ["direct_sales", "directSales", "direct_sale_amount"], "directSales")},
                    {sum_expr("o", order_cols, ["halo_sales", "haloSales", "halo_sale_amount"], "haloSales")}
             FROM {q("cnpscy_amazon_order")} o
@@ -2114,12 +2114,14 @@ SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1
 STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
 TIER_REPORT_CACHE_TTL = int(os.environ.get("OFFER_DB_TIER_REPORT_CACHE_TTL", "300"))
 PUBLISHERS_CACHE_TTL = int(os.environ.get("OFFER_DB_PUBLISHERS_CACHE_TTL", "3600"))  # 1 hour
+CHATBOT_CACHE_TTL = int(os.environ.get("OFFER_DB_CHATBOT_CACHE_TTL", "300"))  # 5 minutes
 _bg_refresh_running: dict[str, bool] = {}
 _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _publisher_portfolio_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_chatbot_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
 # In-memory cache for publishers payload
@@ -2222,6 +2224,64 @@ def offers_payload(month: str | None = None, force_refresh: bool = False) -> dic
         _save_cache(OFFERS_CACHE_FILE, payload)
         _offers_memory_cache = (now, payload)
     return payload
+
+
+def chatbot_offers_payload() -> dict[str, Any]:
+    """Fresh offers data for the chatbot, using the 24h cache as a fast first-hit
+    fallback and refreshing in the background every CHATBOT_CACHE_TTL seconds.
+
+    The chatbot needs current merchant metrics (clicks, orders, revenue, etc.)
+    that match what the Tier Sheet shows.  This function uses the main offers
+    memory cache (pre-warmed at startup) to serve the first request instantly,
+    then triggers a background rebuild so the next request within the TTL is
+    returned from the chatbot's own short-TTL cache.
+    """
+    now = time.time()
+    cached = _chatbot_cache.get("payload")
+    if cached is not None and now - cached[0] < CHATBOT_CACHE_TTL:
+        return cached[1]
+
+    # Fast path: serve from the pre-warmed 24h memory cache immediately,
+    # then rebuild in the background so chatbot data stays fresh.
+    if _offers_memory_cache is not None:
+        ts, mem_payload = _offers_memory_cache
+        result = {
+            "offers": mem_payload.get("offers", []),
+            "paymentRecords": mem_payload.get("paymentRecords", []),
+            "summary": mem_payload.get("summary", {}),
+            "month": mem_payload.get("month", ""),
+        }
+        _chatbot_cache["payload"] = (now, result)
+
+        # Background refresh: after the TTL expires the chatbot will serve
+        # the new result.  Only trigger when no rebuild is already running.
+        if not _bg_refresh_running.get("chatbot"):
+            _bg_refresh_running["chatbot"] = True
+            def _refresh_chatbot():
+                try:
+                    fresh = _build_offers_payload()
+                    fresh_result = {
+                        "offers": fresh.get("offers", []),
+                        "paymentRecords": fresh.get("paymentRecords", []),
+                        "summary": fresh.get("summary", {}),
+                        "month": fresh.get("month", ""),
+                    }
+                    _chatbot_cache["payload"] = (time.time(), fresh_result)
+                finally:
+                    _bg_refresh_running["chatbot"] = False
+            threading.Thread(target=_refresh_chatbot, daemon=True).start()
+        return result
+
+    # Cold start: no memory cache at all — fall back to full DB query
+    payload = _build_offers_payload()
+    result = {
+        "offers": payload.get("offers", []),
+        "paymentRecords": payload.get("paymentRecords", []),
+        "summary": payload.get("summary", {}),
+        "month": payload.get("month", ""),
+    }
+    _chatbot_cache["payload"] = (now, result)
+    return result
 
 
 def offer_network_fallback_map(
