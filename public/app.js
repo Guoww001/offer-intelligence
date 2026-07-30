@@ -17751,6 +17751,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   if (window.__OFFER_INTELLIGENCE_TEST__) {
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
+      setLanguage: function(lang) { state.language = lang; },
       categoryForPrompt,
       detectQueryIntent,
       cleanedMerchantLookupPhrase,
