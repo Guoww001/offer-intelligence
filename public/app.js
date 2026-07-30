@@ -621,10 +621,11 @@
       "publishers.merchantPortfolio": "合作商家组合",
       "publishers.networkMarket": "联盟 / 市场",
       "publishers.commissionRate": "佣金率",
+      "publishers.conversion": "转化率",
       "publishers.earnedCommission": "实际佣金",
       "publishers.portfolioShare": "销售额占比",
       "publishers.allTiers": "全部 Tier",
-      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；无订单时显示 N/A。佣金率来自商家配置，实际佣金来自媒体订单记录。",
+      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；EPC = 销售额 ÷ 点击量；Conversion = 订单数 ÷ 点击量，仅显示比例。佣金率来自商家配置，实际佣金来自媒体订单记录。",
       "publishers.portfolioExportEmpty": "当前商家组合筛选下没有可导出的记录。",
       "publishers.chartTitle": "按点击量排名",
       "publishers.clicks": "点击",
@@ -11066,6 +11067,8 @@ var _NUMERIC_COL_PATTERNS = [
           category: merchant.category || "Uncategorized",
           tier: merchant.tier || "Unknown",
           aov: metric.aov == null ? "" : metric.aov,
+          epc: _publisherMetricEpc(metric),
+          conversion: _publisherMetricConversionRate(metric),
           commissionRate: merchant.commissionRate == null ? "" : merchant.commissionRate,
           orders: metric.orders || 0,
           sales: metric.sales || 0,
@@ -11086,6 +11089,8 @@ var _NUMERIC_COL_PATTERNS = [
           ["Category", function (row) { return row.category; }],
           ["Tier", function (row) { return row.tier; }],
           ["AOV", function (row) { return row.aov; }],
+          ["EPC", function (row) { return row.epc; }],
+          ["Conversion", function (row) { return row.conversion; }],
           ["Commission Rate", function (row) { return row.commissionRate; }],
           ["Orders", function (row) { return row.orders; }],
           ["Sales", function (row) { return row.sales; }],
@@ -11441,6 +11446,16 @@ var _NUMERIC_COL_PATTERNS = [
     if (!merchant) return null;
     if (market && market !== "all") return (merchant.markets || {})[market] || null;
     return merchant.total || null;
+  }
+
+  function _publisherMetricEpc(metric) {
+    var clicks = Number((metric || {}).clicks || 0);
+    return clicks > 0 ? Number((metric || {}).sales || 0) / clicks : 0;
+  }
+
+  function _publisherMetricConversionRate(metric) {
+    var clicks = Number((metric || {}).clicks || 0);
+    return clicks > 0 ? Number((metric || {}).orders || 0) / clicks : 0;
   }
 
   function _publisherMetricIsActive(metric) {
@@ -11827,7 +11842,7 @@ var _NUMERIC_COL_PATTERNS = [
         t("publishers.merchantsInView", "merchants in view");
     }
     if (!rows.length) {
-      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="10" class="publisher-portfolio-empty">' +
+      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="12" class="publisher-portfolio-empty">' +
         escapeHtml(t("publishers.noPortfolioRows", "No merchants match the current filters")) +
       '</td></tr>';
       return;
@@ -11861,11 +11876,13 @@ var _NUMERIC_COL_PATTERNS = [
           escapeHtml(merchant.tier || "Unknown") +
         '</span></td>' +
         '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricEpc(metric))) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(merchant.commissionRate)) + '</td>' +
         '<td class="publisher-numeric">' + number(metric.orders).toLocaleString() + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.sales)) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.allCommission)) + '</td>' +
-        '<td><div class="publisher-share-cell"><span>' + (share * 100).toFixed(1) +
+        '<td class="publisher-numeric publisher-share-column"><div class="publisher-share-cell"><span>' + (share * 100).toFixed(1) +
           '%</span><i><b style="width:' + Math.max(1, share * 100).toFixed(1) + '%"></b></i></div></td>' +
       '</tr>';
     }).join("");
@@ -17846,6 +17863,8 @@ var _NUMERIC_COL_PATTERNS = [
       publisherManagerMatches: _publisherManagerMatches,
       publishersForManager: _publishersForManager,
       publisherTierOptions: _publisherTierOptions,
+      publisherMetricEpc: _publisherMetricEpc,
+      publisherMetricConversionRate: _publisherMetricConversionRate,
       setPublisherPortfolioFilters: (filters = {}) => {
         state.publisherMarket = filters.market == null ? state.publisherMarket : filters.market;
         state.publisherNetwork = filters.network == null ? state.publisherNetwork : filters.network;
