@@ -9402,6 +9402,7 @@ td strong {
 
 .publisher-portfolio-table {
   width: 100%;
+  min-width: 1240px;
   border-collapse: collapse;
   font-size: 11px;
 }
@@ -9419,13 +9420,19 @@ td strong {
   letter-spacing: 0.45px;
   text-align: left;
   text-transform: uppercase;
+  vertical-align: middle;
   white-space: nowrap;
+}
+
+.publisher-portfolio-table th.publisher-numeric {
+  text-align: right;
 }
 
 .publisher-portfolio-table td {
   padding: 11px 12px;
   border-bottom: 1px solid #edf1f2;
   color: #324a58;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
@@ -9529,11 +9536,13 @@ td strong {
 }
 
 .publisher-share-cell {
+  width: 96px;
   min-width: 90px;
   display: grid;
   grid-template-columns: 34px 1fr;
   align-items: center;
   gap: 7px;
+  margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 
@@ -10212,7 +10221,7 @@ td strong {
   }
 
   .publisher-portfolio-table {
-    min-width: 1060px;
+    min-width: 1240px;
   }
 }
 

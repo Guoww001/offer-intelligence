@@ -571,18 +571,20 @@
                         <th data-i18n="publishers.networkMarket">Network / Market</th>
                         <th data-i18n="label.Category">Category</th>
                         <th>Tier</th>
-                        <th>AOV</th>
-                        <th data-i18n="publishers.commissionRate">Commission rate</th>
-                        <th data-i18n="publishers.orders">Orders</th>
-                        <th data-i18n="publishers.sales">Sales</th>
-                        <th data-i18n="publishers.earnedCommission">Earned commission</th>
-                        <th data-i18n="publishers.portfolioShare">Sales share</th>
+                        <th class="publisher-numeric">AOV</th>
+                        <th class="publisher-numeric">EPC</th>
+                        <th class="publisher-numeric" data-i18n="publishers.conversion">Conversion</th>
+                        <th class="publisher-numeric" data-i18n="publishers.commissionRate">Commission rate</th>
+                        <th class="publisher-numeric" data-i18n="publishers.orders">Orders</th>
+                        <th class="publisher-numeric" data-i18n="publishers.sales">Sales</th>
+                        <th class="publisher-numeric" data-i18n="publishers.earnedCommission">Earned commission</th>
+                        <th class="publisher-numeric" data-i18n="publishers.portfolioShare">Sales share</th>
                       </tr>
                     </thead>
                     <tbody id="publisherPortfolioRows"></tbody>
                   </table>
                 </div>
-                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders；无订单时显示 N/A。佣金率来自商家配置，实际佣金来自媒体订单记录。</p>
+                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders；EPC = Sales ÷ Clicks；Conversion = Orders ÷ Clicks，仅显示比例。佣金率来自商家配置，实际佣金来自媒体订单记录。</p>
               </section>
             </div>
           </section>
