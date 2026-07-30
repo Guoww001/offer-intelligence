@@ -123,6 +123,25 @@ def main():
             "updatedBy": updated_by,
             "expectedTier": expected_tier,
         }
+        module.monthly_new_merchants_payload = lambda month=None: {
+            "ok": True,
+            "route": "ui-monthly-new-merchants",
+            "month": month,
+            "records": [],
+        }
+        module.upsert_monthly_new_merchant = lambda body, updated_by: {
+            "ok": True,
+            "route": "ui-monthly-new-merchant-upsert",
+            "merchantId": body.get("merchantId"),
+            "merchantName": body.get("merchantName"),
+            "updatedBy": updated_by,
+        }
+        module.delete_monthly_new_merchant = lambda record_id, deleted_by: {
+            "ok": True,
+            "route": "ui-monthly-new-merchant-delete",
+            "recordId": record_id,
+            "deletedBy": deleted_by,
+        }
 
         status = request(module.app, "status", "action=search&month=202607")
         assert_equal(status["status"], 200, "status response code")
@@ -229,6 +248,55 @@ def main():
             dict(tier1_options["headers"]).get("Access-Control-Allow-Methods"),
             "GET, POST, OPTIONS",
             "Tier 1 merchant allowed methods",
+        )
+
+        monthly_new_list = request(
+            module.app,
+            "ui-monthly-new-merchants",
+            "month=2026-07",
+            token="",
+        )
+        assert_equal(monthly_new_list["status"], 200, "monthly new merchants response code")
+        assert b'"route":"ui-monthly-new-merchants"' in monthly_new_list["body"], monthly_new_list["body"]
+        assert b'"month":"2026-07"' in monthly_new_list["body"], monthly_new_list["body"]
+
+        monthly_new_upsert = request(
+            module.app,
+            "ui-monthly-new-merchants",
+            method="POST",
+            token="",
+            body={
+                "action": "upsert",
+                "reportMonth": "2026-07",
+                "merchantName": "July Merchant",
+            },
+        )
+        assert_equal(monthly_new_upsert["status"], 200, "monthly new merchant upsert response code")
+        assert b'"route":"ui-monthly-new-merchant-upsert"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"merchantId":null' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"merchantName":"July Merchant"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+
+        monthly_new_delete = request(
+            module.app,
+            "ui-monthly-new-merchants",
+            method="POST",
+            token="",
+            body={"action": "delete", "recordId": 41},
+        )
+        assert_equal(monthly_new_delete["status"], 200, "monthly new merchant delete response code")
+        assert b'"route":"ui-monthly-new-merchant-delete"' in monthly_new_delete["body"], monthly_new_delete["body"]
+
+        monthly_new_options = request(
+            module.app,
+            "ui-monthly-new-merchants",
+            method="OPTIONS",
+            token="",
+        )
+        assert_equal(monthly_new_options["status"], 204, "monthly new merchant OPTIONS response code")
+        assert_equal(
+            dict(monthly_new_options["headers"]).get("Access-Control-Allow-Methods"),
+            "GET, POST, OPTIONS",
+            "monthly new merchant allowed methods",
         )
 
         os.environ["OI_AUTH_ENABLED"] = "1"

@@ -9,6 +9,7 @@ import re
 import threading
 import time
 from contextlib import contextmanager
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -34,6 +35,28 @@ MAX_TIER_REPORT_RANGE_DAYS = 366
 TIER1_MANUAL_SOURCE = "offer-intelligence-tier1-add"
 TIER1_NAME = "Tier 1"
 MANAGED_TIER_NAMES = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
+MONTH_KEY_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+MONTHLY_NEW_MERCHANTS_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants (
+  recordId         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  reportMonth      VARCHAR(7) NOT NULL,
+  merchantId       VARCHAR(64) DEFAULT NULL,
+  merchantName     VARCHAR(180) NOT NULL,
+  businessManager  VARCHAR(128) DEFAULT NULL,
+  gmvMonthlyTarget DECIMAL(18, 2) DEFAULT NULL,
+  completionReward VARCHAR(1000) DEFAULT NULL,
+  createdBy        VARCHAR(128) DEFAULT NULL,
+  updatedBy        VARCHAR(128) DEFAULT NULL,
+  createdAt        DATETIME NOT NULL,
+  updatedAt        DATETIME NOT NULL,
+  PRIMARY KEY (recordId),
+  UNIQUE KEY uq_monthly_new_merchant_id (reportMonth, merchantId),
+  UNIQUE KEY uq_monthly_new_merchant_name (reportMonth, merchantName),
+  KEY idx_monthly_new_month (reportMonth)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+""".strip()
+_monthly_new_merchants_schema_ready = False
+_monthly_new_merchants_schema_lock = threading.Lock()
 
 
 class OfferDbError(RuntimeError):
@@ -1694,6 +1717,388 @@ def add_merchant_to_tier1(
             "movedBy": updated_by,
             "source": TIER1_MANUAL_SOURCE,
         }),
+    }
+
+
+def normalize_monthly_new_merchant_month(value: Any = None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        text = dt.datetime.now(REPORTING_TZ).strftime("%Y-%m")
+    if not MONTH_KEY_RE.match(text):
+        raise ValueError("month must use YYYY-MM format")
+    return text
+
+
+def _monthly_new_merchant_text(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    required: bool = False,
+    maximum: int,
+) -> str:
+    value = str(payload.get(key) or "").strip()
+    if required and not value:
+        raise ValueError(f"{key} is required")
+    if len(value) > maximum:
+        raise ValueError(f"{key} must be {maximum} characters or fewer")
+    return value
+
+
+def _monthly_new_merchant_record_id(value: Any) -> int | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not DIGITS_RE.match(text) or int(text) <= 0:
+        raise ValueError("recordId must be a positive integer")
+    return int(text)
+
+
+def _monthly_new_merchant_gmv_target(value: Any) -> Decimal | None:
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return None
+    try:
+        amount = Decimal(text)
+    except (InvalidOperation, ValueError):
+        raise ValueError("gmvMonthlyTarget must be a valid number") from None
+    if not amount.is_finite() or amount < 0:
+        raise ValueError("gmvMonthlyTarget must be zero or greater")
+    if amount > Decimal("9999999999999999.99"):
+        raise ValueError("gmvMonthlyTarget is too large")
+    try:
+        return amount.quantize(Decimal("0.01"))
+    except InvalidOperation:
+        raise ValueError("gmvMonthlyTarget must be a valid number") from None
+
+
+def _monthly_new_merchant_values(
+    payload: dict[str, Any],
+    *,
+    updated_by: str,
+) -> dict[str, Any]:
+    report_month = normalize_monthly_new_merchant_month(payload.get("reportMonth"))
+    merchant_id = _monthly_new_merchant_text(
+        payload,
+        "merchantId",
+        maximum=64,
+    )
+    if merchant_id and not DIGITS_RE.match(merchant_id):
+        raise ValueError("merchantId must be numeric")
+
+    merchant_name = _monthly_new_merchant_text(
+        payload,
+        "merchantName",
+        required=True,
+        maximum=180,
+    )
+    actor = str(updated_by or "offer-intelligence-ui").strip()[:128] or "offer-intelligence-ui"
+    return {
+        "recordId": _monthly_new_merchant_record_id(payload.get("recordId")),
+        "reportMonth": report_month,
+        "merchantId": merchant_id,
+        "merchantName": merchant_name,
+        "businessManager": _monthly_new_merchant_text(
+            payload,
+            "businessManager",
+            maximum=128,
+        ),
+        "gmvMonthlyTarget": _monthly_new_merchant_gmv_target(
+            payload.get("gmvMonthlyTarget")
+        ),
+        "completionReward": _monthly_new_merchant_text(
+            payload,
+            "completionReward",
+            maximum=1000,
+        ),
+        "updatedBy": actor,
+    }
+
+
+def ensure_monthly_new_merchants_schema(conn) -> None:
+    global _monthly_new_merchants_schema_ready
+    if _monthly_new_merchants_schema_ready:
+        return
+    with _monthly_new_merchants_schema_lock:
+        if _monthly_new_merchants_schema_ready:
+            return
+        with conn.cursor() as cursor:
+            cursor.execute(MONTHLY_NEW_MERCHANTS_TABLE_DDL)
+        _monthly_new_merchants_schema_ready = True
+
+
+def _monthly_new_merchant_record(conn, record_id: int) -> dict[str, Any] | None:
+    return fetch_one(
+        conn,
+        """
+        SELECT
+            recordId,
+            reportMonth,
+            merchantId,
+            merchantName,
+            businessManager,
+            gmvMonthlyTarget,
+            completionReward,
+            createdBy,
+            updatedBy,
+            createdAt,
+            updatedAt
+        FROM cnpscy_oi_monthly_new_merchants
+        WHERE recordId = %s
+        LIMIT 1
+        """,
+        (record_id,),
+    )
+
+
+def _monthly_new_merchant_api_record(
+    row: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    record = compact_api_row(row)
+    if record is not None and "gmvMonthlyTarget" in record:
+        record["gmvMonthlyTarget"] = float(record["gmvMonthlyTarget"])
+    return record
+
+
+def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
+    report_month = normalize_monthly_new_merchant_month(month)
+    with db_connection() as conn:
+        ensure_monthly_new_merchants_schema(conn)
+        rows = fetch_all(
+            conn,
+            """
+            SELECT
+                recordId,
+                reportMonth,
+                merchantId,
+                merchantName,
+                businessManager,
+                gmvMonthlyTarget,
+                completionReward,
+                createdBy,
+                updatedBy,
+                createdAt,
+                updatedAt
+            FROM cnpscy_oi_monthly_new_merchants
+            WHERE reportMonth = %s
+            ORDER BY
+                updatedAt DESC,
+                merchantName ASC,
+                recordId DESC
+            """,
+            (report_month,),
+        )
+
+    records = [_monthly_new_merchant_api_record(row) for row in rows]
+    gmv_target_total = sum(
+        float(record.get("gmvMonthlyTarget") or 0)
+        for record in records
+    )
+    return {
+        "ok": True,
+        "checkedAt": utc_now_iso(),
+        "month": report_month,
+        "count": len(records),
+        "gmvTargetCount": sum(
+            1 for record in records if record.get("gmvMonthlyTarget") is not None
+        ),
+        "gmvTargetTotal": gmv_target_total,
+        "source": "cnpscy_oi_monthly_new_merchants",
+        "records": records,
+    }
+
+
+def upsert_monthly_new_merchant(
+    payload: dict[str, Any],
+    *,
+    updated_by: str,
+) -> dict[str, Any]:
+    values = _monthly_new_merchant_values(payload, updated_by=updated_by)
+    record_id = values["recordId"]
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+
+    with db_connection() as conn:
+        ensure_monthly_new_merchants_schema(conn)
+        try:
+            conn.begin()
+            if record_id is not None:
+                existing = fetch_one(
+                    conn,
+                    """
+                    SELECT recordId
+                    FROM cnpscy_oi_monthly_new_merchants
+                    WHERE recordId = %s
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (record_id,),
+                )
+                if not existing:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "code": "record_not_found",
+                        "error": "Monthly new merchant record was not found.",
+                    }
+
+            duplicate_sql = """
+                SELECT recordId
+                FROM cnpscy_oi_monthly_new_merchants
+                WHERE reportMonth = %s
+                  AND (
+                    merchantName = %s
+            """
+            duplicate_params: list[Any] = [
+                values["reportMonth"],
+                values["merchantName"],
+            ]
+            if values["merchantId"]:
+                duplicate_sql += " OR merchantId = %s"
+                duplicate_params.append(values["merchantId"])
+            duplicate_sql += ")"
+            if record_id is not None:
+                duplicate_sql += " AND recordId <> %s"
+                duplicate_params.append(record_id)
+            duplicate_sql += " LIMIT 1 FOR UPDATE"
+            duplicate = fetch_one(conn, duplicate_sql, tuple(duplicate_params))
+            if duplicate:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "duplicate_month_merchant",
+                    "error": "This merchant is already recorded for the selected month.",
+                }
+
+            with conn.cursor() as cursor:
+                if record_id is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO cnpscy_oi_monthly_new_merchants
+                            (
+                                reportMonth,
+                                merchantId,
+                                merchantName,
+                                businessManager,
+                                gmvMonthlyTarget,
+                                completionReward,
+                                createdBy,
+                                updatedBy,
+                                createdAt,
+                                updatedAt
+                            )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            values["reportMonth"],
+                            values["merchantId"] or None,
+                            values["merchantName"],
+                            values["businessManager"] or None,
+                            values["gmvMonthlyTarget"],
+                            values["completionReward"] or None,
+                            values["updatedBy"],
+                            values["updatedBy"],
+                            now,
+                            now,
+                        ),
+                    )
+                    record_id = int(cursor.lastrowid)
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE cnpscy_oi_monthly_new_merchants
+                        SET
+                            reportMonth = %s,
+                            merchantId = %s,
+                            merchantName = %s,
+                            businessManager = %s,
+                            gmvMonthlyTarget = %s,
+                            completionReward = %s,
+                            updatedBy = %s,
+                            updatedAt = %s
+                        WHERE recordId = %s
+                        """,
+                        (
+                            values["reportMonth"],
+                            values["merchantId"] or None,
+                            values["merchantName"],
+                            values["businessManager"] or None,
+                            values["gmvMonthlyTarget"],
+                            values["completionReward"] or None,
+                            values["updatedBy"],
+                            now,
+                            record_id,
+                        ),
+                    )
+            record = _monthly_new_merchant_record(conn, int(record_id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "ok": True,
+        "action": "created" if values["recordId"] is None else "updated",
+        "record": _monthly_new_merchant_api_record(record),
+    }
+
+
+def delete_monthly_new_merchant(
+    record_id: Any,
+    *,
+    deleted_by: str,
+) -> dict[str, Any]:
+    normalized_id = _monthly_new_merchant_record_id(record_id)
+    if normalized_id is None:
+        raise ValueError("recordId is required")
+    actor = str(deleted_by or "offer-intelligence-ui").strip()[:128] or "offer-intelligence-ui"
+
+    with db_connection() as conn:
+        ensure_monthly_new_merchants_schema(conn)
+        try:
+            conn.begin()
+            record = fetch_one(
+                conn,
+                """
+                SELECT
+                    recordId,
+                    reportMonth,
+                    merchantId,
+                    merchantName,
+                    businessManager,
+                    gmvMonthlyTarget,
+                    completionReward,
+                    createdBy,
+                    updatedBy,
+                    createdAt,
+                    updatedAt
+                FROM cnpscy_oi_monthly_new_merchants
+                WHERE recordId = %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (normalized_id,),
+            )
+            if not record:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "record_not_found",
+                    "error": "Monthly new merchant record was not found.",
+                }
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM cnpscy_oi_monthly_new_merchants WHERE recordId = %s",
+                    (normalized_id,),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "ok": True,
+        "action": "deleted",
+        "deletedBy": actor,
+        "record": _monthly_new_merchant_api_record(record),
     }
 
 
