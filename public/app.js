@@ -17,6 +17,13 @@
   const originalOfferTiers = [];
   let tierOverrides = loadTierOverrides();
   var _trendContextData = null;
+  // ── Live chatbot data (refreshed from DB to match Tier Sheet) ──
+  var _liveChatbotOffers = null;        // Array of fresh offer objects
+  var _liveChatbotOffersById = null;    // Map merchantId → fresh offer
+  var _liveChatbotDataLoaded = false;
+  var _liveChatbotDataLoading = false;
+  var _liveChatbotDataPromise = null;  // so callers can await an in-progress load
+  // ──
   const sheetPaymentCycles = buildSheetPaymentCycleIndex();
   offers.forEach((offer, index) => {
     originalOfferTiers[index] = offer.tier || "";
@@ -132,6 +139,7 @@
   const DB_TIER_SUMMARY_API = "/api/ui/db/tier-summary";
   const DB_TIER_SHEET_UI_API = "/api/ui/db/tier_sheet";
   const DB_TIER1_MERCHANTS_UI_API = "/api/ui/db/tier1-merchants";
+  const DB_CHATBOT_OFFERS_UI_API = "/api/ui/db/chatbot-offers";
   const DB_STATUS_AUTO_REFRESH_MS = 5 * 60 * 1000;
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const DEFAULT_TIER_REPORT_END_DATE = localDateKey(new Date());
@@ -4012,6 +4020,60 @@
     return null;
   }
 
+  /** Load fresh offers data from the live DB endpoint (bypasses 24h cache). */
+  async function loadLiveChatbotData() {
+    if (_liveChatbotDataLoaded) return;
+    if (_liveChatbotDataLoading) return _liveChatbotDataPromise;
+    if (window.__OFFER_INTELLIGENCE_TEST__) return;  // no fetch in test env
+    _liveChatbotDataLoading = true;
+    _liveChatbotDataPromise = (async function() {
+      try {
+        var resp = await fetch(DB_CHATBOT_OFFERS_UI_API, { cache: "no-store" });
+        if (resp.ok) {
+          var json = await resp.json();
+          if (json && Array.isArray(json.offers) && json.offers.length > 0) {
+            _liveChatbotOffers = json.offers;
+            _liveChatbotOffersById = new Map();
+            for (var i = 0; i < _liveChatbotOffers.length; i++) {
+              var o = _liveChatbotOffers[i];
+              var mid = String(o.merchantId || "").trim();
+              if (mid) _liveChatbotOffersById.set(mid, o);
+            }
+            _liveChatbotDataLoaded = true;
+          }
+        }
+      } catch (_e) {
+        // Live data unavailable — fall back to cached offers
+      } finally {
+        _liveChatbotDataLoading = false;
+      }
+    })();
+    return _liveChatbotDataPromise;
+  }
+
+  /** Find a merchant's offer, preferring live data (loaded from DB) over cached. */
+  function findLiveOffer(name) {
+    if (!name) return null;
+    var lower = name.toLowerCase().trim();
+    // Try live data first
+    if (_liveChatbotDataLoaded && _liveChatbotOffers) {
+      for (var i = 0; i < _liveChatbotOffers.length; i++) {
+        if ((_liveChatbotOffers[i].brand || "").toLowerCase() === lower
+            || (_liveChatbotOffers[i].merchantName || "").toLowerCase() === lower) {
+          return _liveChatbotOffers[i];
+        }
+      }
+      for (var i = 0; i < _liveChatbotOffers.length; i++) {
+        if ((_liveChatbotOffers[i].brand || "").toLowerCase().indexOf(lower) !== -1
+            || (_liveChatbotOffers[i].merchantName || "").toLowerCase().indexOf(lower) !== -1) {
+          return _liveChatbotOffers[i];
+        }
+      }
+    }
+    // Fall back to cached offers
+    return findOfferByMerchantName(name);
+  }
+
   function offersInCategory(categoryName) {
     if (!categoryName) return [];
     var lower = categoryName.toLowerCase().trim();
@@ -4346,7 +4408,11 @@
     // Aggregate totals from the offer
     var totalRevenue = Number(offer.salesAmount) || 0;
     var totalOrders = Number(offer.orders) || 0;
-    var totalClicks = Number(offer.clicks) || 0;
+    // clicks 可能是 0（缓存数据不完整），此时用 dpv/atc 作为替代估算
+    var totalClicks = Number(offer.clicks)
+      || Number(offer.dpv)       // Detail Page Views
+      || Number(offer.atc)       // Add To Cart
+      || 0;
     var totalCommission = Number(offer.affCommission || offer.affiliatePayout) || 0;
     var n = months.length;
 
@@ -4991,6 +5057,9 @@
     if (!target) return "merchant";
     var t = tierFromPrompt(target);
     if (t) return "tier";
+    // 先检查是否精确匹配已知商家，避免商家名被误判为品类
+    var matched = findLiveOffer(target);
+    if (matched) return "merchant";
     var cat = categoryForPrompt(target);
     if (cat && offersInCategory(cat).length > 0) return "category";
     return "merchant";
@@ -5016,6 +5085,9 @@
       var container = document.getElementById(placeholderId);
       if (!container) return;
 
+      // Load fresh data in background so trend fallback uses live DB data
+      loadLiveChatbotData();
+
       try {
         // Extract month count from prompt (e.g., "近三个月" → 3)
         var requestedMonthCount = extractMonthCount(prompt) || 0;
@@ -5030,7 +5102,9 @@
         // Merchant trend path
         // ════════════════════════════════════════════════
         if (entityType === "merchant") {
-          var offer = analysisTarget ? findOfferByMerchantName(analysisTarget) : null;
+          // Ensure live data is loaded so metrics match Tier Sheet
+          await loadLiveChatbotData();
+          var offer = analysisTarget ? findLiveOffer(analysisTarget) : null;
           if (!offer) {
             container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
               + (zh ? "未找到 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。" : "No data found for <strong>" + escapeHtml(analysisTarget) + "</strong>.")
@@ -5047,12 +5121,20 @@
 
           // Estimated fallback for merchant
           if (!monthlyMetrics || monthlyMetrics.length < 2) {
-            var basicTrend = generateTrendFromOfferSummary(offer, requestedMonthCount);
+            // Use live DB data if available for accurate metrics (clicks, orders, revenue, etc.)
+            var fallbackOffer = offer;
+            if (_liveChatbotDataLoaded && _liveChatbotOffersById) {
+              var mid = String(offer.merchantId || "").trim();
+              if (mid && _liveChatbotOffersById.has(mid)) {
+                fallbackOffer = _liveChatbotOffersById.get(mid);
+              }
+            }
+            var basicTrend = generateTrendFromOfferSummary(fallbackOffer, requestedMonthCount);
             if (basicTrend) {
               renderEstimatedTrend(basicTrend, label, container, zh, language);
               return;
             }
-            renderMerchantInsufficientData(offer, analysisTarget, zh, container);
+            renderMerchantInsufficientData(fallbackOffer, analysisTarget, zh, container);
             return;
           }
         }
@@ -5296,7 +5378,11 @@
 
       var totalRevenue = Number(o.salesAmount) || 0;
       var totalOrders = Number(o.orders) || 0;
-      var totalClicks = Number(o.clicks) || 0;
+      // clicks 可能是 0（缓存数据不完整），用 dpv/atc 代替估算
+      var totalClicks = Number(o.clicks)
+        || Number(o.dpv)
+        || Number(o.atc)
+        || 0;
       var totalCommission = Number(o.affCommission || o.affiliatePayout) || 0;
 
       for (var j = 0; j < months.length; j++) {
@@ -5830,12 +5916,42 @@
 
   function analysisAnswer(prompt, params, extra) {
     console.log("[analysis] analysisAnswer called, prompt:", prompt, "params:", JSON.stringify(params));
+    // Kick off live data refresh in background so trend/merchant lookups use DB-fresh data
+    loadLiveChatbotData();
     try {
       var language = responseLanguageFor(prompt);
       var zh = language === "zh";
       var analysisType = params.analysisType;
       var analysisTarget = params.analysisTarget;
       var trendMetric = params.trendMetric || null;
+
+      // LLM 未提取目标时，尝试从 prompt 中提取实体名称
+      // 解决 "Roborock趋势" "Hcalory趋势" 等 LLM 无法正确分类的场景
+      if (!analysisTarget) {
+        var cleanedTarget = prompt
+          .replace(/趋势|trend|分析|analysis|评估|诊断|近\s*\d+\s*(个\s*)?月|上个季度|今年以来|过去|最近/gi, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (cleanedTarget && cleanedTarget !== prompt.trim()) {
+          var matchedOffer = findLiveOffer(cleanedTarget);
+          if (matchedOffer) {
+            analysisTarget = matchedOffer.brand || matchedOffer.merchantName;
+          }
+          if (!analysisTarget) {
+            var catName = categoryForPrompt(cleanedTarget);
+            if (catName) analysisTarget = catName;
+          }
+          if (!analysisTarget) {
+            var tierName = tierFromPrompt(cleanedTarget);
+            if (tierName) analysisTarget = tierName;
+          }
+        }
+      }
+
+      // 将提取的目标写回 params，确保下游函数（如 renderTrendLoadingPlaceholder）能获取到
+      if (analysisTarget && analysisTarget !== params.analysisTarget) {
+        params = Object.assign({}, params, { analysisTarget: analysisTarget });
+      }
 
       // Frontend fallback: detect trend intent from time range / trend keywords
       // (catches cases where LLM didn't return analysisType: "trend")
@@ -5968,7 +6084,7 @@
 
       // Set context
       if (analysisType === "merchant") {
-        var offer = findOfferByMerchantName(analysisTarget);
+        var offer = findLiveOffer(analysisTarget);
         setContext(offer ? buildMerchantContext(offer) : null);
       } else if (analysisType === "category") {
         var catRows = offersInCategory(analysisTarget);
@@ -6018,7 +6134,13 @@
   function detectQueryIntent(userMessage) {
     if (state.llmClassifyResult && state.llmClassifyResult.intent) {
       const intent = state.llmClassifyResult.intent;
+      const params = state.llmClassifyResult.params;
       state.llmClassifyResult = null;
+      // 如果 LLM 返回的是 merchant 但查询中含分析/趋势关键词，
+      // 说明 LLM 没匹配到该商家的 few-shot 示例，应优先走分析路径
+      if (intent === "merchant" && (/趋势|trend/i.test(userMessage) || /\b(?:analyze|analyse|analysis|performance|health\s*check)\b/i.test(userMessage))) {
+        return "analysis";
+      }
       return intent;
     }
     const lower = userMessage.toLowerCase().trim();
@@ -6036,6 +6158,8 @@
     // keyword 搜索：仅当没有匹配到类别时，才优先于 merchant/category
     if (!category && keywordRequest && hasKeywordSearchIntent(userMessage, keywordRequest, { category })) return "keyword";
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
+    // 分析关键词（含"趋势"）优先于商家强匹配，避免 "Hcalory趋势" 被拦截为 merchant
+    if (hasAnalysisKeywords) return "analysis";
     if (hasStrongMerchantLookup(userMessage, category)) return "merchant";
     if (zhIntent === "recommendation") return "recommendation";
     if (metricSort) return "recommendation";
@@ -7820,6 +7944,9 @@
   }
 
   function answerPrompt(prompt) {
+    // Load fresh chatbot data from DB in background (non-blocking)
+    loadLiveChatbotData();
+
     // Extract LLM params into state.llmParams so downstream fns (paymentAnswer) can use them.
     // detectQueryIntent will consume state.llmClassifyResult.intent as before.
     state.llmParams = (state.llmClassifyResult && state.llmClassifyResult.params) || {};
@@ -7847,10 +7974,18 @@
     if (asinResults.length && intent === "asin") return asinAnswer(asinResults);
 
     // Merchant ID: LLM-extracted ID or regex lookup
+    // Prefer live DB data to match Tier Sheet metrics
     const exactFromLLM = p.merchantId;
-    const exact = exactFromLLM
+    const exactCache = exactFromLLM
       ? offers.find(function(o) { return o.merchantId === exactFromLLM; }) || null
       : findByMerchantId(prompt);
+    var exact = exactCache;
+    if (exact) {
+      var mid = String(exact.merchantId || "").trim();
+      if (mid && _liveChatbotOffersById && _liveChatbotOffersById.has(mid)) {
+        exact = _liveChatbotOffersById.get(mid);
+      }
+    }
     if (exact && intent !== "analysis") return merchantOverview(exact, "", language);
 
     // Payment cycle filter: LLM-extracted or regex
@@ -8069,7 +8204,15 @@
 
     const matches = findMerchantMatches(prompt);
     if (matches.length === 1 || (matches[0] && matches[0].adjusted >= 95 && (!matches[1] || matches[0].adjusted - matches[1].adjusted > 10))) {
-      return merchantOverview(matches[0].offer, "", language);
+      var bestOffer = matches[0].offer;
+      // Prefer live DB offer for matching Tier Sheet metrics
+      if (bestOffer) {
+        var mid = String(bestOffer.merchantId || "").trim();
+        if (mid && _liveChatbotOffersById && _liveChatbotOffersById.has(mid)) {
+          bestOffer = _liveChatbotOffersById.get(mid);
+        }
+      }
+      return merchantOverview(bestOffer, "", language);
     }
     return closestMatchesHtml(matches, prompt);
   }
@@ -9014,6 +9157,29 @@
     });
   }
 
+  // ★ Deep Mode: replace Deep Window content with context panel overview
+  // 使商家/ASIN/品类分析的 Deep Window 内容直接替换为左侧 Overview 的丰富信息
+  function _syncContextOverviewToDeepPanel(panel) {
+    if (!els.recBox || !panel.sectionsEl) return;
+    var contextHtml = els.recBox.innerHTML;
+    if (!contextHtml || contextHtml.length < 30) return;
+
+    // 只替换 merchant / asin / category 类型，这些类型的 Overview 比原始回答更丰富
+    var context = state.currentContext;
+    if (!context) return;
+    var syncTypes = ["merchant", "asin", "category"];
+    if (syncTypes.indexOf(context.type) === -1) return;
+
+    // 已经替换过则跳过
+    if (panel.sectionsEl.querySelector(".deep-context-overview")) return;
+
+    var headingText = state.language === "zh" ? "概览" : "Overview";
+    panel.sectionsEl.innerHTML = '<div class="deep-context-overview">'
+      + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
+      + '<div class="deep-overview-body">' + contextHtml + '</div>'
+      + '</div>';
+  }
+
   // ★ Deep Mode: summary card for chat (click to bring panel to front)
   function _deepQuickSummaryHtml(panel, prompt, html) {
     var cardKey = ++_deepCardKeyCounter;
@@ -9496,6 +9662,8 @@ var _NUMERIC_COL_PATTERNS = [
       var html = answerPrompt(prompt);
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
+        // 同步左侧 Overview 内容到 Deep Window，使信息一致
+        _syncContextOverviewToDeepPanel(panel);
         addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
         addMessage("assistant", html);

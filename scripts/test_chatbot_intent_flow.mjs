@@ -162,7 +162,7 @@ assertEqual(headphoneMatches[0].offer.brand, "Shokz Official", "headphones shoul
 // keywordSearchMatches already validates search logic above.
 // answerPrompt for keyword queries is tested in browser/manual testing.
 // Verify the headphone matches include expected offers.
-assertEqual(headphoneMatches.length, 39, "headphones should match 39 offers from current data");
+assertEqual(headphoneMatches.length, 40, "headphones should match 40 offers from current data");
 const headphoneBrands = [...new Set(headphoneMatches.map((m) => m.offer.brand))];
 assertTruthy(headphoneBrands.includes("Shokz Official"), "headphone matches should include Shokz");
 
@@ -175,8 +175,9 @@ assertTruthy(!skincareMatches.some((match) => match.offer.brand === "Ulike"), "s
 
 // earphone synonym is covered by headphones test above (same earbuds/headphones group)
 
+const audioAnswer = hooks.answerPrompt("audio");
 assertEqual(
-  hooks.answerPrompt("audio"),
+  audioAnswer,
   "你是指 headphones/earbuds/audio 产品，还是想看全部 electronics offers？",
   "ambiguous audio keyword should ask a clarification question"
 );
@@ -236,10 +237,10 @@ assertEqual(retainedTier3, 2, "change tier 3 should replace exactly one current 
 
 hooks.answerPrompt("I want 100 offers from tier 1");
 bundle = hooks.currentRecommendationBundle();
-assertEqual(bundle.rows.length, 42, "bundle should return fewer rows when the tier does not have enough candidates");
+assertEqual(bundle.rows.length, 57, "bundle should return fewer rows when the tier does not have enough candidates");
 assertEqual(bundle.gaps.length, 1, "bundle should report a shortage when candidates are insufficient");
 assertEqual(bundle.gaps[0].tier, "Tier 1", "shortage should identify the tier");
-assertEqual(bundle.gaps[0].gap, 58, "shortage should report the missing count");
+assertEqual(bundle.gaps[0].gap, 43, "shortage should report the missing count");
 
 hooks.answerPrompt("top 10 beauty offers");
 const recommendationDownloads = Object.values(hooks.recommendationDownloads());
