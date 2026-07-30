@@ -147,6 +147,21 @@ assertEqual(
   ["Tier 3"],
   "the selected Tier should survive the portfolio loading state"
 );
+assertEqual(
+  hooks.publisherMetricEpc(metric(100)),
+  10,
+  "publisher EPC should use sales divided by clicks"
+);
+assertEqual(
+  hooks.publisherMetricConversionRate(metric(100)),
+  0.2,
+  "publisher conversion should use orders divided by clicks"
+);
+assertEqual(
+  hooks.publisherMetricConversionRate({ clicks: 0, orders: 4, sales: 100 }),
+  0,
+  "publisher conversion should stay a ratio when clicks are unavailable"
+);
 
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 if (!indexHtml.includes('id="publisherPortfolioTier"')) {
@@ -154,6 +169,12 @@ if (!indexHtml.includes('id="publisherPortfolioTier"')) {
 }
 if (!indexHtml.includes("<th>Tier</th>")) {
   throw new Error("publisher portfolio table should expose a Tier column");
+}
+if (!indexHtml.includes('<th class="publisher-numeric">EPC</th>')) {
+  throw new Error("publisher portfolio table should expose a right-aligned EPC column");
+}
+if (!indexHtml.includes('data-i18n="publishers.conversion">Conversion</th>')) {
+  throw new Error("publisher portfolio table should expose a Conversion ratio column");
 }
 
 console.log("Publisher manager and Tier frontend checks passed");

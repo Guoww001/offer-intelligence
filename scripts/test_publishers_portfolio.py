@@ -96,12 +96,18 @@ def main():
     assert_equal(alpha["total"]["orders"], 3, "merchant orders")
     assert_close(alpha["total"]["sales"], 130, "merchant sales")
     assert_close(alpha["total"]["aov"], 130 / 3, "merchant AOV")
+    assert_close(alpha["total"]["epc"], 130 / 25, "merchant EPC")
+    assert_close(alpha["total"]["conversionRate"], 3 / 25, "merchant conversion")
     assert_equal(beta["total"]["aov"], None, "zero-order AOV")
+    assert_equal(beta["total"]["epc"], 0.0, "zero-sales EPC")
+    assert_equal(beta["total"]["conversionRate"], 0.0, "zero-order conversion")
 
     summary = offer_db.publisher_portfolio_summary(merchants)
     assert_equal(summary["merchantCount"], 2, "summary merchant count")
     assert_equal(summary["topCategory"], "Electronics", "top category")
     assert_close(summary["total"]["aov"], 130 / 3, "summary AOV")
+    assert_close(summary["total"]["epc"], 130 / 29, "summary EPC")
+    assert_close(summary["total"]["conversionRate"], 3 / 29, "summary conversion")
     assert_close(summary["weightedCommissionRate"], 15, "weighted commission rate")
 
     if "cnpscy_oi_offer_sheet_metadata" in build_publishers_data.MERCHANT_SQL:
@@ -112,6 +118,18 @@ def main():
         raise AssertionError("publisher portfolio query must include merchant commission rate")
     if "cnpscy_oi_tier_assignments" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
         raise AssertionError("publisher portfolio query must include the database-backed merchant tier")
+    if "SUM(COALESCE(total_clicks, 0)) AS order_clicks" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("publisher clicks must use the order table's total_clicks field")
+    if "FROM cnpscy_amazon_click" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("publisher clicks must fall back to the Amazon click table")
+    if "ON o.user_id = c.user_id" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("click fallback must join at publisher grain")
+    if "AND o.advert_id = c.advert_id" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("click fallback must join at merchant grain")
+    if "WHEN MAX(o.order_clicks) > 0" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("positive order-table clicks must take precedence")
+    if "ELSE COALESCE(MAX(c.tracked_clicks), 0)" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("zero order-table clicks must use tracked click fallback")
 
     invalid_inputs = [
         ({"user_id": "invalid"}, "invalid publisher id"),
@@ -131,7 +149,15 @@ def main():
 
     def fake_fetch_all(_conn, sql, params=None):
         if "FROM cnpscy_amazon_order" in sql:
-            assert_equal(params, (7, 20260701, 20260728), "portfolio query params")
+            assert_equal(
+                params,
+                (7, 20260701, 20260728, 7, 20260701, 20260728),
+                "portfolio query params",
+            )
+            if "order_time_day BETWEEN %s AND %s" not in sql:
+                raise AssertionError("order-table date range was not applied")
+            if "time_day BETWEEN %s AND %s" not in sql:
+                raise AssertionError("click-table date range was not applied")
             return ROWS
         if "FROM cnpscy_user" in sql:
             return [{"user_id": 7, "user_name": "Media Seven", "admin_name": "Fiona"}]
@@ -149,6 +175,12 @@ def main():
         )
 
     assert_equal(payload["publisher"]["userName"], "Media Seven", "publisher identity")
+    assert_equal(payload["grain"], "user_id + advert_id", "click metric grain")
+    assert_equal(
+        payload["clickSource"],
+        "cnpscy_amazon_order.total_clicks with cnpscy_amazon_click.click fallback",
+        "click metric source",
+    )
     assert_equal(payload["dateRange"]["startDate"], "2026-07-01", "portfolio start date")
     assert_equal(payload["summary"]["merchantCount"], 2, "payload merchant count")
     assert_equal(payload["merchants"][1]["total"]["aov"], None, "payload zero-order AOV")

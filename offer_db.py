@@ -2719,7 +2719,10 @@ SELECT
     MAX(COALESCE(NULLIF(TRIM(t.tier), ''), 'Unknown')) AS tier,
     MAX(a.advert_money) AS commission_rate,
     {PUBLISHER_PORTFOLIO_MARKET_SQL} AS market,
-    MAX(o.clicks) AS clicks,
+    CASE
+        WHEN MAX(o.order_clicks) > 0 THEN MAX(o.order_clicks)
+        ELSE COALESCE(MAX(c.tracked_clicks), 0)
+    END AS clicks,
     MAX(o.dpv) AS dpv,
     MAX(o.atc) AS atc,
     MAX(o.orders) AS orders,
@@ -2730,7 +2733,7 @@ FROM (
     SELECT
         user_id,
         advert_id,
-        SUM(COALESCE(clicks, 0)) AS clicks,
+        SUM(COALESCE(total_clicks, 0)) AS order_clicks,
         SUM(COALESCE(detail_page_views, 0)) AS dpv,
         SUM(COALESCE(add_to_carts, 0)) AS atc,
         SUM(COALESCE(total_purchases, 0)) AS orders,
@@ -2741,9 +2744,23 @@ FROM (
     WHERE user_id = %s
       AND advert_id IS NOT NULL
       AND advert_id > 0
-      {{date_filter}}
+      {{order_date_filter}}
     GROUP BY user_id, advert_id
 ) o
+LEFT JOIN (
+    SELECT
+        user_id,
+        advert_id,
+        SUM(COALESCE(click, 0)) AS tracked_clicks
+    FROM cnpscy_amazon_click
+    WHERE user_id = %s
+      AND advert_id IS NOT NULL
+      AND advert_id > 0
+      {{click_date_filter}}
+    GROUP BY user_id, advert_id
+) c
+    ON o.user_id = c.user_id
+    AND o.advert_id = c.advert_id
 LEFT JOIN cnpscy_advert a ON o.advert_id = a.advert_id
 LEFT JOIN (
     SELECT advert_id, MAX(advert_store_country_name) AS advert_store_country_name
@@ -2779,6 +2796,8 @@ def _publisher_metric_bucket() -> dict[str, Any]:
         "allCommission": 0.0,
         "affCommission": 0.0,
         "aov": None,
+        "epc": 0.0,
+        "conversionRate": 0.0,
         "effectiveCommissionRate": None,
     }
 
@@ -2794,10 +2813,13 @@ def _accumulate_publisher_metric(target: dict[str, Any], row: dict[str, Any]) ->
 
 
 def _finalize_publisher_metric(metric: dict[str, Any]) -> None:
+    clicks = int(metric.get("clicks") or 0)
     orders = int(metric.get("orders") or 0)
     sales = float(metric.get("sales") or 0)
     commission = float(metric.get("allCommission") or 0)
     metric["aov"] = sales / orders if orders > 0 else None
+    metric["epc"] = sales / clicks if clicks > 0 else 0.0
+    metric["conversionRate"] = orders / clicks if clicks > 0 else 0.0
     metric["effectiveCommissionRate"] = commission / sales * 100 if sales > 0 else None
 
 
@@ -3005,28 +3027,40 @@ def publisher_portfolio_payload(
     if cached is not None and now - cached[0] < PUBLISHERS_CACHE_TTL:
         return cached[1]
 
-    params: list[Any] = [normalized_user_id]
-    date_filter = ""
+    order_params: list[Any] = [normalized_user_id]
+    click_params: list[Any] = [normalized_user_id]
+    order_date_filter = ""
+    click_date_filter = ""
     if range_start is not None and range_end is not None:
-        date_filter = "AND order_time_day BETWEEN %s AND %s"
-        params.extend(
-            [
-                int(range_start.strftime("%Y%m%d")),
-                int(range_end.strftime("%Y%m%d")),
-            ]
-        )
+        order_date_filter = "AND order_time_day BETWEEN %s AND %s"
+        click_date_filter = "AND time_day BETWEEN %s AND %s"
+        date_params = [
+            int(range_start.strftime("%Y%m%d")),
+            int(range_end.strftime("%Y%m%d")),
+        ]
+        order_params.extend(date_params)
+        click_params.extend(date_params)
     elif range_start is not None:
-        date_filter = "AND order_time_day >= %s"
-        params.append(int(range_start.strftime("%Y%m%d")))
+        order_date_filter = "AND order_time_day >= %s"
+        click_date_filter = "AND time_day >= %s"
+        date_param = int(range_start.strftime("%Y%m%d"))
+        order_params.append(date_param)
+        click_params.append(date_param)
     elif range_end is not None:
-        date_filter = "AND order_time_day <= %s"
-        params.append(int(range_end.strftime("%Y%m%d")))
+        order_date_filter = "AND order_time_day <= %s"
+        click_date_filter = "AND time_day <= %s"
+        date_param = int(range_end.strftime("%Y%m%d"))
+        order_params.append(date_param)
+        click_params.append(date_param)
 
     with db_connection() as conn:
         rows = fetch_all(
             conn,
-            PUBLISHER_PORTFOLIO_SQL.format(date_filter=date_filter),
-            tuple(params),
+            PUBLISHER_PORTFOLIO_SQL.format(
+                order_date_filter=order_date_filter,
+                click_date_filter=click_date_filter,
+            ),
+            tuple(order_params + click_params),
         )
         user_rows = fetch_all(
             conn,
@@ -3052,6 +3086,11 @@ def publisher_portfolio_payload(
         "ok": True,
         "generatedAt": utc_now_iso(),
         "source": "cnpscy_amazon_order",
+        "clickSource": (
+            "cnpscy_amazon_order.total_clicks with "
+            "cnpscy_amazon_click.click fallback"
+        ),
+        "grain": "user_id + advert_id",
         "dateRange": {
             "startDate": range_start.isoformat() if range_start else None,
             "endDate": range_end.isoformat() if range_end else None,
