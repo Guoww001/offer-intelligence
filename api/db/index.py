@@ -5,10 +5,12 @@ import json
 from auth import _read_json_body, require_auth, session_payload
 from offer_db import (
     add_merchant_to_tier1,
+    delete_monthly_new_merchant,
     first_query_value,
     handle_options,
     int_query_value,
     merchant_payload,
+    monthly_new_merchants_payload,
     offers_payload,
     parse_query,
     product_keywords_payload,
@@ -23,6 +25,7 @@ from offer_db import (
     tier1_merchant_search_payload,
     tier_sheet_payload,
     tier_summary_payload,
+    upsert_monthly_new_merchant,
 )
 
 
@@ -237,6 +240,74 @@ def handle_ui_tier1_merchants(target, query, method):
         send_db_error(target, error)
 
 
+def handle_ui_monthly_new_merchants(target, query, method):
+    if method == "GET":
+        try:
+            send_json(
+                target,
+                200,
+                monthly_new_merchants_payload(
+                    first_query_value(query, "month") or None,
+                ),
+                methods="GET, POST, OPTIONS",
+            )
+        except ValueError as error:
+            send_json(
+                target,
+                400,
+                {"ok": False, "error": str(error)},
+                methods="GET, POST, OPTIONS",
+            )
+        except Exception as error:
+            send_db_error(target, error)
+        return
+
+    if method != "POST":
+        send_json(
+            target,
+            405,
+            {"ok": False, "error": "Method not allowed"},
+            methods="GET, POST, OPTIONS",
+        )
+        return
+
+    try:
+        body = _read_json_body(target)
+        action = str(body.get("action") or "upsert").strip().lower()
+        user = session_payload(target.headers) or {}
+        actor = str(user.get("sub") or "offer-intelligence-ui")
+        if action == "upsert":
+            result = upsert_monthly_new_merchant(body, updated_by=actor)
+        elif action == "delete":
+            result = delete_monthly_new_merchant(
+                body.get("recordId"),
+                deleted_by=actor,
+            )
+        else:
+            send_json(
+                target,
+                400,
+                {"ok": False, "error": "Unsupported monthly new merchant action"},
+                methods="GET, POST, OPTIONS",
+            )
+            return
+
+        if result.get("ok"):
+            send_json(target, 200, result, methods="GET, POST, OPTIONS")
+            return
+        status = 404 if result.get("code") == "record_not_found" else 409
+        send_json(target, status, result, methods="GET, POST, OPTIONS")
+    except (ValueError, json.JSONDecodeError) as error:
+        send_json(
+            target,
+            400,
+            {"ok": False, "error": str(error) or "Invalid monthly new merchant request"},
+            methods="GET, POST, OPTIONS",
+        )
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def app(environ, start_response):
     target = WsgiTarget(environ)
     method = str(environ.get("REQUEST_METHOD") or "GET").upper()
@@ -246,11 +317,18 @@ def app(environ, start_response):
     if method == "OPTIONS":
         handle_options(
             target,
-            methods="GET, POST, OPTIONS" if route == "ui-tier1-merchants" else "GET, OPTIONS",
+            methods=(
+                "GET, POST, OPTIONS"
+                if route in {"ui-tier1-merchants", "ui-monthly-new-merchants"}
+                else "GET, OPTIONS"
+            ),
         )
     elif route == "ui-tier1-merchants":
         if require_auth(target):
             handle_ui_tier1_merchants(target, query, method)
+    elif route == "ui-monthly-new-merchants":
+        if require_auth(target):
+            handle_ui_monthly_new_merchants(target, query, method)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
     elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-tier-summary", "ui-publishers"}:

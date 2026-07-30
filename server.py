@@ -40,12 +40,14 @@ from auth import handle_auth_login, handle_auth_logout, handle_auth_options, han
 from offer_db import (
     add_merchant_to_tier1,
     chatbot_offers_payload,
+    delete_monthly_new_merchant,
     DIGITS_RE,
     OfferDbConfigError,
     OfferDbError,
     first_query_value,
     int_query_value,
     merchant_payload,
+    monthly_new_merchants_payload,
     offers_payload,
     product_keywords_payload,
     publisher_portfolio_payload,
@@ -58,6 +60,7 @@ from offer_db import (
     tier1_merchant_search_payload,
     tier_sheet_payload,
     tier_summary_payload,
+    upsert_monthly_new_merchant,
 )
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
@@ -890,6 +893,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.handle_tier1_merchant_add()
             return
+        if parsed.path == "/api/ui/db/monthly-new-merchants":
+            if not require_auth(self):
+                return
+            self.handle_monthly_new_merchants_write()
+            return
         if parsed.path == "/api/chat/classify":
             if not require_auth(self):
                 return
@@ -1135,6 +1143,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"ok": False, "error": "Unsupported Tier 1 merchant action"})
                 return
 
+            if parsed.path == "/api/ui/db/monthly-new-merchants":
+                self.send_json(200, monthly_new_merchants_payload(
+                    first_query_value(query, "month") or None,
+                ))
+                return
+
             if parsed.path == "/api/ui/db/publishers":
                 user_id = first_query_value(query, "userId")
                 if user_id:
@@ -1173,6 +1187,39 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(status, result)
         except (ValueError, json.JSONDecodeError):
             self.send_json(400, {"ok": False, "error": "Invalid Tier 1 merchant request"})
+        except Exception as error:
+            self.send_db_error(error)
+
+    def handle_monthly_new_merchants_write(self):
+        try:
+            body = _read_json_body(self)
+            user = session_payload(self.headers) or {}
+            actor = str(user.get("sub") or "offer-intelligence-ui")
+            action = str(body.get("action") or "upsert").strip().lower()
+            if action == "upsert":
+                result = upsert_monthly_new_merchant(body, updated_by=actor)
+            elif action == "delete":
+                result = delete_monthly_new_merchant(
+                    body.get("recordId"),
+                    deleted_by=actor,
+                )
+            else:
+                self.send_json(400, {
+                    "ok": False,
+                    "error": "Unsupported monthly new merchant action",
+                })
+                return
+
+            if result.get("ok"):
+                self.send_json(200, result)
+                return
+            status = 404 if result.get("code") == "record_not_found" else 409
+            self.send_json(status, result)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json(400, {
+                "ok": False,
+                "error": str(error) or "Invalid monthly new merchant request",
+            })
         except Exception as error:
             self.send_db_error(error)
 

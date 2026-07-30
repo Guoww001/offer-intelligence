@@ -115,6 +115,12 @@
             </span>
             <span data-i18n="nav.publishers">Publishers</span>
           </button>
+          <button class="page-nav-button" id="monthlyNewMerchantsNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 2v4M16 2v4M5 9h14"/><path d="M12 12v5M9.5 14.5h5"/></svg>
+            </span>
+            <span data-i18n="nav.monthlyNewMerchants">New merchants</span>
+          </button>
           <div class="nav-group">
             <button class="page-nav-button report-nav" id="sheetsNav" type="button" aria-expanded="true" aria-controls="reportsSubnav">
               <span class="nav-icon" aria-hidden="true">
@@ -666,6 +672,131 @@
             </div>
           </section>
         </section>
+
+        <section class="monthly-new-merchants-page hidden" id="monthlyNewMerchantsPage" aria-label="Monthly new merchants">
+          <header class="monthly-new-merchants-header">
+            <div>
+              <h2 data-i18n="monthlyNewMerchants.title">Monthly new merchants</h2>
+              <p data-i18n="monthlyNewMerchants.subtitle">Plan this month's new merchants and save every entry to the database</p>
+            </div>
+            <div class="monthly-new-merchants-header-actions">
+              <label class="monthly-new-merchants-month-control">
+                <span data-i18n="label.Month">Month</span>
+                <input id="monthlyNewMerchantsMonth" type="month" aria-label="Monthly new merchant report month" />
+              </label>
+              <button class="monthly-new-merchants-add" id="monthlyNewMerchantAdd" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                <span data-i18n="monthlyNewMerchants.add">Add merchant</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="monthly-new-merchants-notice hidden" id="monthlyNewMerchantsNotice" role="status" aria-live="polite"></div>
+
+          <section class="panel monthly-new-merchants-panel" aria-label="Monthly new merchant records">
+            <div class="monthly-new-merchants-toolbar">
+              <label class="monthly-new-merchants-search">
+                <span class="sr-only" data-i18n="monthlyNewMerchants.search">Search merchants</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
+                <input
+                  id="monthlyNewMerchantsSearch"
+                  type="search"
+                  placeholder="Search merchant, ID, or BD"
+                  data-i18n-placeholder="monthlyNewMerchants.searchPlaceholder"
+                />
+              </label>
+              <p class="monthly-new-merchants-count" id="monthlyNewMerchantsCount"></p>
+            </div>
+
+            <div class="monthly-new-merchants-table-wrap">
+              <table class="monthly-new-merchants-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="label.Merchant">Merchant</th>
+                    <th data-i18n="label.Merchant ID">Merchant ID</th>
+                    <th data-i18n="monthlyNewMerchants.bd">BD</th>
+                    <th class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.gmvTarget">Monthly GMV target</th>
+                    <th data-i18n="monthlyNewMerchants.reward">Reward when achieved</th>
+                    <th data-i18n="monthlyNewMerchants.updated">Updated</th>
+                    <th data-i18n="monthlyNewMerchants.actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyNewMerchantsRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <div class="monthly-new-merchant-drawer-backdrop hidden" id="monthlyNewMerchantDrawerBackdrop" aria-hidden="true">
+          <aside
+            class="monthly-new-merchant-drawer"
+            id="monthlyNewMerchantDrawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="monthlyNewMerchantDrawerTitle"
+          >
+            <form id="monthlyNewMerchantForm">
+              <header class="monthly-new-merchant-drawer-header">
+                <div>
+                  <h2 id="monthlyNewMerchantDrawerTitle">Add merchant</h2>
+                  <p data-i18n="monthlyNewMerchants.drawerSubtitle">Only the merchant name is required; saving writes directly to the database</p>
+                </div>
+                <button class="monthly-new-merchant-drawer-close" id="monthlyNewMerchantDrawerClose" type="button" aria-label="Close merchant form">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+                </button>
+              </header>
+
+              <div class="monthly-new-merchant-form-body">
+                <input id="monthlyNewMerchantRecordId" type="hidden" />
+                <input id="monthlyNewMerchantReportMonth" name="reportMonth" type="hidden" />
+                <div class="monthly-new-merchant-form-grid">
+                  <label>
+                    <span data-i18n="label.Merchant ID">Merchant ID</span>
+                    <input id="monthlyNewMerchantId" name="merchantId" inputmode="numeric" maxlength="64" />
+                  </label>
+                  <label>
+                    <span><span data-i18n="monthlyNewMerchants.merchantName">Merchant</span> <b>*</b></span>
+                    <input id="monthlyNewMerchantName" name="merchantName" maxlength="180" required />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.bd">BD</span>
+                    <input id="monthlyNewMerchantManager" name="businessManager" maxlength="128" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.gmvTarget">Monthly GMV target</span>
+                    <input
+                      id="monthlyNewMerchantGmvTarget"
+                      name="gmvMonthlyTarget"
+                      type="number"
+                      inputmode="decimal"
+                      min="0"
+                      max="9999999999999999.99"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </label>
+                  <label class="monthly-new-merchant-notes-field">
+                    <span data-i18n="monthlyNewMerchants.reward">Reward when achieved</span>
+                    <textarea
+                      id="monthlyNewMerchantReward"
+                      name="completionReward"
+                      maxlength="1000"
+                      rows="5"
+                      placeholder="Optional bonus, commission uplift, or other reward"
+                      data-i18n-placeholder="monthlyNewMerchants.rewardPlaceholder"
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="monthly-new-merchant-form-error hidden" id="monthlyNewMerchantFormError" role="alert"></div>
+              </div>
+
+              <footer class="monthly-new-merchant-drawer-footer">
+                <button class="monthly-new-merchant-cancel" id="monthlyNewMerchantCancel" type="button" data-i18n="action.cancel">Cancel</button>
+                <button class="monthly-new-merchant-save" id="monthlyNewMerchantSave" type="submit" data-i18n="monthlyNewMerchants.save">Save merchant</button>
+              </footer>
+            </form>
+          </aside>
+        </div>
 
         <section class="sheet-page hidden" id="sheetPage" aria-label="All sheet tabs">
           <div class="tier-header sheet-page-header">

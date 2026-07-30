@@ -102,6 +102,18 @@
       ]
     },
     {
+      "src": "^/api/ui/db/monthly-new-merchants/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-monthly-new-merchants"
+        }
+      ]
+    },
+    {
       "src": "^/api/ui/db/publishers/?$",
       "dest": "/api/db/index",
       "transforms": [
