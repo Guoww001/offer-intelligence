@@ -8271,7 +8271,7 @@
   function _bindPanelEvents(panel) {
     var el = panel.el;
     el.querySelector(".deep-window-close").addEventListener("click", function () {
-      _removeDeepPanel(panel.id);
+      _hideDeepPanel(panel.id);
     });
     el.querySelector(".deep-window-minimize").addEventListener("click", function () {
       if (panel.minimized) {
@@ -8551,6 +8551,23 @@
         el.style.borderRadius = '';
       }, 20);
     });
+  }
+
+  function _hideDeepPanel(id) {
+    var panel = _deepPanels.find(function (p) { return p.id === id; });
+    if (!panel) return;
+    panel._hidden = true;
+    panel.el.style.display = "none";
+  }
+
+  function _showDeepPanel(id) {
+    var panel = _deepPanels.find(function (p) { return p.id === id; });
+    if (!panel) return;
+    panel._hidden = false;
+    panel.minimized = false;
+    panel.el.style.display = "";
+    panel.el.classList.remove("minimized");
+    _bringPanelToFront(panel);
   }
 
   function _removeDeepPanel(id) {
@@ -16554,7 +16571,8 @@ var _NUMERIC_COL_PATTERNS = [
       if (panelId) {
         var p = _deepPanels.find(function (p2) { return p2.id === panelId; });
         if (p) {
-          if (p.minimized) _expandDeepPanel(p.id);
+          if (p._hidden) _showDeepPanel(p.id);
+          else if (p.minimized) _expandDeepPanel(p.id);
           else _bringPanelToFront(p);
           return;
         }
@@ -16563,11 +16581,9 @@ var _NUMERIC_COL_PATTERNS = [
       // 再通过 cardKey 查找
       var panel = _deepPanels.find(function (p2) { return p2._cardKey === key; });
       if (panel) {
-        if (panel.minimized) {
-          _expandDeepPanel(panel.id);
-        } else {
-          _bringPanelToFront(panel);
-        }
+        if (panel._hidden) _showDeepPanel(panel.id);
+        else if (panel.minimized) _expandDeepPanel(panel.id);
+        else _bringPanelToFront(panel);
         return;
       }
       // 面板已关闭，尝试从缓存重建
