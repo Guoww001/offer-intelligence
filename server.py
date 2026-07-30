@@ -47,6 +47,7 @@ from offer_db import (
     merchant_payload,
     offers_payload,
     product_keywords_payload,
+    publisher_portfolio_payload,
     publishers_payload,
     public_error_payload,
     read_static_merchant_ids,
@@ -1130,8 +1131,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if parsed.path == "/api/ui/db/publishers":
-                force = first_query_value(query, "refresh") == "1"
-                self.send_json(200, publishers_payload(force_refresh=force))
+                user_id = first_query_value(query, "userId")
+                if user_id:
+                    self.send_json(200, publisher_portfolio_payload(
+                        user_id,
+                        start_date=first_query_value(query, "startDate") or None,
+                        end_date=first_query_value(query, "endDate") or None,
+                    ))
+                else:
+                    force = first_query_value(query, "refresh") == "1"
+                    self.send_json(200, publishers_payload(force_refresh=force))
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})

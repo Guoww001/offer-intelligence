@@ -12,6 +12,7 @@ from offer_db import (
     offers_payload,
     parse_query,
     product_keywords_payload,
+    publisher_portfolio_payload,
     publishers_payload,
     require_db_token,
     search_payload,
@@ -108,9 +109,23 @@ def handle_ui_keywords(target):
 
 def handle_ui_publishers(target, query):
     try:
-        send_json(target, 200, publishers_payload(
-            force_refresh=first_query_value(query, "refresh").lower() in {"1", "true", "yes"}
-        ))
+        user_id = first_query_value(query, "userId")
+        if user_id:
+            send_json(
+                target,
+                200,
+                publisher_portfolio_payload(
+                    user_id,
+                    start_date=first_query_value(query, "startDate") or None,
+                    end_date=first_query_value(query, "endDate") or None,
+                ),
+            )
+        else:
+            send_json(target, 200, publishers_payload(
+                force_refresh=first_query_value(query, "refresh").lower() in {"1", "true", "yes"}
+            ))
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
     except Exception as error:
         send_db_error(target, error)
 

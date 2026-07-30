@@ -252,6 +252,10 @@
     publisherManagerSearch: "",
     publisherSiteSearch: "",
     publisherTrackSearch: "",
+    publisherSelectedId: "",
+    publisherPortfolioSearch: "",
+    publisherPortfolioCategory: "all",
+    publisherPortfolioSort: "sales",
     publisherChartMetric: "clicks",
     publisherStartDate: "",
     publisherEndDate: "",
@@ -305,6 +309,13 @@
   const llmClassifyCache = new Map();
 
   const els = {
+    primarySidebar: document.getElementById("primarySidebar"),
+    workspace: document.querySelector(".workspace"),
+    mobileShellBar: document.getElementById("mobileShellBar"),
+    mobileNavToggle: document.getElementById("mobileNavToggle"),
+    mobileNavClose: document.getElementById("mobileNavClose"),
+    navDrawerBackdrop: document.getElementById("navDrawerBackdrop"),
+    mobileCurrentPage: document.getElementById("mobileCurrentPage"),
     dashboardNav: document.getElementById("dashboardNav"),
     paymentsNav: document.getElementById("paymentsNav"),
     sheetsNav: document.getElementById("sheetsNav"),
@@ -343,6 +354,8 @@
     paymentsPage: document.getElementById("paymentsPage"),
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
+    publisherSelectorSearch: document.getElementById("publisherSelectorSearch"),
+    publisherSelectorDropdown: document.getElementById("publisherSelectorDropdown"),
     publisherStartDate: document.getElementById("publisherStartDate"),
     publisherEndDate: document.getElementById("publisherEndDate"),
     publisherMarketFilter: document.getElementById("publisherMarketFilter"),
@@ -377,6 +390,23 @@
     publisherLayoutSave: document.getElementById("publisherLayoutSave"),
     publisherLayoutCancel: document.getElementById("publisherLayoutCancel"),
     publisherLayoutReset: document.getElementById("publisherLayoutReset"),
+    publisherAffinityPanel: document.getElementById("publisherAffinityPanel"),
+    publisherAffinityEmpty: document.getElementById("publisherAffinityEmpty"),
+    publisherAffinityContent: document.getElementById("publisherAffinityContent"),
+    publisherAffinityAvatar: document.getElementById("publisherAffinityAvatar"),
+    publisherAffinityName: document.getElementById("publisherAffinityName"),
+    publisherAffinityMeta: document.getElementById("publisherAffinityMeta"),
+    publisherAffinityStatus: document.getElementById("publisherAffinityStatus"),
+    publisherAffinityMetrics: document.getElementById("publisherAffinityMetrics"),
+    publisherCategoryAffinity: document.getElementById("publisherCategoryAffinity"),
+    publisherAffinitySignals: document.getElementById("publisherAffinitySignals"),
+    publisherClearSelection: document.getElementById("publisherClearSelection"),
+    publisherPortfolioSearch: document.getElementById("publisherPortfolioSearch"),
+    publisherPortfolioCategory: document.getElementById("publisherPortfolioCategory"),
+    publisherPortfolioSort: document.getElementById("publisherPortfolioSort"),
+    publisherPortfolioCount: document.getElementById("publisherPortfolioCount"),
+    publisherPortfolioRows: document.getElementById("publisherPortfolioRows"),
+    publishersTablePanel: document.getElementById("publishersTablePanel"),
     sheetPage: document.getElementById("sheetPage"),
     categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
@@ -476,6 +506,14 @@
     modeDeepBtn: null
   };
 
+  const mobileNavigationMedia = typeof window.matchMedia === "function"
+    ? window.matchMedia("(max-width: 1120px)")
+    : {
+        matches: false,
+        addEventListener: null,
+        addListener: null
+      };
+
   var _deepPanelIdCounter = 0;
   var _deepPanels = [];
   var _deepMaxZIndex = 1000;
@@ -555,8 +593,12 @@
       "payments.records": "付款记录",
       "payments.search": "商家搜索",
       "payments.searchPlaceholder": "商家名称或 ID",
-      "publishers.title": "媒体概览",
-      "publishers.subtitle": "按市场聚合的媒介表现数据",
+      "publishers.title": "媒体倾向分析",
+      "publishers.subtitle": "从合作商家、品类、客单价与佣金结构判断媒体偏好",
+      "publishers.selectPublisher": "选择要分析的媒体",
+      "publishers.selectPublisherHint": "输入媒体名称或 ID，查看其合作商家与偏好。",
+      "publishers.publisher": "媒体",
+      "publishers.period": "日期范围",
       "publishers.network": "所属联盟",
       "publishers.linkType": "链接类型",
       "publishers.merchant": "商家",
@@ -565,6 +607,20 @@
       "publishers.productPlaceholder": "商品 ASIN 或名称",
       "publishers.manager": "媒介经理",
       "publishers.managerPlaceholder": "经理名称",
+      "publishers.affinityEmptyTitle": "选择媒体后生成倾向画像",
+      "publishers.affinityEmptyBody": "系统会按该媒体实际合作的商家，计算品类贡献、AOV 区间与佣金偏好。",
+      "publishers.backToAll": "返回全部媒体",
+      "publishers.categoryAffinity": "品类倾向",
+      "publishers.bySales": "按销售额贡献",
+      "publishers.affinitySignals": "倾向信号",
+      "publishers.signalHint": "用于判断合作偏好",
+      "publishers.merchantPortfolio": "合作商家组合",
+      "publishers.networkMarket": "联盟 / 市场",
+      "publishers.commissionRate": "佣金率",
+      "publishers.earnedCommission": "实际佣金",
+      "publishers.portfolioShare": "销售额占比",
+      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；无订单时显示 N/A。佣金率来自商家配置，实际佣金来自媒体订单记录。",
+      "publishers.portfolioExportEmpty": "当前商家组合筛选下没有可导出的记录。",
       "publishers.chartTitle": "按点击量排名",
       "publishers.tableTitle": "媒介数据",
       "publishers.startMonth": "起始日期",
@@ -856,6 +912,7 @@
       renderAll();
       if (state.currentContext.type !== "default") renderContextPanel(state.currentContext);
     }
+    updateMobileCurrentPage();
   }
 
   function toggleLanguage() {
@@ -10890,6 +10947,55 @@ var _NUMERIC_COL_PATTERNS = [
 
   function downloadPublishersXlsx() {
     if (!_publishersCache) return;
+    if (state.publisherSelectedId) {
+      if (!_activePublisherPortfolioRows.length) {
+        _setPublisherAffinityStatus(
+          "error",
+          t("publishers.portfolioExportEmpty", "No merchant rows match the current portfolio filters.")
+        );
+        return;
+      }
+      var portfolioSales = _activePublisherPortfolioSalesTotal;
+      var portfolioRows = _activePublisherPortfolioRows.map(function (row) {
+        var merchant = row.merchant;
+        var metric = row.metrics || {};
+        return {
+          merchantId: merchant.merchantId,
+          merchantName: merchant.merchantName,
+          network: merchant.network || "Unknown",
+          markets: state.publisherMarket && state.publisherMarket !== "all"
+            ? state.publisherMarket
+            : Object.keys(merchant.markets || {}).join(", "),
+          category: merchant.category || "Uncategorized",
+          aov: metric.aov == null ? "" : metric.aov,
+          commissionRate: merchant.commissionRate == null ? "" : merchant.commissionRate,
+          orders: metric.orders || 0,
+          sales: metric.sales || 0,
+          earnedCommission: metric.allCommission || 0,
+          salesShare: portfolioSales > 0 ? Number(metric.sales || 0) / portfolioSales : 0,
+        };
+      });
+      downloadRowsAsXlsx(portfolioRows, {
+        downloadType: "sheet",
+        filePrefix: "publisher-portfolio-" + state.publisherSelectedId,
+        exportScope: state.publisherMarket,
+        sheetName: "Publisher Portfolio",
+        downloadColumns: [
+          ["Merchant ID", function (row) { return row.merchantId; }],
+          ["Merchant Name", function (row) { return row.merchantName; }],
+          ["Network", function (row) { return row.network; }],
+          ["Markets", function (row) { return row.markets; }],
+          ["Category", function (row) { return row.category; }],
+          ["AOV", function (row) { return row.aov; }],
+          ["Commission Rate", function (row) { return row.commissionRate; }],
+          ["Orders", function (row) { return row.orders; }],
+          ["Sales", function (row) { return row.sales; }],
+          ["Earned Commission", function (row) { return row.earnedCommission; }],
+          ["Sales Share", function (row) { return row.salesShare; }],
+        ]
+      });
+      return;
+    }
     var data = _publishersCache;
     var sd = state.publisherStartDate || "";
     var ed = state.publisherEndDate || "";
@@ -10922,17 +11028,26 @@ var _NUMERIC_COL_PATTERNS = [
         grossProfit: m.allCommission - m.affCommission,
       };
     });
-    var headers = [
-      "Rank", "Publisher ID", "Publisher Name", "Manager",
-      "Clicks", "CVR", "DPV", "ATC", "Orders",
-      "Sales", "All Commission", "Aff Commission", "Gross Profit"
-    ];
     downloadRowsAsXlsx(rows, {
       downloadType: "sheet",
       filePrefix: "publishers",
       exportScope: state.publisherMarket,
       sheetName: "Publishers",
-      downloadColumns: objectExportColumns(rows, headers)
+      downloadColumns: [
+        ["Rank", function (row) { return row.rank; }],
+        ["Publisher ID", function (row) { return row.userId; }],
+        ["Publisher Name", function (row) { return row.userName; }],
+        ["Manager", function (row) { return row.adminName; }],
+        ["Clicks", function (row) { return row.clicks; }],
+        ["CVR", function (row) { return row.cvr; }],
+        ["DPV", function (row) { return row.dpv; }],
+        ["ATC", function (row) { return row.atc; }],
+        ["Orders", function (row) { return row.orders; }],
+        ["Sales", function (row) { return row.sales; }],
+        ["All Commission", function (row) { return row.allCommission; }],
+        ["Aff Commission", function (row) { return row.affCommission; }],
+        ["Gross Profit", function (row) { return row.grossProfit; }],
+      ]
     });
   }
 
@@ -10958,6 +11073,11 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   var _managerOptions = [];
+  var _publisherSelectorOptions = [];
+  var _publisherPortfolioRequests = {};
+  var _publisherPortfolioRequestVersion = 0;
+  var _activePublisherPortfolioRows = [];
+  var _activePublisherPortfolioSalesTotal = 0;
 
   function _rebuildManagerOptions(publishers) {
     if (!publishers) return;
@@ -10997,6 +11117,106 @@ var _NUMERIC_COL_PATTERNS = [
   function _hideManagerDropdown() {
     var dd = document.getElementById("publisherManagerDropdown");
     if (dd) dd.classList.remove("show");
+  }
+
+  function _rebuildPublisherSelectorOptions(publishers) {
+    _publisherSelectorOptions = (publishers || []).slice().sort(function (a, b) {
+      return String(a.userName || a.userId).localeCompare(String(b.userName || b.userId));
+    });
+  }
+
+  function _showPublisherSelectorDropdown() {
+    if (!els.publisherSelectorDropdown || !els.publisherSelectorSearch) return;
+    var query = (els.publisherSelectorSearch.value || "").toLowerCase().trim();
+    var options = _publisherSelectorOptions.filter(function (pub) {
+      if (!query) return true;
+      return String(pub.userName || "").toLowerCase().indexOf(query) !== -1 ||
+        String(pub.userId).indexOf(query) !== -1 ||
+        String(pub.adminName || "").toLowerCase().indexOf(query) !== -1;
+    }).slice(0, 60);
+
+    var html = options.map(function (pub) {
+      var merchantCount = Array.isArray(pub.merchants)
+        ? pub.merchants.length
+        : (pub.merchantIds || []).length;
+      var selected = String(pub.userId) === String(state.publisherSelectedId || "");
+      return '<button class="publisher-selector-option' + (selected ? ' selected' : '') +
+        '" type="button" role="option" aria-selected="' + (selected ? "true" : "false") +
+        '" data-publisher-id="' + escapeHtml(String(pub.userId)) + '">' +
+        '<span class="publisher-selector-option-avatar">' +
+          escapeHtml(String(pub.userName || "P").slice(0, 1).toUpperCase()) +
+        '</span>' +
+        '<span class="publisher-selector-option-copy">' +
+          '<strong>' + escapeHtml(pub.userName || String(pub.userId)) + '</strong>' +
+          '<small>ID ' + escapeHtml(String(pub.userId)) + ' · ' +
+            escapeHtml(pub.adminName || "Unknown") + '</small>' +
+        '</span>' +
+        '<span class="publisher-selector-option-count">' + number(merchantCount) + ' merchants</span>' +
+      '</button>';
+    }).join("");
+
+    if (!html) {
+      html = '<div class="publisher-selector-no-results">' +
+        escapeHtml(t("publishers.noPublisherMatch", "No matching publisher")) +
+      '</div>';
+    }
+    els.publisherSelectorDropdown.innerHTML = html;
+    els.publisherSelectorDropdown.classList.add("show");
+    els.publisherSelectorSearch.setAttribute("aria-expanded", "true");
+  }
+
+  function _hidePublisherSelectorDropdown() {
+    if (els.publisherSelectorDropdown) els.publisherSelectorDropdown.classList.remove("show");
+    if (els.publisherSelectorSearch) els.publisherSelectorSearch.setAttribute("aria-expanded", "false");
+  }
+
+  function _publisherById(data, userId) {
+    var id = String(userId || "");
+    if (!id || !data || !Array.isArray(data.publishers)) return null;
+    for (var i = 0; i < data.publishers.length; i++) {
+      if (String(data.publishers[i].userId) === id) return data.publishers[i];
+    }
+    return null;
+  }
+
+  function _setSelectedPublisher(pub) {
+    state.publisherSelectedId = pub ? String(pub.userId) : "";
+    state.publisherPortfolioSearch = "";
+    state.publisherPortfolioCategory = "all";
+    state.publisherPortfolioSort = "sales";
+    if (els.publisherSelectorSearch) {
+      els.publisherSelectorSearch.value = pub ? (pub.userName || String(pub.userId)) : "";
+    }
+    if (els.publisherPortfolioSearch) els.publisherPortfolioSearch.value = "";
+    if (els.publisherPortfolioSort) els.publisherPortfolioSort.value = "sales";
+    _hidePublisherSelectorDropdown();
+  }
+
+  function _publisherPortfolioRequestKey(userId, startDate, endDate) {
+    return [String(userId), startDate || "", endDate || ""].join("|");
+  }
+
+  function loadPublisherPortfolioData(userId, startDate, endDate) {
+    var key = _publisherPortfolioRequestKey(userId, startDate, endDate);
+    if (_publisherPortfolioRequests[key]) return _publisherPortfolioRequests[key];
+    var query = new URLSearchParams({ userId: String(userId) });
+    if (startDate) query.set("startDate", startDate);
+    if (endDate) query.set("endDate", endDate);
+    var request = fetch("/api/ui/db/publishers?" + query.toString())
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok || payload.ok === false) {
+            throw new Error(payload.error || "Failed to load publisher portfolio");
+          }
+          return payload;
+        });
+      })
+      .catch(function (error) {
+        delete _publisherPortfolioRequests[key];
+        throw error;
+      });
+    _publisherPortfolioRequests[key] = request;
+    return request;
   }
 
   function loadPublishersData(forceRefresh) {
@@ -11105,6 +11325,457 @@ var _NUMERIC_COL_PATTERNS = [
     agg.grossProfit = agg.allCommission - agg.affCommission;
     agg.conversionRate = agg.clicks > 0 ? agg.orders / agg.clicks : 0;
     return agg;
+  }
+
+  function _publisherMetricForMarket(merchant, market) {
+    if (!merchant) return null;
+    if (market && market !== "all") return (merchant.markets || {})[market] || null;
+    return merchant.total || null;
+  }
+
+  function _publisherMetricIsActive(metric) {
+    if (!metric) return false;
+    return ["clicks", "dpv", "atc", "orders", "sales", "allCommission", "affCommission"].some(function (key) {
+      return Number(metric[key] || 0) > 0;
+    });
+  }
+
+  function _publisherPortfolioRowsForState(merchants, includePortfolioControls) {
+    var market = state.publisherMarket || "all";
+    var network = state.publisherNetwork || "all";
+    var globalMerchantSearch = (state.publisherMerchantSearch || "").toLowerCase().trim();
+    var portfolioSearch = includePortfolioControls
+      ? (state.publisherPortfolioSearch || "").toLowerCase().trim()
+      : "";
+    var categoryFilter = includePortfolioControls
+      ? (state.publisherPortfolioCategory || "all")
+      : "all";
+
+    var rows = (merchants || []).map(function (merchant) {
+      return {
+        merchant: merchant,
+        metrics: _publisherMetricForMarket(merchant, market),
+      };
+    }).filter(function (row) {
+      var merchant = row.merchant;
+      if (!_publisherMetricIsActive(row.metrics)) return false;
+      if (network !== "all" && String(merchant.network || "Unknown") !== network) return false;
+      if (globalMerchantSearch) {
+        var globalHaystack = [
+          merchant.merchantId,
+          merchant.merchantName,
+          merchant.category,
+          merchant.network,
+        ].join(" ").toLowerCase();
+        if (globalHaystack.indexOf(globalMerchantSearch) === -1) return false;
+      }
+      if (categoryFilter !== "all" && String(merchant.category || "Uncategorized") !== categoryFilter) {
+        return false;
+      }
+      if (portfolioSearch) {
+        var haystack = [
+          merchant.merchantId,
+          merchant.merchantName,
+          merchant.category,
+          merchant.network,
+          Object.keys(merchant.markets || {}).join(" "),
+        ].join(" ").toLowerCase();
+        if (haystack.indexOf(portfolioSearch) === -1) return false;
+      }
+      return true;
+    });
+
+    if (!includePortfolioControls) return rows;
+    var sortKey = state.publisherPortfolioSort || "sales";
+    rows.sort(function (a, b) {
+      if (sortKey === "merchantName") {
+        return String(a.merchant.merchantName || "").localeCompare(String(b.merchant.merchantName || ""));
+      }
+      var av = sortKey === "commissionRate"
+        ? Number(a.merchant.commissionRate == null ? -1 : a.merchant.commissionRate)
+        : Number(a.metrics[sortKey] == null ? -1 : a.metrics[sortKey]);
+      var bv = sortKey === "commissionRate"
+        ? Number(b.merchant.commissionRate == null ? -1 : b.merchant.commissionRate)
+        : Number(b.metrics[sortKey] == null ? -1 : b.metrics[sortKey]);
+      return bv - av ||
+        String(a.merchant.merchantName || "").localeCompare(String(b.merchant.merchantName || ""));
+    });
+    return rows;
+  }
+
+  function _publisherAovBand(aov) {
+    if (aov == null || !Number.isFinite(Number(aov))) return "N/A";
+    var value = Number(aov);
+    if (value < 50) return "< $50";
+    if (value < 100) return "$50–99";
+    if (value < 200) return "$100–199";
+    return "$200+";
+  }
+
+  function _publisherAffinitySummary(rows) {
+    var summary = {
+      merchantCount: rows.length,
+      clicks: 0,
+      dpv: 0,
+      atc: 0,
+      orders: 0,
+      sales: 0,
+      allCommission: 0,
+      aov: null,
+      weightedCommissionRate: null,
+      effectiveCommissionRate: null,
+      categories: [],
+      aovBands: [],
+      markets: [],
+    };
+    var categories = {};
+    var aovBands = {};
+    var markets = {};
+    var rateNumerator = 0;
+    var rateDenominator = 0;
+    var fallbackRates = [];
+
+    rows.forEach(function (row) {
+      var merchant = row.merchant;
+      var metric = row.metrics || {};
+      var sales = Number(metric.sales || 0);
+      var orders = Number(metric.orders || 0);
+      summary.clicks += Number(metric.clicks || 0);
+      summary.dpv += Number(metric.dpv || 0);
+      summary.atc += Number(metric.atc || 0);
+      summary.orders += orders;
+      summary.sales += sales;
+      summary.allCommission += Number(metric.allCommission || 0);
+
+      var categoryName = merchant.category || "Uncategorized";
+      if (!categories[categoryName]) {
+        categories[categoryName] = {
+          category: categoryName,
+          merchantCount: 0,
+          orders: 0,
+          sales: 0,
+          allCommission: 0,
+        };
+      }
+      categories[categoryName].merchantCount += 1;
+      categories[categoryName].orders += orders;
+      categories[categoryName].sales += sales;
+      categories[categoryName].allCommission += Number(metric.allCommission || 0);
+
+      var bandName = _publisherAovBand(metric.aov);
+      if (!aovBands[bandName]) {
+        aovBands[bandName] = { label: bandName, merchantCount: 0, sales: 0 };
+      }
+      aovBands[bandName].merchantCount += 1;
+      aovBands[bandName].sales += sales;
+
+      var rate = merchant.commissionRate;
+      if (rate != null && Number.isFinite(Number(rate))) {
+        fallbackRates.push(Number(rate));
+        if (sales > 0) {
+          rateNumerator += Number(rate) * sales;
+          rateDenominator += sales;
+        }
+      }
+
+      var marketNames = state.publisherMarket && state.publisherMarket !== "all"
+        ? [state.publisherMarket]
+        : Object.keys(merchant.markets || {});
+      marketNames.forEach(function (marketName) {
+        var marketMetric = merchant.markets[marketName];
+        if (!_publisherMetricIsActive(marketMetric)) return;
+        if (!markets[marketName]) markets[marketName] = { market: marketName, sales: 0 };
+        markets[marketName].sales += Number(marketMetric.sales || 0);
+      });
+    });
+
+    summary.aov = summary.orders > 0 ? summary.sales / summary.orders : null;
+    summary.effectiveCommissionRate = summary.sales > 0
+      ? summary.allCommission / summary.sales * 100
+      : null;
+    if (rateDenominator > 0) {
+      summary.weightedCommissionRate = rateNumerator / rateDenominator;
+    } else if (fallbackRates.length) {
+      summary.weightedCommissionRate = fallbackRates.reduce(function (sum, rate) {
+        return sum + rate;
+      }, 0) / fallbackRates.length;
+    }
+
+    summary.categories = Object.keys(categories).map(function (key) {
+      var item = categories[key];
+      item.salesShare = summary.sales > 0 ? item.sales / summary.sales : 0;
+      return item;
+    }).sort(function (a, b) {
+      return b.sales - a.sales || b.merchantCount - a.merchantCount;
+    });
+    summary.aovBands = Object.keys(aovBands).map(function (key) {
+      var item = aovBands[key];
+      item.salesShare = summary.sales > 0 ? item.sales / summary.sales : 0;
+      return item;
+    }).sort(function (a, b) {
+      return b.sales - a.sales || b.merchantCount - a.merchantCount;
+    });
+    summary.markets = Object.keys(markets).map(function (key) {
+      return markets[key];
+    }).sort(function (a, b) {
+      return b.sales - a.sales;
+    });
+    return summary;
+  }
+
+  function _publisherAovText(value) {
+    return value == null || !Number.isFinite(Number(value)) ? "N/A" : shortMoney(Number(value));
+  }
+
+  function _publisherRateText(value) {
+    return value == null || !Number.isFinite(Number(value))
+      ? "N/A"
+      : Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+  }
+
+  function _renderPublisherAffinityMetrics(summary) {
+    if (!els.publisherAffinityMetrics) return;
+    var topCategory = summary.categories[0] ? summary.categories[0].category : "N/A";
+    var metrics = [
+      {
+        label: t("publishers.activeMerchants", "Active merchants"),
+        value: number(summary.merchantCount).toLocaleString(),
+        note: t("publishers.inCurrentView", "in current view"),
+      },
+      {
+        label: "AOV",
+        value: _publisherAovText(summary.aov),
+        note: number(summary.orders).toLocaleString() + " " + t("publishers.orders", "orders"),
+      },
+      {
+        label: t("publishers.topCategory", "Top category"),
+        value: topCategory,
+        note: summary.categories[0]
+          ? (summary.categories[0].salesShare * 100).toFixed(1) + "% " + t("publishers.ofSales", "of sales")
+          : t("publishers.noActivity", "No activity"),
+      },
+      {
+        label: t("publishers.weightedCommission", "Weighted commission"),
+        value: _publisherRateText(summary.weightedCommissionRate),
+        note: t("publishers.weightedBySales", "weighted by merchant sales"),
+      },
+    ];
+    els.publisherAffinityMetrics.innerHTML = metrics.map(function (metric) {
+      return '<article class="publisher-affinity-metric">' +
+        '<span>' + escapeHtml(metric.label) + '</span>' +
+        '<strong title="' + escapeHtml(metric.value) + '">' + escapeHtml(metric.value) + '</strong>' +
+        '<small>' + escapeHtml(metric.note) + '</small>' +
+      '</article>';
+    }).join("");
+  }
+
+  function _renderPublisherCategoryAffinity(summary) {
+    if (!els.publisherCategoryAffinity) return;
+    var categories = summary.categories.slice(0, 6);
+    if (!categories.length) {
+      els.publisherCategoryAffinity.innerHTML = '<div class="publisher-affinity-inline-empty">' +
+        escapeHtml(t("publishers.noCategoryActivity", "No category activity in this view")) +
+      '</div>';
+      return;
+    }
+    els.publisherCategoryAffinity.innerHTML = categories.map(function (item, index) {
+      var share = summary.sales > 0
+        ? item.salesShare
+        : item.merchantCount / Math.max(1, summary.merchantCount);
+      return '<div class="publisher-category-row">' +
+        '<div class="publisher-category-copy">' +
+          '<span class="publisher-category-rank">' + (index + 1) + '</span>' +
+          '<strong title="' + escapeHtml(item.category) + '">' + escapeHtml(item.category) + '</strong>' +
+          '<small>' + number(item.merchantCount).toLocaleString() + ' ' +
+            escapeHtml(t("publishers.merchants", "merchants")) + '</small>' +
+        '</div>' +
+        '<div class="publisher-category-track" aria-label="' + escapeHtml(item.category) + ' ' +
+          (share * 100).toFixed(1) + '%">' +
+          '<span style="width:' + Math.max(2, share * 100).toFixed(1) + '%"></span>' +
+        '</div>' +
+        '<span class="publisher-category-share">' + (share * 100).toFixed(1) + '%</span>' +
+      '</div>';
+    }).join("");
+  }
+
+  function _renderPublisherAffinitySignals(summary) {
+    if (!els.publisherAffinitySignals) return;
+    var topCategory = summary.categories[0] || null;
+    var topBand = summary.aovBands.filter(function (band) {
+      return band.label !== "N/A";
+    })[0] || summary.aovBands[0] || null;
+    var topMarket = summary.markets[0] || null;
+    var signals = [
+      {
+        label: t("publishers.typicalAovBand", "Typical AOV band"),
+        value: topBand ? topBand.label : "N/A",
+        note: topBand
+          ? (topBand.salesShare * 100).toFixed(1) + "% " + t("publishers.ofSales", "of sales")
+          : t("publishers.noActivity", "No activity"),
+      },
+      {
+        label: t("publishers.categoryConcentration", "Category concentration"),
+        value: topCategory ? (topCategory.salesShare * 100).toFixed(1) + "%" : "N/A",
+        note: topCategory ? topCategory.category : t("publishers.noActivity", "No activity"),
+      },
+      {
+        label: t("publishers.commissionProfile", "Commission profile"),
+        value: _publisherRateText(summary.weightedCommissionRate),
+        note: _publisherRateText(summary.effectiveCommissionRate) + " " +
+          t("publishers.effectiveEarned", "effective earned"),
+      },
+      {
+        label: t("publishers.marketReach", "Market reach"),
+        value: number(summary.markets.length).toLocaleString(),
+        note: topMarket
+          ? t("publishers.leadsWith", "Leads with") + " " + topMarket.market
+          : t("publishers.noActivity", "No activity"),
+      },
+    ];
+    els.publisherAffinitySignals.innerHTML = signals.map(function (signal, index) {
+      return '<div class="publisher-signal-row">' +
+        '<span class="publisher-signal-index">0' + (index + 1) + '</span>' +
+        '<div><small>' + escapeHtml(signal.label) + '</small><strong>' +
+          escapeHtml(signal.value) + '</strong><p>' + escapeHtml(signal.note) + '</p></div>' +
+      '</div>';
+    }).join("");
+  }
+
+  function _syncPublisherPortfolioCategories(rows) {
+    if (!els.publisherPortfolioCategory) return;
+    var categories = Array.from(new Set(rows.map(function (row) {
+      return row.merchant.category || "Uncategorized";
+    }))).sort();
+    var selected = state.publisherPortfolioCategory || "all";
+    els.publisherPortfolioCategory.innerHTML =
+      '<option value="all">' + escapeHtml(t("publishers.allCategories", "All categories")) + '</option>' +
+      categories.map(function (category) {
+        return '<option value="' + escapeHtml(category) + '">' + escapeHtml(category) + '</option>';
+      }).join("");
+    if (selected !== "all" && categories.indexOf(selected) === -1) {
+      selected = "all";
+      state.publisherPortfolioCategory = "all";
+    }
+    els.publisherPortfolioCategory.value = selected;
+  }
+
+  function _renderPublisherPortfolioTable(globalRows, summary) {
+    if (!els.publisherPortfolioRows) return;
+    _activePublisherPortfolioSalesTotal = Number(summary.sales || 0);
+    _syncPublisherPortfolioCategories(globalRows);
+    var rows = _publisherPortfolioRowsForState(
+      globalRows.map(function (row) { return row.merchant; }),
+      true
+    );
+    _activePublisherPortfolioRows = rows;
+    if (els.publisherPortfolioCount) {
+      els.publisherPortfolioCount.textContent = rows.length.toLocaleString() + " " +
+        t("publishers.merchantsInView", "merchants in view");
+    }
+    if (!rows.length) {
+      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="9" class="publisher-portfolio-empty">' +
+        escapeHtml(t("publishers.noPortfolioRows", "No merchants match the current filters")) +
+      '</td></tr>';
+      return;
+    }
+
+    els.publisherPortfolioRows.innerHTML = rows.map(function (row) {
+      var merchant = row.merchant;
+      var metric = row.metrics;
+      var marketNames = Object.keys(merchant.markets || {}).filter(function (marketName) {
+        return _publisherMetricIsActive(merchant.markets[marketName]);
+      });
+      if (state.publisherMarket && state.publisherMarket !== "all") {
+        marketNames = marketNames.filter(function (marketName) {
+          return marketName === state.publisherMarket;
+        });
+      }
+      var marketText = marketNames.slice(0, 2).join(" · ");
+      if (marketNames.length > 2) marketText += " +" + (marketNames.length - 2);
+      var share = summary.sales > 0 ? Number(metric.sales || 0) / summary.sales : 0;
+      return '<tr>' +
+        '<td><div class="publisher-merchant-cell"><strong>' +
+          escapeHtml(merchant.merchantName || String(merchant.merchantId)) +
+        '</strong><small>ID ' + escapeHtml(String(merchant.merchantId)) + '</small></div></td>' +
+        '<td><div class="publisher-network-market"><span>' +
+          escapeHtml(merchant.network || "Unknown") +
+        '</span><small>' + escapeHtml(marketText || "Unknown") + '</small></div></td>' +
+        '<td><span class="publisher-category-pill">' +
+          escapeHtml(merchant.category || "Uncategorized") +
+        '</span></td>' +
+        '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(merchant.commissionRate)) + '</td>' +
+        '<td class="publisher-numeric">' + number(metric.orders).toLocaleString() + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.sales)) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.allCommission)) + '</td>' +
+        '<td><div class="publisher-share-cell"><span>' + (share * 100).toFixed(1) +
+          '%</span><i><b style="width:' + Math.max(1, share * 100).toFixed(1) + '%"></b></i></div></td>' +
+      '</tr>';
+    }).join("");
+  }
+
+  function _setPublisherAffinityStatus(type, message) {
+    if (!els.publisherAffinityStatus) return;
+    if (!message) {
+      els.publisherAffinityStatus.className = "publisher-affinity-status hidden";
+      els.publisherAffinityStatus.textContent = "";
+      return;
+    }
+    els.publisherAffinityStatus.className = "publisher-affinity-status " + (type || "info");
+    els.publisherAffinityStatus.textContent = message;
+  }
+
+  function renderPublisherAffinity(pub, merchants, options) {
+    options = options || {};
+    if (!els.publisherAffinityEmpty || !els.publisherAffinityContent) return;
+    var hasPublisher = Boolean(pub);
+    els.publisherAffinityEmpty.classList.toggle("hidden", hasPublisher);
+    els.publisherAffinityContent.classList.toggle("hidden", !hasPublisher);
+    _activePublisherPortfolioRows = [];
+    _activePublisherPortfolioSalesTotal = 0;
+    if (!hasPublisher) {
+      _setPublisherAffinityStatus("", "");
+      return;
+    }
+
+    var publisherName = pub.userName || String(pub.userId);
+    if (els.publisherAffinityAvatar) {
+      els.publisherAffinityAvatar.textContent = publisherName.slice(0, 1).toUpperCase();
+    }
+    if (els.publisherAffinityName) els.publisherAffinityName.textContent = publisherName;
+    if (els.publisherAffinityMeta) {
+      els.publisherAffinityMeta.textContent = "ID " + pub.userId + " · " +
+        (pub.adminName || "Unknown") + " · " +
+        (pub.networks || []).join(", ");
+    }
+
+    if (options.loading) {
+      _setPublisherAffinityStatus(
+        "loading",
+        t("publishers.portfolioLoading", "Loading merchant-level activity for the selected period…")
+      );
+    } else if (options.error) {
+      _setPublisherAffinityStatus("error", options.error);
+    } else {
+      _setPublisherAffinityStatus("", "");
+    }
+
+    var globalRows = _publisherPortfolioRowsForState(merchants || [], false);
+    var summary = _publisherAffinitySummary(globalRows);
+    if (!options.loading && !options.error) {
+      renderPublishersKpi(summary);
+    }
+    _renderPublisherAffinityMetrics(summary);
+    _renderPublisherCategoryAffinity(summary);
+    _renderPublisherAffinitySignals(summary);
+    _renderPublisherPortfolioTable(globalRows, summary);
+  }
+
+  function _setPublisherFocusMode(focused) {
+    if (els.publishersPage) els.publishersPage.classList.toggle("publisher-focused", Boolean(focused));
+    if (els.publisherMarketSummary) els.publisherMarketSummary.classList.toggle("hidden", Boolean(focused));
+    if (els.publishersChartPanel) els.publishersChartPanel.classList.toggle("hidden", Boolean(focused));
+    if (els.publishersTablePanel) els.publishersTablePanel.classList.toggle("hidden", Boolean(focused));
   }
 
   var PUBLISHER_TABLE_PAGE_SIZE = 100;
@@ -11633,6 +12304,10 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherProductSearch || "",
       state.publisherSiteSearch || "",
       state.publisherTrackSearch || "",
+      state.publisherSelectedId || "",
+      state.publisherPortfolioSearch || "",
+      state.publisherPortfolioCategory || "",
+      state.publisherPortfolioSort || "",
       state.publisherSort ? state.publisherSort.key + "|" + state.publisherSort.direction : "",
     ].join("||");
     if (filterHash !== _lastPubFilterHash) {
@@ -11652,6 +12327,11 @@ var _NUMERIC_COL_PATTERNS = [
       _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket, "请选择站点");
       // 重建经理选项列表（供组合框使用）
       _rebuildManagerOptions(data.publishers);
+      _rebuildPublisherSelectorOptions(data.publishers);
+      var selectedPublisherBase = _publisherById(data, state.publisherSelectedId);
+      if (els.publisherSelectorSearch && selectedPublisherBase) {
+        els.publisherSelectorSearch.value = selectedPublisherBase.userName || String(selectedPublisherBase.userId);
+      }
       if (els.publisherManagerSearch) {
         els.publisherManagerSearch.value = state.publisherManagerSearch || "";
       }
@@ -11661,17 +12341,25 @@ var _NUMERIC_COL_PATTERNS = [
 
       // 恢复搜索框值
       els.publisherMerchantSearch.value = state.publisherMerchantSearch || "";
-      els.publisherProductSearch.value = state.publisherProductSearch || "";
+      if (els.publisherProductSearch) els.publisherProductSearch.value = state.publisherProductSearch || "";
       els.publisherManagerSearch.value = state.publisherManagerSearch || "";
-      els.publisherSiteSearch.value = state.publisherSiteSearch || "";
-      els.publisherTrackSearch.value = state.publisherTrackSearch || "";
+      if (els.publisherSiteSearch) els.publisherSiteSearch.value = state.publisherSiteSearch || "";
+      if (els.publisherTrackSearch) els.publisherTrackSearch.value = state.publisherTrackSearch || "";
+      if (els.publisherPortfolioSearch) {
+        els.publisherPortfolioSearch.value = state.publisherPortfolioSearch || "";
+      }
+      if (els.publisherPortfolioSort) {
+        els.publisherPortfolioSort.value = state.publisherPortfolioSort || "sales";
+      }
 
       // 当日期范围生效时，用 dailyRows 重新计算 publisher 的数据
       var sd = state.publisherStartDate || "";
       var ed = state.publisherEndDate || "";
       var hasDateFilter = sd !== "" || ed !== "";
+      var selectedPublisherForPeriod = null;
       if (hasDateFilter && (data.dailyRows || data.monthlyRows)) {
         data = _applyDateFilterToData(data, sd, ed);
+        selectedPublisherForPeriod = _publisherById(data, state.publisherSelectedId);
         // 筛选后剔除在该时间范围内没有数据的 publisher
         data.publishers = data.publishers.filter(function (pub) {
           return pub.total.clicks > 0 || pub.total.dpv > 0 || pub.total.atc > 0 ||
@@ -11681,29 +12369,75 @@ var _NUMERIC_COL_PATTERNS = [
 
       var filtered = getFilteredPublishers(data);
       var market = state.publisherMarket || "all";
-      var agg = aggregatePublisherMetrics(filtered, market);
+      var selectedPublisher = selectedPublisherForPeriod ||
+        _publisherById(data, state.publisherSelectedId) ||
+        selectedPublisherBase;
 
-      // 市场聚合概览
-      renderPublisherMarketSummary(filtered, filtered);
+      if (selectedPublisher) {
+        var selectedFiltered = getFilteredPublishers({
+          publishers: [selectedPublisher],
+          merchantNameMap: data.merchantNameMap || {},
+        });
+        var selectedAgg = aggregatePublisherMetrics(selectedFiltered, market);
+        renderPublishersKpi(selectedAgg);
+        _setPublisherFocusMode(true);
 
-      // KPI
-      renderPublishersKpi(agg);
+        var cachedMerchants = selectedFiltered.length && selectedPublisherBase &&
+          Array.isArray(selectedPublisherBase.merchants)
+          ? selectedPublisherBase.merchants
+          : [];
+        var needsPortfolioRequest = hasDateFilter || !selectedPublisherBase ||
+          !Array.isArray(selectedPublisherBase.merchants);
+        if (!needsPortfolioRequest) {
+          renderPublisherAffinity(selectedPublisher, cachedMerchants);
+        } else {
+          var requestVersion = ++_publisherPortfolioRequestVersion;
+          renderPublisherAffinity(selectedPublisher, [], { loading: true });
+          loadPublisherPortfolioData(selectedPublisher.userId, sd, ed)
+            .then(function (portfolio) {
+              if (requestVersion !== _publisherPortfolioRequestVersion) return;
+              if (String(state.publisherSelectedId || "") !== String(selectedPublisher.userId)) return;
+              if ((state.publisherStartDate || "") !== sd || (state.publisherEndDate || "") !== ed) return;
+              renderPublisherAffinity(
+                selectedPublisher,
+                selectedFiltered.length ? (portfolio.merchants || []) : []
+              );
+            })
+            .catch(function (error) {
+              if (requestVersion !== _publisherPortfolioRequestVersion) return;
+              renderPublisherAffinity(selectedPublisher, [], {
+                error: t("publishers.portfolioError", "Could not load merchant-level activity: ") + error.message,
+              });
+            });
+        }
+      } else {
+        _publisherPortfolioRequestVersion++;
+        _setPublisherFocusMode(false);
+        renderPublisherAffinity(null, []);
+        var agg = aggregatePublisherMetrics(filtered, market);
 
-      // ── 柱状图折叠/展开 ──
-      var chartExpanded = state.publisherChartExpanded !== false;
-      if (els.publishersChart) {
-        els.publishersChart.style.display = chartExpanded ? "" : "none";
+        // 市场聚合概览
+        renderPublisherMarketSummary(filtered, filtered);
+
+        // KPI
+        renderPublishersKpi(agg);
+
+        // ── 柱状图折叠/展开 ──
+        var chartExpanded = state.publisherChartExpanded !== false;
+        if (els.publishersChart) {
+          els.publishersChart.style.display = chartExpanded ? "" : "none";
+        }
+        if (els.publishersChartChevron) {
+          els.publishersChartChevron.textContent = chartExpanded ? "▼" : "▶";
+          els.publishersChartChevron.classList.toggle("collapsed", !chartExpanded);
+        }
+
+        // 柱状图（按当前市场排序）
+        renderPublishersChart(filtered, market);
+
+        // 表格（带分页）
+        renderPublishersTable(filtered, market, agg, state.publisherTablePage);
       }
-      if (els.publishersChartChevron) {
-        els.publishersChartChevron.textContent = chartExpanded ? "▼" : "▶";
-        els.publishersChartChevron.classList.toggle("collapsed", !chartExpanded);
-      }
-
-      // 柱状图（按当前市场排序）
-      renderPublishersChart(filtered, market);
-
-      // 表格（带分页）
-      renderPublishersTable(filtered, market, agg, state.publisherTablePage);
 
       // 应用自定义布局顺序
       _applyPublisherLayout();
@@ -11766,7 +12500,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function _loadPublisherLayout() {
-    var DEFAULT_ORDER = ["filters", "kpi", "overview", "chart", "table"];
+    var DEFAULT_ORDER = ["filters", "kpi", "affinity", "overview", "chart", "table"];
     try {
       var saved = localStorage.getItem("publisherLayoutOrder");
       if (saved) {
@@ -11795,7 +12529,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function _resetPublisherLayout() {
-    var DEFAULT_ORDER = ["filters", "kpi", "overview", "chart", "table"];
+    var DEFAULT_ORDER = ["filters", "kpi", "affinity", "overview", "chart", "table"];
     state.publisherLayout = DEFAULT_ORDER.slice();
     _clearDragTransforms();
     _applyPublisherLayout();
@@ -15989,6 +16723,115 @@ var _NUMERIC_COL_PATTERNS = [
     document.body.classList.toggle("tier-scroll-mode", page === "tier");
   }
 
+  function mobileCurrentPageLabel() {
+    if (state.page === "tier") return state.selectedTierPage || "Tier 1";
+    const labels = {
+      dashboard: t("nav.dashboard", "Dashboard"),
+      payments: t("nav.payments", "Payments"),
+      publishers: t("nav.publishers", "Publishers"),
+      sheets: t("nav.targets", "Targets"),
+      category: t("nav.category", "Category")
+    };
+    return labels[state.page] || t("nav.dashboard", "Dashboard");
+  }
+
+  function updateMobileCurrentPage() {
+    if (els.mobileCurrentPage) {
+      els.mobileCurrentPage.textContent = mobileCurrentPageLabel();
+    }
+  }
+
+  function mobileNavigationFocusableElements() {
+    if (!els.primarySidebar) return [];
+    return Array.from(els.primarySidebar.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true");
+  }
+
+  function setMobileNavigationOpen(open, { restoreFocus = false } = {}) {
+    if (!document.body || !els.primarySidebar) return;
+    const compactNavigation = mobileNavigationMedia.matches;
+    const shouldOpen = Boolean(open && compactNavigation);
+    const wasOpen = document.body.classList.contains("nav-drawer-open");
+    const focusWasInside = els.primarySidebar.contains(document.activeElement);
+
+    if (!shouldOpen && compactNavigation && focusWasInside && els.mobileNavToggle) {
+      els.mobileNavToggle.focus({ preventScroll: true });
+    } else if (!shouldOpen && restoreFocus && wasOpen && compactNavigation && els.mobileNavToggle) {
+      els.mobileNavToggle.focus({ preventScroll: true });
+    }
+
+    document.body.classList.toggle("nav-drawer-open", shouldOpen);
+    if (els.mobileNavToggle) {
+      els.mobileNavToggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    }
+
+    if (compactNavigation) {
+      els.primarySidebar.setAttribute("aria-hidden", shouldOpen ? "false" : "true");
+      els.primarySidebar.inert = !shouldOpen;
+      if (els.workspace) {
+        els.workspace.inert = shouldOpen;
+        if (shouldOpen) {
+          els.workspace.setAttribute("aria-hidden", "true");
+        } else {
+          els.workspace.removeAttribute("aria-hidden");
+        }
+      }
+    } else {
+      els.primarySidebar.removeAttribute("aria-hidden");
+      els.primarySidebar.inert = false;
+      if (els.workspace) {
+        els.workspace.inert = false;
+        els.workspace.removeAttribute("aria-hidden");
+      }
+    }
+
+    if (shouldOpen && els.mobileNavClose) {
+      window.requestAnimationFrame(() => {
+        if (document.body.classList.contains("nav-drawer-open")) {
+          els.mobileNavClose.focus({ preventScroll: true });
+        }
+      });
+    }
+  }
+
+  function closeMobileNavigation(restoreFocus = false) {
+    setMobileNavigationOpen(false, { restoreFocus });
+  }
+
+  function syncMobileNavigationMode() {
+    closeMobileNavigation(false);
+    updateMobileCurrentPage();
+  }
+
+  function handleMobileNavigationKeydown(event) {
+    if (!mobileNavigationMedia.matches || !document.body.classList.contains("nav-drawer-open")) {
+      return false;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMobileNavigation(true);
+      return true;
+    }
+    if (event.key !== "Tab") return false;
+
+    const focusable = mobileNavigationFocusableElements();
+    if (!focusable.length) {
+      event.preventDefault();
+      return true;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+    return true;
+  }
+
   function switchPage(page) {
     state.page = page;
     updatePageModeClass(page);
@@ -16037,6 +16880,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (isSheets) renderSheetPage();
     if (isCategory) renderDashboardCategoryReport();
     if (isTier) renderTierPage(state.selectedTierPage);
+    updateMobileCurrentPage();
+    closeMobileNavigation(true);
   }
 
   function init() {
@@ -16060,6 +16905,7 @@ var _NUMERIC_COL_PATTERNS = [
     renderDashboardCategoryTierPicker();
     updateReportsNavState();
     updatePageModeClass();
+    syncMobileNavigationMode();
     quickPrompts.forEach(({ key, prompt }) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -16093,6 +16939,20 @@ var _NUMERIC_COL_PATTERNS = [
     els.dashboardCategoryReportBody.addEventListener("pointerleave", clearCategoryHighlight);
     els.dashboardCategoryReportBody.addEventListener("focusin", handleCategoryFocus);
     els.dashboardCategoryReportBody.addEventListener("focusout", clearCategoryHighlight);
+    if (els.mobileNavToggle) {
+      els.mobileNavToggle.addEventListener("click", () => setMobileNavigationOpen(true));
+    }
+    if (els.mobileNavClose) {
+      els.mobileNavClose.addEventListener("click", () => closeMobileNavigation(true));
+    }
+    if (els.navDrawerBackdrop) {
+      els.navDrawerBackdrop.addEventListener("click", () => closeMobileNavigation(true));
+    }
+    if (typeof mobileNavigationMedia.addEventListener === "function") {
+      mobileNavigationMedia.addEventListener("change", syncMobileNavigationMode);
+    } else if (typeof mobileNavigationMedia.addListener === "function") {
+      mobileNavigationMedia.addListener(syncMobileNavigationMode);
+    }
     els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.publishersNav.addEventListener("click", () => switchPage("publishers"));
@@ -16211,6 +17071,7 @@ var _NUMERIC_COL_PATTERNS = [
     els.tierOverlayClose.addEventListener("click", () => closeTierSheetOverlay());
     els.sheetExpandedBackdrop.addEventListener("click", () => closeTierSheetOverlay());
     document.addEventListener("keydown", (event) => {
+      if (handleMobileNavigationKeydown(event)) return;
       if (trapTier1AdditionsOverlayFocus(event)) return;
       if (trapTier1MerchantDialogFocus(event)) return;
       if (event.key === "Escape" && state.tier1Management.panelOpen) {
@@ -16317,6 +17178,51 @@ var _NUMERIC_COL_PATTERNS = [
       }
       renderPublishersPage();
     });
+    if (els.publisherSelectorSearch) {
+      els.publisherSelectorSearch.addEventListener("focus", _showPublisherSelectorDropdown);
+      els.publisherSelectorSearch.addEventListener("input", _showPublisherSelectorDropdown);
+      els.publisherSelectorSearch.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          var firstOption = els.publisherSelectorDropdown &&
+            els.publisherSelectorDropdown.querySelector("[data-publisher-id]");
+          if (firstOption) {
+            event.preventDefault();
+            firstOption.click();
+          }
+        } else if (event.key === "Escape") {
+          var selected = _publisherById(_publishersCache, state.publisherSelectedId);
+          els.publisherSelectorSearch.value = selected
+            ? (selected.userName || String(selected.userId))
+            : "";
+          _hidePublisherSelectorDropdown();
+        }
+      });
+      els.publisherSelectorSearch.addEventListener("blur", function () {
+        setTimeout(function () {
+          var selected = _publisherById(_publishersCache, state.publisherSelectedId);
+          if (selected) {
+            els.publisherSelectorSearch.value = selected.userName || String(selected.userId);
+          }
+          _hidePublisherSelectorDropdown();
+        }, 180);
+      });
+    }
+    if (els.publisherSelectorDropdown) {
+      els.publisherSelectorDropdown.addEventListener("click", function (event) {
+        var option = event.target.closest("[data-publisher-id]");
+        if (!option) return;
+        var publisher = _publisherById(_publishersCache, option.getAttribute("data-publisher-id"));
+        if (!publisher) return;
+        _setSelectedPublisher(publisher);
+        renderPublishersPage();
+      });
+    }
+    if (els.publisherClearSelection) {
+      els.publisherClearSelection.addEventListener("click", function () {
+        _setSelectedPublisher(null);
+        renderPublishersPage();
+      });
+    }
     // 经理组合框：输入过滤 + 即时渲染
     els.publisherManagerSearch.addEventListener("input", function () {
       state.publisherManagerSearch = els.publisherManagerSearch.value;
@@ -16344,18 +17250,42 @@ var _NUMERIC_COL_PATTERNS = [
     els.publisherMerchantSearch.addEventListener("input", function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
     });
-    els.publisherProductSearch.addEventListener("input", function () {
-      state.publisherProductSearch = els.publisherProductSearch.value;
-    });
+    if (els.publisherProductSearch) {
+      els.publisherProductSearch.addEventListener("input", function () {
+        state.publisherProductSearch = els.publisherProductSearch.value;
+      });
+    }
     els.publisherManagerSearch.addEventListener("change", function () {
       state.publisherManagerSearch = els.publisherManagerSearch.value;
     });
-    els.publisherSiteSearch.addEventListener("input", function () {
-      state.publisherSiteSearch = els.publisherSiteSearch.value;
-    });
-    els.publisherTrackSearch.addEventListener("input", function () {
-      state.publisherTrackSearch = els.publisherTrackSearch.value;
-    });
+    if (els.publisherSiteSearch) {
+      els.publisherSiteSearch.addEventListener("input", function () {
+        state.publisherSiteSearch = els.publisherSiteSearch.value;
+      });
+    }
+    if (els.publisherTrackSearch) {
+      els.publisherTrackSearch.addEventListener("input", function () {
+        state.publisherTrackSearch = els.publisherTrackSearch.value;
+      });
+    }
+    if (els.publisherPortfolioSearch) {
+      els.publisherPortfolioSearch.addEventListener("input", function () {
+        state.publisherPortfolioSearch = els.publisherPortfolioSearch.value;
+        renderPublishersPage();
+      });
+    }
+    if (els.publisherPortfolioCategory) {
+      els.publisherPortfolioCategory.addEventListener("change", function () {
+        state.publisherPortfolioCategory = els.publisherPortfolioCategory.value;
+        renderPublishersPage();
+      });
+    }
+    if (els.publisherPortfolioSort) {
+      els.publisherPortfolioSort.addEventListener("change", function () {
+        state.publisherPortfolioSort = els.publisherPortfolioSort.value;
+        renderPublishersPage();
+      });
+    }
     els.publisherSearchBtn.addEventListener("click", function () {
       renderPublishersPage();
     });
@@ -16405,16 +17335,24 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherManagerSearch = "";
       state.publisherSiteSearch = "";
       state.publisherTrackSearch = "";
+      state.publisherSelectedId = "";
+      state.publisherPortfolioSearch = "";
+      state.publisherPortfolioCategory = "all";
+      state.publisherPortfolioSort = "sales";
       els.publisherMarketFilter.value = "all";
       els.publisherNetworkFilter.value = "all";
       els.publisherLinkTypeFilter.value = "all";
       els.publisherStartDate.value = "";
       els.publisherEndDate.value = "";
       els.publisherMerchantSearch.value = "";
-      els.publisherProductSearch.value = "";
+      if (els.publisherProductSearch) els.publisherProductSearch.value = "";
       els.publisherManagerSearch.value = "";
-      els.publisherSiteSearch.value = "";
-      els.publisherTrackSearch.value = "";
+      if (els.publisherSiteSearch) els.publisherSiteSearch.value = "";
+      if (els.publisherTrackSearch) els.publisherTrackSearch.value = "";
+      if (els.publisherSelectorSearch) els.publisherSelectorSearch.value = "";
+      if (els.publisherPortfolioSearch) els.publisherPortfolioSearch.value = "";
+      if (els.publisherPortfolioCategory) els.publisherPortfolioCategory.value = "all";
+      if (els.publisherPortfolioSort) els.publisherPortfolioSort.value = "sales";
       renderPublishersPage();
     });
     els.publisherExportBtn.addEventListener("click", downloadPublishersXlsx);
