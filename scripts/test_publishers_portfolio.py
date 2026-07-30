@@ -19,6 +19,7 @@ ROWS = [
         "merchant_name": "Alpha",
         "category": "Electronics",
         "network": "Levanta",
+        "tier": "Tier 1",
         "commission_rate": 15,
         "market": "amazon.com",
         "clicks": 20,
@@ -35,6 +36,7 @@ ROWS = [
         "merchant_name": "Alpha",
         "category": "Electronics",
         "network": "Levanta",
+        "tier": "Tier 1",
         "commission_rate": 15,
         "market": "amazon.co.uk",
         "clicks": 5,
@@ -51,6 +53,7 @@ ROWS = [
         "merchant_name": "Beta",
         "category": "Home & Kitchen",
         "network": "Wayward",
+        "tier": "Tier 3",
         "commission_rate": 20,
         "market": "amazon.com",
         "clicks": 4,
@@ -87,6 +90,8 @@ def main():
 
     assert_equal(name_map, {101: "Alpha", 202: "Beta"}, "merchant name map")
     assert_equal(alpha["merchantId"], 101, "portfolio sorting")
+    assert_equal(alpha["tier"], "Tier 1", "merchant tier")
+    assert_equal(beta["tier"], "Tier 3", "second merchant tier")
     assert_equal(set(alpha["markets"]), {"amazon.com", "amazon.co.uk"}, "market breakdown")
     assert_equal(alpha["total"]["orders"], 3, "merchant orders")
     assert_close(alpha["total"]["sales"], 130, "merchant sales")
@@ -105,6 +110,8 @@ def main():
         raise AssertionError("publisher portfolio query must include sheet category metadata")
     if "commission_rate" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
         raise AssertionError("publisher portfolio query must include merchant commission rate")
+    if "cnpscy_oi_tier_assignments" not in offer_db.PUBLISHER_PORTFOLIO_SQL:
+        raise AssertionError("publisher portfolio query must include the database-backed merchant tier")
 
     invalid_inputs = [
         ({"user_id": "invalid"}, "invalid publisher id"),

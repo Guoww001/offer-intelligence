@@ -255,6 +255,7 @@
     publisherSelectedId: "",
     publisherPortfolioSearch: "",
     publisherPortfolioCategory: "all",
+    publisherPortfolioTier: "all",
     publisherPortfolioSort: "sales",
     publisherChartMetric: "clicks",
     publisherStartDate: "",
@@ -403,6 +404,7 @@
     publisherClearSelection: document.getElementById("publisherClearSelection"),
     publisherPortfolioSearch: document.getElementById("publisherPortfolioSearch"),
     publisherPortfolioCategory: document.getElementById("publisherPortfolioCategory"),
+    publisherPortfolioTier: document.getElementById("publisherPortfolioTier"),
     publisherPortfolioSort: document.getElementById("publisherPortfolioSort"),
     publisherPortfolioCount: document.getElementById("publisherPortfolioCount"),
     publisherPortfolioRows: document.getElementById("publisherPortfolioRows"),
@@ -619,6 +621,7 @@
       "publishers.commissionRate": "佣金率",
       "publishers.earnedCommission": "实际佣金",
       "publishers.portfolioShare": "销售额占比",
+      "publishers.allTiers": "全部 Tier",
       "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；无订单时显示 N/A。佣金率来自商家配置，实际佣金来自媒体订单记录。",
       "publishers.portfolioExportEmpty": "当前商家组合筛选下没有可导出的记录。",
       "publishers.chartTitle": "按点击量排名",
@@ -10950,6 +10953,7 @@ var _NUMERIC_COL_PATTERNS = [
             ? state.publisherMarket
             : Object.keys(merchant.markets || {}).join(", "),
           category: merchant.category || "Uncategorized",
+          tier: merchant.tier || "Unknown",
           aov: metric.aov == null ? "" : metric.aov,
           commissionRate: merchant.commissionRate == null ? "" : merchant.commissionRate,
           orders: metric.orders || 0,
@@ -10969,6 +10973,7 @@ var _NUMERIC_COL_PATTERNS = [
           ["Network", function (row) { return row.network; }],
           ["Markets", function (row) { return row.markets; }],
           ["Category", function (row) { return row.category; }],
+          ["Tier", function (row) { return row.tier; }],
           ["AOV", function (row) { return row.aov; }],
           ["Commission Rate", function (row) { return row.commissionRate; }],
           ["Orders", function (row) { return row.orders; }],
@@ -11061,6 +11066,18 @@ var _NUMERIC_COL_PATTERNS = [
   var _publisherPortfolioRequestVersion = 0;
   var _activePublisherPortfolioRows = [];
   var _activePublisherPortfolioSalesTotal = 0;
+
+  function _publisherManagerMatches(pub, managerQuery) {
+    var manager = String(managerQuery || "").toLowerCase().trim();
+    if (!manager) return true;
+    return String((pub || {}).adminName || "").toLowerCase().indexOf(manager) !== -1;
+  }
+
+  function _publishersForManager(publishers, managerQuery) {
+    return (publishers || []).filter(function (pub) {
+      return _publisherManagerMatches(pub, managerQuery);
+    });
+  }
 
   function _rebuildManagerOptions(publishers) {
     if (!publishers) return;
@@ -11166,11 +11183,13 @@ var _NUMERIC_COL_PATTERNS = [
     state.publisherSelectedId = pub ? String(pub.userId) : "";
     state.publisherPortfolioSearch = "";
     state.publisherPortfolioCategory = "all";
+    state.publisherPortfolioTier = "all";
     state.publisherPortfolioSort = "sales";
     if (els.publisherSelectorSearch) {
       els.publisherSelectorSearch.value = pub ? (pub.userName || String(pub.userId)) : "";
     }
     if (els.publisherPortfolioSearch) els.publisherPortfolioSearch.value = "";
+    if (els.publisherPortfolioTier) els.publisherPortfolioTier.value = "all";
     if (els.publisherPortfolioSort) els.publisherPortfolioSort.value = "sales";
     _hidePublisherSelectorDropdown();
   }
@@ -11259,10 +11278,7 @@ var _NUMERIC_COL_PATTERNS = [
         if (name2.indexOf(productSearch) === -1 && id2.indexOf(productSearch) === -1) return false;
       }
       // 经理搜索
-      if (manager) {
-        var adminName = (pub.adminName || "").toLowerCase();
-        if (adminName.indexOf(manager) === -1) return false;
-      }
+      if (!_publisherManagerMatches(pub, manager)) return false;
       // 站点搜索（模糊匹配市场名称）
       if (siteSearch) {
         var marketKeys = Object.keys(pub.markets || {});
@@ -11333,6 +11349,9 @@ var _NUMERIC_COL_PATTERNS = [
     var categoryFilter = includePortfolioControls
       ? (state.publisherPortfolioCategory || "all")
       : "all";
+    var tierFilter = includePortfolioControls
+      ? (state.publisherPortfolioTier || "all")
+      : "all";
 
     var rows = (merchants || []).map(function (merchant) {
       return {
@@ -11349,10 +11368,14 @@ var _NUMERIC_COL_PATTERNS = [
           merchant.merchantName,
           merchant.category,
           merchant.network,
+          merchant.tier,
         ].join(" ").toLowerCase();
         if (globalHaystack.indexOf(globalMerchantSearch) === -1) return false;
       }
       if (categoryFilter !== "all" && String(merchant.category || "Uncategorized") !== categoryFilter) {
+        return false;
+      }
+      if (tierFilter !== "all" && String(merchant.tier || "Unknown") !== tierFilter) {
         return false;
       }
       if (portfolioSearch) {
@@ -11361,6 +11384,7 @@ var _NUMERIC_COL_PATTERNS = [
           merchant.merchantName,
           merchant.category,
           merchant.network,
+          merchant.tier,
           Object.keys(merchant.markets || {}).join(" "),
         ].join(" ").toLowerCase();
         if (haystack.indexOf(portfolioSearch) === -1) return false;
@@ -11642,10 +11666,46 @@ var _NUMERIC_COL_PATTERNS = [
     els.publisherPortfolioCategory.value = selected;
   }
 
+  function _publisherTierOptions(rows, selectedTier) {
+    var tiers = Array.from(new Set(rows.map(function (row) {
+      return String(row.merchant.tier || "Unknown");
+    })));
+    if (selectedTier && selectedTier !== "all" && tiers.indexOf(selectedTier) === -1) {
+      tiers.push(selectedTier);
+    }
+    return tiers.sort(function (a, b) {
+      var aIndex = TIER_MOVE_OPTIONS.indexOf(a);
+      var bIndex = TIER_MOVE_OPTIONS.indexOf(b);
+      if (aIndex === -1) aIndex = TIER_MOVE_OPTIONS.length;
+      if (bIndex === -1) bIndex = TIER_MOVE_OPTIONS.length;
+      return aIndex - bIndex || a.localeCompare(b);
+    });
+  }
+
+  function _syncPublisherPortfolioTiers(rows) {
+    if (!els.publisherPortfolioTier) return;
+    var selected = state.publisherPortfolioTier || "all";
+    var tiers = _publisherTierOptions(rows, selected);
+    els.publisherPortfolioTier.innerHTML =
+      '<option value="all">' + escapeHtml(t("publishers.allTiers", "All tiers")) + '</option>' +
+      tiers.map(function (tier) {
+        return '<option value="' + escapeHtml(tier) + '">' + escapeHtml(tier) + '</option>';
+      }).join("");
+    els.publisherPortfolioTier.value = selected;
+  }
+
+  function _publisherTierTone(tier) {
+    var canonical = canonicalTierName(tier);
+    if (canonical === "BLACK TIER") return "black";
+    var match = /^Tier ([1-4])$/.exec(canonical);
+    return match ? "tier-" + match[1] : "unknown";
+  }
+
   function _renderPublisherPortfolioTable(globalRows, summary) {
     if (!els.publisherPortfolioRows) return;
     _activePublisherPortfolioSalesTotal = Number(summary.sales || 0);
     _syncPublisherPortfolioCategories(globalRows);
+    _syncPublisherPortfolioTiers(globalRows);
     var rows = _publisherPortfolioRowsForState(
       globalRows.map(function (row) { return row.merchant; }),
       true
@@ -11656,7 +11716,7 @@ var _NUMERIC_COL_PATTERNS = [
         t("publishers.merchantsInView", "merchants in view");
     }
     if (!rows.length) {
-      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="9" class="publisher-portfolio-empty">' +
+      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="10" class="publisher-portfolio-empty">' +
         escapeHtml(t("publishers.noPortfolioRows", "No merchants match the current filters")) +
       '</td></tr>';
       return;
@@ -11685,6 +11745,9 @@ var _NUMERIC_COL_PATTERNS = [
         '</span><small>' + escapeHtml(marketText || "Unknown") + '</small></div></td>' +
         '<td><span class="publisher-category-pill">' +
           escapeHtml(merchant.category || "Uncategorized") +
+        '</span></td>' +
+        '<td><span class="publisher-tier-pill ' + _publisherTierTone(merchant.tier) + '">' +
+          escapeHtml(merchant.tier || "Unknown") +
         '</span></td>' +
         '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(merchant.commissionRate)) + '</td>' +
@@ -12290,6 +12353,7 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherSelectedId || "",
       state.publisherPortfolioSearch || "",
       state.publisherPortfolioCategory || "",
+      state.publisherPortfolioTier || "",
       state.publisherPortfolioSort || "",
       state.publisherSort ? state.publisherSort.key + "|" + state.publisherSort.direction : "",
     ].join("||");
@@ -12310,8 +12374,15 @@ var _NUMERIC_COL_PATTERNS = [
       _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket, "请选择站点");
       // 重建经理选项列表（供组合框使用）
       _rebuildManagerOptions(data.publishers);
-      _rebuildPublisherSelectorOptions(data.publishers);
+      _rebuildPublisherSelectorOptions(
+        _publishersForManager(data.publishers, state.publisherManagerSearch)
+      );
       var selectedPublisherBase = _publisherById(data, state.publisherSelectedId);
+      if (selectedPublisherBase &&
+          !_publisherManagerMatches(selectedPublisherBase, state.publisherManagerSearch)) {
+        _setSelectedPublisher(null);
+        selectedPublisherBase = null;
+      }
       if (els.publisherSelectorSearch && selectedPublisherBase) {
         els.publisherSelectorSearch.value = selectedPublisherBase.userName || String(selectedPublisherBase.userId);
       }
@@ -12333,6 +12404,9 @@ var _NUMERIC_COL_PATTERNS = [
       }
       if (els.publisherPortfolioSort) {
         els.publisherPortfolioSort.value = state.publisherPortfolioSort || "sales";
+      }
+      if (els.publisherPortfolioTier) {
+        els.publisherPortfolioTier.value = state.publisherPortfolioTier || "all";
       }
 
       // 当日期范围生效时，用 dailyRows 重新计算 publisher 的数据
@@ -17263,6 +17337,12 @@ var _NUMERIC_COL_PATTERNS = [
         renderPublishersPage();
       });
     }
+    if (els.publisherPortfolioTier) {
+      els.publisherPortfolioTier.addEventListener("change", function () {
+        state.publisherPortfolioTier = els.publisherPortfolioTier.value;
+        renderPublishersPage();
+      });
+    }
     if (els.publisherPortfolioSort) {
       els.publisherPortfolioSort.addEventListener("change", function () {
         state.publisherPortfolioSort = els.publisherPortfolioSort.value;
@@ -17321,6 +17401,7 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherSelectedId = "";
       state.publisherPortfolioSearch = "";
       state.publisherPortfolioCategory = "all";
+      state.publisherPortfolioTier = "all";
       state.publisherPortfolioSort = "sales";
       els.publisherMarketFilter.value = "all";
       els.publisherNetworkFilter.value = "all";
@@ -17335,6 +17416,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (els.publisherSelectorSearch) els.publisherSelectorSearch.value = "";
       if (els.publisherPortfolioSearch) els.publisherPortfolioSearch.value = "";
       if (els.publisherPortfolioCategory) els.publisherPortfolioCategory.value = "all";
+      if (els.publisherPortfolioTier) els.publisherPortfolioTier.value = "all";
       if (els.publisherPortfolioSort) els.publisherPortfolioSort.value = "sales";
       renderPublishersPage();
     });
@@ -17641,7 +17723,28 @@ var _NUMERIC_COL_PATTERNS = [
       demoDbStatusPayload,
       dbStatusViewModel,
       dbDailyTrendRows,
-      dbDailyTrendChartHtml
+      dbDailyTrendChartHtml,
+      publisherManagerMatches: _publisherManagerMatches,
+      publishersForManager: _publishersForManager,
+      publisherTierOptions: _publisherTierOptions,
+      setPublisherPortfolioFilters: (filters = {}) => {
+        state.publisherMarket = filters.market == null ? state.publisherMarket : filters.market;
+        state.publisherNetwork = filters.network == null ? state.publisherNetwork : filters.network;
+        state.publisherMerchantSearch = filters.merchantSearch == null
+          ? state.publisherMerchantSearch
+          : filters.merchantSearch;
+        state.publisherPortfolioSearch = filters.portfolioSearch == null
+          ? state.publisherPortfolioSearch
+          : filters.portfolioSearch;
+        state.publisherPortfolioCategory = filters.category == null
+          ? state.publisherPortfolioCategory
+          : filters.category;
+        state.publisherPortfolioTier = filters.tier == null
+          ? state.publisherPortfolioTier
+          : filters.tier;
+      },
+      publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
+        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls)
     };
   } else {
     init();
