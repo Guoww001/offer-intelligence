@@ -9322,6 +9322,32 @@ var _NUMERIC_COL_PATTERNS = [
         statusBar.textContent = language === "zh"
           ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
           : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens";
+        // ── 追加「转为 View」按钮 ──
+        if (fullResponse && fullResponse.trim()) {
+          var viewBtn = document.createElement("button");
+          viewBtn.className = "chat-to-deep-btn";
+          viewBtn.textContent = language === "zh" ? "转为 View" : "Open as View";
+          viewBtn._chatPrompt = prompt;
+          viewBtn._fullResponse = fullResponse;
+          viewBtn.addEventListener("click", function (e) {
+            var btn = e.currentTarget;
+            var _prompt = btn._chatPrompt || "";
+            var _html = btn._fullResponse ? markdownToHtml(btn._fullResponse) : "";
+            if (!_html) return;
+            // 查找是否已有与此按钮关联的面板
+            var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
+            if (existing && existing._hidden) {
+              _showDeepPanel(existing.id);
+            } else if (existing) {
+              _bringPanelToFront(existing);
+            } else {
+              var p = _createDeepPanel(_prompt);
+              p._viewBtn = btn;
+              _showQuickResultInDeepPanel(p, _html, _prompt);
+            }
+          });
+          msgEl.appendChild(viewBtn);
+        }
         _chatLog.scrollTop = _chatLog.scrollHeight;
       } catch (error) {
         loadingMsg.remove();
