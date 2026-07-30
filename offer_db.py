@@ -2716,6 +2716,7 @@ SELECT
     MAX(a.advert_name) AS merchant_name,
     MAX(COALESCE(NULLIF(TRIM(sm.sheetCategory), ''), cat.mainCategory, 'Uncategorized')) AS category,
     MAX(COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown')) AS network,
+    MAX(COALESCE(NULLIF(TRIM(t.tier), ''), 'Unknown')) AS tier,
     MAX(a.advert_money) AS commission_rate,
     {PUBLISHER_PORTFOLIO_MARKET_SQL} AS market,
     MAX(o.clicks) AS clicks,
@@ -2753,6 +2754,8 @@ LEFT JOIN cnpscy_advert_type at
     ON a.advert_advertiser = at.advert_type_id AND at.advert_type_parent_id = 53
 LEFT JOIN cnpscy_oi_offer_sheet_metadata sm
     ON CAST(o.advert_id AS CHAR) = sm.merchantId
+LEFT JOIN cnpscy_oi_tier_assignments t
+    ON CAST(o.advert_id AS CHAR) = t.merchantId
 LEFT JOIN (
     SELECT
         mc2.merchantId,
@@ -2822,6 +2825,7 @@ def publisher_portfolios_from_rows(
                 "merchantName": merchant_name,
                 "category": str(row.get("category") or "Uncategorized").strip() or "Uncategorized",
                 "network": str(row.get("network") or "Unknown").strip() or "Unknown",
+                "tier": str(row.get("tier") or "Unknown").strip() or "Unknown",
                 "commissionRate": float(raw_rate) if raw_rate not in (None, "") else None,
                 "markets": {},
                 "total": _publisher_metric_bucket(),

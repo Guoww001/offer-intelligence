@@ -43,6 +43,7 @@ jobs:
           python scripts/test_vercel_db_wsgi.py
           python scripts/test_tier_report_date_range.py
           python scripts/test_publishers_portfolio.py
+          node scripts/test_publisher_manager_tier_frontend.mjs
           python scripts/test_tier1_agency_sync.py
           node scripts/test_tier_report_frontend.mjs
           python scripts/test_manual_tier_automation.py
