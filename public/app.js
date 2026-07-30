@@ -7742,7 +7742,8 @@
 
     if (month) rows = rows.filter((record) => record.reportMonth === month);
     if (tier) rows = rows.filter((record) => record.tier === tier);
-    if (/unpaid|issue|late|not paid|overdue|due/.test(lower) || /未付款|没付款|未支付|逾期|到期|需跟进/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Unpaid" || isPaymentOverdue(record));
+    if (/\boverdue\b/.test(lower) || /逾期|到期|需跟进/.test(prompt)) rows = rows.filter(isPaymentOverdue);
+    else if (/\bunpaid\b/.test(lower) || /issue|late|not paid|\bdue\b/.test(lower) || /未付款|没付款|未支付/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Unpaid");
     else if (/partial/.test(lower) || /部分付款|部分支付/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Partial");
     else if (/pending|not available yet|before due/.test(lower) || /待处理|未到期|还没到|等待/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Pending");
     else if (/already paid|\bpaid\b/.test(lower) || /已付款|已支付/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Paid");
