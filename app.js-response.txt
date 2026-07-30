@@ -255,7 +255,6 @@
     publisherSelectedId: "",
     publisherPortfolioSearch: "",
     publisherPortfolioCategory: "all",
-    publisherPortfolioTier: "all",
     publisherPortfolioSort: "sales",
     publisherChartMetric: "clicks",
     publisherStartDate: "",
@@ -298,7 +297,7 @@
     recommendationDownloads: {},
     downloadSequence: 0,
     reportsOpen: true,
-    language: localStorage.getItem("offerLanguage") === "en" ? "en" : "zh",
+    language: localStorage.getItem("offerLanguage") === "zh" ? "zh" : "en",
     deepMode: true,
     deepReport: null,
     deepHistory: [],
@@ -404,7 +403,6 @@
     publisherClearSelection: document.getElementById("publisherClearSelection"),
     publisherPortfolioSearch: document.getElementById("publisherPortfolioSearch"),
     publisherPortfolioCategory: document.getElementById("publisherPortfolioCategory"),
-    publisherPortfolioTier: document.getElementById("publisherPortfolioTier"),
     publisherPortfolioSort: document.getElementById("publisherPortfolioSort"),
     publisherPortfolioCount: document.getElementById("publisherPortfolioCount"),
     publisherPortfolioRows: document.getElementById("publisherPortfolioRows"),
@@ -587,8 +585,6 @@
       "action.move": "移动",
       "action.select": "选择",
       "action.download": "下载",
-      "action.expand": "展开",
-      "action.close": "关闭",
       "chat.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer...",
       "table.offers": "Offer 列表",
       "payments.title": "付款",
@@ -621,27 +617,11 @@
       "publishers.merchantPortfolio": "合作商家组合",
       "publishers.networkMarket": "联盟 / 市场",
       "publishers.commissionRate": "佣金率",
-      "publishers.conversion": "转化率",
       "publishers.earnedCommission": "实际佣金",
       "publishers.portfolioShare": "销售额占比",
-      "publishers.allTiers": "全部 Tier",
-      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；EPC = 销售额 ÷ 点击量；Conversion = 订单数 ÷ 点击量，仅显示比例。佣金率来自商家配置，实际佣金来自媒体订单记录。",
+      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；无订单时显示 N/A。佣金率来自商家配置，实际佣金来自媒体订单记录。",
       "publishers.portfolioExportEmpty": "当前商家组合筛选下没有可导出的记录。",
       "publishers.chartTitle": "按点击量排名",
-      "publishers.clicks": "点击",
-      "publishers.orders": "订单",
-      "publishers.sales": "销售额",
-      "publishers.commission": "佣金",
-      "publishers.publisherCount": "媒体数量",
-      "publishers.marketSummary": "概览",
-      "publishers.market": "市场",
-      "publishers.exportPage": "导出当前页",
-      "publishers.exportAll": "导出全部",
-      "publishers.columnsButton": "显示",
-      "publishers.columnsTitle": "显示字段",
-      "publishers.columnsHint": "选择要显示的字段",
-      "publishers.coreColumns": "默认",
-      "publishers.allColumns": "全部",
       "publishers.tableTitle": "媒介数据",
       "publishers.startMonth": "起始日期",
       "publishers.endMonth": "截止日期",
@@ -656,7 +636,6 @@
       "tier.networkAgency": "网络 / Agency",
       "label.Brand": "品牌",
       "label.Merchant": "商家",
-      "label.Market": "市场",
       "label.Merchant ID": "商家 ID",
       "label.Tier": "分层",
       "label.Network": "网络",
@@ -797,7 +776,6 @@
       "tier.allColumns": "全部",
       "language.button.zh": "中文简体",
       "language.button.en": "English",
-      "memory.hint": "将面板拖入此处作为上下文",
       "deep.title": "深度分析",
       "deep.export": "导出",
       "deep.close": "关闭",
@@ -805,8 +783,8 @@
       "deep.skeleton.step2": "",
       "deep.skeleton.step3": "",
       "deep.error": "分析失败，请稍后重试。",
-      "deep.mode.fast": "聊天模式",
-      "deep.mode.deep": "报告模式",
+      "deep.mode.fast": "快速模式",
+      "deep.mode.deep": "深度视图",
       "deep.placeholder": "在 Deep Window 中查看分析结果…",
       "deep.fast.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer…",
       "deep.report.defaultTitle": "分析报告",
@@ -7743,8 +7721,7 @@
 
     if (month) rows = rows.filter((record) => record.reportMonth === month);
     if (tier) rows = rows.filter((record) => record.tier === tier);
-    if (/\boverdue\b/.test(lower) || /逾期|到期|需跟进/.test(prompt)) rows = rows.filter(isPaymentOverdue);
-    else if (/\bunpaid\b/.test(lower) || /issue|late|not paid|\bdue\b/.test(lower) || /未付款|没付款|未支付/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Unpaid");
+    if (/unpaid|issue|late|not paid|overdue|due/.test(lower) || /未付款|没付款|未支付|逾期|到期|需跟进/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Unpaid" || isPaymentOverdue(record));
     else if (/partial/.test(lower) || /部分付款|部分支付/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Partial");
     else if (/pending|not available yet|before due/.test(lower) || /待处理|未到期|还没到|等待/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Pending");
     else if (/already paid|\bpaid\b/.test(lower) || /已付款|已支付/.test(prompt)) rows = rows.filter((record) => record.paymentStatus === "Paid");
@@ -8645,49 +8622,9 @@
     if (!panel) return;
     panel._hidden = false;
     panel.minimized = false;
-
-    // Clean up any stale animation/inline state
-    var el = panel.el;
-    el.style.display = "";
-    el.style.transform = "";
-    el.style.borderRadius = "";
-    el.style.transition = "";
-    el.style.willChange = "";
-    el.style.width = "";
-    el.style.minWidth = "";
-    el.style.maxWidth = "";
-    el.style.height = "";
-    el.style.opacity = "";
-    el.classList.remove("minimized", "panel-animating", "generating");
-
-    // Restore body visibility
-    var body = el.querySelector(".deep-window-body");
-    if (body) { body.style.opacity = ""; body.style.transition = ""; }
-
-    // Restore minimize button text
-    var minBtn = el.querySelector(".deep-window-minimize");
-    if (minBtn) { minBtn.textContent = "─"; minBtn.title = "Minimize"; }
-
-    // Ensure stop/close/export buttons in correct state
-    el.querySelector(".deep-window-stop")?.classList.add("hidden");
-    el.querySelector(".deep-window-close")?.classList.remove("hidden");
-    el.querySelector(".deep-window-export")?.classList.remove("hidden");
-
+    panel.el.style.display = "";
+    panel.el.classList.remove("minimized");
     _bringPanelToFront(panel);
-  }
-
-  function _resetPanelToDefaultPos(panel) {
-    if (!panel || !panel.el) return;
-    var idx = _deepPanels.indexOf(panel);
-    if (idx === -1) idx = _deepPanels.length;
-    var left = Math.max(12, (window.innerWidth - 760) / 2 + idx * 30);
-    var top = Math.max(12, (window.innerHeight - 720) / 2 + idx * 30);
-    left = Math.min(left, window.innerWidth - 300);
-    top = Math.min(top, window.innerHeight - 200);
-    panel.el.style.left = left + "px";
-    panel.el.style.top = top + "px";
-    panel._origLeft = left;
-    panel._origTop = top;
   }
 
   function _removeDeepPanel(id) {
@@ -8818,8 +8755,6 @@
 
   async function submitDeepReasoning(prompt) {
     var panel = _createDeepPanel(prompt);
-    panel._mode = "report";
-    panel.el.classList.add("source-report");
     panel.abortController = new AbortController();
     var signal = panel.abortController.signal;
     _showPanelSkeleton(panel, true);
@@ -8862,8 +8797,8 @@
   function _deepPanelSummaryHtml(panel, report, prompt) {
     var cardKey = ++_deepCardKeyCounter;
     panel._cardKey = cardKey;
-    // 缓存报告数据和来源模式，支持面板关闭后点击摘要重建
-    _deepReportCache[cardKey] = { prompt: prompt, report: report, mode: panel._mode };
+    // 缓存报告数据，支持面板关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, report: report };
     var escapedTitle = escapeHtml(report.title || t("deep.report.defaultTitle", "Analysis Report"));
     var escapedSummary = escapeHtml(report.summary || "");
     var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
@@ -8906,10 +8841,8 @@
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
     panel.el.classList.remove("generating");
 
-    // Watch context panel for async trend chart updates (only for Report Mode)
-    if (panel._mode === "report") {
-      _syncContextChartToDeepPanel(panel);
-    }
+    // Watch context panel for async trend chart updates (e.g. SVG line chart)
+    _syncContextChartToDeepPanel(panel);
   }
 
   // ★ Deep Mode: sync context panel's trend chart (SVG) into Deep Window
@@ -9018,8 +8951,8 @@
   function _deepQuickSummaryHtml(panel, prompt, html) {
     var cardKey = ++_deepCardKeyCounter;
     panel._cardKey = cardKey;
-    // 缓存面板 HTML 和来源模式，支持关闭后点击摘要重建
-    _deepReportCache[cardKey] = { prompt: prompt, html: html, mode: panel._mode };
+    // 缓存面板 HTML，支持关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, html: html };
     var prefix = t("deep.chat.summaryPrefix", "📊 Deep Analysis: ");
     var title = panel.title || t("deep.report.defaultTitle", "Analysis Report");
     var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
@@ -9399,8 +9332,7 @@ var _NUMERIC_COL_PATTERNS = [
           viewBtn.addEventListener("click", function (e) {
             var btn = e.currentTarget;
             var _prompt = btn._chatPrompt || "";
-            // Chat Mode View: 用 .chat-stream-text 包裹，确保深层面板内渲染样式与聊天一致
-            var _html = btn._fullResponse ? '<div class="chat-stream-text">' + markdownToHtml(btn._fullResponse) + '</div>' : "";
+            var _html = btn._fullResponse ? markdownToHtml(btn._fullResponse) : "";
             if (!_html) return;
             // 查找是否已有与此按钮关联的面板
             var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
@@ -9410,13 +9342,11 @@ var _NUMERIC_COL_PATTERNS = [
               _bringPanelToFront(existing);
             } else {
               var p = _createDeepPanel(_prompt);
-              p._mode = "chat";
-              p.el.classList.add("source-chat");
               p._viewBtn = btn;
               _showQuickResultInDeepPanel(p, _html, _prompt);
             }
           });
-          statusBar.appendChild(viewBtn);
+          msgEl.appendChild(viewBtn);
         }
         _chatLog.scrollTop = _chatLog.scrollHeight;
       } catch (error) {
@@ -9441,8 +9371,6 @@ var _NUMERIC_COL_PATTERNS = [
 
     if (isDeep) {
       panel = _createDeepPanel(prompt);
-      panel._mode = "report";
-      panel.el.classList.add("source-report");
       _showPanelSkeleton(panel, false);
       await new Promise(function (r) { setTimeout(r, 50); });
     }
@@ -11065,10 +10993,7 @@ var _NUMERIC_COL_PATTERNS = [
             ? state.publisherMarket
             : Object.keys(merchant.markets || {}).join(", "),
           category: merchant.category || "Uncategorized",
-          tier: merchant.tier || "Unknown",
           aov: metric.aov == null ? "" : metric.aov,
-          epc: _publisherMetricEpc(metric),
-          conversion: _publisherMetricConversionRate(metric),
           commissionRate: merchant.commissionRate == null ? "" : merchant.commissionRate,
           orders: metric.orders || 0,
           sales: metric.sales || 0,
@@ -11087,10 +11012,7 @@ var _NUMERIC_COL_PATTERNS = [
           ["Network", function (row) { return row.network; }],
           ["Markets", function (row) { return row.markets; }],
           ["Category", function (row) { return row.category; }],
-          ["Tier", function (row) { return row.tier; }],
           ["AOV", function (row) { return row.aov; }],
-          ["EPC", function (row) { return row.epc; }],
-          ["Conversion", function (row) { return row.conversion; }],
           ["Commission Rate", function (row) { return row.commissionRate; }],
           ["Orders", function (row) { return row.orders; }],
           ["Sales", function (row) { return row.sales; }],
@@ -11182,18 +11104,6 @@ var _NUMERIC_COL_PATTERNS = [
   var _publisherPortfolioRequestVersion = 0;
   var _activePublisherPortfolioRows = [];
   var _activePublisherPortfolioSalesTotal = 0;
-
-  function _publisherManagerMatches(pub, managerQuery) {
-    var manager = String(managerQuery || "").toLowerCase().trim();
-    if (!manager) return true;
-    return String((pub || {}).adminName || "").toLowerCase().indexOf(manager) !== -1;
-  }
-
-  function _publishersForManager(publishers, managerQuery) {
-    return (publishers || []).filter(function (pub) {
-      return _publisherManagerMatches(pub, managerQuery);
-    });
-  }
 
   function _rebuildManagerOptions(publishers) {
     if (!publishers) return;
@@ -11299,13 +11209,11 @@ var _NUMERIC_COL_PATTERNS = [
     state.publisherSelectedId = pub ? String(pub.userId) : "";
     state.publisherPortfolioSearch = "";
     state.publisherPortfolioCategory = "all";
-    state.publisherPortfolioTier = "all";
     state.publisherPortfolioSort = "sales";
     if (els.publisherSelectorSearch) {
       els.publisherSelectorSearch.value = pub ? (pub.userName || String(pub.userId)) : "";
     }
     if (els.publisherPortfolioSearch) els.publisherPortfolioSearch.value = "";
-    if (els.publisherPortfolioTier) els.publisherPortfolioTier.value = "all";
     if (els.publisherPortfolioSort) els.publisherPortfolioSort.value = "sales";
     _hidePublisherSelectorDropdown();
   }
@@ -11394,7 +11302,10 @@ var _NUMERIC_COL_PATTERNS = [
         if (name2.indexOf(productSearch) === -1 && id2.indexOf(productSearch) === -1) return false;
       }
       // 经理搜索
-      if (!_publisherManagerMatches(pub, manager)) return false;
+      if (manager) {
+        var adminName = (pub.adminName || "").toLowerCase();
+        if (adminName.indexOf(manager) === -1) return false;
+      }
       // 站点搜索（模糊匹配市场名称）
       if (siteSearch) {
         var marketKeys = Object.keys(pub.markets || {});
@@ -11448,16 +11359,6 @@ var _NUMERIC_COL_PATTERNS = [
     return merchant.total || null;
   }
 
-  function _publisherMetricEpc(metric) {
-    var clicks = Number((metric || {}).clicks || 0);
-    return clicks > 0 ? Number((metric || {}).sales || 0) / clicks : 0;
-  }
-
-  function _publisherMetricConversionRate(metric) {
-    var clicks = Number((metric || {}).clicks || 0);
-    return clicks > 0 ? Number((metric || {}).orders || 0) / clicks : 0;
-  }
-
   function _publisherMetricIsActive(metric) {
     if (!metric) return false;
     return ["clicks", "dpv", "atc", "orders", "sales", "allCommission", "affCommission"].some(function (key) {
@@ -11475,9 +11376,6 @@ var _NUMERIC_COL_PATTERNS = [
     var categoryFilter = includePortfolioControls
       ? (state.publisherPortfolioCategory || "all")
       : "all";
-    var tierFilter = includePortfolioControls
-      ? (state.publisherPortfolioTier || "all")
-      : "all";
 
     var rows = (merchants || []).map(function (merchant) {
       return {
@@ -11494,14 +11392,10 @@ var _NUMERIC_COL_PATTERNS = [
           merchant.merchantName,
           merchant.category,
           merchant.network,
-          merchant.tier,
         ].join(" ").toLowerCase();
         if (globalHaystack.indexOf(globalMerchantSearch) === -1) return false;
       }
       if (categoryFilter !== "all" && String(merchant.category || "Uncategorized") !== categoryFilter) {
-        return false;
-      }
-      if (tierFilter !== "all" && String(merchant.tier || "Unknown") !== tierFilter) {
         return false;
       }
       if (portfolioSearch) {
@@ -11510,7 +11404,6 @@ var _NUMERIC_COL_PATTERNS = [
           merchant.merchantName,
           merchant.category,
           merchant.network,
-          merchant.tier,
           Object.keys(merchant.markets || {}).join(" "),
         ].join(" ").toLowerCase();
         if (haystack.indexOf(portfolioSearch) === -1) return false;
@@ -11792,46 +11685,10 @@ var _NUMERIC_COL_PATTERNS = [
     els.publisherPortfolioCategory.value = selected;
   }
 
-  function _publisherTierOptions(rows, selectedTier) {
-    var tiers = Array.from(new Set(rows.map(function (row) {
-      return String(row.merchant.tier || "Unknown");
-    })));
-    if (selectedTier && selectedTier !== "all" && tiers.indexOf(selectedTier) === -1) {
-      tiers.push(selectedTier);
-    }
-    return tiers.sort(function (a, b) {
-      var aIndex = TIER_MOVE_OPTIONS.indexOf(a);
-      var bIndex = TIER_MOVE_OPTIONS.indexOf(b);
-      if (aIndex === -1) aIndex = TIER_MOVE_OPTIONS.length;
-      if (bIndex === -1) bIndex = TIER_MOVE_OPTIONS.length;
-      return aIndex - bIndex || a.localeCompare(b);
-    });
-  }
-
-  function _syncPublisherPortfolioTiers(rows) {
-    if (!els.publisherPortfolioTier) return;
-    var selected = state.publisherPortfolioTier || "all";
-    var tiers = _publisherTierOptions(rows, selected);
-    els.publisherPortfolioTier.innerHTML =
-      '<option value="all">' + escapeHtml(t("publishers.allTiers", "All tiers")) + '</option>' +
-      tiers.map(function (tier) {
-        return '<option value="' + escapeHtml(tier) + '">' + escapeHtml(tier) + '</option>';
-      }).join("");
-    els.publisherPortfolioTier.value = selected;
-  }
-
-  function _publisherTierTone(tier) {
-    var canonical = canonicalTierName(tier);
-    if (canonical === "BLACK TIER") return "black";
-    var match = /^Tier ([1-4])$/.exec(canonical);
-    return match ? "tier-" + match[1] : "unknown";
-  }
-
   function _renderPublisherPortfolioTable(globalRows, summary) {
     if (!els.publisherPortfolioRows) return;
     _activePublisherPortfolioSalesTotal = Number(summary.sales || 0);
     _syncPublisherPortfolioCategories(globalRows);
-    _syncPublisherPortfolioTiers(globalRows);
     var rows = _publisherPortfolioRowsForState(
       globalRows.map(function (row) { return row.merchant; }),
       true
@@ -11842,7 +11699,7 @@ var _NUMERIC_COL_PATTERNS = [
         t("publishers.merchantsInView", "merchants in view");
     }
     if (!rows.length) {
-      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="12" class="publisher-portfolio-empty">' +
+      els.publisherPortfolioRows.innerHTML = '<tr><td colspan="9" class="publisher-portfolio-empty">' +
         escapeHtml(t("publishers.noPortfolioRows", "No merchants match the current filters")) +
       '</td></tr>';
       return;
@@ -11872,17 +11729,12 @@ var _NUMERIC_COL_PATTERNS = [
         '<td><span class="publisher-category-pill">' +
           escapeHtml(merchant.category || "Uncategorized") +
         '</span></td>' +
-        '<td><span class="publisher-tier-pill ' + _publisherTierTone(merchant.tier) + '">' +
-          escapeHtml(merchant.tier || "Unknown") +
-        '</span></td>' +
         '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
-        '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricEpc(metric))) + '</td>' +
-        '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(merchant.commissionRate)) + '</td>' +
         '<td class="publisher-numeric">' + number(metric.orders).toLocaleString() + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.sales)) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.allCommission)) + '</td>' +
-        '<td class="publisher-numeric publisher-share-column"><div class="publisher-share-cell"><span>' + (share * 100).toFixed(1) +
+        '<td><div class="publisher-share-cell"><span>' + (share * 100).toFixed(1) +
           '%</span><i><b style="width:' + Math.max(1, share * 100).toFixed(1) + '%"></b></i></div></td>' +
       '</tr>';
     }).join("");
@@ -12481,7 +12333,6 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherSelectedId || "",
       state.publisherPortfolioSearch || "",
       state.publisherPortfolioCategory || "",
-      state.publisherPortfolioTier || "",
       state.publisherPortfolioSort || "",
       state.publisherSort ? state.publisherSort.key + "|" + state.publisherSort.direction : "",
     ].join("||");
@@ -12502,15 +12353,8 @@ var _NUMERIC_COL_PATTERNS = [
       _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket, "请选择站点");
       // 重建经理选项列表（供组合框使用）
       _rebuildManagerOptions(data.publishers);
-      _rebuildPublisherSelectorOptions(
-        _publishersForManager(data.publishers, state.publisherManagerSearch)
-      );
+      _rebuildPublisherSelectorOptions(data.publishers);
       var selectedPublisherBase = _publisherById(data, state.publisherSelectedId);
-      if (selectedPublisherBase &&
-          !_publisherManagerMatches(selectedPublisherBase, state.publisherManagerSearch)) {
-        _setSelectedPublisher(null);
-        selectedPublisherBase = null;
-      }
       if (els.publisherSelectorSearch && selectedPublisherBase) {
         els.publisherSelectorSearch.value = selectedPublisherBase.userName || String(selectedPublisherBase.userId);
       }
@@ -12532,9 +12376,6 @@ var _NUMERIC_COL_PATTERNS = [
       }
       if (els.publisherPortfolioSort) {
         els.publisherPortfolioSort.value = state.publisherPortfolioSort || "sales";
-      }
-      if (els.publisherPortfolioTier) {
-        els.publisherPortfolioTier.value = state.publisherPortfolioTier || "all";
       }
 
       // 当日期范围生效时，用 dailyRows 重新计算 publisher 的数据
@@ -17465,12 +17306,6 @@ var _NUMERIC_COL_PATTERNS = [
         renderPublishersPage();
       });
     }
-    if (els.publisherPortfolioTier) {
-      els.publisherPortfolioTier.addEventListener("change", function () {
-        state.publisherPortfolioTier = els.publisherPortfolioTier.value;
-        renderPublishersPage();
-      });
-    }
     if (els.publisherPortfolioSort) {
       els.publisherPortfolioSort.addEventListener("change", function () {
         state.publisherPortfolioSort = els.publisherPortfolioSort.value;
@@ -17529,7 +17364,6 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherSelectedId = "";
       state.publisherPortfolioSearch = "";
       state.publisherPortfolioCategory = "all";
-      state.publisherPortfolioTier = "all";
       state.publisherPortfolioSort = "sales";
       els.publisherMarketFilter.value = "all";
       els.publisherNetworkFilter.value = "all";
@@ -17544,7 +17378,6 @@ var _NUMERIC_COL_PATTERNS = [
       if (els.publisherSelectorSearch) els.publisherSelectorSearch.value = "";
       if (els.publisherPortfolioSearch) els.publisherPortfolioSearch.value = "";
       if (els.publisherPortfolioCategory) els.publisherPortfolioCategory.value = "all";
-      if (els.publisherPortfolioTier) els.publisherPortfolioTier.value = "all";
       if (els.publisherPortfolioSort) els.publisherPortfolioSort.value = "sales";
       renderPublishersPage();
     });
@@ -17702,10 +17535,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (panelId) {
         var p = _deepPanels.find(function (p2) { return p2.id === panelId; });
         if (p) {
-          if (p._hidden) {
-            _resetPanelToDefaultPos(p);
-            _showDeepPanel(p.id);
-          }
+          if (p._hidden) _showDeepPanel(p.id);
           else if (p.minimized) _expandDeepPanel(p.id);
           else _bringPanelToFront(p);
           return;
@@ -17715,10 +17545,7 @@ var _NUMERIC_COL_PATTERNS = [
       // 再通过 cardKey 查找
       var panel = _deepPanels.find(function (p2) { return p2._cardKey === key; });
       if (panel) {
-        if (panel._hidden) {
-          _resetPanelToDefaultPos(panel);
-          _showDeepPanel(panel.id);
-        }
+        if (panel._hidden) _showDeepPanel(panel.id);
         else if (panel.minimized) _expandDeepPanel(panel.id);
         else _bringPanelToFront(panel);
         return;
@@ -17727,8 +17554,6 @@ var _NUMERIC_COL_PATTERNS = [
       var cached = _deepReportCache[key];
       if (cached) {
         var newPanel = _createDeepPanel(cached.prompt);
-        newPanel._mode = cached.mode || "report";
-        newPanel.el.classList.add("source-" + newPanel._mode);
         newPanel._cardKey = key;
         if (cached.html) {
           // 简化 Deep Mode：直接还原 HTML 内容
@@ -17769,7 +17594,6 @@ var _NUMERIC_COL_PATTERNS = [
 
   if (window.__OFFER_INTELLIGENCE_TEST__) {
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
-      setLanguage: function(lang) { state.language = lang; },
       categoryForPrompt,
       detectQueryIntent,
       cleanedMerchantLookupPhrase,
@@ -17859,30 +17683,7 @@ var _NUMERIC_COL_PATTERNS = [
       demoDbStatusPayload,
       dbStatusViewModel,
       dbDailyTrendRows,
-      dbDailyTrendChartHtml,
-      publisherManagerMatches: _publisherManagerMatches,
-      publishersForManager: _publishersForManager,
-      publisherTierOptions: _publisherTierOptions,
-      publisherMetricEpc: _publisherMetricEpc,
-      publisherMetricConversionRate: _publisherMetricConversionRate,
-      setPublisherPortfolioFilters: (filters = {}) => {
-        state.publisherMarket = filters.market == null ? state.publisherMarket : filters.market;
-        state.publisherNetwork = filters.network == null ? state.publisherNetwork : filters.network;
-        state.publisherMerchantSearch = filters.merchantSearch == null
-          ? state.publisherMerchantSearch
-          : filters.merchantSearch;
-        state.publisherPortfolioSearch = filters.portfolioSearch == null
-          ? state.publisherPortfolioSearch
-          : filters.portfolioSearch;
-        state.publisherPortfolioCategory = filters.category == null
-          ? state.publisherPortfolioCategory
-          : filters.category;
-        state.publisherPortfolioTier = filters.tier == null
-          ? state.publisherPortfolioTier
-          : filters.tier;
-      },
-      publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
-        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls)
+      dbDailyTrendChartHtml
     };
   } else {
     init();
