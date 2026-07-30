@@ -16,7 +16,15 @@ python server.py
 # Opens at http://127.0.0.1:8765
 ```
 
-**重要：完成任务后，务必关闭本地服务器** —— 通过 `Ctrl+C` 终止 `server.py` 进程，关闭 `http://127.0.0.1:8765/`。不要在任务完成后让服务器继续运行。
+**重要：完成任务后，务必关闭本地服务器** —— 关闭 `http://127.0.0.1:8765/`，不要在任务完成后让服务器继续运行。
+
+关闭方法（二选一）：
+- **前台运行**：`Ctrl+C` 终止 `server.py` 进程
+- **后台运行（或残余进程）**：
+  ```bash
+  netstat -ano | grep 8765 | grep LISTEN
+  taskkill //F //PID <进程ID>
+  ```
 
 Required env vars for full functionality: `LEVANTA_API_KEY`, `OI_AUTH_ENABLED`, `OI_ADMIN_USERNAME`, `OI_ADMIN_PASSWORD_HASH`, `OI_SESSION_SECRET`, `OFFER_DB_API_TOKEN`, and the `OFFER_DB_*` connection variables. The frontend can load from committed `protected_data/db_offers_cache.json` and `protected_data/db_keywords_cache.json` without the Levanta key or DB.
 

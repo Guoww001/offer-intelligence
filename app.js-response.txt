@@ -8622,49 +8622,9 @@
     if (!panel) return;
     panel._hidden = false;
     panel.minimized = false;
-
-    // Clean up any stale animation/inline state
-    var el = panel.el;
-    el.style.display = "";
-    el.style.transform = "";
-    el.style.borderRadius = "";
-    el.style.transition = "";
-    el.style.willChange = "";
-    el.style.width = "";
-    el.style.minWidth = "";
-    el.style.maxWidth = "";
-    el.style.height = "";
-    el.style.opacity = "";
-    el.classList.remove("minimized", "panel-animating", "generating");
-
-    // Restore body visibility
-    var body = el.querySelector(".deep-window-body");
-    if (body) { body.style.opacity = ""; body.style.transition = ""; }
-
-    // Restore minimize button text
-    var minBtn = el.querySelector(".deep-window-minimize");
-    if (minBtn) { minBtn.textContent = "─"; minBtn.title = "Minimize"; }
-
-    // Ensure stop/close/export buttons in correct state
-    el.querySelector(".deep-window-stop")?.classList.add("hidden");
-    el.querySelector(".deep-window-close")?.classList.remove("hidden");
-    el.querySelector(".deep-window-export")?.classList.remove("hidden");
-
+    panel.el.style.display = "";
+    panel.el.classList.remove("minimized");
     _bringPanelToFront(panel);
-  }
-
-  function _resetPanelToDefaultPos(panel) {
-    if (!panel || !panel.el) return;
-    var idx = _deepPanels.indexOf(panel);
-    if (idx === -1) idx = _deepPanels.length;
-    var left = Math.max(12, (window.innerWidth - 760) / 2 + idx * 30);
-    var top = Math.max(12, (window.innerHeight - 720) / 2 + idx * 30);
-    left = Math.min(left, window.innerWidth - 300);
-    top = Math.min(top, window.innerHeight - 200);
-    panel.el.style.left = left + "px";
-    panel.el.style.top = top + "px";
-    panel._origLeft = left;
-    panel._origTop = top;
   }
 
   function _removeDeepPanel(id) {
@@ -8795,8 +8755,6 @@
 
   async function submitDeepReasoning(prompt) {
     var panel = _createDeepPanel(prompt);
-    panel._mode = "report";
-    panel.el.classList.add("source-report");
     panel.abortController = new AbortController();
     var signal = panel.abortController.signal;
     _showPanelSkeleton(panel, true);
@@ -8839,8 +8797,8 @@
   function _deepPanelSummaryHtml(panel, report, prompt) {
     var cardKey = ++_deepCardKeyCounter;
     panel._cardKey = cardKey;
-    // 缓存报告数据和来源模式，支持面板关闭后点击摘要重建
-    _deepReportCache[cardKey] = { prompt: prompt, report: report, mode: panel._mode };
+    // 缓存报告数据，支持面板关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, report: report };
     var escapedTitle = escapeHtml(report.title || t("deep.report.defaultTitle", "Analysis Report"));
     var escapedSummary = escapeHtml(report.summary || "");
     var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
@@ -8883,10 +8841,8 @@
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
     panel.el.classList.remove("generating");
 
-    // Watch context panel for async trend chart updates (only for Report Mode)
-    if (panel._mode === "report") {
-      _syncContextChartToDeepPanel(panel);
-    }
+    // Watch context panel for async trend chart updates (e.g. SVG line chart)
+    _syncContextChartToDeepPanel(panel);
   }
 
   // ★ Deep Mode: sync context panel's trend chart (SVG) into Deep Window
@@ -8995,8 +8951,8 @@
   function _deepQuickSummaryHtml(panel, prompt, html) {
     var cardKey = ++_deepCardKeyCounter;
     panel._cardKey = cardKey;
-    // 缓存面板 HTML 和来源模式，支持关闭后点击摘要重建
-    _deepReportCache[cardKey] = { prompt: prompt, html: html, mode: panel._mode };
+    // 缓存面板 HTML，支持关闭后点击摘要重建
+    _deepReportCache[cardKey] = { prompt: prompt, html: html };
     var prefix = t("deep.chat.summaryPrefix", "📊 Deep Analysis: ");
     var title = panel.title || t("deep.report.defaultTitle", "Analysis Report");
     var promptPreview = escapeHtml(prompt.slice(0, 80) + (prompt.length > 80 ? "…" : ""));
@@ -9376,8 +9332,7 @@ var _NUMERIC_COL_PATTERNS = [
           viewBtn.addEventListener("click", function (e) {
             var btn = e.currentTarget;
             var _prompt = btn._chatPrompt || "";
-            // Chat Mode View: 用 .chat-stream-text 包裹，确保深层面板内渲染样式与聊天一致
-            var _html = btn._fullResponse ? '<div class="chat-stream-text">' + markdownToHtml(btn._fullResponse) + '</div>' : "";
+            var _html = btn._fullResponse ? markdownToHtml(btn._fullResponse) : "";
             if (!_html) return;
             // 查找是否已有与此按钮关联的面板
             var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
@@ -9387,13 +9342,11 @@ var _NUMERIC_COL_PATTERNS = [
               _bringPanelToFront(existing);
             } else {
               var p = _createDeepPanel(_prompt);
-              p._mode = "chat";
-              p.el.classList.add("source-chat");
               p._viewBtn = btn;
               _showQuickResultInDeepPanel(p, _html, _prompt);
             }
           });
-          statusBar.appendChild(viewBtn);
+          msgEl.appendChild(viewBtn);
         }
         _chatLog.scrollTop = _chatLog.scrollHeight;
       } catch (error) {
@@ -9418,8 +9371,6 @@ var _NUMERIC_COL_PATTERNS = [
 
     if (isDeep) {
       panel = _createDeepPanel(prompt);
-      panel._mode = "report";
-      panel.el.classList.add("source-report");
       _showPanelSkeleton(panel, false);
       await new Promise(function (r) { setTimeout(r, 50); });
     }
@@ -17584,10 +17535,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (panelId) {
         var p = _deepPanels.find(function (p2) { return p2.id === panelId; });
         if (p) {
-          if (p._hidden) {
-            _resetPanelToDefaultPos(p);
-            _showDeepPanel(p.id);
-          }
+          if (p._hidden) _showDeepPanel(p.id);
           else if (p.minimized) _expandDeepPanel(p.id);
           else _bringPanelToFront(p);
           return;
@@ -17597,10 +17545,7 @@ var _NUMERIC_COL_PATTERNS = [
       // 再通过 cardKey 查找
       var panel = _deepPanels.find(function (p2) { return p2._cardKey === key; });
       if (panel) {
-        if (panel._hidden) {
-          _resetPanelToDefaultPos(panel);
-          _showDeepPanel(panel.id);
-        }
+        if (panel._hidden) _showDeepPanel(panel.id);
         else if (panel.minimized) _expandDeepPanel(panel.id);
         else _bringPanelToFront(panel);
         return;
@@ -17609,8 +17554,6 @@ var _NUMERIC_COL_PATTERNS = [
       var cached = _deepReportCache[key];
       if (cached) {
         var newPanel = _createDeepPanel(cached.prompt);
-        newPanel._mode = cached.mode || "report";
-        newPanel.el.classList.add("source-" + newPanel._mode);
         newPanel._cardKey = key;
         if (cached.html) {
           // 简化 Deep Mode：直接还原 HTML 内容
