@@ -12,6 +12,28 @@
   const TIER_VISUAL_STATUS_SOURCE_KEYS = ["visualStatusSource", "visual_status_source", "Visual Status Source", "Source"];
   const TIER_OVERRIDE_KEY = "offerTierOverrides";
   const TIER_COLUMN_KEY = "offerTierVisibleColumns.v4";
+  // ── 趋势分析面板可选指标（与 Tier Sheet 数值指标对齐）──
+  // source 为月度明细数据（merchant_amazon_metrics）中的字段名；
+  // format 决定趋势表格/卡片/图表的数值格式化方式。
+  const TREND_METRIC_DEFS = [
+    { key: "revenue", label: "Revenue", source: "revenue", format: "money" },
+    { key: "orders", label: "Orders", source: "orders", format: "count" },
+    { key: "epc", label: "EPC", source: "epc", format: "epc" },
+    { key: "aov", label: "AOV", source: "aov", format: "money" },
+    { key: "clicks", label: "Clicks", source: "clicks", format: "count" },
+    { key: "affiliatePayout", label: "Affiliate Payout", source: "affiliatePayout", format: "money" },
+    { key: "dpv", label: "DPV", source: "dpv", format: "count" },
+    { key: "atc", label: "ATC", source: "atc", format: "count" },
+    { key: "conversionRate", label: "Conversion Rate", source: "conversionRate", format: "pct" },
+    { key: "payout", label: "Payout", source: "payout", format: "money" },
+    { key: "directSales", label: "Direct Sales", source: "directSales", format: "money" },
+    { key: "haloSales", label: "Halo Sales", source: "haloSales", format: "money" }
+  ];
+  // 默认选中 9 个核心指标（未勾选时的首次打开默认值）
+  const DEFAULT_TREND_VISIBLE_METRICS = [
+    "revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate"
+  ];
+  const TREND_COLUMN_KEY = "offerTrendVisibleColumns.v1";
   const offersByMerchantId = new Map();
   const offerGroupsByMerchantId = new Map();
   const originalOfferTiers = [];
@@ -147,20 +169,6 @@
   const DEFAULT_TIER_REPORT_START_DATE = `${DEFAULT_TIER_REPORT_END_DATE.slice(0, 7)}-01`;
   const originalTierSheetRows = new Map();
   const originalTierSheetRowIndex = new Map();
-  // tier-sheet API 列名 → offer 字段名 映射（Report Mode 实时数据增强用）
-  const TIER_SHEET_TO_OFFER_METRIC = {
-    "Backend EPC": "epc",
-    "AOV": "aov",
-    "Revenue": "salesAmount",
-    "Conversion Rate": "conversionRate",
-    "Clicks": "clicks",
-    "Order count": "orders",
-    "DPV": "dpv",
-    "ATC": "atc",
-    "Commission Rate": "commissionRate",
-    "Payout": "payout",
-    "Affiliate Payout": "affiliatePayout"
-  };
   const dbMerchantCache = new Map();
   const dbMerchantLoading = new Set();
   const dbSearchCache = new Map();
@@ -261,6 +269,7 @@
     },
     tierColumnPanelOpen: false,
     tierVisibleColumns: loadTierVisibleColumns(),
+    trendVisibleColumns: loadTrendVisibleMetrics(),
     targetFilters: {
       month: "",
       compareMonth: "",
@@ -1207,6 +1216,60 @@
 
   function saveTierVisibleColumns() {
     localStorage.setItem(TIER_COLUMN_KEY, JSON.stringify(state.tierVisibleColumns));
+  }
+
+  // ── 趋势面板 Display columns（列选择）持久化 ──
+  function loadTrendVisibleMetrics() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(TREND_COLUMN_KEY) || "null");
+      if (Array.isArray(parsed)) {
+        const known = TREND_METRIC_DEFS.map((def) => def.key);
+        const valid = parsed.filter((key) => known.includes(key));
+        if (valid.length) return valid;
+      }
+    } catch (error) { /* 忽略损坏的存储 */ }
+    return DEFAULT_TREND_VISIBLE_METRICS.slice();
+  }
+
+  function saveTrendVisibleMetrics() {
+    localStorage.setItem(TREND_COLUMN_KEY, JSON.stringify(state.trendVisibleColumns));
+  }
+
+  // 当前生效的可见指标（至少 1 个；未设置时用默认 9 个）
+  function trendVisibleMetrics() {
+    const known = TREND_METRIC_DEFS.map((def) => def.key);
+    const filtered = (Array.isArray(state.trendVisibleColumns) ? state.trendVisibleColumns : [])
+      .filter((key) => known.includes(key));
+    return filtered.length ? filtered : DEFAULT_TREND_VISIBLE_METRICS.slice();
+  }
+
+  // 更新可见指标并重渲染趋势面板
+  function setTrendVisibleMetrics(metrics) {
+    const known = TREND_METRIC_DEFS.map((def) => def.key);
+    state.trendVisibleColumns = (Array.isArray(metrics) ? metrics : [])
+      .filter((key) => known.includes(key));
+    if (!state.trendVisibleColumns.length) state.trendVisibleColumns = DEFAULT_TREND_VISIBLE_METRICS.slice();
+    saveTrendVisibleMetrics();
+    rerenderTrendPanel();
+  }
+
+  function rerenderTrendPanel() {
+    if (!_trendContextData || !els.recBox) return;
+    // 重渲染前记录列面板展开状态，勾选后保持展开便于连续勾选
+    var prevPanel = els.recBox.querySelector("[data-trend-column-panel]");
+    var keepOpen = prevPanel ? !prevPanel.classList.contains("hidden") : false;
+    els.recBox.innerHTML = renderTrendContext(_trendContextData);
+    if (keepOpen) {
+      var panel = els.recBox.querySelector("[data-trend-column-panel]");
+      var toggle = els.recBox.querySelector("[data-trend-column-toggle]");
+      if (panel && toggle) {
+        panel.classList.remove("hidden");
+        toggle.setAttribute("aria-expanded", "true");
+      }
+    }
+    // 监听器绑定在 recBox 元素上（innerHTML 替换不影响），bindTrendChartControls
+    // 内部用 _trendBound 保护，不会重复绑定
+    bindTrendChartControls();
   }
 
   function applyTierOverrideToOffer(offer) {
@@ -3903,7 +3966,7 @@
   }
 
   function metricLabel(field) {
-    var labels = { epc: "EPC", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Commission", commissionRate: "Comm %", salesAmount: "Sales", revenue: "Revenue", affiliatePayout: "Commission", dpv: "DPV", atc: "ATC" };
+    var labels = { epc: "EPC", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Commission", commissionRate: "Comm %", salesAmount: "Sales", revenue: "Revenue", affiliatePayout: "Commission", dpv: "DPV", atc: "ATC", payout: "Payout", directSales: "Direct Sales", haloSales: "Halo Sales" };
     return labels[field] || field;
   }
 
@@ -4069,18 +4132,24 @@
 
   // ── Analysis computation functions ──────────────────────────────────────────
 
+  // 规范化商户名空白（折叠连续空格、去首尾空格），
+  // 避免 "Our  Place"（数据源双空格）匹配不到用户输入的 "Our Place"
+  function normalizedOfferName(offer, field) {
+    return ((offer && offer[field]) || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
   function findOfferByMerchantName(name) {
     if (!name) return null;
-    var lower = name.toLowerCase().trim();
+    var lower = name.toLowerCase().replace(/\s+/g, " ").trim();
     // Try exact match first
     for (var i = 0; i < offers.length; i++) {
-      if ((offers[i].brand || "").toLowerCase() === lower || (offers[i].merchantName || "").toLowerCase() === lower) {
+      if (normalizedOfferName(offers[i], "brand") === lower || normalizedOfferName(offers[i], "merchantName") === lower) {
         return offers[i];
       }
     }
     // Try includes match
     for (var i = 0; i < offers.length; i++) {
-      if ((offers[i].brand || "").toLowerCase().indexOf(lower) !== -1 || (offers[i].merchantName || "").toLowerCase().indexOf(lower) !== -1) {
+      if (normalizedOfferName(offers[i], "brand").indexOf(lower) !== -1 || normalizedOfferName(offers[i], "merchantName").indexOf(lower) !== -1) {
         return offers[i];
       }
     }
@@ -4098,7 +4167,7 @@
     _liveChatbotDataLoading = true;
     _liveChatbotDataPromise = (async function() {
       try {
-        var resp = await fetch(DB_CHATBOT_OFFERS_UI_API, { cache: "no-store" });
+        var resp = await fetch(DB_CHATBOT_OFFERS_UI_API, { cache: "no-store", signal: AbortSignal.timeout(10000) });
         if (resp.ok) {
           var json = await resp.json();
           if (json && Array.isArray(json.offers) && json.offers.length > 0) {
@@ -4124,18 +4193,18 @@
   /** Find a merchant's offer, preferring live data (loaded from DB) over cached. */
   function findLiveOffer(name) {
     if (!name) return null;
-    var lower = name.toLowerCase().trim();
+    var lower = name.toLowerCase().replace(/\s+/g, " ").trim();
     // Try live data first
     if (_liveChatbotDataLoaded && _liveChatbotOffers) {
       for (var i = 0; i < _liveChatbotOffers.length; i++) {
-        if ((_liveChatbotOffers[i].brand || "").toLowerCase() === lower
-            || (_liveChatbotOffers[i].merchantName || "").toLowerCase() === lower) {
+        if (normalizedOfferName(_liveChatbotOffers[i], "brand") === lower
+            || normalizedOfferName(_liveChatbotOffers[i], "merchantName") === lower) {
           return _liveChatbotOffers[i];
         }
       }
       for (var i = 0; i < _liveChatbotOffers.length; i++) {
-        if ((_liveChatbotOffers[i].brand || "").toLowerCase().indexOf(lower) !== -1
-            || (_liveChatbotOffers[i].merchantName || "").toLowerCase().indexOf(lower) !== -1) {
+        if (normalizedOfferName(_liveChatbotOffers[i], "brand").indexOf(lower) !== -1
+            || normalizedOfferName(_liveChatbotOffers[i], "merchantName").indexOf(lower) !== -1) {
           return _liveChatbotOffers[i];
         }
       }
@@ -4372,22 +4441,16 @@
       return (a.month || "").localeCompare(b.month || "");
     });
 
-    // Determine which metrics to show
-    var allMetrics = ["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout"];
+    // Determine which metrics to show（可选指标来自 TREND_METRIC_DEFS，覆盖 Tier Sheet 数值指标）
+    var allMetrics = TREND_METRIC_DEFS.map(function(def) { return def.key; });
     var displayMetrics = trendMetric
       ? (allMetrics.indexOf(trendMetric) !== -1 ? [trendMetric] : allMetrics)
       : allMetrics;
 
-    // Map affiliatePayout → commission for readability
-    var metricFieldMap = {
-      revenue: "revenue",
-      orders: "orders",
-      epc: "epc",
-      aov: "aov",
-      clicks: "clicks",
-      affiliatePayout: "affiliatePayout",
-      commission: "affiliatePayout"
-    };
+    // Map metric key → 数据行字段名（commission 别名映射到 affiliatePayout）
+    var metricFieldMap = {};
+    TREND_METRIC_DEFS.forEach(function(def) { metricFieldMap[def.key] = def.source; });
+    metricFieldMap.commission = "affiliatePayout";
 
     // Build month data rows
     var months = [];
@@ -4997,7 +5060,10 @@
     if (!s || !s.months || s.months.length < 2) return "<p>Trend data is not available.</p>";
     var lang = state.language || "en";
     var zh = lang === "zh";
-    var metrics = s.metrics || [];
+    // 表格仅展示用户勾选的可见指标（Display columns），至少保留 1 个
+    var visible = trendVisibleMetrics();
+    var metrics = (s.metrics || []).filter(function(m) { return visible.indexOf(m) !== -1; });
+    if (!metrics.length) metrics = s.metrics || [];
     var months = s.months || [];
     var hasDelta = Object.keys(s.deltas || {}).length > 0;
 
@@ -5016,7 +5082,7 @@
       for (var m = 0; m < metrics.length; m++) {
         var metric = metrics[m];
         var val = month[metric] || 0;
-        html += "<td>" + formatAnalysisMetric(val, metric) + "</td>";
+        html += "<td>" + formatTrendMetric(val, metric) + "</td>";
         if (hasDelta && i > 0) {
           var delta = s.deltas[month.month] ? s.deltas[month.month][metric] : null;
           if (delta) {
@@ -5110,7 +5176,10 @@
       }
     }
     try {
-      var response = await fetch(DB_MERCHANT_UI_API + "?merchantId=" + encodeURIComponent(id) + "&limit=1&months=" + months, { cache: "no-store" });
+      // 20s 超时：DB 不可用/慢时避免趋势占位无限挂起，回退到估算趋势
+      // minimal=1：只取月度指标，跳过慢的 products/base 查询（否则 ~40s 超过超时，
+      // 会 fallback 到估算趋势，数据与 Tier Sheet 不一致）。超时放宽到 60s 兜底。
+      var response = await fetch(DB_MERCHANT_UI_API + "?merchantId=" + encodeURIComponent(id) + "&limit=1&months=" + months + "&minimal=1", { cache: "no-store", signal: AbortSignal.timeout(60000) });
       if (!response.ok) return null;
       var payload = await response.json();
       if (payload && payload.ok !== false) {
@@ -5174,10 +5243,26 @@
         if (entityType === "merchant") {
           // Ensure live data is loaded so metrics match Tier Sheet
           await loadLiveChatbotData();
+          // 目标为空时从 prompt 提取：analysisAnswer 同步阶段可能因 live data
+          // 尚未加载导致 findLiveOffer 失败（如 Our Place 不在 offers 缓存），
+          // 此时 live data 已就绪，可正确匹配
+          if (!analysisTarget && prompt) {
+            var cleanedTarget = String(prompt)
+              .replace(/趋势|trend|分析|analysis|评估|诊断|近\s*\d+\s*(个\s*)?月|上个季度|今年以来|过去|最近/gi, " ")
+              .replace(/\s+/g, " ").trim();
+            if (cleanedTarget && cleanedTarget !== String(prompt).trim()) {
+              var liveMatch = findLiveOffer(cleanedTarget);
+              if (liveMatch) {
+                analysisTarget = liveMatch.brand || liveMatch.merchantName;
+                params = Object.assign({}, params, { analysisTarget: analysisTarget });
+              }
+            }
+          }
           var offer = analysisTarget ? findLiveOffer(analysisTarget) : null;
           if (!offer) {
+            var missName = analysisTarget || cleanedTarget || "该商户";
             container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
-              + (zh ? "未找到 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。" : "No data found for <strong>" + escapeHtml(analysisTarget) + "</strong>.")
+              + (zh ? "未找到 <strong>" + escapeHtml(missName) + "</strong> 的数据。" : "No data found for <strong>" + escapeHtml(missName) + "</strong>.")
               + "</p></div>";
             return;
           }
@@ -6025,7 +6110,10 @@
 
       // Frontend fallback: detect trend intent from time range / trend keywords
       // (catches cases where LLM didn't return analysisType: "trend")
-      if ((!analysisType || analysisType === "merchant") && analysisTarget) {
+      // 注意：不要求 analysisTarget 已存在——live data 未加载时 findLiveOffer 可能
+      // 提取失败（如 Our Place 不在 offers 缓存），这里先路由到 trend，
+      // 由 renderTrendLoadingPlaceholder 在 live data 加载后从 prompt 提取目标。
+      if (!analysisType || analysisType === "merchant") {
         var hasTrendTimeRange = extractMonthCount(prompt) > 0 || /趋势|trend/i.test(prompt);
         if (hasTrendTimeRange) analysisType = "trend";
       }
@@ -6206,9 +6294,9 @@
       const intent = state.llmClassifyResult.intent;
       const params = state.llmClassifyResult.params;
       state.llmClassifyResult = null;
-      // 如果 LLM 返回的是 merchant 但查询中含分析/趋势关键词，
-      // 说明 LLM 没匹配到该商家的 few-shot 示例，应优先走分析路径
-      if (intent === "merchant" && (/趋势|trend/i.test(userMessage) || /\b(?:analyze|analyse|analysis|performance|health\s*check)\b/i.test(userMessage))) {
+      // 如果 LLM 返回的是 merchant 或 keyword 但查询中含分析/趋势关键词，
+      // 说明 LLM 没匹配到分析意图（few-shot 未覆盖），应优先走分析路径
+      if ((intent === "merchant" || intent === "keyword") && (/趋势|trend/i.test(userMessage) || /\b(?:analyze|analyse|analysis|performance|health\s*check)\b/i.test(userMessage))) {
         return "analysis";
       }
       return intent;
@@ -6225,8 +6313,9 @@
     // e.g. "分析Tier2的beauty和electronics" should route to analysis, not tier.
     const hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到|对比|比较|和.*对比|与.*相比/.test(userMessage) || /\b(?:analyze|analyse|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade|compare|comparison|vs|versus)\b/i.test(lower);
     if (zhIntent && zhIntent !== "recommendation" && zhIntent !== "category" && !hasAnalysisKeywords) return zhIntent;
-    // keyword 搜索：仅当没有匹配到类别时，才优先于 merchant/category
-    if (!category && keywordRequest && hasKeywordSearchIntent(userMessage, keywordRequest, { category })) return "keyword";
+    // keyword 搜索：仅当没有匹配到类别、且无分析关键词时，才优先于 merchant/category。
+    // 否则 "Beatbot趋势" 这类"产品关键词 + 趋势词"会被误判为 keyword 搜索而非趋势分析。
+    if (!category && !hasAnalysisKeywords && keywordRequest && hasKeywordSearchIntent(userMessage, keywordRequest, { category })) return "keyword";
     if (/payment|paid|unpaid|late|issue|cycle/.test(lower) || /付款|未付款|没付款|未支付|已付款|已支付|逾期|到期|待处理|支付|结算|款项|付款周期|支付周期|结算周期/.test(userMessage)) return "payment";
     // 分析关键词（含"趋势"）优先于商家强匹配，避免 "Hcalory趋势" 被拦截为 merchant
     if (hasAnalysisKeywords) return "analysis";
@@ -6865,19 +6954,36 @@
     return targetTrendSvgHtml(rows, metric, "Monthly");
   }
 
+  // 趋势指标数值格式化（按 TREND_METRIC_DEFS 的 format 类型）。
+  // 注意 conversionRate/commissionRate 等比率类在月度数据中为小数值（0.05），
+  // 这里直接 ×100 显示为百分比，避免现有 formatAnalysisMetric 的百分数值口径冲突。
+  function formatTrendMetric(val, metric) {
+    if (val == null || val === "") return "—";
+    var n = Number(val);
+    if (!Number.isFinite(n)) return "—";
+    var fmt = null;
+    for (var i = 0; i < TREND_METRIC_DEFS.length; i++) {
+      if (TREND_METRIC_DEFS[i].key === metric) { fmt = TREND_METRIC_DEFS[i].format; break; }
+    }
+    if (fmt === "money") return "$" + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (fmt === "count") return n.toLocaleString();
+    if (fmt === "epc") return "$" + n.toFixed(3);
+    if (fmt === "pct") return (n * 100).toFixed(2) + "%";
+    return n.toLocaleString();
+  }
+
   function formatTrendValue(val, metric) {
-    if (val == null) return "—";
-    if (metric === "revenue" || metric === "aov") return "$" + Number(val).toLocaleString(undefined, {maximumFractionDigits: 0});
-    if (metric === "epc") return "$" + Number(val).toFixed(2);
-    if (metric === "clicks" || metric === "orders") return Number(val).toLocaleString();
-    if (metric === "affiliatePayout" || metric === "commission") return "$" + Number(val).toLocaleString(undefined, {maximumFractionDigits: 0});
-    return Number(val).toLocaleString();
+    return formatTrendMetric(val, metric);
   }
 
   function renderTrendContext(s) {
     _trendContextData = s;
     var zh = state.language === "zh";
-    var metrics = s.metrics || ["revenue", "orders", "epc", "aov"];
+    // 仅渲染用户勾选的可见指标（Display columns），至少保留 1 个
+    var allMetrics = s.metrics || TREND_METRIC_DEFS.map(function(def) { return def.key; });
+    var visibleMetrics = trendVisibleMetrics();
+    var metrics = allMetrics.filter(function(m) { return visibleMetrics.indexOf(m) !== -1; });
+    if (!metrics.length) metrics = [allMetrics[0] || "revenue"];
     var defaultMetric = metrics.indexOf("revenue") !== -1 ? "revenue" : metrics[0];
 
     // Metric switch buttons
@@ -6930,6 +7036,7 @@
 
     return "<div class=\"trend-context-wrap\" data-trend-metric=\"" + defaultMetric + "\">"
       + noticeHtml
+      + trendColumnPickerHtml()
       + "<div class=\"trend-chart-controls\">" + btnHtml + "</div>"
       + "<div class=\"trend-chart-svg\" data-trend-chart>" + svgHtml + "</div>"
       + cardsHtml
@@ -6937,10 +7044,61 @@
       + "</div>";
   }
 
+  // 趋势面板的 Display columns 选择面板 HTML（复用 Tier Sheet 的 column-picker 样式类）。
+  // 面板采用内联展开（非绝对定位），避免被左侧 context 面板的 overflow 裁剪。
+  function trendColumnPickerHtml() {
+    var zh = state.language === "zh";
+    var visible = trendVisibleMetrics();
+    var checkboxes = TREND_METRIC_DEFS.map(function(def) {
+      var id = "trend-column-" + def.key;
+      return "<label class=\"column-check\" for=\"" + escapeHtml(id) + "\">"
+        + "<input id=\"" + escapeHtml(id) + "\" type=\"checkbox\" value=\"" + escapeHtml(def.key) + "\" data-trend-column-check"
+        + (visible.indexOf(def.key) !== -1 ? " checked" : "") + " />"
+        + "<span>" + escapeHtml(metricLabel(def.key)) + "</span>"
+        + "</label>";
+    }).join("");
+    return "<div class=\"trend-column-picker-wrap\">"
+      + "<button class=\"icon-button table-select-button\" type=\"button\" data-trend-column-toggle aria-expanded=\"false\">"
+      + (zh ? "指标" : "Display") + "</button>"
+      + "<div class=\"trend-column-picker hidden\" data-trend-column-panel>"
+      + "<div class=\"column-picker-header\">"
+      + "<strong>" + (zh ? "显示指标" : "Display metrics") + "</strong>"
+      + "<span>" + (zh ? "选择要显示的指标" : "Choose metrics to display") + "</span>"
+      + "</div>"
+      + "<div class=\"column-picker-actions\">"
+      + "<button type=\"button\" data-trend-column-core>" + (zh ? "默认" : "Default") + "</button>"
+      + "<button type=\"button\" data-trend-column-all>" + (zh ? "全部" : "All") + "</button>"
+      + "</div>"
+      + "<div class=\"column-picker-list\">" + checkboxes + "</div>"
+      + "</div>"
+      + "</div>";
+  }
+
   function bindTrendChartControls() {
     if (!els.recBox || els.recBox._trendBound) return;
     els.recBox._trendBound = true;
+
+    // Display columns 面板交互：展开/收起、Default/All、指标切换按钮
     els.recBox.addEventListener("click", function(e) {
+      var toggle = e.target.closest("[data-trend-column-toggle]");
+      if (toggle) {
+        var panel = els.recBox.querySelector("[data-trend-column-panel]");
+        if (panel) {
+          var nowHidden = panel.classList.toggle("hidden");
+          toggle.setAttribute("aria-expanded", String(!nowHidden));
+        }
+        return;
+      }
+      var coreBtn = e.target.closest("[data-trend-column-core]");
+      if (coreBtn) {
+        setTrendVisibleMetrics(DEFAULT_TREND_VISIBLE_METRICS.slice());
+        return;
+      }
+      var allBtn = e.target.closest("[data-trend-column-all]");
+      if (allBtn) {
+        setTrendVisibleMetrics(TREND_METRIC_DEFS.map(function(def) { return def.key; }));
+        return;
+      }
       var btn = e.target.closest("[data-trend-metric]");
       if (!btn) return;
       var metricKey = btn.getAttribute("data-trend-metric");
@@ -6960,6 +7118,20 @@
       if (chartContainer) {
         chartContainer.innerHTML = trendTrendChartSvg(_trendContextData, metricKey);
       }
+    });
+
+    // 勾选/取消勾选指标 → 保存并重渲染趋势面板
+    els.recBox.addEventListener("change", function(e) {
+      var checkbox = e.target.closest("[data-trend-column-check]");
+      if (!checkbox || !_trendContextData) return;
+      var checked = Array.from(els.recBox.querySelectorAll("[data-trend-column-check]:checked"))
+        .map(function(c) { return c.value; });
+      if (!checked.length) {
+        // 空选保护：至少保留 1 个指标
+        checkbox.checked = true;
+        checked = [checkbox.value];
+      }
+      setTrendVisibleMetrics(checked);
     });
   }
 
@@ -8916,6 +9088,10 @@
       obs.disconnect();
     }
     panel._contextObserver = null;
+    // 若关闭的是最新同步面板，释放 owner，避免悬空引用
+    if (_deepChartSyncOwner === panel) {
+      _deepChartSyncOwner = null;
+    }
     // Clean up animation timeout
     if (panel._animTO) { clearTimeout(panel._animTO); panel._animTO = null; }
     panel.el.remove();
@@ -9125,13 +9301,25 @@
     }
   }
 
+  // 全局标记：只有最近一次提问的面板允许从左侧 Context 面板同步内容。
+  // 否则多个趋势分析面板会共享观察同一个 recBox，新提问的图表会覆盖先前面板。
+  var _deepChartSyncOwner = null;
+
   // ★ Deep Mode: sync context panel's trend chart (SVG) into Deep Window
   function _syncContextChartToDeepPanel(panel) {
     if (!els.recBox || panel._chartSyncActive) return;
     panel._chartSyncActive = true;
 
-    // Immediately capture any existing context content
-    _updateDeepPanelFromContext(panel);
+    // 新面板接管同步权：断开旧面板的 observer，避免共享 recBox 导致内容互相覆盖
+    if (_deepChartSyncOwner && _deepChartSyncOwner !== panel && _deepChartSyncOwner._contextObserver) {
+      _deepChartSyncOwner._contextObserver.disconnect();
+      _deepChartSyncOwner._contextObserver = null;
+    }
+    _deepChartSyncOwner = panel;
+
+    // 不立即捕获 recBox：面板创建时 recBox 仍是上一次查询的遗留内容，
+    // 立即克隆会把旧图表（如上一个商户的趋势）写进当前面板。
+    // 只响应后续的 recBox 更新（趋势数据异步加载完成后 setContext 触发）。
 
     // Watch for async updates (trend data loads via setTimeout/fetch)
     var observer = new MutationObserver(function () {
@@ -9154,6 +9342,8 @@
 
   // ★ Deep Mode: copy context panel trend chart content into Deep Window
   function _updateDeepPanelFromContext(panel) {
+    // 只同步最新面板，历史面板保持各自的趋势图表，防止被新提问覆盖
+    if (panel !== _deepChartSyncOwner) return;
     var contextHtml = els.recBox ? els.recBox.innerHTML : "";
     if (!contextHtml || contextHtml.length < 30) return;
 
@@ -9197,14 +9387,47 @@
     chartClone.innerHTML = chartHtml;
     container.appendChild(chartClone);
 
+    // 记录面板自己的趋势数据，供面板内指标切换使用——
+    // 否则多个趋势面板并存时，全局 _trendContextData 会被后续查询覆盖，
+    // 点击先前面板的指标会把图表渲染成最近一次趋势的数据。
+    panel._trendContextData = _trendContextData || panel._trendContextData;
+
     // Bind metric switch buttons inside the cloned chart
-    _bindDeepPanelChartControls(container, chartClone);
+    _bindDeepPanelChartControls(container, chartClone, panel);
   }
 
   // ★ Deep Mode: bind trend metric switch buttons inside Deep Window
-  function _bindDeepPanelChartControls(container, chartWrap) {
+  // 同时绑定 Display 列选择（展开/收起、Default/All、checkbox 勾选），
+  // 与左侧 recBox 的 bindTrendChartControls 行为保持一致。
+  function _bindDeepPanelChartControls(container, chartWrap, panel) {
     if (!chartWrap) return;
     chartWrap.addEventListener("click", function (e) {
+      // Display 列选择：展开/收起面板
+      var toggle = e.target.closest("[data-trend-column-toggle]");
+      if (toggle) {
+        var panelEl = chartWrap.querySelector("[data-trend-column-panel]");
+        if (panelEl) {
+          var nowHidden = panelEl.classList.toggle("hidden");
+          toggle.setAttribute("aria-expanded", String(!nowHidden));
+        }
+        return;
+      }
+      // Default：恢复默认 9 个核心指标
+      var coreBtn = e.target.closest("[data-trend-column-core]");
+      if (coreBtn) {
+        setTrendVisibleMetrics(DEFAULT_TREND_VISIBLE_METRICS.slice());
+        _syncDeepTrendPanel(panel);
+        return;
+      }
+      // All：全选 12 个指标
+      var allBtn = e.target.closest("[data-trend-column-all]");
+      if (allBtn) {
+        setTrendVisibleMetrics(TREND_METRIC_DEFS.map(function(def) { return def.key; }));
+        _syncDeepTrendPanel(panel);
+        return;
+      }
+
+      // 指标切换按钮（原有逻辑）
       var btn = e.target.closest("[data-trend-metric]");
       if (!btn) return;
 
@@ -9217,19 +9440,58 @@
       });
       btn.classList.add("active");
 
-      // Fetch chart SVG from the global trend context data
-      if (!_trendContextData) return;
-      var svgHtml = trendTrendChartSvg(_trendContextData, metric);
+      // 用该面板创建时的趋势数据渲染图表，而非全局 _trendContextData。
+      // 全局变量保存的是最近一次趋势查询的数据，若多个趋势面板并存，
+      // 点击先前面板的指标会把该面板图表覆盖成最新趋势的数据。
+      var data = (panel && panel._trendContextData) || _trendContextData;
+      if (!data) return;
+      var svgHtml = trendTrendChartSvg(data, metric);
       var svgContainer = chartWrap.querySelector("[data-trend-chart]");
       if (svgContainer) {
         svgContainer.innerHTML = svgHtml;
       }
     });
+
+    // Display 列选择：勾选/取消 → 保存全局 + 同步左侧与 Deep Window
+    chartWrap.addEventListener("change", function (e) {
+      var checkbox = e.target.closest("[data-trend-column-check]");
+      if (!checkbox) return;
+      var checked = Array.from(chartWrap.querySelectorAll("[data-trend-column-check]:checked"))
+        .map(function (c) { return c.value; });
+      if (!checked.length) {
+        // 空选保护：至少保留 1 个指标
+        checkbox.checked = true;
+        checked = [checkbox.value];
+      }
+      setTrendVisibleMetrics(checked);
+      _syncDeepTrendPanel(panel);
+    });
+  }
+
+  // 勾选指标后重新同步 Deep Window 中的趋势内容（左侧 recBox 已被
+  // setTrendVisibleMetrics → rerenderTrendPanel 重渲染，这里把最新内容克隆回来）。
+  // 重建 chartClone 会默认收起列面板，这里记录并恢复展开状态，方便连续勾选。
+  function _syncDeepTrendPanel(panel) {
+    if (!panel || panel !== _deepChartSyncOwner || !panel.el) return;
+    var prevPanelEl = panel.el.querySelector("[data-trend-column-panel]");
+    var keepOpen = prevPanelEl ? !prevPanelEl.classList.contains("hidden") : false;
+    _updateDeepPanelFromContext(panel);
+    if (keepOpen) {
+      var newPanelEl = panel.el.querySelector("[data-trend-column-panel]");
+      var newToggle = panel.el.querySelector("[data-trend-column-toggle]");
+      if (newPanelEl && newToggle) {
+        newPanelEl.classList.remove("hidden");
+        newToggle.setAttribute("aria-expanded", "true");
+      }
+    }
   }
 
   // ★ Deep Mode: replace Deep Window content with context panel overview
   // 使商家/ASIN/品类分析的 Deep Window 内容直接替换为左侧 Overview 的丰富信息
-  function _syncContextOverviewToDeepPanel(panel) {
+  function _syncContextOverviewToDeepPanel(panel, html) {
+    // 趋势查询有自己的异步图表渲染，且此时 state.currentContext 可能是上一次
+    // merchant 查询的遗留值——误用会把空 Merchant 概览覆盖到趋势结果上，故跳过
+    if (html && (html.indexOf("trend-placeholder") !== -1 || html.indexOf("trend-chart-svg") !== -1)) return;
     if (!els.recBox || !panel.sectionsEl) return;
     var contextHtml = els.recBox.innerHTML;
     if (!contextHtml || contextHtml.length < 30) return;
@@ -9269,66 +9531,6 @@
   }
 
   // 数字列关键词——用于表格渲染时智能对齐
-  // ── Live tier data enrichment helpers ──
-
-  /**
-   * 从 tier-sheet API 响应行构建 Map<merchantId, {field: numericValue}>
-   * 只包含 TIER_SHEET_TO_OFFER_METRIC 中定义的字段
-   */
-  function _buildLiveTierMetrics(sheetRows) {
-    var map = new Map();
-    sheetRows.forEach(function(row) {
-      var mid = String(row["Merchant ID"] || "").trim();
-      if (!mid) return;
-      var metrics = {};
-      for (var col in TIER_SHEET_TO_OFFER_METRIC) {
-        if (!TIER_SHEET_TO_OFFER_METRIC.hasOwnProperty(col)) continue;
-        var val = row[col];
-        if (val !== undefined && val !== null && val !== "") {
-          metrics[TIER_SHEET_TO_OFFER_METRIC[col]] = number(val);
-        }
-      }
-      map.set(mid, metrics);
-    });
-    return map;
-  }
-
-  /**
-   * 用实时指标临时覆盖 offer 对象对应字段，保存原始值
-   * 返回 [{ merchantId, field: originalValue, ... }] 用于恢复
-   */
-  function _applyLiveTierMetrics(liveMap) {
-    if (!liveMap || liveMap.size === 0) return [];
-    var saved = [];
-    offers.forEach(function(o) {
-      var live = liveMap.get(o.merchantId);
-      if (!live) return;
-      var entry = { merchantId: o.merchantId };
-      for (var field in live) {
-        if (!live.hasOwnProperty(field)) continue;
-        entry[field] = o[field];
-        o[field] = live[field];
-      }
-      saved.push(entry);
-    });
-    return saved;
-  }
-
-  /**
-   * 恢复被实时数据覆盖的 offer 原始指标
-   */
-  function _restoreOfferMetrics(savedList) {
-    if (!savedList || !savedList.length) return;
-    savedList.forEach(function(entry) {
-      var offer = offers.find(function(o) { return o.merchantId === entry.merchantId; });
-      if (!offer) return;
-      for (var field in entry) {
-        if (field !== "merchantId") offer[field] = entry[field];
-      }
-    });
-  }
-
-
   function _syncChatLogVisibility() {
     var chatLog = els.chatLog;
     var chatLogChat = els.chatLogChat;
@@ -9698,42 +9900,13 @@ var _NUMERIC_COL_PATTERNS = [
     }
     state.reportMemoryContext = null;
 
-    // ── Report Mode: 用 tier-sheet API 实时数据增强 offer 指标 ──
-    var _savedMetrics = [];
-    if (isDeep) {
-      var _tier = tierFromPrompt(prompt);
-      if (_tier && TIER_MOVE_OPTIONS.indexOf(_tier) !== -1) {
-        try {
-          var _start = state.tierReport.startDate || DEFAULT_TIER_REPORT_START_DATE;
-          var _end = state.tierReport.endDate || DEFAULT_TIER_REPORT_END_DATE;
-          // 不使用 compact=1，获取全量列（含 Backend EPC、AOV、Revenue 等指标）
-          var _url = DB_TIER_SHEET_UI_API + '?tier=' + encodeURIComponent(_tier) + '&start_date=' + encodeURIComponent(_start) + '&end_date=' + encodeURIComponent(_end);
-          var _resp = await fetch(_url, { cache: "no-store", credentials: "same-origin" });
-          if (_resp.ok) {
-            var _data = await _resp.json();
-            if (_data && _data.rows && _data.rows.length) {
-              var _liveMap = _buildLiveTierMetrics(_data.rows);
-              _savedMetrics = _applyLiveTierMetrics(_liveMap);
-              if (_savedMetrics.length) {
-                console.log('[live-metrics] enriched ' + _savedMetrics.length + ' offers for ' + _tier);
-              }
-            }
-          }
-        } catch (_e) {
-          // API 失败不阻塞——静默回退到缓存 offer 数据
-          console.warn('[live-metrics] fetch failed for ' + _tier, _e);
-        }
-      }
-    }
-    // ── 结束增强 ──
-
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     try {
       var html = answerPrompt(prompt);
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
         // 同步左侧 Overview 内容到 Deep Window，使信息一致
-        _syncContextOverviewToDeepPanel(panel);
+        _syncContextOverviewToDeepPanel(panel, html);
         addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
         addMessage("assistant", html);
@@ -9748,8 +9921,6 @@ var _NUMERIC_COL_PATTERNS = [
       } else {
         addMessage("assistant", errMsg);
       }
-    } finally {
-      _restoreOfferMetrics(_savedMetrics);
     }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
     else loadDbSearchInsight(prompt);
@@ -10706,7 +10877,7 @@ var _NUMERIC_COL_PATTERNS = [
     const rowLabel = type === "payments" ? "records" : type === "sheet" ? "rows" : "offers";
     const columns = context.downloadColumns || (type === "payments" ? paymentExportColumns() : recommendationExportColumns());
     const sheetName = type === "offers" ? "offer list" : context.sheetName || (type === "payments" ? "Payments" : type === "sheet" ? "Sheet Records" : "Recommendations");
-    // 深拷贝行数据，防止 offer 对象后续被恢复影响下载（如 Report Mode 实时数据增强后的恢复）
+    // 深拷贝行数据，防止 offer 对象后续变化影响下载
     var snapshotRows = rows.map(function(r) {
       if (r && typeof r === "object" && !Array.isArray(r)) return Object.assign({}, r);
       return r;
@@ -16181,6 +16352,8 @@ var _NUMERIC_COL_PATTERNS = [
   function formatTargetMetricValue(key, value) {
     if (key === "revenue") return compactMoney(value);
     if (key === "conversion") return shortPct(value);
+    if (key === "conversionRate") return shortPct(value);
+    if (key === "epc") return "$" + Number(value).toFixed(2);
     return compactNumber(value);
   }
 
