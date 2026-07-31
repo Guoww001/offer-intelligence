@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Offer Intelligence Chat</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=20260728-chat-fix1" />
+    <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./styles.css?v=20260731-dash8" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -224,7 +226,17 @@
             <h2 data-i18n="dashboard.title">Recommendation Chatbot</h2>
             <p id="datasetStamp"></p>
           </div>
-          <div class="quick-actions" id="quickActions"></div>
+          <div class="quick-actions" id="quickActions">
+            <button class="dash-theme-toggle" id="dashThemeToggle" type="button" aria-label="切换浅色 / 深色主题" title="Light / Dark theme">
+              <svg class="dash-theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+              </svg>
+              <svg class="dash-theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+              </svg>
+            </button>
+          </div>
         </section>
 
         <section class="main-grid dashboard-page">
@@ -1065,5 +1077,31 @@
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
     <script src="./auth.js?v=20260730-fix3"></script>
+    <script>
+      // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
+      // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。
+      (function () {
+        var THEME_KEY = "oi-dash-theme";
+        function applyDashTheme() {
+          if (localStorage.getItem(THEME_KEY) === "dark") {
+            document.body.removeAttribute("data-dash-theme");
+          } else {
+            document.body.setAttribute("data-dash-theme", "light");
+          }
+        }
+        applyDashTheme();
+        var toggle = document.getElementById("dashThemeToggle");
+        if (toggle) {
+          toggle.addEventListener("click", function () {
+            if (document.body.getAttribute("data-dash-theme") === "light") {
+              localStorage.setItem(THEME_KEY, "dark");
+            } else {
+              localStorage.removeItem(THEME_KEY);
+            }
+            applyDashTheme();
+          });
+        }
+      })();
+    </script>
   </body>
 </html>
