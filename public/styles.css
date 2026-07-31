@@ -3167,6 +3167,26 @@ body.dashboard-mode .insight-panel {
   line-height: 1.5;
 }
 
+/* 趋势面板 Display columns（列选择）—— 内联展开面板，避免被左侧 context 面板 overflow 裁剪 */
+.trend-column-picker-wrap {
+  position: relative;
+}
+
+.trend-column-picker-wrap .table-select-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.trend-column-picker {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  border: 1px solid rgba(220, 227, 231, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(250,252,254,0.88));
+  padding: 12px;
+}
+
 .trend-chart-controls {
   display: flex;
   flex-wrap: wrap;

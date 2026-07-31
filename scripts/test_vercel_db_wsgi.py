@@ -72,11 +72,12 @@ def main():
             "month": month,
             "includeCoverage": include_coverage,
         }
-        module.merchant_payload = lambda merchant_id, product_limit, months: {
+        module.merchant_payload = lambda merchant_id, product_limit, months, minimal=False: {
             "route": "merchant",
             "merchantId": merchant_id,
             "limit": product_limit,
             "months": months,
+            "minimal": minimal,
         }
         module.search_payload = lambda text, limit: {
             "route": "search",
