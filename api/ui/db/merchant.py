@@ -34,8 +34,9 @@ class handler(BaseHTTPRequestHandler):
             return
         limit = int_query_value(query, "limit", 20, 1, 50)
         months = int_query_value(query, "months", 12, 1, 24)
+        minimal = first_query_value(query, "minimal", "").lower() in {"1", "true", "yes"}
         try:
-            send_json(self, 200, merchant_payload(merchant_id, product_limit=limit, months=months))
+            send_json(self, 200, merchant_payload(merchant_id, product_limit=limit, months=months, minimal=minimal))
         except ValueError as error:
             send_json(self, 400, {"ok": False, "error": str(error)})
         except Exception as error:

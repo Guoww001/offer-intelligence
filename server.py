@@ -1062,8 +1062,9 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 limit = int_query_value(query, "limit", 20, 1, 50)
                 months = int_query_value(query, "months", 12, 1, 24)
+                minimal = first_query_value(query, "minimal", "").lower() in {"1", "true", "yes"}
                 try:
-                    payload = merchant_payload(merchant_id, product_limit=limit, months=months)
+                    payload = merchant_payload(merchant_id, product_limit=limit, months=months, minimal=minimal)
                 except (OfferDbConfigError, OfferDbError) as e:
                     self.send_json(200, {
                         "ok": False,

@@ -82,11 +82,12 @@ def handle_merchant(target, query):
         return
     limit = int_query_value(query, "limit", 50, 1, 100)
     months = int_query_value(query, "months", 12, 1, 36)
+    minimal = first_query_value(query, "minimal", "").lower() in {"1", "true", "yes"}
     try:
         send_json(
             target,
             200,
-            merchant_payload(merchant_id, product_limit=limit, months=months),
+            merchant_payload(merchant_id, product_limit=limit, months=months, minimal=minimal),
         )
     except ValueError as error:
         send_json(target, 400, {"ok": False, "error": str(error)})

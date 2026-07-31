@@ -1297,15 +1297,25 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
     by_month: dict[str, dict[str, Any]] = {}
     if id_column and date_column:
         month_sql = month_expr("o", date_column)
+        # 与 Tier Sheet（tier_report_metrics_map / merge_tier_report_metrics）同口径：
+        # orders = SUM(total_purchases)，dpv/atc 取 order 表 detail_page_views/add_to_carts。
+        # 若 total_purchases 列缺失，回退为明细行数 COUNT(*)，避免查询报错。
+        orders_expr = (
+            f"SUM(COALESCE(o.total_purchases, 0)) AS {q('orders')}"
+            if "total_purchases" in order_cols
+            else f"COUNT(*) AS {q('orders')}"
+        )
         rows = fetch_all(
             conn,
             f"""
             SELECT {month_sql} AS month,
-                   COUNT(*) AS orders,
+                   {orders_expr},
                    {sum_expr("o", order_cols, ["amount", "sales_amount", "revenue"], "revenue")},
                    {sum_expr("o", order_cols, ["payout", "commission"], "payout")},
                    {sum_expr("o", order_cols, ["aff_payout", "affiliate_payout"], "affiliatePayout")},
                    {sum_expr("o", order_cols, ["total_clicks", "clicks", "click_num"], "clicks")},
+                   {sum_expr("o", order_cols, ["detail_page_views", "dpv", "dpv_num"], "dpv")},
+                   {sum_expr("o", order_cols, ["add_to_carts", "atc", "atc_num"], "atc")},
                    {sum_expr("o", order_cols, ["direct_sales", "directSales", "direct_sale_amount"], "directSales")},
                    {sum_expr("o", order_cols, ["halo_sales", "haloSales", "halo_sale_amount"], "haloSales")}
             FROM {q("cnpscy_amazon_order")} o
@@ -1320,6 +1330,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             formatted = format_metric_row(row)
             by_month[formatted["month"]] = formatted
 
+    # click 子查询仅用于 order 表 clicks 为 0 时的兜底（与 Tier Sheet 同规则）
     click_cols = table_columns(conn, "cnpscy_amazon_click")
     click_id = pick_column(click_cols, ["advert_id", "merchant_id"])
     click_date = pick_column(click_cols, ["time_day", "click_time_day"])
@@ -1329,10 +1340,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             conn,
             f"""
             SELECT {month_sql} AS month,
-                   COUNT(*) AS clickRows,
-                   {sum_expr("c", click_cols, ["click", "clicks", "click_num"], "rawClicks")},
-                   {sum_expr("c", click_cols, ["dpv", "dpv_num"], "dpv")},
-                   {sum_expr("c", click_cols, ["atc", "atc_num"], "atc")}
+                   {sum_expr("c", click_cols, ["click", "clicks", "click_num"], "rawClicks")}
             FROM {q("cnpscy_amazon_click")} c
             WHERE c.{q(click_id)} = %s
             GROUP BY month
@@ -1345,7 +1353,6 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             formatted = format_metric_row(row)
             month = formatted["month"]
             target = by_month.setdefault(month, {"month": month})
-            target.update({key: value for key, value in formatted.items() if key != "month"})
             if not to_float(target.get("clicks")) and to_float(formatted.get("rawClicks")):
                 target["clicks"] = formatted["rawClicks"]
 
@@ -1386,25 +1393,44 @@ def merchant_aggregate_metrics(conn, merchant_id: str, months: int = 12) -> list
     return [format_metric_row(row) for row in rows]
 
 
-def merchant_payload(merchant_id: str, product_limit: int = 50, months: int = 12) -> dict[str, Any]:
+def merchant_payload(
+    merchant_id: str,
+    product_limit: int = 50,
+    months: int = 12,
+    minimal: bool = False,
+) -> dict[str, Any]:
     if not DIGITS_RE.match(merchant_id):
         raise ValueError("merchantId must be numeric")
-    cache_key = f"{merchant_id}:{product_limit}:{months}"
+    cache_key = f"{'min:' if minimal else ''}{merchant_id}:{product_limit}:{months}"
     now = time.time()
     cached = _merchant_cache.get(cache_key)
     if cached is not None and now - cached[0] < MERCHANT_CACHE_TTL:
         return cached[1]
     with db_connection() as conn:
-        merchant = merchant_base(conn, merchant_id)
-        payload = {
-            "ok": True,
-            "checkedAt": utc_now_iso(),
-            "merchantId": merchant_id,
-            "merchant": merchant,
-            "products": merchant_products(conn, merchant_id, product_limit),
-            "monthlyAmazonMetrics": merchant_amazon_metrics(conn, merchant_id, months),
-            "monthlyAggregateMetrics": merchant_aggregate_metrics(conn, merchant_id, months),
-        }
+        if minimal:
+            # 趋势分析只需要月度指标，跳过慢的 merchant_base / merchant_products。
+            # merchant_base 主查询和 merchant_products JOIN 大表可耗时数十秒，
+            # 会触发前端 fetchMerchantMetrics 20s 超时 → 退化为估算趋势（数据失真）。
+            payload = {
+                "ok": True,
+                "checkedAt": utc_now_iso(),
+                "merchantId": merchant_id,
+                "merchant": None,
+                "products": [],
+                "monthlyAmazonMetrics": merchant_amazon_metrics(conn, merchant_id, months),
+                "monthlyAggregateMetrics": [],
+            }
+        else:
+            merchant = merchant_base(conn, merchant_id)
+            payload = {
+                "ok": True,
+                "checkedAt": utc_now_iso(),
+                "merchantId": merchant_id,
+                "merchant": merchant,
+                "products": merchant_products(conn, merchant_id, product_limit),
+                "monthlyAmazonMetrics": merchant_amazon_metrics(conn, merchant_id, months),
+                "monthlyAggregateMetrics": merchant_aggregate_metrics(conn, merchant_id, months),
+            }
     _merchant_cache[cache_key] = (now, payload)
     return payload
 
@@ -2344,8 +2370,9 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
     """Internal: heavy DB query to build an offers payload from scratch."""
     with db_connection() as conn:
         if month is None:
-            row = fetch_one(conn, "SELECT MAX(month) AS m FROM cnpscy_oi_offer_monthly_amazon_metrics")
-            month = str(row["m"]) if row and row.get("m") else ""
+            row = fetch_one(conn, "SELECT MAX(order_time_day) AS d FROM cnpscy_amazon_order")
+            d = str(row["d"] or "").strip() if row else ""
+            month = f"{d[:4]}-{d[4:6]}" if len(d) >= 6 else ""
 
         # Derive two prior months for historical revenue columns
         prev_month1 = ""
@@ -2386,21 +2413,10 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
                 MAX(a.m_id) AS levantaBrandId,
                 MAX(COALESCE(pr_net.network, 'Unknown')) AS network,
                 MAX(a.advert_money) AS commissionRate,
-                NULL AS productCount,
-                MAX(m.clicks) AS clicks, MAX(m.orders) AS orders,
-                MAX(m.revenue) AS salesAmount,
-                MAX(m.epc) AS epc, MAX(m.aov) AS aov,
-                MAX(m.conversionRate) AS conversionRate,
-                MAX(m.payout) AS payout,
-                MAX(m.affiliatePayout) AS affiliatePayout,
-                MAX(m.dpv) AS dpv, MAX(m.atc) AS atc,
-                MAX(m.directSales) AS directSales,
-                MAX(m.haloSales) AS haloSales
+                NULL AS productCount
             FROM cnpscy_oi_tier_assignments t
             LEFT JOIN cnpscy_advert a
                 ON a.advert_id = CAST(t.merchantId AS UNSIGNED) AND a.advert_isdel = 1
-            LEFT JOIN cnpscy_oi_offer_monthly_amazon_metrics m
-                ON t.merchantId = m.merchantId AND m.month = %s
             LEFT JOIN (
                 SELECT merchantId, MAX(network) AS network
                 FROM cnpscy_oi_payment_records
@@ -2408,8 +2424,15 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             ) pr_net ON t.merchantId = pr_net.merchantId
             GROUP BY t.merchantId
             """,
-            (month,),
         )
+
+        # Tier Sheet 口径的商家指标（明细表聚合），与 tier_sheet_payload 同口径
+        metrics_map: dict[str, dict[str, Any]] = {}
+        if month:
+            range_start, range_end = resolve_tier_report_date_range(month=month)
+            start_day = int(range_start.strftime("%Y%m%d"))
+            end_day = int(range_end.strftime("%Y%m%d"))
+            metrics_map = tier_report_metrics_map(conn, start_day, end_day)
 
         # ?? lookup maps (separate fast queries, merge in Python) ??
         # Categories (pre-aggregated per merchant)
@@ -2477,6 +2500,21 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         offers = []
         for o in core_offers:
             mid = o["merchantId"]
+
+            # 指标：Tier Sheet 口径（最新月明细聚合），与 tier_sheet_payload 一致
+            metrics = metrics_map.get(mid) or {}
+            o["clicks"] = metrics.get("clicks")
+            o["orders"] = metrics.get("orders")
+            o["salesAmount"] = metrics.get("revenue")
+            o["epc"] = metrics.get("epc")
+            o["aov"] = metrics.get("aov")
+            o["conversionRate"] = metrics.get("conversionRate")
+            o["payout"] = metrics.get("payout")
+            o["affiliatePayout"] = metrics.get("affiliatePayout")
+            o["dpv"] = metrics.get("dpv")
+            o["atc"] = metrics.get("atc")
+            o["directSales"] = metrics.get("directSales")
+            o["haloSales"] = metrics.get("haloSales")
 
             # visual status
             vs = vs_map.get(mid)
@@ -2889,6 +2927,107 @@ def merge_tier_report_metrics(
         })
         merged.append(row)
     return merged
+
+
+def tier_report_metrics_map(
+    conn,
+    start_day: int,
+    end_day: int,
+    tier: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """按 Tier Sheet 口径从明细表聚合商家指标。
+
+    与 ``tier_sheet_payload`` 使用同一批表（cnpscy_amazon_order + cnpscy_amazon_click）
+    和同一套合并规则（``merge_tier_report_metrics``），保证 offers/chatbot 与
+    Tier Sheet 在相同日期区间下指标一致。
+
+    返回 merchantId -> {orders, revenue, epc, aov, conversionRate, clicks,
+                       dpv, atc, payout, affiliatePayout, directSales, haloSales}。
+    tier 为 None 时聚合全部商家，否则只聚合该 tier 的商家。
+    """
+    tier_join = ""
+    tier_clause = ""
+    if tier:
+        tier_join = (
+            " INNER JOIN cnpscy_oi_tier_assignments t"
+            " ON o.advert_id = CAST(t.merchantId AS UNSIGNED)"
+        )
+        tier_clause = " AND t.tier = %s"
+    order_sql = f"""
+        SELECT
+            CAST(o.advert_id AS CHAR) AS merchantId,
+            SUM(COALESCE(o.total_purchases, 0)) AS orders,
+            SUM(COALESCE(o.amount, 0)) AS revenue,
+            SUM(COALESCE(o.payout, 0)) AS payout,
+            SUM(COALESCE(o.aff_payout, 0)) AS affiliatePayout,
+            SUM(COALESCE(o.detail_page_views, 0)) AS dpv,
+            SUM(COALESCE(o.add_to_carts, 0)) AS atc,
+            SUM(COALESCE(o.total_clicks, 0)) AS orderClicks,
+            SUM(COALESCE(o.directSales, 0)) AS directSales,
+            SUM(COALESCE(o.haloSales, 0)) AS haloSales
+        FROM cnpscy_amazon_order o
+        {tier_join}
+        WHERE o.order_time_day BETWEEN %s AND %s{tier_clause}
+        GROUP BY o.advert_id
+    """
+    click_join = ""
+    click_tier_clause = ""
+    if tier:
+        click_join = (
+            " INNER JOIN cnpscy_oi_tier_assignments t"
+            " ON c.advert_id = CAST(t.merchantId AS UNSIGNED)"
+        )
+        click_tier_clause = " AND t.tier = %s"
+    click_sql = f"""
+        SELECT
+            CAST(c.advert_id AS CHAR) AS merchantId,
+            SUM(COALESCE(c.click, 0)) AS trackedClicks
+        FROM cnpscy_amazon_click c
+        {click_join}
+        WHERE c.time_day BETWEEN %s AND %s{click_tier_clause}
+        GROUP BY c.advert_id
+    """
+    args = [start_day, end_day]
+    if tier:
+        args.append(tier)
+    order_rows = fetch_all(conn, order_sql, tuple(args))
+    click_rows = fetch_all(conn, click_sql, tuple(args))
+
+    # 复用 Tier Sheet 的合并规则，保证口径完全一致
+    base_rows = [
+        {"Merchant ID": str(r["merchantId"] or "").strip()}
+        for r in order_rows
+        if str(r["merchantId"] or "").strip()
+    ]
+    merged = merge_tier_report_metrics(base_rows, order_rows, click_rows)
+    order_map = {str(r["merchantId"] or "").strip(): r for r in order_rows}
+
+    field_map = {
+        "Order count": "orders",
+        "Revenue": "revenue",
+        "Backend EPC": "epc",
+        "AOV": "aov",
+        "Conversion Rate": "conversionRate",
+        "Clicks": "clicks",
+        "DPV": "dpv",
+        "ATC": "atc",
+        "Payout": "payout",
+        "Affiliate Payout": "affiliatePayout",
+    }
+    result: dict[str, dict[str, Any]] = {}
+    for row in merged:
+        mid = str(row.get("Merchant ID") or "").strip()
+        if not mid:
+            continue
+        metrics = {
+            offer_field: row.get(sheet_field)
+            for sheet_field, offer_field in field_map.items()
+        }
+        src = order_map.get(mid, {})
+        metrics["directSales"] = src.get("directSales")
+        metrics["haloSales"] = src.get("haloSales")
+        result[mid] = metrics
+    return result
 
 
 def tier_sheet_payload(
