@@ -1,3 +1,40 @@
+/* Plus Jakarta Sans — self-hosted (OFL), latin subset */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("./fonts/plus-jakarta-sans-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("./fonts/plus-jakarta-sans-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("./fonts/plus-jakarta-sans-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("./fonts/plus-jakarta-sans-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("./fonts/plus-jakarta-sans-latin-800-normal.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #f5f7f8;
   --panel: #ffffff;
@@ -584,7 +621,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: "Plus Jakarta Sans", "Geist", "Satoshi", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Plus Jakarta Sans", "Geist", "Satoshi", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 body.dashboard-mode {
@@ -11156,4 +11193,1591 @@ td strong {
   width: 16px;
   height: 16px;
   font-size: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Dashboard — 深海控制室 (dark ops room)
+   仅作用于 body.dashboard-mode 下的仪表盘页。
+   词汇表取自登录页：深海军蓝 #071a44、冰蓝光束 #9cc7ff、
+   teal 光束 #7fe1d1 —— 登录即进入控制室，此处延续同一叙事。
+   组件规则全部挂载在 .insight-panel / .chat-panel 容器下，
+   避免泄漏到 deep-window 深度分析弹窗（浅色 UI）与其他浅色页面。
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 工作区底 ────────────────────────────────────────── */
+body.dashboard-mode .workspace {
+  padding: 22px 22px 20px;
+  gap: 16px;
+  background:
+    radial-gradient(ellipse 90% 55% at 88% -8%, rgba(156, 199, 255, 0.09) 0%, transparent 62%),
+    radial-gradient(ellipse 55% 45% at -8% 108%, rgba(127, 221, 209, 0.07) 0%, transparent 55%),
+    linear-gradient(180deg, #0c1734 0%, #0a1430 100%);
+}
+
+/* 侧边栏与工作区分界 */
+body.dashboard-mode .sidebar {
+  border-right: 1px solid rgba(156, 199, 255, 0.08);
+}
+
+/* ── 顶栏：控制室标题区 ─────────────────────────────── */
+body.dashboard-mode .topbar.dashboard-page h2 {
+  color: #eaf0f9;
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+body.dashboard-mode .topbar.dashboard-page #datasetStamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+  color: #9fb0c7;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* 数据就绪信号点 */
+body.dashboard-mode .topbar.dashboard-page #datasetStamp::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7fe1d1;
+  box-shadow: 0 0 10px rgba(127, 221, 209, 0.75);
+  flex: 0 0 auto;
+}
+
+/* ── 快速提问：信号芯片 ─────────────────────────────── */
+body.dashboard-mode .quick-actions button {
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid rgba(156, 199, 255, 0.16);
+  border-radius: 100px;
+  background: rgba(156, 199, 255, 0.06);
+  color: #cfe0fa;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition:
+    background 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    color 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    transform 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+body.dashboard-mode .quick-actions button:hover {
+  border-color: rgba(156, 199, 255, 0.38);
+  background: rgba(156, 199, 255, 0.13);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(2, 8, 25, 0.35), 0 0 14px rgba(156, 199, 255, 0.07);
+}
+
+body.dashboard-mode .quick-actions button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* ── 布局与双面板 ───────────────────────────────────── */
+body.dashboard-mode .main-grid.dashboard-page {
+  gap: 16px;
+  grid-template-columns: minmax(380px, 1.04fr) minmax(0, 0.96fr);
+}
+
+/* 仪表盘页自身默认文字色：任何未单独覆盖的文本在深底上仍可读。
+   注意：只作用于 dashboard 页自身元素，绝不挂在 .workspace 上，
+   否则会泄漏到其他浅色页面。 */
+body.dashboard-mode .main-grid.dashboard-page,
+body.dashboard-mode .topbar.dashboard-page {
+  color: #dfe8f7;
+  font-variant-numeric: tabular-nums;
+}
+
+body.dashboard-mode .insight-panel,
+body.dashboard-mode .chat-panel {
+  border: 1px solid rgba(156, 199, 255, 0.1);
+  border-radius: 18px;
+  color: #dfe8f7;
+  background:
+    radial-gradient(ellipse 90% 65% at 15% 8%, rgba(156, 199, 255, 0.07) 0%, transparent 65%),
+    linear-gradient(180deg, #111f40 0%, #0e1a38 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 50px rgba(2, 8, 25, 0.45),
+    0 4px 12px rgba(2, 8, 25, 0.22);
+}
+
+/* 入场：面板淡入上浮（切回仪表盘时重放） */
+@media (prefers-reduced-motion: no-preference) {
+  body.dashboard-mode .insight-panel,
+  body.dashboard-mode .chat-panel {
+    animation: dashPanelIn 0.55s cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  body.dashboard-mode .chat-panel {
+    animation-delay: 0.08s;
+  }
+}
+
+@keyframes dashPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── 洞察面板标题区 ─────────────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chart-header h3 {
+  color: #eaf0f9;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chart-header p {
+  color: #9fb0c7;
+  font-weight: 600;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .icon-button {
+  border-color: rgba(156, 199, 255, 0.16);
+  background: rgba(156, 199, 255, 0.05);
+  color: #cfe0fa;
+  transition:
+    background 0.25s ease, border-color 0.25s ease,
+    color 0.25s ease, transform 0.2s ease;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .icon-button:hover {
+  border-color: rgba(156, 199, 255, 0.36);
+  background: rgba(156, 199, 255, 0.12);
+  color: #ffffff;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .icon-button:active {
+  transform: scale(0.97);
+}
+
+/* ── 签名元素：stat 卡「信号单元」 ─────────────────────
+   2px 发光顶线 + 大号 tabular 数字，承载每天要盯的
+   核心指标，构成洞察面板的视觉节奏。 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-stat {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(156, 199, 255, 0.12);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(156, 199, 255, 0.08) 0%, rgba(156, 199, 255, 0.02) 100%);
+  padding: 12px 12px 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition:
+    transform 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-stat::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 4%, rgba(156, 199, 255, 0.85) 50%, transparent 96%);
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-stat:hover {
+  transform: translateY(-1px);
+  border-color: rgba(156, 199, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 22px rgba(2, 8, 25, 0.35),
+    0 0 18px rgba(156, 199, 255, 0.07);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-stat:hover::before {
+  opacity: 1;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-stat span {
+  color: #8fa6cf;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-stat strong {
+  margin-top: 6px;
+  color: #eaf4ff;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 内层卡片：context-note / insight-list ──────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-note,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .insight-list {
+  border-color: rgba(156, 199, 255, 0.1);
+  background: rgba(13, 24, 52, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: #b9c7e0;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-note strong,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .insight-list strong {
+  color: #eaf0f9;
+  font-weight: 800;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .insight-list p {
+  color: #b9c7e0;
+}
+
+/* ── 迷你表格（洞察面板内） ─────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mini-table-wrap {
+  border-color: rgba(156, 199, 255, 0.1);
+  background: rgba(13, 24, 52, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mini-table th {
+  background: rgba(156, 199, 255, 0.06);
+  color: #8fa6cf;
+  border-bottom-color: rgba(156, 199, 255, 0.14);
+  font-weight: 800;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mini-table td {
+  border-bottom-color: rgba(156, 199, 255, 0.07);
+  color: #c9d6ea;
+  font-variant-numeric: tabular-nums;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mini-table td strong {
+  color: #eaf4ff;
+  font-weight: 800;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mini-table td small {
+  color: #8fa6cf;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mini-table tbody tr:hover td {
+  background: rgba(156, 199, 255, 0.045);
+}
+
+/* ── 消息气泡（双模式 tint 保留，深色化） ───────────── */
+/* 报告模式 → 琥珀暖光 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) #chatLog .message.assistant {
+  background: linear-gradient(135deg, rgba(255, 180, 92, 0.07) 0%, rgba(255, 180, 92, 0.02) 100%);
+  border-color: rgba(255, 180, 92, 0.16);
+  color: #e8ecf5;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 2px 8px rgba(2, 8, 25, 0.25);
+}
+
+/* 聊天模式 → 冰蓝光 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) #chatLogChat .message.assistant {
+  background: linear-gradient(135deg, rgba(156, 199, 255, 0.08) 0%, rgba(156, 199, 255, 0.02) 100%);
+  border-color: rgba(156, 199, 255, 0.15);
+  color: #e8ecf5;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 2px 8px rgba(2, 8, 25, 0.25);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) #chatLog .message.assistant .recommendation-answer,
+body.dashboard-mode :is(.insight-panel, .chat-panel) #chatLog .message.assistant .result-table-wrap,
+body.dashboard-mode :is(.insight-panel, .chat-panel) #chatLogChat .message.assistant .recommendation-answer,
+body.dashboard-mode :is(.insight-panel, .chat-panel) #chatLogChat .message.assistant .result-table-wrap {
+  border-color: rgba(156, 199, 255, 0.14);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message.assistant > p {
+  color: #e8ecf5;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message.assistant .recommendation-answer,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message.assistant .result-table-wrap,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message.assistant .download-card,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .analysis-table {
+  background: rgba(13, 24, 52, 0.5);
+  color: #c9d6ea;
+}
+
+/* 用户消息：冰蓝实底（比浅色版加深，深底上不刺眼） */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message.user {
+  background: linear-gradient(135deg, #1a56a8 0%, #123c77 100%);
+  border-color: rgba(156, 199, 255, 0.22);
+  box-shadow:
+    0 4px 16px rgba(2, 8, 25, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* 消息内表格与卡片细节 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .result-table th,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .analysis-table th {
+  background: rgba(156, 199, 255, 0.07);
+  color: #8fa6cf;
+  border-bottom-color: rgba(156, 199, 255, 0.1);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .result-table td,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .analysis-table td {
+  color: #c9d6ea;
+  border-bottom-color: rgba(156, 199, 255, 0.08);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .analysis-narrative {
+  background: rgba(127, 221, 209, 0.05);
+  border-color: rgba(127, 221, 209, 0.14);
+  color: #cfe0da;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message .analysis-section h4 {
+  color: #8fa6cf;
+  background: rgba(156, 199, 255, 0.08);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .download-card {
+  background: rgba(13, 24, 52, 0.55);
+  border-color: rgba(156, 199, 255, 0.14);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .download-card span {
+  color: #9fb0c7;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .download-xlsx-button {
+  background: linear-gradient(135deg, #256fd8 0%, #1450b0 100%);
+}
+
+/* DB 查询卡片 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .db-chat-card {
+  border-color: rgba(156, 199, 255, 0.14);
+  background: rgba(13, 24, 52, 0.5);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .db-chat-card-muted {
+  border-color: rgba(156, 199, 255, 0.1);
+  background: rgba(13, 24, 52, 0.35);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .db-chat-facts span,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .db-chat-products small {
+  color: #8fa6cf;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .db-chat-products span {
+  color: #dfe8f7;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .db-chat-products li {
+  border-top-color: rgba(156, 199, 255, 0.1);
+}
+
+/* merchant 聚焦卡 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .merchant-focus h4 {
+  color: #eaf0f9;
+}
+
+/* 代码片段 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .message code {
+  background: rgba(10, 20, 44, 0.6);
+  color: #bcd8ff;
+}
+
+/* ── 输入区 ─────────────────────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input {
+  border-top-color: rgba(156, 199, 255, 0.1);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.03);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input input {
+  background: rgba(10, 20, 44, 0.7) !important;
+  border-color: rgba(156, 199, 255, 0.14) !important;
+  color: #eaf0f9 !important;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input input::placeholder {
+  color: #6f84a8;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input input:focus {
+  border-color: rgba(156, 199, 255, 0.45) !important;
+  background: rgba(10, 20, 44, 0.92) !important;
+  box-shadow:
+    0 0 0 3px rgba(156, 199, 255, 0.12),
+    inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input button {
+  background: linear-gradient(135deg, #256fd8 0%, #1450b0 100%) !important;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input button:hover {
+  background: linear-gradient(135deg, #2f7eea 0%, #1c5fc4 100%) !important;
+  box-shadow: 0 4px 18px rgba(37, 111, 216, 0.35);
+}
+
+/* ── 模式切换药丸 ───────────────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-mode-toggle {
+  border-top-color: rgba(156, 199, 255, 0.1);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mode-btn {
+  border-color: rgba(156, 199, 255, 0.14);
+  background: rgba(10, 20, 44, 0.6);
+  color: #9fb0c7;
+  backdrop-filter: none;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mode-btn:hover {
+  border-color: rgba(156, 199, 255, 0.32);
+  background: rgba(10, 20, 44, 0.9);
+  color: #eaf0f9;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mode-btn.active {
+  border-color: rgba(156, 199, 255, 0.3);
+  background: rgba(156, 199, 255, 0.1);
+  color: #bcd8ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mode-btn.active.mode-deep .mode-indicator {
+  background: #ffb45c;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .mode-btn.active.mode-fast .mode-indicator {
+  background: #7fe1d1;
+}
+
+/* ── 记忆栏与拖放区 ─────────────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-bar {
+  border-top-color: rgba(156, 199, 255, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-hint,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-dropzone span:last-child {
+  color: #6f84a8;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-dropzone {
+  border-color: rgba(156, 199, 255, 0.2);
+  background: rgba(156, 199, 255, 0.03);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-chip {
+  background: linear-gradient(135deg, rgba(156, 199, 255, 0.1), rgba(156, 199, 255, 0.04));
+  border-color: rgba(156, 199, 255, 0.2);
+  color: #bcd8ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-chip:hover {
+  border-color: rgba(156, 199, 255, 0.34);
+  background: linear-gradient(135deg, rgba(156, 199, 255, 0.14), rgba(156, 199, 255, 0.06));
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-chip-remove {
+  color: #bcd8ff;
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highlight {
+  border-top-color: rgba(156, 199, 255, 0.4);
+  background: rgba(156, 199, 255, 0.05);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highlight .chat-memory-dropzone {
+  border-color: rgba(156, 199, 255, 0.5);
+  background: rgba(156, 199, 255, 0.08);
+  box-shadow: 0 0 16px rgba(156, 199, 255, 0.1);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highlight .chat-memory-dropzone-icon {
+  color: #9cc7ff;
+}
+
+/* ── 滚动条 ─────────────────────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-log::-webkit-scrollbar-thumb {
+  background: rgba(156, 199, 255, 0.2);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-log::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 199, 255, 0.36);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .context-panel {
+  scrollbar-color: rgba(156, 199, 255, 0.2) transparent;
+}
+
+/* ── 窄屏（移动端抽屉布局）：仪表盘单列堆叠，允许页面滚动 ── */
+@media (max-width: 1120px) {
+  body.dashboard-mode {
+    overflow: auto;
+  }
+  body.dashboard-mode .app-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  body.dashboard-mode .workspace {
+    height: auto;
+    overflow: visible;
+  }
+  body.dashboard-mode .main-grid.dashboard-page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+    gap: 14px;
+  }
+  body.dashboard-mode .insight-panel,
+  body.dashboard-mode .chat-panel {
+    height: auto;
+    min-height: 520px;
+  }
+  /* 移动顶栏深色化，与控制室气质一致 */
+  body.dashboard-mode .mobile-shell-bar {
+    background: rgba(10, 20, 44, 0.94);
+    border-bottom-color: rgba(156, 199, 255, 0.1);
+    box-shadow: 0 8px 24px rgba(2, 8, 25, 0.3);
+  }
+  body.dashboard-mode .mobile-shell-identity {
+    color: #eaf0f9;
+  }
+  body.dashboard-mode .mobile-current-page {
+    color: #9fb0c7;
+  }
+  body.dashboard-mode .mobile-nav-toggle {
+    background: rgba(156, 199, 255, 0.08);
+    border-color: rgba(156, 199, 255, 0.2);
+    color: #cfe0fa;
+    box-shadow: 0 5px 14px rgba(2, 8, 25, 0.2);
+  }
+}
+
+/* ── 动效降级 ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  body.dashboard-mode .insight-panel,
+  body.dashboard-mode .chat-panel {
+    animation: none;
+  }
+  body.dashboard-mode .context-stat,
+  body.dashboard-mode .quick-actions button {
+    transition: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Dashboard 浅色主题 —— 「白昼控制室」
+   同一套设计词汇（冰蓝 / teal 光束、信号单元、信号芯片）的日光变体。
+   由顶栏切换按钮写入 body[data-dash-theme="light"] 激活（仅 dashboard 页）。
+   选择器一律挂在 body.dashboard-mode[data-dash-theme="light"] 下，
+   与深色块同约束：组件规则必须经过 :is(.insight-panel, .chat-panel)，
+   防止泄漏到 deep-window 弹窗与其他浅色页面。
+   ══════════════════════════════════════════════════════════════ */
+
+body.dashboard-mode[data-dash-theme="light"] .workspace {
+  background:
+    radial-gradient(ellipse 90% 55% at 88% -8%, rgba(76, 130, 205, 0.1) 0%, transparent 62%),
+    radial-gradient(ellipse 55% 45% at -8% 108%, rgba(56, 158, 140, 0.07) 0%, transparent 55%),
+    linear-gradient(180deg, #edf1f9 0%, #f4f7fc 100%);
+}
+
+body.dashboard-mode[data-dash-theme="light"] .sidebar {
+  border-right: 1px solid rgba(23, 55, 112, 0.07);
+}
+
+/* ── 顶栏：白昼标题区 ───────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] .topbar.dashboard-page h2 {
+  color: #16294f;
+}
+
+body.dashboard-mode[data-dash-theme="light"] .topbar.dashboard-page #datasetStamp {
+  color: #55688f;
+}
+
+/* 数据就绪信号点：teal 加深以保证浅底可读 */
+body.dashboard-mode[data-dash-theme="light"] .topbar.dashboard-page #datasetStamp::before {
+  background: #0e9d8c;
+  box-shadow: 0 0 8px rgba(14, 157, 140, 0.45);
+}
+
+/* ── 快速提问：信号芯片（白昼版） ────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] .quick-actions button {
+  border-color: rgba(26, 86, 168, 0.16);
+  background: rgba(255, 255, 255, 0.75);
+  color: #2b4473;
+  box-shadow: 0 1px 2px rgba(31, 61, 124, 0.06);
+}
+
+body.dashboard-mode[data-dash-theme="light"] .quick-actions button:hover {
+  border-color: rgba(26, 86, 168, 0.34);
+  background: #ffffff;
+  color: #0e2f70;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 61, 124, 0.1), 0 0 12px rgba(76, 130, 205, 0.08);
+}
+
+body.dashboard-mode[data-dash-theme="light"] .quick-actions button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* ── 布局与双面板 ───────────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] .main-grid.dashboard-page,
+body.dashboard-mode[data-dash-theme="light"] .topbar.dashboard-page {
+  color: #1f3257;
+}
+
+body.dashboard-mode[data-dash-theme="light"] .insight-panel,
+body.dashboard-mode[data-dash-theme="light"] .chat-panel {
+  border-color: rgba(23, 55, 112, 0.08);
+  color: #1f3257;
+  background:
+    radial-gradient(ellipse 90% 65% at 15% 8%, rgba(76, 130, 205, 0.06) 0%, transparent 65%),
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 24px 50px rgba(31, 61, 124, 0.1),
+    0 4px 12px rgba(31, 61, 124, 0.05);
+}
+
+/* ── 洞察面板标题区 ─────────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chart-header h3 {
+  color: #16294f;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chart-header p {
+  color: #55688f;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .icon-button {
+  border-color: rgba(26, 86, 168, 0.16);
+  background: rgba(255, 255, 255, 0.8);
+  color: #2b4473;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .icon-button:hover {
+  border-color: rgba(26, 86, 168, 0.32);
+  background: #ffffff;
+  color: #0e2f70;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .icon-button:active {
+  transform: scale(0.97);
+}
+
+/* ── 签名元素：stat 卡「信号单元」（白昼版） ─────────────
+   顶线改为实冰蓝，卡片白底浮起，数字深海军蓝。 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-stat {
+  border-color: rgba(26, 86, 168, 0.13);
+  background: linear-gradient(180deg, #ffffff 0%, #f3f7ff 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 8px rgba(31, 61, 124, 0.06);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-stat::before {
+  background: linear-gradient(90deg, transparent 4%, rgba(26, 86, 168, 0.5) 50%, transparent 96%);
+  opacity: 0.85;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-stat:hover {
+  transform: translateY(-1px);
+  border-color: rgba(26, 86, 168, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 8px 20px rgba(31, 61, 124, 0.1),
+    0 0 16px rgba(76, 130, 205, 0.08);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-stat:hover::before {
+  opacity: 1;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-stat span {
+  color: #55668c;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-stat strong {
+  color: #0d2f73;
+}
+
+/* ── 内层卡片：context-note / insight-list ──────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-note,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .insight-list {
+  border-color: rgba(23, 55, 112, 0.08);
+  background: #f6f9fe;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  color: #3d5077;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-note strong,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .insight-list strong {
+  color: #16294f;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .insight-list p {
+  color: #3d5077;
+}
+
+/* ── 迷你表格（洞察面板内） ─────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mini-table-wrap {
+  border-color: rgba(23, 55, 112, 0.08);
+  background: #f8faff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mini-table th {
+  background: rgba(26, 86, 168, 0.05);
+  color: #55668c;
+  border-bottom-color: rgba(23, 55, 112, 0.1);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mini-table td {
+  border-bottom-color: rgba(23, 55, 112, 0.07);
+  color: #33466e;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mini-table td strong {
+  color: #0d2f73;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mini-table td small {
+  color: #5d7098;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mini-table tbody tr:hover td {
+  background: rgba(26, 86, 168, 0.035);
+}
+
+/* ── 消息气泡（双模式 tint 保留，白昼化） ───────────── */
+/* 报告模式 → 浅琥珀光 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) #chatLog .message.assistant {
+  background: linear-gradient(135deg, rgba(255, 176, 84, 0.1) 0%, rgba(255, 176, 84, 0.03) 100%);
+  border-color: rgba(199, 120, 28, 0.2);
+  color: #29344e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 2px 8px rgba(31, 61, 124, 0.05);
+}
+
+/* 聊天模式 → 浅冰蓝光 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) #chatLogChat .message.assistant {
+  background: linear-gradient(135deg, rgba(56, 115, 198, 0.08) 0%, rgba(56, 115, 198, 0.02) 100%);
+  border-color: rgba(26, 86, 168, 0.16);
+  color: #29344e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 2px 8px rgba(31, 61, 124, 0.05);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) #chatLog .message.assistant .recommendation-answer,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) #chatLog .message.assistant .result-table-wrap,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) #chatLogChat .message.assistant .recommendation-answer,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) #chatLogChat .message.assistant .result-table-wrap {
+  border-color: rgba(26, 86, 168, 0.12);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message.assistant > p {
+  color: #29344e;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message.assistant .recommendation-answer,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message.assistant .result-table-wrap,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message.assistant .download-card,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .analysis-table {
+  background: #f6f9fe;
+  color: #33466e;
+}
+
+/* 用户消息：保留冰蓝实底（深蓝底白字，两主题统一的品牌强调） */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message.user {
+  background: linear-gradient(135deg, #1a56a8 0%, #123c77 100%);
+  border-color: rgba(26, 86, 168, 0.25);
+  box-shadow:
+    0 4px 14px rgba(31, 61, 124, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message.user {
+  color: #ffffff;
+}
+
+/* 消息内表格与卡片细节 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .result-table th,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .analysis-table th {
+  background: rgba(26, 86, 168, 0.05);
+  color: #55668c;
+  border-bottom-color: rgba(23, 55, 112, 0.1);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .result-table td,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .analysis-table td {
+  color: #33466e;
+  border-bottom-color: rgba(23, 55, 112, 0.07);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .analysis-narrative {
+  background: rgba(20, 160, 138, 0.05);
+  border-color: rgba(20, 160, 138, 0.18);
+  color: #1d5c52;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message .analysis-section h4 {
+  color: #55668c;
+  background: rgba(26, 86, 168, 0.05);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .download-card {
+  background: #f6f9fe;
+  border-color: rgba(23, 55, 112, 0.1);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .download-card span {
+  color: #55688f;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .download-xlsx-button {
+  background: linear-gradient(135deg, #256fd8 0%, #1450b0 100%);
+}
+
+/* DB 查询卡片 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .db-chat-card {
+  border-color: rgba(23, 55, 112, 0.1);
+  background: #f6f9fe;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .db-chat-card-muted {
+  border-color: rgba(23, 55, 112, 0.07);
+  background: #f8faff;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .db-chat-facts span,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .db-chat-products small {
+  color: #5d7098;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .db-chat-products span {
+  color: #1f3257;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .db-chat-products li {
+  border-top-color: rgba(23, 55, 112, 0.08);
+}
+
+/* merchant 聚焦卡 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .merchant-focus h4 {
+  color: #16294f;
+}
+
+/* 代码片段 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .message code {
+  background: rgba(26, 86, 168, 0.07);
+  color: #1a4fa0;
+}
+
+/* ── 输入区 ─────────────────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input {
+  border-top-color: rgba(23, 55, 112, 0.08);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.6);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input input {
+  background: #ffffff !important;
+  border-color: rgba(23, 55, 112, 0.14) !important;
+  color: #16294f !important;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input input::placeholder {
+  color: #8b9ab9;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input input:focus {
+  border-color: rgba(26, 86, 168, 0.4) !important;
+  background: #ffffff !important;
+  box-shadow:
+    0 0 0 3px rgba(26, 86, 168, 0.1),
+    inset 0 1px 2px rgba(31, 61, 124, 0.06) !important;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input button {
+  background: linear-gradient(135deg, #256fd8 0%, #1450b0 100%) !important;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input button:hover {
+  background: linear-gradient(135deg, #2f7eea 0%, #1c5fc4 100%) !important;
+  box-shadow: 0 4px 18px rgba(37, 111, 216, 0.28);
+}
+
+/* ── 模式切换药丸 ───────────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-mode-toggle {
+  border-top-color: rgba(23, 55, 112, 0.08);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mode-btn {
+  border-color: rgba(23, 55, 112, 0.14);
+  background: rgba(255, 255, 255, 0.7);
+  color: #5d7098;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mode-btn:hover {
+  border-color: rgba(26, 86, 168, 0.3);
+  background: #ffffff;
+  color: #16294f;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mode-btn.active {
+  border-color: rgba(26, 86, 168, 0.26);
+  background: rgba(26, 86, 168, 0.07);
+  color: #0e2f70;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mode-btn.active.mode-deep .mode-indicator {
+  background: #e8963c;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .mode-btn.active.mode-fast .mode-indicator {
+  background: #0e9d8c;
+}
+
+/* ── 记忆栏与拖放区 ─────────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-bar {
+  border-top-color: rgba(23, 55, 112, 0.08);
+  background: linear-gradient(180deg, #f8faff, transparent);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-hint,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-dropzone span:last-child {
+  color: #8b9ab9;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-dropzone {
+  border-color: rgba(26, 86, 168, 0.18);
+  background: rgba(26, 86, 168, 0.03);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-chip {
+  background: linear-gradient(135deg, #ffffff, #f0f5ff);
+  border-color: rgba(26, 86, 168, 0.16);
+  color: #1a4fa0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-chip:hover {
+  border-color: rgba(26, 86, 168, 0.3);
+  background: linear-gradient(135deg, #ffffff, #e8f0ff);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-chip-remove {
+  color: #1a4fa0;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highlight {
+  border-top-color: rgba(26, 86, 168, 0.3);
+  background: rgba(26, 86, 168, 0.04);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highlight .chat-memory-dropzone {
+  border-color: rgba(26, 86, 168, 0.4);
+  background: rgba(26, 86, 168, 0.07);
+  box-shadow: 0 0 16px rgba(76, 130, 205, 0.12);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highlight .chat-memory-dropzone-icon {
+  color: #1a4fa0;
+}
+
+/* ── 滚动条 ─────────────────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-log::-webkit-scrollbar-thumb {
+  background: rgba(23, 55, 112, 0.18);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-log::-webkit-scrollbar-thumb:hover {
+  background: rgba(23, 55, 112, 0.32);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .context-panel {
+  scrollbar-color: rgba(23, 55, 112, 0.18) transparent;
+}
+
+/* ── 浅色主题：移动顶栏 ─────────────────────────────── */
+@media (max-width: 1120px) {
+  body.dashboard-mode[data-dash-theme="light"] .mobile-shell-bar {
+    background: rgba(255, 255, 255, 0.95);
+    border-bottom-color: rgba(23, 55, 112, 0.1);
+    box-shadow: 0 8px 24px rgba(31, 61, 124, 0.08);
+  }
+  body.dashboard-mode[data-dash-theme="light"] .mobile-shell-identity {
+    color: #16294f;
+  }
+  body.dashboard-mode[data-dash-theme="light"] .mobile-current-page {
+    color: #55688f;
+  }
+  body.dashboard-mode[data-dash-theme="light"] .mobile-nav-toggle {
+    background: #ffffff;
+    border-color: rgba(23, 55, 112, 0.16);
+    color: #2b4473;
+    box-shadow: 0 5px 14px rgba(31, 61, 124, 0.08);
+  }
+}
+
+/* ── 主题切换按钮：顶栏信号芯片（太阳/月亮） ──────────── */
+body.dashboard-mode .dash-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 36px;
+  padding: 6px 10px;
+  border: 1px solid rgba(156, 199, 255, 0.16);
+  border-radius: 100px;
+  background: rgba(156, 199, 255, 0.06);
+  color: #cfe0fa;
+  cursor: pointer;
+  transition:
+    background 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    color 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    transform 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+body.dashboard-mode .dash-theme-toggle:hover {
+  border-color: rgba(156, 199, 255, 0.38);
+  background: rgba(156, 199, 255, 0.13);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(2, 8, 25, 0.35), 0 0 14px rgba(156, 199, 255, 0.07);
+}
+
+body.dashboard-mode .dash-theme-toggle:active {
+  transform: translateY(0) scale(0.97);
+}
+
+body.dashboard-mode .dash-theme-toggle svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+body.dashboard-mode .dash-theme-toggle .dash-theme-icon-moon {
+  display: none;
+}
+
+body.dashboard-mode[data-dash-theme="light"] .dash-theme-toggle {
+  border-color: rgba(26, 86, 168, 0.16);
+  background: rgba(255, 255, 255, 0.75);
+  color: #2b4473;
+  box-shadow: 0 1px 2px rgba(31, 61, 124, 0.06);
+}
+
+body.dashboard-mode[data-dash-theme="light"] .dash-theme-toggle:hover {
+  border-color: rgba(26, 86, 168, 0.34);
+  background: #ffffff;
+  color: #0e2f70;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 61, 124, 0.1), 0 0 12px rgba(76, 130, 205, 0.08);
+}
+
+body.dashboard-mode[data-dash-theme="light"] .dash-theme-toggle .dash-theme-icon-sun {
+  display: none;
+}
+
+body.dashboard-mode[data-dash-theme="light"] .dash-theme-toggle .dash-theme-icon-moon {
+  display: block;
+}
+
+/* ── 深色主题：Chat Mode 流式 Markdown 深色化 ──────────
+   仅深色主题（:not([data-dash-theme="light"])）生效；
+   浅色主题下黑字白底本来就正确，不受影响。
+   .chat-stream-text 的 base 样式（h/strong/p/code/blockquote/th）
+   与 .message p 都是为浅色模式写的（--ink 黑字），深色下必须覆盖。 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text {
+  color: #e8ecf5;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text h1,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text h2,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text h3,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text h4,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text h5,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text h6 {
+  color: #eaf0f9;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text strong {
+  color: #eaf4ff;
+}
+
+/* .message p 显式设置 --ink 黑字，会命中 stream 内所有 p，必须反覆盖 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text p {
+  color: #e8ecf5;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text blockquote {
+  border-left-color: rgba(156, 199, 255, 0.32);
+  color: #b9c7e0;
+  background: rgba(156, 199, 255, 0.05);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text code {
+  background: rgba(10, 20, 44, 0.6);
+  color: #bcd8ff;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text pre {
+  background: #101830;
+  border: 1px solid rgba(156, 199, 255, 0.12);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text th,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text .table-wrap th {
+  background: rgba(156, 199, 255, 0.07);
+  color: #c9d6ea;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text th,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-text td {
+  border-color: rgba(156, 199, 255, 0.14);
+}
+
+/* 流式状态栏（follow-up 引导等） */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-stream-status {
+  color: #6f84a8;
+  border-top-color: rgba(156, 199, 255, 0.1);
+}
+
+/* Chat → Deep View 按钮 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-to-deep-btn {
+  color: #8db4f5;
+  border-color: rgba(156, 199, 255, 0.22);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-to-deep-btn::after {
+  background: rgba(156, 199, 255, 0.1);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-to-deep-btn:hover {
+  background: rgba(156, 199, 255, 0.06);
+  border-color: rgba(156, 199, 255, 0.36);
+  color: #bcd8ff;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-to-deep-btn:hover::after {
+  background: rgba(156, 199, 255, 0.16);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   精修层：Deep Window 优雅化（浅色弹窗，挂 body 直接子级，天然隔离）
+   —— 玻璃压条头部 / 药丸操作钮 / 标题装饰 / 微光卡片 / 斑马纹表格
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 头部玻璃压条：更通透的玻璃 + 底部冰蓝微光分隔 */
+.deep-window-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
+  border-bottom: 1px solid rgba(36, 104, 242, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.deep-window-header h2 {
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+/* 品牌竖条 → 发光渐变药丸 */
+.deep-window-header::before {
+  border-radius: 100px;
+  box-shadow: 0 0 10px rgba(36, 104, 242, 0.35);
+}
+
+/* 操作按钮：Export 药丸玻璃钮，Minimize/Close 圆形图标钮 */
+.deep-window-export {
+  border: 1px solid rgba(36, 104, 242, 0.16);
+  border-radius: 100px;
+  background: rgba(36, 104, 242, 0.05);
+  color: #2468f2;
+  padding: 5px 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.deep-window-export:hover {
+  background: rgba(36, 104, 242, 0.1);
+  color: #2468f2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 4px 12px rgba(36, 104, 242, 0.15);
+}
+
+.deep-window-minimize,
+.deep-window-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.deep-window-minimize {
+  font-size: 14px;
+}
+
+.deep-window-close {
+  font-size: 13px;
+}
+
+/* 报告标题：品牌渐变装饰条 + 渐隐分隔线 */
+.deep-report-title {
+  font-size: 16px;
+  padding: 2px 0 14px 13px;
+  position: relative;
+  border-bottom: none;
+}
+
+.deep-report-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2468f2, rgba(36, 104, 242, 0.15));
+  box-shadow: 0 0 10px rgba(36, 104, 242, 0.3);
+}
+
+.deep-report-title::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(36, 104, 242, 0.22), rgba(220, 227, 231, 0.15) 60%, transparent);
+}
+
+/* 摘要卡：左侧 teal 装饰条 */
+.deep-report-summary {
+  border-left: 3px solid rgba(23, 123, 115, 0.45);
+  background: linear-gradient(135deg, #fdfdfe 0%, #f6faf8 100%);
+}
+
+/* 卡片系统：圆角统一 + 右上角微光（背景层径向渐变，不依赖伪元素，不被 overflow 裁剪） */
+.deep-report-section,
+.deep-context-overview,
+.deep-context-chart {
+  border-radius: 14px;
+  border-color: rgba(36, 104, 242, 0.08);
+  background:
+    radial-gradient(ellipse 120% 60% at 100% 0%, rgba(36, 104, 242, 0.03) 0%, transparent 55%),
+    linear-gradient(180deg, #fdfdfe 0%, #f8fafb 100%);
+}
+
+/* 表格：表头渐变底 + 冰蓝分隔线 + 斑马纹 + 首列品牌墨蓝 */
+.deep-report-table thead th {
+  background: linear-gradient(180deg, rgba(246, 248, 252, 0.95), rgba(240, 243, 248, 0.9));
+  border-bottom: 1px solid rgba(36, 104, 242, 0.12);
+  padding: 8px 10px;
+  letter-spacing: 0.05em;
+}
+
+.deep-report-table tbody tr:nth-child(even) td {
+  background: rgba(248, 250, 252, 0.55);
+}
+
+.deep-report-table tbody tr:hover td {
+  background: rgba(36, 104, 242, 0.045);
+}
+
+.deep-report-table td:first-child {
+  color: #23405f;
+  font-weight: 700;
+}
+
+/* 骨架屏：active 步骤左侧品牌光条（inset 阴影，不占布局） */
+.deep-skeleton-step {
+  position: relative;
+}
+
+.deep-skeleton-step.active {
+  box-shadow: inset 3px 0 0 #2468f2;
+  border-radius: 10px 12px 12px 10px;
+}
+
+/* 错误态：居中的精致错误卡片 */
+.deep-window-error {
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.deep-window-error p {
+  margin: 0 auto;
+  max-width: 460px;
+  padding: 16px 18px;
+  border: 1px solid rgba(185, 75, 95, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(185, 75, 95, 0.04), rgba(185, 75, 95, 0.02));
+  color: #8a4655;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  position: relative;
+}
+
+.deep-window-error p::before {
+  content: "⚠";
+  display: block;
+  font-size: 20px;
+  margin-bottom: 8px;
+  color: #b94b5f;
+  opacity: 0.85;
+}
+
+/* 停止按钮：药丸化 + 微阴影 */
+.deep-window-stop {
+  border-radius: 100px;
+  box-shadow: 0 2px 8px rgba(185, 75, 95, 0.12);
+}
+
+/* 聊天流中的摘要卡：左侧品牌 accent */
+.deep-summary-card {
+  border-left: 3px solid rgba(36, 104, 242, 0.35);
+}
+
+/* 弹窗滚动条更清晰 */
+.deep-window-body {
+  scrollbar-color: rgba(36, 104, 242, 0.2) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   深色化：Trend Analysis 趋势面板全套组件
+   挂 :is(.insight-panel, .chat-panel) 容器下 —— 防泄漏到 deep-window
+   弹窗（浅色 UI）与 Tier Sheet 等其他浅色页面
+   ═══════════════════════════════════════════════════════════════════ */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-context-wrap {
+  --target-ink: #e6edf7;
+  --target-blue: #7db2ff;
+  --target-blue-soft: rgba(125, 178, 255, 0.12);
+  background: linear-gradient(180deg, rgba(17, 31, 64, 0.72), rgba(13, 24, 52, 0.78));
+  border-color: rgba(125, 178, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(156, 199, 255, 0.07);
+}
+
+/* 估算提示：深琥珀 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-estimated-notice {
+  color: #e8c98a;
+  background: linear-gradient(135deg, rgba(146, 109, 14, 0.18), rgba(146, 109, 14, 0.1));
+  border-color: rgba(232, 201, 138, 0.2);
+}
+
+/* 列选择面板 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-column-picker {
+  background: linear-gradient(180deg, rgba(21, 38, 78, 0.85), rgba(16, 29, 60, 0.9));
+  border-color: rgba(125, 178, 255, 0.14);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-column-picker .column-check {
+  background: rgba(13, 24, 52, 0.55);
+  border-color: rgba(156, 199, 255, 0.14);
+  color: #cfe0f5;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-column-picker .column-check input {
+  accent-color: #7db2ff;
+}
+
+/* 指标切换按钮条 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-controls {
+  background: rgba(156, 199, 255, 0.06);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-btn {
+  color: #93a6c8;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-btn:hover {
+  color: #9cc7ff;
+  background: rgba(156, 199, 255, 0.09);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-btn.active {
+  background: rgba(13, 24, 52, 0.85);
+  color: #9cc7ff;
+  box-shadow: 0 2px 10px rgba(76, 141, 255, 0.2), inset 0 0 0 1px rgba(156, 199, 255, 0.18);
+}
+
+/* 图表区与 SVG 文字 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-svg {
+  background: linear-gradient(180deg, rgba(13, 24, 52, 0.65), rgba(10, 19, 42, 0.7));
+  border-color: rgba(125, 178, 255, 0.12);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-svg .trend-grid text {
+  fill: #5d7296;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-svg .trend-month {
+  fill: #93a6c8;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-svg .trend-value-label {
+  fill: #9cc7ff;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-chart-svg .trend-dot {
+  fill: #0d1834;
+  stroke: #7db2ff;
+}
+
+/* 首末月对比卡片 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card {
+  background: linear-gradient(180deg, rgba(21, 38, 78, 0.7), rgba(16, 29, 60, 0.82));
+  border-color: rgba(125, 178, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(156, 199, 255, 0.06);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card:hover {
+  border-color: rgba(156, 199, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(156, 199, 255, 0.08), 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-label {
+  color: #93a6c8;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-first {
+  color: #6d83a8;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-arrow {
+  color: #3d4f6e;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-last {
+  color: #e6edf7;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-delta.up {
+  color: #3ecf8e;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-delta.down {
+  color: #ff7a8a;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-card-delta.flat {
+  color: #5f7396;
+}
+
+/* 明细表格（Trend Analysis 表格主体）*/
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-section h4 {
+  background: rgba(156, 199, 255, 0.09);
+  color: #93a6c8;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-table {
+  background: rgba(13, 24, 52, 0.6);
+  border-color: rgba(156, 199, 255, 0.12);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-table th {
+  background: rgba(156, 199, 255, 0.07);
+  color: #a8c0e8;
+  border-bottom: 1px solid rgba(156, 199, 255, 0.1);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-table td {
+  color: #dbe5f2;
+  border-bottom-color: rgba(156, 199, 255, 0.07);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-table tbody tr:hover td {
+  background: rgba(156, 199, 255, 0.045);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-table .up {
+  color: #3ecf8e;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-detail-table .analysis-table .down {
+  color: #ff7a8a;
+}
+
+/* 趋势摘要条（兼容旧结构）*/
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .trend-summary {
+  background: rgba(156, 199, 255, 0.06);
+  color: #93a6c8;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   字体协调精修：Chat Mode View 弹窗（deep-window）中英混排
+   —— Plus Jakarta Sans 仅 latin 子集，中文 fallback 系统字体。
+   收敛字重档位（650/700/750）、去除中文被拉稀的 letter-spacing、
+   消除报告标题与窗口标题的字号倒挂。
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 窗口标题：去掉负字距（中文挤压）*/
+.deep-window-header h2 {
+  letter-spacing: 0;
+}
+
+/* 报告标题：与窗口标题字号对齐，字重降档（中文 800 过黑）*/
+.deep-report-title {
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+/* section 标题统一字重 750 */
+.deep-report-section h3,
+.deep-context-overview .deep-overview-heading,
+.deep-context-chart .deep-chart-heading {
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+/* 聊天流摘要卡标题 */
+.deep-summary-card h4 {
+  font-weight: 750;
+}
+
+/* 表格表头：0.04~0.05em 字距对中文过稀，收敛为 0.02em */
+.deep-report-table th {
+  letter-spacing: 0.02em;
+}
+
+.deep-report-table thead th {
+  letter-spacing: 0.02em;
+}
+
+/* 分析 eyebrow 徽章（弹窗 + 聊天分析卡片 + 趋势面板共用）：0.08em → 0.04em */
+.analysis-section h4 {
+  letter-spacing: 0.04em;
+  font-weight: 800;
+}
+
+/* 分析表格表头（聊天卡片 + 趋势面板共用）*/
+.analysis-table th {
+  letter-spacing: 0.02em;
+  font-weight: 700;
+}
+
+/* 趋势面板：卡片 label 与切换按钮字重降档、字距收敛 */
+.trend-card-label {
+  letter-spacing: 0.03em;
+  font-weight: 800;
+}
+
+.trend-chart-btn {
+  font-weight: 800;
 }
