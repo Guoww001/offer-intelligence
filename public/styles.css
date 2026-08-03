@@ -7326,6 +7326,32 @@ td strong {
   border-color: rgba(230, 126, 34, 0.5);
 }
 
+/* 说明书导航栏：顶部跳转按钮（Report Mode / Chat Mode） */
+.report-help-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: -2px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(230, 126, 34, 0.14);
+}
+.report-help-nav button {
+  border: 1px solid rgba(230, 126, 34, 0.32);
+  background: rgba(230, 126, 34, 0.08);
+  color: #b05800;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.report-help-nav button:hover {
+  background: rgba(230, 126, 34, 0.16);
+  border-color: rgba(230, 126, 34, 0.5);
+}
+
 /* 深色主题：说明面板 + 按钮深色化 */
 body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-panel {
   background: rgba(10, 20, 44, 0.55);
@@ -7349,6 +7375,18 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
   color: #ffc98a;
 }
 body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-lang-btn:hover {
+  background: rgba(255, 180, 92, 0.18);
+  border-color: rgba(255, 180, 92, 0.5);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-nav {
+  border-bottom-color: rgba(156, 199, 255, 0.12);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-nav button {
+  border-color: rgba(255, 180, 92, 0.3);
+  background: rgba(255, 180, 92, 0.1);
+  color: #ffc98a;
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-nav button:hover {
   background: rgba(255, 180, 92, 0.18);
   border-color: rgba(255, 180, 92, 0.5);
 }
