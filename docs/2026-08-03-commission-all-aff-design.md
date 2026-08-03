@@ -1,7 +1,7 @@
 # 商户指标 COMMISSION 拆分 ALL/AFF（含 EPC）设计文档
 
 日期：2026-08-03
-状态：已评审通过，待实现
+状态：已实现
 
 ## 背景与目标
 
@@ -65,6 +65,8 @@ offerAffEpc(offer)         → affCommission / clicks（clicks≤0 返回 null�
 
 ### 4. Excel 导出列（`objectExportColumns`，约 11253-11261 行）
 
+注：实际位置为 recommendationExportColumns（app.js:11241-11275）；objectExportColumns（app.js:11299）是通用动态表头生成器，无需改。
+
 | 原 | 新 |
 |----|----|
 | `["Commission", number(offer.affCommission)]` | `["All Commission", offerAllCommission]` + `["Aff Commission", offerAffCommission]` |
@@ -100,7 +102,7 @@ offerAffEpc(offer)         → affCommission / clicks（clicks≤0 返回 null�
 
 | 用例 | 断言 |
 |------|------|
-| 真实商户映射 | `offerAllCommission(Shokz 362653)` = 26；`offerAffCommission` = 19.5 |
+| 真实商户映射 | `offerAllCommission(Shokz 362653)` = `shokz.payout`；`offerAffCommission` = `shokz.affCommission`（数据驱动，适配缓存刷新） |
 | EPC 计算 | `{payout:100, affCommission:80, clicks:200}` → All=0.5, Aff=0.4 |
 | 缺失/零点击 | `{clicks:0}` → EPC 均 null；`{}` → commission 均 null |
 | 格式化 | `money(null)` → "not available in current data"；`shortEpc(null)` → "-" |
