@@ -65,7 +65,7 @@ offerAffEpc(offer)         → affCommission / clicks（clicks≤0 返回 null�
 
 ### 4. Excel 导出列（`objectExportColumns`，约 11253-11261 行）
 
-注：实际位置为 recommendationExportColumns（app.js:11241-11275）；objectExportColumns（app.js:11299）是通用动态表头生成器，无需改。
+注：实际位置为 recommendationExportColumns（app.js:11280-11316）；objectExportColumns（app.js:11340）是通用动态表头生成器，无需改。
 
 | 原 | 新 |
 |----|----|
