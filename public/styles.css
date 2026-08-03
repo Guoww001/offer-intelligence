@@ -7169,6 +7169,109 @@ td strong {
   background: var(--amber);
 }
 
+/* ── Report Mode 使用说明按钮与展开面板 ───────────────── */
+.mode-btn.mode-help {
+  margin-left: auto;
+}
+.mode-btn.mode-help .mode-help-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+.mode-btn.mode-help.active {
+  border-color: rgba(230, 126, 34, 0.38);
+  background: rgba(230, 126, 34, 0.1);
+  color: #b05800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.report-help-panel {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 2px 10px 6px;
+  padding: 12px 16px;
+  border: 1px solid rgba(230, 126, 34, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffaf5, #fef5ec);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  scroll-behavior: smooth;
+}
+.report-help-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.report-help-panel::-webkit-scrollbar-thumb {
+  background: rgba(230, 126, 34, 0.25);
+  border-radius: 4px;
+}
+.report-help-panel h1 {
+  font-size: 1.25em;
+  margin: 0.2em 0 0.5em;
+}
+.report-help-panel h2 {
+  font-size: 1.12em;
+  margin: 0.9em 0 0.4em;
+  padding-top: 0.3em;
+  border-top: 1px dashed rgba(230, 126, 34, 0.18);
+}
+.report-help-panel h3 {
+  font-size: 1.02em;
+  margin: 0.7em 0 0.3em;
+}
+.report-help-panel p {
+  margin: 0.4em 0;
+}
+.report-help-panel table {
+  font-size: 0.92em;
+}
+.report-help-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px -8px 2px 0;
+}
+.report-help-lang-btn {
+  border: 1px solid rgba(230, 126, 34, 0.32);
+  background: rgba(230, 126, 34, 0.08);
+  color: #b05800;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 11px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.report-help-lang-btn:hover {
+  background: rgba(230, 126, 34, 0.16);
+  border-color: rgba(230, 126, 34, 0.5);
+}
+
+/* 深色主题：说明面板 + 按钮深色化 */
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-panel {
+  background: rgba(10, 20, 44, 0.55);
+  border-color: rgba(255, 180, 92, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 180, 92, 0.3);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-panel h2 {
+  border-top-color: rgba(156, 199, 255, 0.12);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .mode-btn.mode-help.active {
+  border-color: rgba(255, 180, 92, 0.4);
+  background: rgba(255, 180, 92, 0.12);
+  color: #ffc98a;
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-lang-btn {
+  border-color: rgba(255, 180, 92, 0.3);
+  background: rgba(255, 180, 92, 0.1);
+  color: #ffc98a;
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-lang-btn:hover {
+  background: rgba(255, 180, 92, 0.18);
+  border-color: rgba(255, 180, 92, 0.5);
+}
+
 /* ═══════════════════════════════════════
    记忆栏 — 玻璃药丸芯片
    ═══════════════════════════════════════ */

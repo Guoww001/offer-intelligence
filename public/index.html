@@ -272,6 +272,16 @@
                 <span class="mode-indicator"></span>
                 <span data-i18n="deep.mode.fast">Chat Mode</span>
               </button>
+              <button class="mode-btn mode-help" id="reportHelpBtn" type="button" aria-expanded="false">
+                <span class="mode-help-icon">📖</span>
+                <span data-i18n="report.helpBtn">Help</span>
+              </button>
+            </div>
+            <div class="report-help-panel hidden" id="reportHelpPanel">
+              <div class="report-help-toolbar">
+                <button class="report-help-lang-btn" id="reportHelpLangBtn" type="button" aria-label="Switch guide language">English</button>
+              </div>
+              <div class="chat-stream-text report-help-content" id="reportHelpContent"></div>
             </div>
             <form class="chat-input" id="chatForm">
               <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
