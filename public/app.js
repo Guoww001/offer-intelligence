@@ -7198,28 +7198,34 @@ Examples:
     insightList(rows);
   }
 
-  function renderMerchantStats(offer) {
+  function renderMerchantStats(offer, monthlyRows, selectedMonth) {
+    const row = selectedMonthRow(monthlyRows, selectedMonth);
+    const active = row ? mergeMonthIntoOffer(offer, row) : offer;
+    const picker = monthlyRows && monthlyRows.length
+      ? merchantMonthPickerHtml(offer, monthlyRows, row ? row.month : null, "context", state.language)
+      : "";
     return `<div class="merchant-focus">
       <h4>${escapeHtml(offer.brand || "Merchant")}</h4>
+      ${picker}
       ${statCards([
-        ["Merchant ID", textValue(offer.merchantId)],
-        ["Tier", tierGroup(offer)],
-        ["Network", textValue(offer.network)],
-        ["Category", textValue(displayCategory(offer))],
-        ["AOV", money(offer.aov)],
-        ["EPC(All)", epc(offerAllEpc(offer))],
-        ["EPC(Aff)", epc(offerAffEpc(offer))],
-        ["CVR", pct(offer.conversionRate)],
-        ["Revenue made", money(offer.salesAmount)],
-        ["All Commission", money(offerAllCommission(offer))],
-        ["Aff Commission", money(offerAffCommission(offer))],
-        ["Orders", countValue(offer.orders)],
-        ["Clicks", countValue(offer.clicks)],
-        ["DPV", countValue(offer.dpv)],
-        ["ATC", countValue(offer.atc)],
-        ["Commission rate", (Number(offer.commissionRate) || 0).toFixed(2) + "%"],
-        ["Payment", textValue(offer.paymentStatus)],
-        ["Link status", textValue(offer.linkStatus || offer.recommendedLink)]
+        ["Merchant ID", textValue(active.merchantId)],
+        ["Tier", tierGroup(active)],
+        ["Network", textValue(active.network)],
+        ["Category", textValue(displayCategory(active))],
+        ["AOV", money(active.aov)],
+        ["EPC(All)", epc(offerAllEpc(active))],
+        ["EPC(Aff)", epc(offerAffEpc(active))],
+        ["CVR", pct(active.conversionRate)],
+        ["Revenue made", money(active.salesAmount)],
+        ["All Commission", money(offerAllCommission(active))],
+        ["Aff Commission", money(offerAffCommission(active))],
+        ["Orders", countValue(active.orders)],
+        ["Clicks", countValue(active.clicks)],
+        ["DPV", countValue(active.dpv)],
+        ["ATC", countValue(active.atc)],
+        ["Commission rate", (Number(active.commissionRate) || 0).toFixed(2) + "%"],
+        ["Payment", textValue(active.paymentStatus)],
+        ["Link status", textValue(active.linkStatus || active.recommendedLink)]
       ])}
       <div class="context-note">
         <strong>CPC:</strong> ${escapeHtml(textValue(offer.cpc))}<br>
@@ -7318,7 +7324,16 @@ Examples:
     miniTable(rows, contextColumnsFor(rows));
   }
 
+  let _contextRenderSeq = 0;
+
+  async function renderMerchantStatsPanel(offer, renderSeq) {
+    const monthlyRows = await fetchMerchantMonthlyRows(offer);
+    if (renderSeq !== _contextRenderSeq) return; // 已被更新的上下文覆盖
+    els.recBox.innerHTML = renderMerchantStats(offer, monthlyRows);
+  }
+
   function renderContextPanel(context) {
+    const renderSeq = ++_contextRenderSeq;
     const query = state.currentQuery ? `${t("context.basedOn", "Based on:")} ${state.currentQuery}` : t("context.generalFiltered", "General filtered view");
     const titles = {
       default: [t("context.defaultTitle", "Context Overview"), t("context.defaultSubtitle", "General offer snapshot")],
@@ -7336,7 +7351,7 @@ Examples:
     els.contextSubtitle.textContent = subtitle;
 
     if (context.type === "merchant") {
-      els.recBox.innerHTML = renderMerchantStats(context.items[0]);
+      renderMerchantStatsPanel(context.items[0], renderSeq);
     } else if (context.type === "asin") {
       els.recBox.innerHTML = renderASINStats(context);
     } else if (context.type === "payment") {
@@ -18376,6 +18391,28 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.minCvr) els.minCvr.addEventListener("input", () => { state.minCvr = els.minCvr.value; renderAll(); });
     if (els.notPaidOnly) els.notPaidOnly.addEventListener("change", () => { state.notPaidOnly = els.notPaidOnly.checked; renderAll(); });
     els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
+    // 商户信息月份切换：事件委托捕获 context/overview 下拉
+    document.addEventListener("change", async function (e) {
+      const picker = e.target && e.target.closest ? e.target.closest(".merchant-month-picker") : null;
+      if (!picker) return;
+      const offer = offerByMerchantId(picker.getAttribute("data-merchant-id"));
+      if (!offer) return;
+      const cardType = picker.getAttribute("data-card");
+      const month = picker.value;
+      if (cardType === "context") {
+        const monthlyRows = await fetchMerchantMonthlyRows(offer);
+        if (!monthlyRows) return;
+        els.recBox.innerHTML = renderMerchantStats(offer, monthlyRows, month);
+      } else if (cardType === "overview") {
+        const container = picker.closest(".merchant-card");
+        if (!container) return;
+        const monthlyRows = await fetchMerchantMonthlyRows(offer);
+        if (!monthlyRows) return;
+        container.innerHTML = merchantOverviewCardInner(offer, monthlyRows, month,
+          container.getAttribute("data-extra") || "",
+          container.getAttribute("data-language") || responseLanguageFor());
+      }
+    });
     els.dashboardCategorySearch.addEventListener("input", () => {
       state.categoryReportSearch = els.dashboardCategorySearch.value;
       state.categoryReportFocusKey = "";

@@ -138,4 +138,22 @@ assertTruthy(shokz, "Shokz 362653 offer should exist in cache");
 assertEqual(hooks.offerByMerchantId("362653").merchantId, "362653", "offerByMerchantId should find by id");
 assertEqual(hooks.offerByMerchantId("999999"), null, "offerByMerchantId should return null for unknown id");
 
+// ── 用例 8：统计卡片（有月度数据 → 下拉 + 所选月虚拟 offer）──
+const statsWithRows = hooks.renderMerchantStats(shokz, rows4);
+assertMatch(statsWithRows, /merchant-month-picker/, "stats card should render month picker with rows");
+assertMatch(statsWithRows, /data-card="context"/, "stats card picker should be context scope");
+assertMatch(statsWithRows, /2026年8月/, "stats card picker should show zh month labels");
+assertMatch(statsWithRows, /总佣金/, "stats card should keep All Commission zh label");
+assertMatch(statsWithRows, /\$9,600/, "stats card Revenue made should reflect merged revenue 9600 (money format $9,600)");
+assertMatch(statsWithRows, /\$0\.600/, "stats card EPC(All) should be payout/clicks of latest month");
+// 指定所选月（7 月）
+const statsJul = hooks.renderMerchantStats(shokz, rows4, "2026-07");
+assertMatch(statsJul, /<option value="2026-07" selected>/, "stats card selected month should follow selectedMonth arg");
+assertMatch(statsJul, /\$8,000/, "stats card Revenue made should reflect July revenue");
+
+// ── 用例 9：统计卡片（无月度数据 → 降级，无下拉）──
+const statsNoRows = hooks.renderMerchantStats(shokz, null);
+assertNotMatch(statsNoRows, /merchant-month-picker/, "no monthly rows should not render picker");
+assertMatch(statsNoRows, /总佣金/, "degraded stats card should keep All Commission zh label");
+
 console.log("PASS: merchant monthly pure helpers");
