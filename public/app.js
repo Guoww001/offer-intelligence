@@ -18957,7 +18957,14 @@ var _NUMERIC_COL_PATTERNS = [
     renderAll();
     renderPaymentsPage();
     rerenderForLanguage();
-    document.body.classList.remove("app-loading");
+    if (window.__OI_LOADING_PROGRESS__ && typeof window.__OI_LOADING_PROGRESS__.finish === "function") {
+      window.__OI_LOADING_PROGRESS__.finish(
+        "Dashboard ready",
+        `${offers.length.toLocaleString()} offers loaded`
+      );
+    } else {
+      document.body.classList.remove("app-loading");
+    }
     loadSharedTierMoves({ silent: true });
     maybeAutoSyncLevantaPayments();
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
