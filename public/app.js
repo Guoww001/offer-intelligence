@@ -7058,11 +7058,13 @@ Examples:
     { label: "Highlight", render: (o) => escapeHtml(highlightStatus(o)) },
     { label: "Category", render: (o) => escapeHtml(displayCategory(o)) },
     { label: "AOV", render: (o) => shortMoney(o.aov) },
-    { label: "EPC", render: (o) => shortEpc(o.epc) },
+    { label: "EPC(All)", render: (o) => shortEpc(offerAllEpc(o)) },
+    { label: "EPC(Aff)", render: (o) => shortEpc(offerAffEpc(o)) },
     { label: "CVR", render: (o) => shortPct(o.conversionRate) },
     { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
     { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
+    { label: "All Commission", render: (o) => shortMoney(offerAllCommission(o)) },
+    { label: "Aff Commission", render: (o) => shortMoney(offerAffCommission(o)) },
     { label: "Payment cycle", render: (o) => escapeHtml(paymentCycleText(o, "-")) }
   ];
 

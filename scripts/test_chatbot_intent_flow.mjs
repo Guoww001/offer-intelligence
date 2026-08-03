@@ -136,8 +136,8 @@ assertEqual(
 );
 assertEqual(
   hooks.contextColumnLabels().join("|"),
-  "Merchant|Tier|Highlight|Category|AOV|EPC|CVR|Orders|Revenue|Commission made|Payment cycle",
-  "right-side overview should keep the full offer scan columns"
+  "Merchant|Tier|Highlight|Category|AOV|EPC(All)|EPC(Aff)|CVR|Orders|Revenue|All Commission|Aff Commission|Payment cycle",
+  "right-side overview should split EPC and Commission into All/Aff columns"
 );
 
 assertEqual(hooks.categoryForPrompt("Electronics"), "Electronics", "main category should be recognized");

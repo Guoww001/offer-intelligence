@@ -116,4 +116,9 @@ assertEqual(hooks.labelText("Aff Commission"), "联盟佣金", "zh label Aff Com
 assertEqual(hooks.labelText("EPC(All)"), "EPC(All)", "zh label EPC(All) should stay EPC(All)");
 assertEqual(hooks.labelText("EPC(Aff)"), "EPC(Aff)", "zh label EPC(Aff) should stay EPC(Aff)");
 
+// 用例 8：contextColumns 拆分
+const contextCols = hooks.contextColumnLabels().join("|");
+assertMatch(contextCols, /EPC\(All\)\|EPC\(Aff\)/, "context columns should split EPC into All/Aff");
+assertMatch(contextCols, /All Commission\|Aff Commission/, "context columns should split Commission into All/Aff");
+
 console.log("PASS: commission All/Aff helpers, formatting, i18n");
