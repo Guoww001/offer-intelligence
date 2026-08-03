@@ -83,8 +83,8 @@ assertTruthy(hooks, "app should expose test hooks in test mode");
 // 用例 1：真实商户映射（Shokz 362653）
 const shokz = (_offersCache.offers || []).find((o) => String(o.merchantId) === "362653");
 assertTruthy(shokz, "Shokz 362653 offer should exist in cache");
-assertEqual(hooks.offerAllCommission(shokz), 26, "Shokz All Commission should use payout");
-assertEqual(hooks.offerAffCommission(shokz), 19.5, "Shokz Aff Commission should use affCommission");
+assertEqual(hooks.offerAllCommission(shokz), shokz.payout, "Shokz All Commission should use payout");
+assertEqual(hooks.offerAffCommission(shokz), shokz.affCommission, "Shokz Aff Commission should use affCommission");
 
 // 用例 2：EPC 计算
 const epcFixture = { payout: 100, affCommission: 80, clicks: 200 };
@@ -107,8 +107,9 @@ assertMatch(merchantStatsHtml, /总佣金/, "merchant stats should show All Comm
 assertMatch(merchantStatsHtml, /联盟佣金/, "merchant stats should show Aff Commission zh label");
 assertMatch(merchantStatsHtml, /EPC\(All\)/, "merchant stats should show EPC(All) label");
 assertMatch(merchantStatsHtml, /EPC\(Aff\)/, "merchant stats should show EPC(Aff) label");
-// Shokz clicks=0 → 两种 EPC 均 null → epc(null) 显示 not available
-assertMatch(merchantStatsHtml, /not available in current data/, "Shokz zero clicks EPC should render not available");
+// 零点击 → 两种 EPC 均 null → epc(null) 显示 not available（数据驱动，不依赖 Shokz 实时 clicks）
+const noClicksOffer = Object.assign({}, shokz, { clicks: 0 });
+assertMatch(hooks.renderMerchantStats(noClicksOffer), /not available in current data/, "zero clicks EPC should render not available");
 
 // 用例 7：i18n 键
 assertEqual(hooks.labelText("All Commission"), "总佣金", "zh label All Commission should translate");
@@ -120,5 +121,10 @@ assertEqual(hooks.labelText("EPC(Aff)"), "EPC(Aff)", "zh label EPC(Aff) should s
 const contextCols = hooks.contextColumnLabels().join("|");
 assertMatch(contextCols, /EPC\(All\)\|EPC\(Aff\)/, "context columns should split EPC into All/Aff");
 assertMatch(contextCols, /All Commission\|Aff Commission/, "context columns should split Commission into All/Aff");
+
+// 用例 6：导出列拆分
+const exportHeaders = hooks.recommendationExportColumns().map(([header]) => header);
+assertMatch(exportHeaders.join("|"), /All Commission\|Aff Commission/, "export columns should include All and Aff Commission");
+assertMatch(exportHeaders.join("|"), /EPC\(All\)\|EPC\(Aff\)/, "export columns should include EPC(All) and EPC(Aff)");
 
 console.log("PASS: commission All/Aff helpers, formatting, i18n");

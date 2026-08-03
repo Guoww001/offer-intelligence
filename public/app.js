@@ -11289,7 +11289,8 @@ var _NUMERIC_COL_PATTERNS = [
       ["Subcategory", (offer) => offer.subCategory || ""],
       ["Main Category CN", (offer) => offer.mainCategoryCn || ""],
       ["Subcategory CN", (offer) => offer.subCategoryCn || ""],
-      ["EPC", (offer) => number(offer.epc)],
+      ["EPC(All)", (offer) => number(offerAllEpc(offer))],
+      ["EPC(Aff)", (offer) => number(offerAffEpc(offer))],
       ["AOV", (offer) => number(offer.aov)],
       ["Conversion Rate", (offer) => number(offer.conversionRate)],
       ["Clicks", (offer) => number(offer.clicks)],
@@ -11297,7 +11298,8 @@ var _NUMERIC_COL_PATTERNS = [
       ["ATC", (offer) => number(offer.atc)],
       ["Orders", (offer) => number(offer.orders)],
       ["Revenue", (offer) => number(offer.salesAmount)],
-      ["Commission", (offer) => number(offer.affCommission)],
+      ["All Commission", (offer) => number(offerAllCommission(offer))],
+      ["Aff Commission", (offer) => number(offerAffCommission(offer))],
       ["Commission Rate", (offer) => number(offer.commissionRate)],
       ["Payment Status", (offer) => offer.paymentStatus || ""],
       ["Payment Cycle", (offer) => offer.paymentCycle || ""],
@@ -19144,7 +19146,8 @@ var _NUMERIC_COL_PATTERNS = [
       money,
       shortEpc,
       labelText,
-      renderMerchantStats
+      renderMerchantStats,
+      recommendationExportColumns
     };
   } else {
     init();
