@@ -162,6 +162,34 @@ assertEqual(
   0,
   "publisher conversion should stay a ratio when clicks are unavailable"
 );
+assertEqual(
+  hooks.publisherMetricAffCommission(metric(100)),
+  7.5,
+  "publisher AFF earned commission should be 75% of ALL commission"
+);
+assertEqual(
+  hooks.publisherMetricAffCommissionRate(metric(100)),
+  7.5,
+  "publisher AFF commission rate should use 75% of ALL commission divided by sales"
+);
+assertEqual(
+  hooks.publisherMetricAffCommissionRate({ sales: 0, allCommission: 10 }),
+  null,
+  "publisher AFF commission rate should be unavailable without sales"
+);
+const affSummary = hooks.publisherAffinitySummary(
+  merchants.map((merchant) => ({ merchant, metrics: merchant.total }))
+);
+assertEqual(
+  affSummary.weightedCommissionRate,
+  7.5,
+  "publisher weighted commission rate should use 75% of ALL commission"
+);
+assertEqual(
+  affSummary.effectiveCommissionRate,
+  7.5,
+  "publisher effective commission rate should use 75% of ALL commission"
+);
 
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 if (!indexHtml.includes('id="publisherPortfolioTier"')) {
@@ -175,6 +203,18 @@ if (!indexHtml.includes('<th class="publisher-numeric">EPC</th>')) {
 }
 if (!indexHtml.includes('data-i18n="publishers.conversion">Conversion</th>')) {
   throw new Error("publisher portfolio table should expose a Conversion ratio column");
+}
+if (!indexHtml.includes('value="affCommissionRate">AFF 佣金率从高到低</option>')) {
+  throw new Error("publisher portfolio should sort by AFF commission rate");
+}
+if (!indexHtml.includes('value="affCommission">AFF 实际佣金从高到低</option>')) {
+  throw new Error("publisher portfolio should sort by AFF earned commission");
+}
+if (!indexHtml.includes('data-i18n="publishers.commissionRate">AFF commission rate</th>')) {
+  throw new Error("publisher portfolio should label the AFF commission rate explicitly");
+}
+if (!indexHtml.includes('data-i18n="publishers.earnedCommission">AFF earned commission</th>')) {
+  throw new Error("publisher portfolio should label AFF earned commission explicitly");
 }
 
 console.log("Publisher manager and Tier frontend checks passed");

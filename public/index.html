@@ -603,8 +603,8 @@
                       <option value="sales">销售额从高到低</option>
                       <option value="orders">订单数从高到低</option>
                       <option value="aov">AOV 从高到低</option>
-                      <option value="commissionRate">佣金率从高到低</option>
-                      <option value="allCommission">实际佣金从高到低</option>
+                      <option value="affCommissionRate">AFF 佣金率从高到低</option>
+                      <option value="affCommission">AFF 实际佣金从高到低</option>
                       <option value="merchantName">商家名称</option>
                     </select>
                   </div>
@@ -620,17 +620,17 @@
                         <th class="publisher-numeric">AOV</th>
                         <th class="publisher-numeric">EPC</th>
                         <th class="publisher-numeric" data-i18n="publishers.conversion">Conversion</th>
-                        <th class="publisher-numeric" data-i18n="publishers.commissionRate">Commission rate</th>
+                        <th class="publisher-numeric" data-i18n="publishers.commissionRate">AFF commission rate</th>
                         <th class="publisher-numeric" data-i18n="publishers.orders">Orders</th>
                         <th class="publisher-numeric" data-i18n="publishers.sales">Sales</th>
-                        <th class="publisher-numeric" data-i18n="publishers.earnedCommission">Earned commission</th>
+                        <th class="publisher-numeric" data-i18n="publishers.earnedCommission">AFF earned commission</th>
                         <th class="publisher-numeric" data-i18n="publishers.portfolioShare">Sales share</th>
                       </tr>
                     </thead>
                     <tbody id="publisherPortfolioRows"></tbody>
                   </table>
                 </div>
-                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders；EPC = Sales ÷ Clicks；Conversion = Orders ÷ Clicks，仅显示比例。佣金率来自商家配置，实际佣金来自媒体订单记录。</p>
+                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders; EPC = Sales ÷ Clicks; Conversion = Orders ÷ Clicks. AFF earned commission = ALL earned commission × 75%; AFF commission rate = AFF earned commission ÷ Sales.</p>
               </section>
             </div>
           </section>
