@@ -151,6 +151,67 @@ assertEqual(hooks.detectQueryIntent("Shokz Electronics"), "category", "brand plu
 assertEqual(hooks.categoryForPrompt("Roborock robot vacuum"), "Robotic Vacuums", "brand plus subcategory wording should resolve to the subcategory");
 assertEqual(hooks.detectQueryIntent("Roborock robot vacuum"), "category", "brand plus subcategory wording should route to category lookup");
 
+// ── Trend entity type detection ───────────────────────────────────────────
+// "分析Beauty类别的趋势" 曾因 findLiveOffer 的品牌 includes 匹配被误判为商户
+// （"Alpyn Beauty JH"），品类指示词应优先解析为品类。
+assertEqual(hooks.detectTrendEntityType("Beauty", "分析Beauty类别的趋势"), "category", "trend entity with category keyword should resolve to category");
+assertEqual(hooks.detectTrendEntityType("Beauty", "Beauty 的趋势"), "category", "plain category name trend should resolve to category");
+assertEqual(hooks.detectTrendEntityType("Electronics", "Electronics 趋势"), "category", "Electronics trend should resolve to category not a merchant whose brand contains electronics");
+assertEqual(hooks.detectTrendEntityType("Sports & Outdoors", "Sports & Outdoors 的趋势"), "category", "multi-word main category trend should resolve to category");
+assertEqual(hooks.detectTrendEntityType("Skincare", "Skincare 类别趋势"), "category", "alias category with keyword should resolve to category");
+// 商户名精确匹配优先于品类包含匹配："Cobra Electronics " 是真实商户，不应解析为 Electronics 品类
+assertEqual(hooks.detectTrendEntityType("Cobra Electronics ", "Cobra Electronics 趋势"), "merchant", "merchant whose brand contains a category word should stay merchant");
+assertEqual(hooks.detectTrendEntityType("Shokz", "Shokz 的趋势"), "merchant", "plain merchant name trend should resolve to merchant");
+assertEqual(hooks.detectTrendEntityType("Tier 2", "Tier 2 的趋势"), "tier", "tier trend should resolve to tier");
+
+// ── Report Mode 使用说明书 ───────────────────────────────────────────────
+const helpMd = hooks.reportModeHelpMarkdown();
+assertTruthy(helpMd && helpMd.length > 200, "Report Mode help markdown should be present");
+assertMatch(helpMd, /Report Mode 使用说明/, "help markdown should have a main title");
+assertMatch(helpMd, /趋势分析/, "help markdown should document trend analysis");
+assertMatch(helpMd, /支付查询/, "help markdown should document payment queries");
+assertMatch(helpMd, /推荐与排行/, "help markdown should document recommendations");
+assertMatch(helpMd, /标准提问模板/, "help markdown should include a standard question template section");
+const helpHtml = hooks.renderReportModeHelp();
+assertMatch(helpHtml, /<h1>/, "help markdown should render an h1");
+assertMatch(helpHtml, /<h2>/, "help markdown should render h2 sections");
+assertMatch(helpHtml, /<table>/, "help markdown should render tables");
+assertMatch(helpHtml, /<li>/, "help markdown should render lists");
+assertMatch(helpHtml, /<blockquote>/, "help markdown should render blockquotes");
+assertNotMatch(helpHtml, /```/, "help markdown should not leak raw code fences");
+assertMatch(
+  fs.readFileSync("public/index.html", "utf8"),
+  /id="reportHelpBtn"/,
+  "Report Mode chat panel should include the help toggle button"
+);
+assertMatch(
+  fs.readFileSync("public/index.html", "utf8"),
+  /id="reportHelpPanel"/,
+  "Report Mode chat panel should include the help panel container"
+);
+
+// English version of the help guide + language toggle
+const helpMdEn = hooks.reportModeHelpMarkdownEn();
+assertTruthy(helpMdEn && helpMdEn.length > 200, "English help markdown should be present");
+assertMatch(helpMdEn, /Report Mode User Guide/, "English help should have a main title");
+assertMatch(helpMdEn, /Trend Analysis/i, "English help should document trend analysis");
+assertMatch(helpMdEn, /Payment Queries/i, "English help should document payment queries");
+assertMatch(helpMdEn, /Recommendations & Rankings/, "English help should document recommendations");
+assertMatch(helpMdEn, /Standard Question Template/, "English help should include a standard question template section");
+const helpHtmlEn = hooks.renderReportModeHelp(null, "en");
+assertMatch(helpHtmlEn, /<h1>/, "English help should render an h1");
+assertMatch(helpHtmlEn, /<table>/, "English help should render tables");
+assertMatch(helpHtmlEn, /<blockquote>/, "English help should render blockquotes");
+assertMatch(helpHtmlEn, /USD/, "English help should mention USD currency");
+assertMatch(
+  fs.readFileSync("public/index.html", "utf8"),
+  /id="reportHelpLangBtn"/,
+  "Report Mode help panel should include the language toggle button"
+);
+assertEqual(hooks.reportHelpLang(), "zh", "help panel language should default to Chinese");
+assertEqual(hooks.toggleReportHelpLang(), "en", "toggling help language should switch to English");
+assertEqual(hooks.reportHelpLang(), "en", "help panel language should now be English");
+
 const headphonesRequest = hooks.keywordSearchRequest("headphones");
 assertTruthy(headphonesRequest, "headphones should create a keyword search request");
 assertEqual(headphonesRequest.canonical, "headphones", "headphones should map to the headphones synonym group");

@@ -376,6 +376,10 @@
     chatLogChat: document.getElementById("chatLogChat"),
     chatForm: document.getElementById("chatForm"),
     chatInput: document.getElementById("chatInput"),
+    reportHelpBtn: document.getElementById("reportHelpBtn"),
+    reportHelpPanel: document.getElementById("reportHelpPanel"),
+    reportHelpContent: document.getElementById("reportHelpContent"),
+    reportHelpLangBtn: document.getElementById("reportHelpLangBtn"),
     quickActions: document.getElementById("quickActions"),
     recBox: document.getElementById("recommendationBox"),
     stamp: document.getElementById("datasetStamp"),
@@ -903,7 +907,12 @@
       "deep.error.return": "分析返回异常，请稍后重试。",
       "deep.error.network": "网络请求失败，请检查连接后重试。",
       "deep.stop": "停止",
-      "deep.stopAborted": "分析已取消。"
+      "deep.stopAborted": "分析已取消。",
+      "report.helpBtn": "使用说明",
+      "report.helpOpen": "收起使用说明",
+      "report.helpClose": "使用说明",
+      "report.langBtn.zh": "中文",
+      "report.langBtn.en": "English"
     }
   };
 
@@ -1637,6 +1646,290 @@
     html = html.replace(/\n{2,}/g, '\n');
 
     return html.trim();
+  }
+
+  // ── Report Mode 使用说明书（Markdown 源文本）──────────────────────────────
+  // 渲染在 Report Mode 问答区的「使用说明」按钮展开面板中，经 markdownToHtml 转 HTML。
+  // 注意：内容为模板字符串，避免使用未转义反引号与 ${ 插值。
+  const REPORT_MODE_HELP_MD = `# Report Mode 使用说明
+
+Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / Tier**，支持中英文提问（自动识别语言）。提问后会生成分析报告并弹出 Deep Window 浮窗，可一键导出 Excel。
+
+## 一、支持的提问类型
+
+### 1. 商户查询
+直接输入商户名 / 商户 ID / ASIN 查看概览。
+
+| 标准提问 | 说明 |
+| --- | --- |
+| Shokz | 商户概览（品牌名） |
+| 362653 | 商户 ID 查询 |
+| B0015S8FPI | ASIN 归属查询 |
+| 分析 Shokz 怎么样 | 商户深度分析 |
+
+### 2. 品类查询
+
+| 标准提问 | 说明 |
+| --- | --- |
+| Beauty 品类表现 | 品类概览 |
+| Electronics offers | 品类下 offer 排行 |
+| 美妆类别的 offer | 中文品类别名 |
+
+### 3. Tier 查询
+
+| 标准提问 | 说明 |
+| --- | --- |
+| Tier 2 整体表现 | Tier 概览 |
+| Tier 1 和 Tier 2 对比 | 多 Tier 对比 |
+
+### 4. 趋势分析
+公式：**实体 + 时间范围 + 指标 + 趋势**，支持商户 / 品类 / Tier 三类实体的月度趋势。
+
+| 标准提问 | 说明 |
+| --- | --- |
+| Shokz 过去 3 个月的 revenue 趋势 | 商户趋势 |
+| Beauty 类别的趋势 | 品类趋势 |
+| Tier 2 这个季度的订单趋势 | Tier 趋势 |
+| 最近半年 EPC 趋势 | 全站指标趋势 |
+
+支持的时间范围：近 N 个月 / 最近一个季度 / 今年以来 / 过去半年。
+支持的指标：revenue、orders、clicks、epc、aov、conversionRate、commission、dpv、atc。
+
+### 5. 对比分析
+
+| 标准提问 | 说明 |
+| --- | --- |
+| 对比 Shokz 和 Soundcore | 商户对比 |
+| 分析 Tier 1 和 Tier 2 的 Beauty 表现 | 多 Tier + 品类 |
+
+### 6. 推荐与排行
+
+| 标准提问 | 说明 |
+| --- | --- |
+| 推荐 5 个 Beauty offer | 品类 Top N 推荐 |
+| Tier 2 高 EPC 的商户 | 指标筛选推荐 |
+| 哪个商户 EPC 最高 | Top 指标查询 |
+| 推荐品类 | 品类排行 |
+| EPC 大于 1 的商户 | 指标阈值筛选 |
+| 高 AOV、低转化、有折扣、有 ASIN、跟踪问题 | 特殊条件筛选 |
+
+### 7. 关键词搜索
+
+| 标准提问 | 说明 |
+| --- | --- |
+| headphones | 产品关键词搜索 |
+| 搜索 降噪耳机 | 中文关键词搜索 |
+
+### 8. 支付查询
+
+| 标准提问 | 说明 |
+| --- | --- |
+| 四月未付款有哪些 | 指定月未付款 |
+| 逾期商户 | 逾期记录 |
+| 付款周期超过 90 天的商户 | 付款周期筛选 |
+
+### 9. 分层管理
+
+| 标准提问 | 说明 |
+| --- | --- |
+| 哪些 Tier 2 要升 Tier 1 | 升级建议 |
+| Tier 3 降级名单 | 降级建议 |
+
+## 二、标准提问模板
+
+> 实体 + 动作词 + 范围 + 指标 + 时间
+
+示例：
+- 分析 Shokz 近三个月 revenue 趋势
+- Beauty 类别的趋势
+- Tier 2 这个季度订单趋势
+- 推荐 5 个高 EPC 的 Tier 2 商户
+- 对比 Shokz 和 Soundcore
+
+## 三、通用参数
+
+- **实体**：商户名 / 品牌 / 商户 ID / ASIN / 品类名 / Tier（Tier 1-4、BLACK TIER）
+- **动作词**：分析 / 评估 / 诊断 / 怎么样 / 表现 / 趋势 / 推荐 / 排行 / 对比
+- **时间范围**：近 N 个月 / 最近一个季度 / 今年以来 / 过去半年
+- **指标**：revenue / orders / clicks / epc / aov / conversionRate / commission / dpv / atc
+- **数量**：Top N / 前 N 个 / 5 个
+- **筛选**：EPC 大于 x / AOV 小于 y / 高转化 / 低转化 / 有折扣 / 有 ASIN / 跟踪问题 / 含 Tier 4 / 含黑名单
+
+## 四、交互说明
+
+- **Deep Window 浮窗**：提问后弹出报告浮窗，可拖动、最小化、关闭、导出 Excel。
+- **左栏 Context 面板**：同步显示当前查询的上下文、统计卡片、趋势图表。
+- **一键导出**：分析结果表格可下载为 Excel（xlsx）。
+- **上下文追问**：商户分析后直接追问「它的 EPC」「订单量」即可，无需重复商户名。
+- **中英文切换**：右上角按钮切换界面语言，提问语言自动识别。
+
+## 五、注意事项
+
+- 数据来自数据库缓存（24h TTL），后台自动刷新。
+- 趋势分析至少需要 2 个月数据；未连接数据库时自动降级为估算（标注 ⚡）。
+- 品类支持别名与子分类，如「美妆」→ Beauty & Personal Care。
+- 金额单位默认美元（$）；EPC / 转化率按小数格式化。`;
+
+  // ── Report Mode 使用说明书（英文版 Markdown）───────────────────────────
+  // 与 REPORT_MODE_HELP_MD 内容一一对应，供说明面板语言切换按钮切换显示。
+  const REPORT_MODE_HELP_MD_EN = `# Report Mode User Guide
+
+Report Mode lets you query and analyze **merchants / categories / tiers** in natural language, in either Chinese or English (auto-detected). Each query produces an analysis report that opens in a Deep Window popup, with one-click Excel export.
+
+## 1. Supported Query Types
+
+### 1.1 Merchant Lookup
+Type a merchant name / merchant ID / ASIN directly for an overview.
+
+| Standard question | Description |
+| --- | --- |
+| Shokz | Merchant overview (brand name) |
+| 362653 | Merchant ID lookup |
+| B0015S8FPI | ASIN ownership lookup |
+| Analyze Shokz performance | In-depth merchant analysis |
+
+### 1.2 Category Queries
+
+| Standard question | Description |
+| --- | --- |
+| Beauty category performance | Category overview |
+| Electronics offers | Offer ranking within a category |
+| Skincare offers | English category alias |
+
+### 1.3 Tier Queries
+
+| Standard question | Description |
+| --- | --- |
+| Tier 2 overall performance | Tier overview |
+| Compare Tier 1 and Tier 2 | Multi-tier comparison |
+
+### 1.4 Trend Analysis
+Formula: **entity + time range + metric + trend**, supporting monthly trends for merchants / categories / tiers.
+
+| Standard question | Description |
+| --- | --- |
+| Shokz revenue trend for the last 3 months | Merchant trend |
+| Beauty category trend | Category trend |
+| Tier 2 order trend this quarter | Tier trend |
+| EPC trend over the last six months | Site-wide metric trend |
+
+Supported time ranges: last N months / last quarter / this year / past six months.
+Supported metrics: revenue, orders, clicks, epc, aov, conversionRate, commission, dpv, atc.
+
+### 1.5 Comparison Analysis
+
+| Standard question | Description |
+| --- | --- |
+| Compare Shokz and Soundcore | Merchant comparison |
+| Analyze Beauty performance for Tier 1 and Tier 2 | Multi-tier + category |
+
+### 1.6 Recommendations & Rankings
+
+| Standard question | Description |
+| --- | --- |
+| Recommend 5 Beauty offers | Top-N category recommendation |
+| Tier 2 merchants with high EPC | Metric-filtered recommendation |
+| Which merchant has the highest EPC | Top metric query |
+| Recommend categories | Category ranking |
+| Merchants with EPC greater than 1 | Metric threshold filter |
+| High AOV, low conversion, discounted, has ASIN, tracking issues | Special condition filters |
+
+### 1.7 Keyword Search
+
+| Standard question | Description |
+| --- | --- |
+| headphones | Product keyword search |
+| Search noise-cancelling earbuds | English keyword search |
+
+### 1.8 Payment Queries
+
+| Standard question | Description |
+| --- | --- |
+| Which April payments are unpaid | Unpaid payments in a given month |
+| Overdue merchants | Overdue records |
+| Merchants with a payment cycle over 90 days | Payment cycle filter |
+
+### 1.9 Tier Management
+
+| Standard question | Description |
+| --- | --- |
+| Which Tier 2 merchants should move up to Tier 1 | Upgrade suggestions |
+| Tier 3 downgrade list | Downgrade suggestions |
+
+## 2. Standard Question Template
+
+> Entity + action + scope + metric + time
+
+Examples:
+- Analyze Shokz revenue trend for the last 3 months
+- Beauty category trend
+- Tier 2 order trend this quarter
+- Recommend 5 high-EPC Tier 2 merchants
+- Compare Shokz and Soundcore
+
+## 3. Common Parameters
+
+- **Entity**: merchant name / brand / merchant ID / ASIN / category name / tier (Tier 1-4, BLACK TIER)
+- **Action**: analyze / evaluate / diagnose / performance / trend / recommend / rank / compare
+- **Time range**: last N months / last quarter / this year / past six months
+- **Metrics**: revenue / orders / clicks / epc / aov / conversionRate / commission / dpv / atc
+- **Quantity**: Top N / first N / 5 offers
+- **Filters**: EPC greater than x / AOV less than y / high conversion / low conversion / discounted / has ASIN / tracking issues / include Tier 4 / include blacklist
+
+## 4. Interactions
+
+- **Deep Window**: reports open in a draggable, minimizable, closable popup with Excel export.
+- **Context panel**: the left panel shows the current query context, stat cards, and trend charts.
+- **One-click export**: analysis result tables can be downloaded as Excel (.xlsx).
+- **Context follow-up**: after a merchant analysis, just ask "its EPC" or "order count" without repeating the merchant name.
+- **Language**: switch the UI language with the button at the top right; query language is auto-detected.
+
+## 5. Notes
+
+- Data comes from the database cache (24h TTL) and refreshes in the background automatically.
+- Trend analysis needs at least 2 months of data; without a DB connection it degrades to an estimate (marked with ⚡).
+- Categories support aliases and subcategories, e.g. "skincare" → Beauty & Personal Care.
+- Currency defaults to USD ($); EPC / conversion rate are formatted as decimals.`;
+
+  // 当前说明书面板语言（"zh" | "en"），默认跟随界面语言
+  function reportHelpLang() {
+    var c = els.reportHelpContent;
+    return c && c.dataset.lang === "en" ? "en" : "zh";
+  }
+
+  // 按当前面板语言渲染说明书内容，并同步语言切换按钮文案
+  function renderReportHelpContent() {
+    var c = els.reportHelpContent;
+    if (!c) return;
+    var en = c.dataset.lang === "en";
+    c.innerHTML = markdownToHtml(en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD);
+    var langBtn = els.reportHelpLangBtn;
+    if (langBtn) langBtn.textContent = en ? t("report.langBtn.zh", "中文") : t("report.langBtn.en", "English");
+  }
+
+  // 切换说明书面板语言（中文 ↔ English）
+  function toggleReportHelpLang() {
+    var c = els.reportHelpContent;
+    if (!c) return reportHelpLang();
+    c.dataset.lang = c.dataset.lang === "en" ? "zh" : "en";
+    renderReportHelpContent();
+    return reportHelpLang();
+  }
+
+  // 展开/收起 Report Mode 使用说明书面板
+  function toggleReportHelp() {
+    var panel = els.reportHelpPanel;
+    var btn = els.reportHelpBtn;
+    if (!panel || !btn) return;
+    var willShow = panel.classList.contains("hidden");
+    if (willShow && els.reportHelpContent && !els.reportHelpContent.dataset.rendered) {
+      els.reportHelpContent.dataset.lang = els.reportHelpContent.dataset.lang || "zh";
+      renderReportHelpContent();
+      els.reportHelpContent.dataset.rendered = "1";
+    }
+    panel.classList.toggle("hidden", !willShow);
+    btn.classList.toggle("active", willShow);
+    btn.setAttribute("aria-expanded", willShow ? "true" : "false");
   }
 
   function escapeRegExp(value) {
@@ -5192,14 +5485,49 @@
     return null;
   }
 
-  function detectTrendEntityType(target) {
+  // 精确匹配品类值：target 整串就是一个品类名。与 categoryForPrompt 的"包含匹配"
+  // 不同，这里排除"商户名恰好含品类词"（如 "Cobra Electronics " → "Electronics"）的误判。
+  function exactCategoryValue(text) {
+    var lower = String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!lower) return null;
+    var values = allCategoryValues();
+    for (var i = 0; i < values.length; i++) {
+      if (String(values[i] || "").toLowerCase().replace(/\s+/g, " ").trim() === lower) return values[i];
+    }
+    return null;
+  }
+
+  // 商户名精确匹配：品牌/商户名完整等于目标。findLiveOffer 的 includes 匹配会把
+  // 品类词（如 "Beauty"、"Electronics"）命中到品牌名含该词的商户，需要先剥离。
+  function exactMerchantNameMatch(name) {
+    if (!name) return null;
+    var lower = name.toLowerCase().replace(/\s+/g, " ").trim();
+    var list = (_liveChatbotDataLoaded && _liveChatbotOffers) ? _liveChatbotOffers : offers;
+    for (var i = 0; i < list.length; i++) {
+      if (normalizedOfferName(list[i], "brand") === lower || normalizedOfferName(list[i], "merchantName") === lower) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  function detectTrendEntityType(target, prompt) {
     if (!target) return "merchant";
     var t = tierFromPrompt(target);
     if (t) return "tier";
-    // 先检查是否精确匹配已知商家，避免商家名被误判为品类
-    var matched = findLiveOffer(target);
-    if (matched) return "merchant";
+    // 原始 prompt 中明确的品类指示词（"X类别/品类/分类/类目/category"）优先，
+    // 修复 "分析Beauty类别的趋势" 被 LLM 剥离成 "Beauty" 后丢失品类信号的问题。
+    var hint = hasCategoryIntentText(target) || hasCategoryIntentText(prompt);
     var cat = categoryForPrompt(target);
+    if (hint && cat && offersInCategory(cat).length > 0) return "category";
+    // 商户名精确匹配优先，避免品牌名含品类词时被误判为品类
+    if (exactMerchantNameMatch(target)) return "merchant";
+    // target 本身就是品类名（精确匹配）且有数据 → 品类，优先于品牌 includes 模糊匹配
+    var exactCat = exactCategoryValue(target);
+    if (exactCat && offersInCategory(exactCat).length > 0) return "category";
+    // 商户 includes/fuzzy 匹配
+    if (findLiveOffer(target)) return "merchant";
+    // 品类模糊兜底
     if (cat && offersInCategory(cat).length > 0) return "category";
     return "merchant";
   }
@@ -5214,7 +5542,7 @@
     var zh = language === "zh";
     var analysisTarget = params && params.analysisTarget;
     var trendMetric = params && params.trendMetric || null;
-    var entityType = detectTrendEntityType(analysisTarget);
+    var entityType = detectTrendEntityType(analysisTarget, prompt);
     var placeholderId = "trend-placeholder-" + Date.now();
 
     var html = "<div id=\"" + placeholderId + "\" class=\"analysis-section\"><h4>" + trendAnalysisTitle(entityType, analysisTarget, zh) + "</h4>";
@@ -18547,6 +18875,10 @@ var _NUMERIC_COL_PATTERNS = [
       _renderMemoryBar();
     });
 
+    // Report Mode 使用说明书展开/收起
+    els.reportHelpBtn?.addEventListener("click", toggleReportHelp);
+    els.reportHelpLangBtn?.addEventListener("click", toggleReportHelpLang);
+
     // Escape 最小化最上层非推理中的面板
     document.addEventListener("keydown", function (e) {
       if (trapMonthlyNewMerchantDrawerFocus(e)) return;
@@ -18643,6 +18975,12 @@ var _NUMERIC_COL_PATTERNS = [
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
       setLanguage: function(lang) { state.language = lang; },
       categoryForPrompt,
+      detectTrendEntityType,
+      reportModeHelpMarkdown: () => REPORT_MODE_HELP_MD,
+      reportModeHelpMarkdownEn: () => REPORT_MODE_HELP_MD_EN,
+      renderReportModeHelp: (md, lang) => markdownToHtml(md || (lang === "en" ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD)),
+      reportHelpLang,
+      toggleReportHelpLang,
       detectQueryIntent,
       cleanedMerchantLookupPhrase,
       hasStrongMerchantLookup,
