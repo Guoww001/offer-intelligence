@@ -4964,7 +4964,10 @@ Examples:
         epc: o.epc || 0,
         aov: o.aov || 0,
         conversionRate: (o.conversionRate || 0) * 100,
-        affCommission: o.affCommission || 0
+        affCommission: o.affCommission || 0,
+        allCommission: o.payout || 0,
+        allEpc: offerAllEpc(o),
+        affEpc: offerAffEpc(o)
       };
     }
     var topMerchants = byCommission.slice(0, 5).map(briefOffer);
@@ -5115,7 +5118,10 @@ Examples:
           epc: o.epc || 0,
           aov: o.aov || 0,
           orders: o.orders || 0,
-          affCommission: o.affCommission || 0
+          affCommission: o.affCommission || 0,
+          allCommission: o.payout || 0,
+          allEpc: offerAllEpc(o),
+          affEpc: offerAffEpc(o)
         };
       });
 
@@ -5187,7 +5193,10 @@ Examples:
           epc: o.epc || 0,
           aov: o.aov || 0,
           orders: o.orders || 0,
-          affCommission: o.affCommission || 0
+          affCommission: o.affCommission || 0,
+          allCommission: o.payout || 0,
+          allEpc: offerAllEpc(o),
+          affEpc: offerAffEpc(o)
         };
       });
 
@@ -5960,10 +5969,10 @@ Examples:
     // Top & Bottom
     if (s.topMerchants && s.topMerchants.length) {
       html += "<div class=\"analysis-section\"><h4>" + (zh ? "品类 Top 5（按佣金）" : "Top 5 by Commission") + "</h4>";
-      html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "商户" : "Merchant") + "</th><th>Tier</th><th>EPC</th><th>CVR</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+      html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "商户" : "Merchant") + "</th><th>Tier</th><th>EPC(All)</th><th>EPC(Aff)</th><th>CVR</th><th>" + (zh ? "总佣金" : "All Commission") + "</th><th>" + (zh ? "联盟佣金" : "Aff Commission") + "</th></tr></thead><tbody>";
       for (var i = 0; i < s.topMerchants.length; i++) {
         var m = s.topMerchants[i];
-        html += "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(m.name) + "</td><td>" + escapeHtml(m.tier) + "</td><td>" + epc(m.epc) + "</td><td>" + pct(m.conversionRate / 100) + "</td><td>" + money(m.affCommission) + "</td></tr>";
+        html += "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(m.name) + "</td><td>" + escapeHtml(m.tier) + "</td><td>" + epc(m.allEpc) + "</td><td>" + epc(m.affEpc) + "</td><td>" + pct(m.conversionRate / 100) + "</td><td>" + money(m.allCommission) + "</td><td>" + money(m.affCommission) + "</td></tr>";
       }
       html += "</tbody></table></div>";
     }
@@ -6095,10 +6104,10 @@ Examples:
       var ent = entities[i];
       html += "<div class=\"analysis-section\"><h4>" + escapeHtml(ent.name) + (zh ? " — Top 品牌" : " — Top Brands") + "</h4>";
       if (ent.topBrands && ent.topBrands.length) {
-        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>" + (zh ? "Tier" : "Tier") + "</th><th>EPC</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>" + (zh ? "Tier" : "Tier") + "</th><th>EPC(All)</th><th>EPC(Aff)</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "总佣金" : "All Commission") + "</th><th>" + (zh ? "联盟佣金" : "Aff Commission") + "</th></tr></thead><tbody>";
         for (var b = 0; b < ent.topBrands.length; b++) {
           var brand = ent.topBrands[b];
-          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + escapeHtml(brand.tier) + "</td><td>" + epc(brand.epc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.affCommission) + "</td></tr>";
+          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + escapeHtml(brand.tier) + "</td><td>" + epc(brand.allEpc) + "</td><td>" + epc(brand.affEpc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.allCommission) + "</td><td>" + money(brand.affCommission) + "</td></tr>";
         }
         html += "</tbody></table>";
       }
@@ -6197,10 +6206,10 @@ Examples:
       var ent = entities[i];
       html += "<div class=\"analysis-section\"><h4>" + escapeHtml(ent.name) + (zh ? " — Top 品牌" : " — Top Brands") + "</h4>";
       if (ent.topBrands && ent.topBrands.length) {
-        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>EPC</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>EPC(All)</th><th>EPC(Aff)</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "总佣金" : "All Commission") + "</th><th>" + (zh ? "联盟佣金" : "Aff Commission") + "</th></tr></thead><tbody>";
         for (var b = 0; b < ent.topBrands.length; b++) {
           var brand = ent.topBrands[b];
-          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + epc(brand.epc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.affCommission) + "</td></tr>";
+          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + epc(brand.allEpc) + "</td><td>" + epc(brand.affEpc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.allCommission) + "</td><td>" + money(brand.affCommission) + "</td></tr>";
         }
         html += "</tbody></table>";
       }
