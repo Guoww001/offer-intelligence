@@ -1181,7 +1181,62 @@
       const sel = value && value === effective ? " selected" : "";
       return `<option value="${escapeHtml(value)}"${sel}>${escapeHtml(formatMonthLabel(value, language))}</option>`;
     }).join("");
-    return `<select class="merchant-month-picker" data-merchant-id="${escapeHtml(String(offer.merchantId || ""))}" data-card="${escapeHtml(scope)}">${options}</select>`;
+    const merchantId = escapeHtml(String(offer.merchantId || ""));
+    const items = (months || []).map((m) => {
+      const value = String(m.month || "");
+      const sel = value === effective ? " is-selected" : "";
+      const ariaSel = value === effective ? ' aria-selected="true"' : "";
+      return `<li role="option" class="month-picker-option${sel}" data-value="${escapeHtml(value)}"${ariaSel}>${escapeHtml(formatMonthLabel(value, language))}</li>`;
+    }).join("");
+    return `<div class="month-picker" data-merchant-id="${merchantId}" data-card="${escapeHtml(scope)}">
+      <select class="merchant-month-picker" data-merchant-id="${merchantId}" data-card="${escapeHtml(scope)}" aria-hidden="true" tabindex="-1">${options}</select>
+      <button type="button" class="month-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
+        <span class="month-picker-value">${escapeHtml(formatMonthLabel(effective, language))}</span>
+        <svg class="month-picker-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <ul class="month-picker-menu" role="listbox" aria-label="Month">${items}</ul>
+    </div>`;
+  }
+
+  function closeAllMonthPickers() {
+    document.querySelectorAll(".month-picker.is-open").forEach(function (wrap) {
+      wrap.classList.remove("is-open");
+      const trigger = wrap.querySelector(".month-picker-trigger");
+      if (trigger) trigger.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function openMonthPicker(wrap) {
+    const trigger = wrap.querySelector(".month-picker-trigger");
+    const rect = trigger ? trigger.getBoundingClientRect() : null;
+    const spaceBelow = rect ? window.innerHeight - rect.bottom : 300;
+    wrap.classList.toggle("open-up", spaceBelow < 288);
+    wrap.classList.add("is-open");
+    if (trigger) trigger.setAttribute("aria-expanded", "true");
+  }
+
+  function toggleMonthPicker(wrap) {
+    if (wrap.classList.contains("is-open")) closeAllMonthPickers();
+    else openMonthPicker(wrap);
+  }
+
+  function monthPickerOptionFor(wrap, value) {
+    const opts = wrap.querySelectorAll(".month-picker-option");
+    for (let i = 0; i < opts.length; i++) {
+      if (opts[i].getAttribute("data-value") === value) return opts[i];
+    }
+    return null;
+  }
+
+  function selectMonthOption(wrap, value) {
+    const select = wrap.querySelector(".merchant-month-picker");
+    const option = monthPickerOptionFor(wrap, value);
+    if (!select || !option) return;
+    select.value = value;
+    const valueEl = wrap.querySelector(".month-picker-value");
+    if (valueEl) valueEl.textContent = option.textContent;
+    closeAllMonthPickers();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
   function monthlyMetricRows(active, language) {
@@ -9972,24 +10027,39 @@ Examples:
 
   // ★ Deep Mode: replace Deep Window content with context panel overview
   // 使商家/ASIN/品类分析的 Deep Window 内容直接替换为左侧 Overview 的丰富信息
-  function _syncContextOverviewToDeepPanel(panel, html) {
+  async function _syncContextOverviewToDeepPanel(panel, html) {
     // 趋势查询有自己的异步图表渲染，且此时 state.currentContext 可能是上一次
     // merchant 查询的遗留值——误用会把空 Merchant 概览覆盖到趋势结果上，故跳过
     if (html && (html.indexOf("trend-placeholder") !== -1 || html.indexOf("trend-chart-svg") !== -1)) return;
     if (!els.recBox || !panel.sectionsEl) return;
-    var contextHtml = els.recBox.innerHTML;
-    if (!contextHtml || contextHtml.length < 30) return;
-
     // 只替换 merchant / asin / category 类型，这些类型的 Overview 比原始回答更丰富
     var context = state.currentContext;
     if (!context) return;
     var syncTypes = ["merchant", "asin", "category"];
     if (syncTypes.indexOf(context.type) === -1) return;
-
     // 已经替换过则跳过
     if (panel.sectionsEl.querySelector(".deep-context-overview")) return;
-
     var headingText = state.language === "zh" ? "概览" : "Overview";
+
+    // merchant：左侧 recBox 由异步 renderMerchantStatsPanel 渲染（先 fetch 再写 innerHTML），
+    // 这里同步抓取会拿到未更新的旧内容，导致 deep window 缺失月份下拉。
+    // 改为直接 fetch 并渲染与左侧相同的 merchant-focus 结构，保证信息一致。
+    if (context.type === "merchant") {
+      var offer = context.items && context.items[0];
+      if (offer) {
+        var monthlyRows = await fetchMerchantMonthlyRows(offer);
+        var mid = escapeHtml(String(offer.merchantId || ""));
+        var body = '<div class="deep-overview-body" data-merchant-id="' + mid + '">'
+          + renderMerchantStats(offer, monthlyRows) + '</div>';
+        panel.sectionsEl.innerHTML = '<div class="deep-context-overview">'
+          + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
+          + body + '</div>';
+        return;
+      }
+    }
+
+    var contextHtml = els.recBox.innerHTML;
+    if (!contextHtml || contextHtml.length < 30) return;
     panel.sectionsEl.innerHTML = '<div class="deep-context-overview">'
       + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
       + '<div class="deep-overview-body">' + contextHtml + '</div>'
@@ -10391,7 +10461,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
         // 同步左侧 Overview 内容到 Deep Window，使信息一致
-        _syncContextOverviewToDeepPanel(panel, html);
+        await _syncContextOverviewToDeepPanel(panel, html);
         addedMsg = addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
         addedMsg = addMessage("assistant", html);
@@ -18422,6 +18492,31 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.minCvr) els.minCvr.addEventListener("input", () => { state.minCvr = els.minCvr.value; renderAll(); });
     if (els.notPaidOnly) els.notPaidOnly.addEventListener("change", () => { state.notPaidOnly = els.notPaidOnly.checked; renderAll(); });
     els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
+    // 商户信息月份下拉：自定义玻璃触发交互
+    document.addEventListener("click", function (e) {
+      const trigger = e.target && e.target.closest ? e.target.closest(".month-picker-trigger") : null;
+      if (trigger) {
+        const wrap = trigger.closest(".month-picker");
+        if (wrap) { e.preventDefault(); e.stopPropagation(); toggleMonthPicker(wrap); }
+        return;
+      }
+      const option = e.target && e.target.closest ? e.target.closest(".month-picker-option") : null;
+      if (option) {
+        const wrap = option.closest(".month-picker");
+        if (wrap) { e.preventDefault(); e.stopPropagation(); selectMonthOption(wrap, option.getAttribute("data-value")); }
+        return;
+      }
+      closeAllMonthPickers();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { closeAllMonthPickers(); return; }
+      const trigger = e.target && e.target.closest ? e.target.closest(".month-picker-trigger") : null;
+      if (!trigger) return;
+      const wrap = trigger.closest(".month-picker");
+      if (!wrap) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMonthPicker(wrap); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); openMonthPicker(wrap); }
+    });
     // 商户信息月份切换：事件委托捕获 context/overview 下拉
     document.addEventListener("change", async function (e) {
       const picker = e.target && e.target.closest ? e.target.closest(".merchant-month-picker") : null;
@@ -18436,6 +18531,13 @@ var _NUMERIC_COL_PATTERNS = [
         if (!monthlyRows) return;
         if (picker.value !== selectedMonth) return;
         els.recBox.innerHTML = renderMerchantStats(offer, monthlyRows, month);
+        // 同步 deep window 中同商户的 merchant 概览，保证月份切换一致
+        const mid = picker.getAttribute("data-merchant-id");
+        document.querySelectorAll(".deep-context-overview .deep-overview-body[data-merchant-id]").forEach(function (body) {
+          if (body.getAttribute("data-merchant-id") === mid) {
+            body.innerHTML = renderMerchantStats(offer, monthlyRows, month);
+          }
+        });
       } else if (cardType === "overview") {
         const container = picker.closest(".merchant-card");
         if (!container) return;

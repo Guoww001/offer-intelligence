@@ -113,6 +113,17 @@ assertMatch(pickerOverview, /data-card="overview"/, "picker overview should carr
 assertMatch(pickerOverview, /Aug 2026/, "en picker should show Aug 2026");
 assertMatch(pickerOverview, /<option value="2026-08" selected>/, "default selected should be latest month");
 
+// 自定义玻璃下拉（视觉层结构）
+assertMatch(pickerZh, /class="month-picker"/, "picker should wrap in month-picker container");
+assertMatch(pickerZh, /month-picker-trigger/, "picker should render custom trigger");
+assertMatch(pickerZh, /month-picker-value/, "trigger should carry current value span");
+assertMatch(pickerZh, /month-picker-chevron/, "trigger should carry chevron icon");
+assertMatch(pickerZh, /month-picker-menu/, "picker should render custom menu");
+assertMatch(pickerZh, /role="option"/, "custom menu options should carry option role");
+assertEqual((pickerZh.match(/class="month-picker-option/g) || []).length, 3, "custom menu should list 3 months");
+assertMatch(pickerZh, /class="month-picker-option is-selected" data-value="2026-07"/, "custom menu should mark selected month");
+assertMatch(pickerOverview, /month-picker-value">Aug 2026/, "custom trigger should show current month en");
+
 // ── 用例 5：selectedMonthRow ──
 assertEqual(hooks.selectedMonthRow(rows4, "2026-06").month, "2026-06", "selectedMonthRow should pick requested month");
 assertEqual(hooks.selectedMonthRow(rows4, "2026-07").month, "2026-07", "selectedMonthRow should pick requested month");
