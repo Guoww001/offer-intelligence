@@ -37,7 +37,7 @@ const elementStub = {
   addEventListener() {},
   classList: { add() {}, remove() {}, toggle() {} },
   dataset: {},
-  appendChild() {},
+  appendChild() {}, insertBefore() {},
   querySelectorAll() { return []; },
   querySelector() { return null; },
   setAttribute() {},
@@ -131,14 +131,24 @@ for (const [en, zh] of Object.entries(omitZh)) {
 }
 assertEqual(
   hooks.chatOverviewColumnLabels().join("|"),
-  "Merchant|Tier|Category|Region|Commission rate|Payment cycle|AOV",
-  "chatbot overview tables should use the compact merchant fields"
+  "Merchant|Tier|Category|Region|Commission rate|Payment cycle|AOV|EPC(All)|EPC(Aff)|All Commission|Aff Commission",
+  "chatbot overview tables should include All/Aff commission and EPC columns"
 );
 assertEqual(
   hooks.contextColumnLabels().join("|"),
   "Merchant|Tier|Highlight|Category|AOV|EPC(All)|EPC(Aff)|CVR|Orders|Revenue|All Commission|Aff Commission|Payment cycle",
   "right-side overview should split EPC and Commission into All/Aff columns"
 );
+
+// ── Help 说明书应同时包含 Report Mode 与 Chat Mode 两个大节 ───────────────
+const helpZh = hooks.reportHelpMarkdown(false);
+const helpEn = hooks.reportHelpMarkdown(true);
+assertMatch(helpZh, /Report Mode 使用说明/, "zh help should keep Report Mode section");
+assertMatch(helpZh, /Chat Mode 使用说明/, "zh help should include Chat Mode section");
+assertMatch(helpEn, /Report Mode User Guide/, "en help should keep Report Mode section");
+assertMatch(helpEn, /Chat Mode User Guide/, "en help should include Chat Mode section");
+assertMatch(helpZh, /转为 View/, "zh help should mention Open as View in Chat Mode");
+assertMatch(helpEn, /Open as View/, "en help should mention Open as View in Chat Mode");
 
 assertEqual(hooks.categoryForPrompt("Electronics"), "Electronics", "main category should be recognized");
 assertEqual(hooks.detectQueryIntent("Electronics"), "category", "main category should route to category lookup");

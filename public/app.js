@@ -1926,7 +1926,38 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 - 数据来自数据库缓存（24h TTL），后台自动刷新。
 - 趋势分析至少需要 2 个月数据；未连接数据库时自动降级为估算（标注 ⚡）。
 - 品类支持别名与子分类，如「美妆」→ Beauty & Personal Care。
-- 金额单位默认美元（$）；EPC / 转化率按小数格式化。`;
+- 金额单位默认美元（$）；EPC / 转化率按小数格式化。
+
+# Chat Mode 使用说明
+
+Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提问、逐步追问，适合开放式问题与多轮讨论。
+
+## 1. 基本用法
+
+- 在输入框直接输入问题，回车发送，回答以流式逐字显示。
+- 支持中英文，自动识别提问语言，提示文案跟随界面语言。
+- 回答支持 Markdown 渲染（表格、列表、加粗等），可用回答下方的「转为 View」按钮在浮窗中打开。
+
+## 2. 能力范围
+
+- **多轮对话**：自动记住本段对话历史，可基于前文连续追问，无需重复上下文。
+- **记忆上下文**：将 Report Mode 生成的报告面板拖入聊天区上方的记忆栏，即可把它作为当前讨论的背景数据。
+- **开放问答**：分析商家表现、佣金、付款、选品策略等各类问题。
+- **注意**：Chat Mode 不生成结构化分析报告，也不会自动弹出 Deep Window；需要结构化报告请用 Report Mode。
+
+## 3. 与 Report Mode 的区别
+
+| 维度 | Report Mode | Chat Mode |
+| --- | --- | --- |
+| 定位 | 结构化查询与分析报告 | 自由对话助手 |
+| 回答 | 即时分析 + Deep Window 浮窗 | 流式 AI 对话 |
+| 追问 | 对上一商户的基础追问 | 完整多轮上下文 |
+| 导出 | 一键 Excel | 转 View 后可导出 |
+
+## 4. 提示词技巧
+
+- 提问具体：带上指标与时间范围（如"过去 3 个月 revenue 趋势"）比笼统提问更有效。
+- 需要数据支撑时：先拖入相关报告面板作为上下文，再提问。`;
 
   // ── Report Mode 使用说明书（英文版 Markdown）───────────────────────────
   // 与 REPORT_MODE_HELP_MD 内容一一对应，供说明面板语言切换按钮切换显示。
@@ -2047,7 +2078,38 @@ Examples:
 - Data comes from the database cache (24h TTL) and refreshes in the background automatically.
 - Trend analysis needs at least 2 months of data; without a DB connection it degrades to an estimate (marked with ⚡).
 - Categories support aliases and subcategories, e.g. "skincare" → Beauty & Personal Care.
-- Currency defaults to USD ($); EPC / conversion rate are formatted as decimals.`;
+- Currency defaults to USD ($); EPC / conversion rate are formatted as decimals.
+
+# Chat Mode User Guide
+
+Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig deeper in an open-ended, multi-turn discussion.
+
+## 1. Basic Usage
+
+- Type a question in the input box and press Enter; the answer streams in token by token.
+- Supports both Chinese and English; the input language is auto-detected and prompts follow the UI language.
+- Answers are rendered as Markdown (tables, lists, bold, etc.). Use the "Open as View" button below a response to open it in a popup window.
+
+## 2. Capabilities
+
+- **Multi-turn conversation**: remembers the current thread, so you can follow up without restating context.
+- **Memory context**: drag a Report Mode report panel into the memory bar above the chat area to use it as background data for the discussion.
+- **Open Q&A**: analyze merchant performance, commission, payments, product selection, and more.
+- **Note**: Chat Mode does not produce structured analysis reports or auto-open a Deep Window; for structured reports use Report Mode.
+
+## 3. Report Mode vs Chat Mode
+
+| Dimension | Report Mode | Chat Mode |
+| --- | --- | --- |
+| Focus | Structured queries & analysis reports | Free-form conversation assistant |
+| Answer | Instant analysis + Deep Window | Streaming AI conversation |
+| Follow-up | Basic follow-ups on the last merchant | Full multi-turn context |
+| Export | One-click Excel | Open as View, then export |
+
+## 4. Prompting Tips
+
+- Be specific: include metrics and time ranges (e.g., "revenue trend for the last 3 months") for better answers than vague questions.
+- For data-backed answers: drag in a relevant report panel as context first, then ask.`;
 
   // 当前说明书面板语言（"zh" | "en"），默认跟随界面语言
   function reportHelpLang() {
@@ -2061,8 +2123,34 @@ Examples:
     if (!c) return;
     var en = c.dataset.lang === "en";
     c.innerHTML = markdownToHtml(en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD);
+    injectReportHelpNav(c);
     var langBtn = els.reportHelpLangBtn;
     if (langBtn) langBtn.textContent = en ? t("report.langBtn.zh", "中文") : t("report.langBtn.en", "English");
+  }
+
+  // 注入说明书导航栏：顶部两个跳转按钮（Report Mode / Chat Mode），点击平滑滚动到对应大节。
+  // 用注入式而非 markdown 锚点，因为 markdownToHtml 的标题不生成 id、链接又强制新窗口。
+  function injectReportHelpNav(c) {
+    if (!c) return;
+    var nav = document.createElement("nav");
+    nav.className = "report-help-nav";
+    nav.setAttribute("aria-label", "Guide sections");
+    var targets = ["Report Mode", "Chat Mode"];
+    nav.innerHTML = targets.map(function (target) {
+      return '<button type="button" data-help-nav="' + escapeHtml(target) + '">' + escapeHtml(target) + "</button>";
+    }).join("");
+    nav.addEventListener("click", function (e) {
+      var btn = e.target.closest && e.target.closest("[data-help-nav]");
+      if (!btn) return;
+      var target = btn.getAttribute("data-help-nav");
+      var heads = c.querySelectorAll("h1, h2, h3");
+      var hit = null;
+      heads.forEach(function (h) {
+        if (h.textContent.trim().indexOf(target) === 0) hit = h;
+      });
+      if (hit) hit.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    c.insertBefore(nav, c.firstChild);
   }
 
   // 切换说明书面板语言（中文 ↔ English）
@@ -7720,7 +7808,11 @@ Examples:
     { label: "Region", render: (o) => escapeHtml(o.region || "-") },
     { label: "Commission rate", render: (o) => shortPct(o.commissionRate) },
     { label: "Payment cycle", render: (o) => escapeHtml(paymentCycleText(o, "-")) },
-    { label: "AOV", render: (o) => shortMoney(o.aov) }
+    { label: "AOV", render: (o) => shortMoney(o.aov) },
+    { label: "EPC(All)", render: (o) => shortEpc(offerAllEpc(o)) },
+    { label: "EPC(Aff)", render: (o) => shortEpc(offerAffEpc(o)) },
+    { label: "All Commission", render: (o) => shortMoney(offerAllCommission(o)) },
+    { label: "Aff Commission", render: (o) => shortMoney(offerAffCommission(o)) }
   ];
 
   const compactColumns = chatOverviewColumns;
@@ -9297,6 +9389,11 @@ Examples:
     // 点击 header 置顶（最低优先，让 drag 先处理）
     el.querySelector(".deep-window-header").addEventListener("mousedown", function () {
       if (!panel.dragState) _bringPanelToFront(panel);
+    });
+    // 点击浮窗任意可见区域也置顶——被覆盖的面板（如"对比Tier"浮窗）只要露出任意一块
+    // 被点击即可切回，避免新面板（如带月份下拉的商户概览）盖住后无法恢复。
+    el.addEventListener("mousedown", function () {
+      _bringPanelToFront(panel);
     });
   }
 
@@ -19335,6 +19432,7 @@ var _NUMERIC_COL_PATTERNS = [
       rankedRecommendations,
       chatOverviewColumnLabels: () => chatOverviewColumns.map((column) => column.label),
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
+      reportHelpMarkdown: (en) => (en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD),
       formatSheetCell,
       formatTierSheetCell: (sheetName, row, header) => formatTierSheetCell(
         sheetByName(sheetName) || { name: sheetName },
