@@ -1138,6 +1138,79 @@
     return aff === null ? null : aff / clicks;
   }
 
+  let merchantCardSeq = 0; // 聊天区概览卡片容器唯一 id 计数器
+
+  function mergeMonthIntoOffer(offer, row) {
+    return Object.assign({}, offer, {
+      salesAmount: row.revenue,            // Revenue made
+      aov: row.aov,
+      conversionRate: row.conversionRate,
+      payout: row.payout,                  // All Commission
+      affCommission: row.affiliatePayout,  // Aff Commission（映射后 offerAffEpc/offerAffCommission 直接复用）
+      orders: row.orders,
+      clicks: row.clicks,
+      dpv: row.dpv,
+      atc: row.atc
+    });
+  }
+
+  function selectedMonthRow(monthlyRows, selectedMonth) {
+    if (!monthlyRows || !monthlyRows.length) return null;
+    if (selectedMonth) {
+      const found = monthlyRows.find((r) => r.month === selectedMonth);
+      if (found) return found;
+    }
+    return monthlyRows[0]; // SQL ORDER BY month DESC → [0] 为最新月
+  }
+
+  function formatMonthLabel(month, language) {
+    const parts = String(month || "").split("-");
+    const year = parts[0];
+    const num = parseInt(parts[1], 10);
+    if (!year || !num || isNaN(num)) return month || "";
+    if (language === "zh") return year + "年" + num + "月";
+    const enMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return enMonths[num - 1] + " " + year;
+  }
+
+  function merchantMonthPickerHtml(offer, months, selectedMonth, scope, language) {
+    const effectiveRow = selectedMonthRow(months, selectedMonth);
+    const effective = effectiveRow && effectiveRow.month;
+    const options = (months || []).map((m) => {
+      const value = String(m.month || "");
+      const sel = value && value === effective ? " selected" : "";
+      return `<option value="${escapeHtml(value)}"${sel}>${escapeHtml(formatMonthLabel(value, language))}</option>`;
+    }).join("");
+    return `<select class="merchant-month-picker" data-merchant-id="${escapeHtml(String(offer.merchantId || ""))}" data-card="${escapeHtml(scope)}">${options}</select>`;
+  }
+
+  function monthlyMetricRows(active, language) {
+    return [
+      ["EPC(All)", epc(offerAllEpc(active))],
+      ["EPC(Aff)", epc(offerAffEpc(active))],
+      ["CVR", pct(active.conversionRate)],
+      ["Revenue", money(active.salesAmount)],
+      ["All Commission", money(offerAllCommission(active))],
+      ["Aff Commission", money(offerAffCommission(active))],
+      ["Orders", countValue(active.orders)],
+      ["Clicks", countValue(active.clicks)]
+    ];
+  }
+
+  function offerByMerchantId(merchantId) {
+    const id = String(merchantId || "").trim();
+    return id ? offersByMerchantId.get(id) || null : null;
+  }
+
+  async function fetchMerchantMonthlyRows(offer) {
+    if (!offer) return null;
+    const merchantId = String(offer.merchantId || "").trim();
+    if (!merchantId) return null;
+    const payload = await fetchMerchantMetrics(merchantId, 12);
+    const rows = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
+    return rows && rows.length ? rows : null;
+  }
+
   function countValue(value) {
     if (!isAvailable(value) || !Number.isFinite(Number(value))) return "not available in current data";
     return Number(value).toLocaleString();
@@ -19147,6 +19220,16 @@ var _NUMERIC_COL_PATTERNS = [
       shortEpc,
       labelText,
       renderMerchantStats,
+      epc,
+      pct,
+      countValue,
+      formatMonthLabel,
+      mergeMonthIntoOffer,
+      selectedMonthRow,
+      merchantMonthPickerHtml,
+      monthlyMetricRows,
+      offerByMerchantId,
+      fetchMerchantMonthlyRows,
       recommendationExportColumns
     };
   } else {
