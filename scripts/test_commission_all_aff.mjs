@@ -101,6 +101,15 @@ assertEqual(hooks.offerAffCommission({}), null, "missing affCommission should ma
 assertEqual(hooks.money(null), "not available in current data", "money(null) should show not available");
 assertEqual(hooks.shortEpc(null), "-", "shortEpc(null) should show dash");
 
+// 用例 5：统计卡片渲染（默认 zh 界面）
+const merchantStatsHtml = hooks.renderMerchantStats(shokz);
+assertMatch(merchantStatsHtml, /总佣金/, "merchant stats should show All Commission zh label");
+assertMatch(merchantStatsHtml, /联盟佣金/, "merchant stats should show Aff Commission zh label");
+assertMatch(merchantStatsHtml, /EPC\(All\)/, "merchant stats should show EPC(All) label");
+assertMatch(merchantStatsHtml, /EPC\(Aff\)/, "merchant stats should show EPC(Aff) label");
+// Shokz clicks=0 → 两种 EPC 均 null → epc(null) 显示 not available
+assertMatch(merchantStatsHtml, /not available in current data/, "Shokz zero clicks EPC should render not available");
+
 // 用例 7：i18n 键
 assertEqual(hooks.labelText("All Commission"), "总佣金", "zh label All Commission should translate");
 assertEqual(hooks.labelText("Aff Commission"), "联盟佣金", "zh label Aff Commission should translate");

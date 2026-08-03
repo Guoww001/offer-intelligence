@@ -7123,10 +7123,12 @@ Examples:
         ["Network", textValue(offer.network)],
         ["Category", textValue(displayCategory(offer))],
         ["AOV", money(offer.aov)],
-        ["EPC", epc(offer.epc)],
+        ["EPC(All)", epc(offerAllEpc(offer))],
+        ["EPC(Aff)", epc(offerAffEpc(offer))],
         ["CVR", pct(offer.conversionRate)],
         ["Revenue made", money(offer.salesAmount)],
-        ["Commission made", money(offer.affCommission)],
+        ["All Commission", money(offerAllCommission(offer))],
+        ["Aff Commission", money(offerAffCommission(offer))],
         ["Orders", countValue(offer.orders)],
         ["Clicks", countValue(offer.clicks)],
         ["DPV", countValue(offer.dpv)],
@@ -19130,7 +19132,8 @@ var _NUMERIC_COL_PATTERNS = [
       offerAffEpc,
       money,
       shortEpc,
-      labelText
+      labelText,
+      renderMerchantStats
     };
   } else {
     init();
