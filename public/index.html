@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260731-dash8" />
+    <link rel="stylesheet" href="./styles.css?v=20260803-loading-progress1" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -202,7 +202,7 @@
 
       <main class="workspace">
 
-        <div class="app-loading-skeleton" id="appLoadingSkeleton" aria-label="Loading dashboard data">
+        <div class="app-loading-skeleton" id="appLoadingSkeleton" aria-label="Loading dashboard data" aria-busy="true">
           <div class="skeleton-grid">
             <div class="skeleton-section skeleton-chart">
               <div class="skeleton-heading"></div>
@@ -218,7 +218,25 @@
               <div class="skeleton-input"></div>
             </div>
           </div>
-          <p class="skeleton-status">Loading offer data…</p>
+          <div class="skeleton-progress" aria-live="polite">
+            <div class="skeleton-progress-copy">
+              <p class="skeleton-status" id="skeletonLoadingStatus">Connecting to offer database…</p>
+              <strong class="skeleton-progress-percent" id="skeletonLoadingPercent" aria-hidden="true">8%</strong>
+            </div>
+            <div
+              class="skeleton-progress-track"
+              id="skeletonLoadingTrack"
+              role="progressbar"
+              aria-labelledby="skeletonLoadingStatus"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="8"
+              aria-valuetext="8%: Connecting to offer database"
+            >
+              <span class="skeleton-progress-value" id="skeletonLoadingValue"></span>
+            </div>
+            <p class="skeleton-progress-note" id="skeletonLoadingNote">Preparing secure access</p>
+          </div>
         </div>
 
         <section class="topbar dashboard-page">
@@ -1086,7 +1104,7 @@
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260730-fix3"></script>
+    <script src="./auth.js?v=20260803-loading-progress1"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。
