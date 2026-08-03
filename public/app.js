@@ -709,12 +709,16 @@
       "publishers.signalHint": "用于判断合作偏好",
       "publishers.merchantPortfolio": "合作商家组合",
       "publishers.networkMarket": "联盟 / 市场",
-      "publishers.commissionRate": "佣金率",
+      "publishers.commissionRate": "AFF 佣金率",
       "publishers.conversion": "转化率",
-      "publishers.earnedCommission": "实际佣金",
+      "publishers.earnedCommission": "AFF 实际佣金",
       "publishers.portfolioShare": "销售额占比",
       "publishers.allTiers": "全部 Tier",
-      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；EPC = 销售额 ÷ 点击量；Conversion = 订单数 ÷ 点击量，仅显示比例。佣金率来自商家配置，实际佣金来自媒体订单记录。",
+      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；EPC = 销售额 ÷ 点击量；Conversion = 订单数 ÷ 点击量。AFF 实际佣金 = ALL 实际佣金 × 75%；AFF 佣金率 = AFF 实际佣金 ÷ 销售额。",
+      "publishers.weightedCommission": "AFF 加权佣金率",
+      "publishers.weightedBySales": "按商家销售额加权",
+      "publishers.commissionProfile": "AFF 佣金概况",
+      "publishers.effectiveEarned": "AFF 实际佣金率",
       "publishers.portfolioExportEmpty": "当前商家组合筛选下没有可导出的记录。",
       "publishers.chartTitle": "按点击量排名",
       "publishers.clicks": "点击",
@@ -12036,10 +12040,10 @@ var _NUMERIC_COL_PATTERNS = [
           aov: metric.aov == null ? "" : metric.aov,
           epc: _publisherMetricEpc(metric),
           conversion: _publisherMetricConversionRate(metric),
-          commissionRate: merchant.commissionRate == null ? "" : merchant.commissionRate,
+          affCommissionRate: _publisherMetricAffCommissionRate(metric) ?? "",
           orders: metric.orders || 0,
           sales: metric.sales || 0,
-          earnedCommission: metric.allCommission || 0,
+          affEarnedCommission: _publisherMetricAffCommission(metric) ?? 0,
           salesShare: portfolioSales > 0 ? Number(metric.sales || 0) / portfolioSales : 0,
         };
       });
@@ -12058,10 +12062,10 @@ var _NUMERIC_COL_PATTERNS = [
           ["AOV", function (row) { return row.aov; }],
           ["EPC", function (row) { return row.epc; }],
           ["Conversion", function (row) { return row.conversion; }],
-          ["Commission Rate", function (row) { return row.commissionRate; }],
+          ["AFF Commission Rate", function (row) { return row.affCommissionRate; }],
           ["Orders", function (row) { return row.orders; }],
           ["Sales", function (row) { return row.sales; }],
-          ["Earned Commission", function (row) { return row.earnedCommission; }],
+          ["AFF Earned Commission", function (row) { return row.affEarnedCommission; }],
           ["Sales Share", function (row) { return row.salesShare; }],
         ]
       });
@@ -12425,6 +12429,22 @@ var _NUMERIC_COL_PATTERNS = [
     return clicks > 0 ? Number((metric || {}).orders || 0) / clicks : 0;
   }
 
+  var PUBLISHER_AFF_COMMISSION_SHARE = 0.75;
+
+  function _publisherMetricAffCommission(metric) {
+    var allCommission = Number((metric || {}).allCommission);
+    return Number.isFinite(allCommission)
+      ? allCommission * PUBLISHER_AFF_COMMISSION_SHARE
+      : null;
+  }
+
+  function _publisherMetricAffCommissionRate(metric) {
+    var sales = Number((metric || {}).sales);
+    var affCommission = _publisherMetricAffCommission(metric);
+    if (!Number.isFinite(sales) || sales <= 0 || affCommission == null) return null;
+    return affCommission / sales * 100;
+  }
+
   function _publisherMetricIsActive(metric) {
     if (!metric) return false;
     return ["clicks", "dpv", "atc", "orders", "sales", "allCommission", "affCommission"].some(function (key) {
@@ -12491,12 +12511,20 @@ var _NUMERIC_COL_PATTERNS = [
       if (sortKey === "merchantName") {
         return String(a.merchant.merchantName || "").localeCompare(String(b.merchant.merchantName || ""));
       }
-      var av = sortKey === "commissionRate"
-        ? Number(a.merchant.commissionRate == null ? -1 : a.merchant.commissionRate)
-        : Number(a.metrics[sortKey] == null ? -1 : a.metrics[sortKey]);
-      var bv = sortKey === "commissionRate"
-        ? Number(b.merchant.commissionRate == null ? -1 : b.merchant.commissionRate)
-        : Number(b.metrics[sortKey] == null ? -1 : b.metrics[sortKey]);
+      var aAffRate = _publisherMetricAffCommissionRate(a.metrics);
+      var bAffRate = _publisherMetricAffCommissionRate(b.metrics);
+      var aAffCommission = _publisherMetricAffCommission(a.metrics);
+      var bAffCommission = _publisherMetricAffCommission(b.metrics);
+      var av = sortKey === "affCommissionRate"
+        ? (aAffRate == null ? -1 : aAffRate)
+        : sortKey === "affCommission"
+          ? (aAffCommission == null ? -1 : aAffCommission)
+          : Number(a.metrics[sortKey] == null ? -1 : a.metrics[sortKey]);
+      var bv = sortKey === "affCommissionRate"
+        ? (bAffRate == null ? -1 : bAffRate)
+        : sortKey === "affCommission"
+          ? (bAffCommission == null ? -1 : bAffCommission)
+          : Number(b.metrics[sortKey] == null ? -1 : b.metrics[sortKey]);
       return bv - av ||
         String(a.merchant.merchantName || "").localeCompare(String(b.merchant.merchantName || ""));
     });
@@ -12521,6 +12549,7 @@ var _NUMERIC_COL_PATTERNS = [
       orders: 0,
       sales: 0,
       allCommission: 0,
+      affCommission: 0,
       aov: null,
       weightedCommissionRate: null,
       effectiveCommissionRate: null,
@@ -12546,6 +12575,7 @@ var _NUMERIC_COL_PATTERNS = [
       summary.orders += orders;
       summary.sales += sales;
       summary.allCommission += Number(metric.allCommission || 0);
+      summary.affCommission += _publisherMetricAffCommission(metric) || 0;
 
       var categoryName = merchant.category || "Uncategorized";
       if (!categories[categoryName]) {
@@ -12569,11 +12599,11 @@ var _NUMERIC_COL_PATTERNS = [
       aovBands[bandName].merchantCount += 1;
       aovBands[bandName].sales += sales;
 
-      var rate = merchant.commissionRate;
-      if (rate != null && Number.isFinite(Number(rate))) {
-        fallbackRates.push(Number(rate));
+      var rate = _publisherMetricAffCommissionRate(metric);
+      if (rate != null) {
+        fallbackRates.push(rate);
         if (sales > 0) {
-          rateNumerator += Number(rate) * sales;
+          rateNumerator += rate * sales;
           rateDenominator += sales;
         }
       }
@@ -12591,7 +12621,7 @@ var _NUMERIC_COL_PATTERNS = [
 
     summary.aov = summary.orders > 0 ? summary.sales / summary.orders : null;
     summary.effectiveCommissionRate = summary.sales > 0
-      ? summary.allCommission / summary.sales * 100
+      ? summary.affCommission / summary.sales * 100
       : null;
     if (rateDenominator > 0) {
       summary.weightedCommissionRate = rateNumerator / rateDenominator;
@@ -12655,7 +12685,7 @@ var _NUMERIC_COL_PATTERNS = [
           : t("publishers.noActivity", "No activity"),
       },
       {
-        label: t("publishers.weightedCommission", "Weighted commission"),
+        label: t("publishers.weightedCommission", "AFF weighted commission rate"),
         value: _publisherRateText(summary.weightedCommissionRate),
         note: t("publishers.weightedBySales", "weighted by merchant sales"),
       },
@@ -12719,10 +12749,10 @@ var _NUMERIC_COL_PATTERNS = [
         note: topCategory ? topCategory.category : t("publishers.noActivity", "No activity"),
       },
       {
-        label: t("publishers.commissionProfile", "Commission profile"),
+        label: t("publishers.commissionProfile", "AFF commission profile"),
         value: _publisherRateText(summary.weightedCommissionRate),
         note: _publisherRateText(summary.effectiveCommissionRate) + " " +
-          t("publishers.effectiveEarned", "effective earned"),
+          t("publishers.effectiveEarned", "effective AFF rate"),
       },
       {
         label: t("publishers.marketReach", "Market reach"),
@@ -12845,10 +12875,10 @@ var _NUMERIC_COL_PATTERNS = [
         '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricEpc(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(metric))) + '</td>' +
-        '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(merchant.commissionRate)) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(_publisherMetricAffCommissionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + number(metric.orders).toLocaleString() + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.sales)) + '</td>' +
-        '<td class="publisher-numeric">' + escapeHtml(shortMoney(metric.allCommission)) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortMoney(_publisherMetricAffCommission(metric) ?? 0)) + '</td>' +
         '<td class="publisher-numeric publisher-share-column"><div class="publisher-share-cell"><span>' + (share * 100).toFixed(1) +
           '%</span><i><b style="width:' + Math.max(1, share * 100).toFixed(1) + '%"></b></i></div></td>' +
       '</tr>';
@@ -19244,7 +19274,14 @@ var _NUMERIC_COL_PATTERNS = [
     renderAll();
     renderPaymentsPage();
     rerenderForLanguage();
-    document.body.classList.remove("app-loading");
+    if (window.__OI_LOADING_PROGRESS__ && typeof window.__OI_LOADING_PROGRESS__.finish === "function") {
+      window.__OI_LOADING_PROGRESS__.finish(
+        "Dashboard ready",
+        `${offers.length.toLocaleString()} offers loaded`
+      );
+    } else {
+      document.body.classList.remove("app-loading");
+    }
     loadSharedTierMoves({ silent: true });
     maybeAutoSyncLevantaPayments();
     window.setInterval(maybeAutoSyncLevantaPayments, AUTO_PAYMENT_SYNC_INTERVAL_MS);
@@ -19362,6 +19399,9 @@ var _NUMERIC_COL_PATTERNS = [
       publisherTierOptions: _publisherTierOptions,
       publisherMetricEpc: _publisherMetricEpc,
       publisherMetricConversionRate: _publisherMetricConversionRate,
+      publisherMetricAffCommission: _publisherMetricAffCommission,
+      publisherMetricAffCommissionRate: _publisherMetricAffCommissionRate,
+      publisherAffinitySummary: _publisherAffinitySummary,
       normalizeMonthlyNewMerchantRecord,
       filteredMonthlyNewMerchantRecords,
       monthlyNewMerchantTargetTotal,

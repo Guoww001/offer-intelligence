@@ -172,3 +172,61 @@ A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs d
 - `data/feishu_merchant_categories.csv` — Feishu category mappings
 - `data/product_name_keywords_t1_t3.csv` — product name keywords for Tier 1-3
 - `api/static_merchant_ids.json` — known merchant ID list for DB search
+
+## Bilingual Git and GitHub publishing
+
+When the user authorizes a Git commit or GitHub pull request, automatically
+write the commit and pull request content in both English and Simplified
+Chinese. Do not ask the user to provide translations.
+
+### Commit format
+
+- Subject: `<English summary> / <中文摘要>`
+- Use imperative English and concise Chinese.
+- Keep the subject at 72 characters or fewer when practical.
+- When a body is useful, place each English paragraph or bullet immediately
+  before its corresponding Chinese translation.
+- Avoid generic messages such as `update`, `fix`, or `changes`.
+
+Example:
+
+```text
+Add dashboard loading progress / 添加仪表盘加载进度
+```
+
+### Pull request format
+
+- Title: `<English summary> / <中文摘要>`
+- Use these body sections in this order:
+
+```markdown
+## Summary / 摘要
+
+- English description
+- 对应的中文说明
+
+## Validation / 验证
+
+- English validation result
+- 对应的中文验证结果
+
+## Risks / 风险
+
+- English risk or follow-up
+- 对应的中文风险或后续事项
+```
+
+- Omit `Risks / 风险` when there are no material risks or follow-ups.
+
+### General rules
+
+- Apply this bilingual format automatically whenever creating or updating a
+  commit or pull request.
+- Place every English paragraph or bullet immediately before its corresponding
+  Chinese translation.
+- Preserve commands, paths, identifiers, code, and error messages exactly; do
+  not translate them.
+- Before publishing, verify the staged diff, current branch, remote repository,
+  PR base branch, and PR head branch.
+- Do not commit, push, create or update a pull request, or merge a pull request
+  unless the user explicitly authorizes that action.

@@ -1,5 +1,5 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260730-fix3";
+  const APP_SCRIPT = "./app.js?v=20260803-loading-progress1";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -10,6 +10,66 @@
   const password = document.getElementById("authPassword");
   const submit = document.getElementById("authSubmit");
   const status = document.getElementById("authStatus");
+  const loadingSkeleton = document.getElementById("appLoadingSkeleton");
+  const loadingStatus = document.getElementById("skeletonLoadingStatus");
+  const loadingPercent = document.getElementById("skeletonLoadingPercent");
+  const loadingTrack = document.getElementById("skeletonLoadingTrack");
+  const loadingValue = document.getElementById("skeletonLoadingValue");
+  const loadingNote = document.getElementById("skeletonLoadingNote");
+
+  function createLoadingProgress() {
+    let current = 8;
+    let driftTimer = null;
+    let hideTimer = null;
+
+    function stopDrift() {
+      if (!driftTimer) return;
+      window.clearInterval(driftTimer);
+      driftTimer = null;
+    }
+
+    function set(value, message, note) {
+      const next = Math.max(current, Math.min(100, Number(value) || 0));
+      current = next;
+      const rounded = Math.round(current);
+      if (loadingStatus && message) loadingStatus.textContent = message;
+      if (loadingNote && note) loadingNote.textContent = note;
+      if (loadingPercent) loadingPercent.textContent = `${rounded}%`;
+      if (loadingValue) loadingValue.style.transform = `scaleX(${current / 100})`;
+      if (loadingTrack) {
+        loadingTrack.setAttribute("aria-valuenow", String(rounded));
+        loadingTrack.setAttribute("aria-valuetext", `${rounded}%: ${message || loadingStatus?.textContent || "Loading dashboard"}`);
+      }
+    }
+
+    function driftTo(limit, message, note) {
+      stopDrift();
+      set(current, message, note);
+      driftTimer = window.setInterval(() => {
+        const remaining = limit - current;
+        if (remaining <= 0.5) {
+          stopDrift();
+          return;
+        }
+        set(Math.min(limit, current + Math.max(0.5, Math.min(2, remaining * 0.12))), message, note);
+      }, 650);
+    }
+
+    function finish(message, note) {
+      stopDrift();
+      set(100, message || "Dashboard ready", note || "Your workspace is ready");
+      if (loadingSkeleton) loadingSkeleton.setAttribute("aria-busy", "false");
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        document.body.classList.remove("app-loading");
+      }, reducedMotion() ? 0 : 320);
+    }
+
+    return { set, driftTo, finish, stop: stopDrift };
+  }
+
+  const loadingProgress = createLoadingProgress();
+  window.__OI_LOADING_PROGRESS__ = loadingProgress;
 
   function reducedMotion() {
     return window.matchMedia && window.matchMedia(reduceMotionQuery).matches;
@@ -133,6 +193,8 @@
     if (_dataLoading) return;  // already loading
     _dataLoading = true;
     setStatus("Loading offer data from database", "muted");
+    loadingProgress.set(12, "Connecting to offer database…", "Preparing secure access");
+    loadingProgress.driftTo(68, "Loading offer records…", "Merchant, performance, and payment data");
     try {
       const offersResp = await fetchJson("/api/ui/db/offers");
       // product keyword data (productTitles / productKeywords) loaded lazily
@@ -151,13 +213,17 @@
       };
 
       window.PRODUCT_KEYWORDS = { merchants: [] };  // loaded lazily
+      const offerCount = window.CHATBOT_DATA.offers.length.toLocaleString();
+      loadingProgress.set(78, "Offer data received", `${offerCount} offers ready to index`);
     } catch (_err) {
       // Fallback: empty data
       window.CHATBOT_DATA = { summary: {}, offers: [] };
       window.SHEET_REPORT_DATA = { sheets: [], tierSheets: [] };
       window.PRODUCT_KEYWORDS = { merchants: [] };
+      loadingProgress.set(78, "Opening dashboard with limited data…", "Offer data is temporarily unavailable");
     }
     setStatus("", "");
+    loadingProgress.driftTo(94, "Building dashboard…", "Applying filters and preparing report views");
     await loadScript(APP_SCRIPT);
 
     // Background: load keyword data after dashboard renders
