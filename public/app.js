@@ -779,6 +779,10 @@
       "label.CVR": "CVR",
       "label.Revenue made": "产生收入",
       "label.Commission made": "产生佣金",
+      "label.All Commission": "总佣金",
+      "label.Aff Commission": "联盟佣金",
+      "label.EPC(All)": "EPC(All)",
+      "label.EPC(Aff)": "EPC(Aff)",
       "label.Last checked": "上次检查",
       "label.Payment rate": "付款率",
       "label.Paid": "已付款",
@@ -1110,6 +1114,28 @@
   function epc(value) {
     if (!isAvailable(value) || !Number.isFinite(Number(value))) return "not available in current data";
     return "$" + Number(value).toFixed(3);
+  }
+
+  function offerAllCommission(offer) {
+    return isAvailable(offer && offer.payout) ? Number(offer.payout) : null;
+  }
+
+  function offerAffCommission(offer) {
+    return isAvailable(offer && offer.affCommission) ? Number(offer.affCommission) : null;
+  }
+
+  function offerAllEpc(offer) {
+    const clicks = Number(offer && offer.clicks);
+    if (!(clicks > 0)) return null;
+    const all = offerAllCommission(offer);
+    return all === null ? null : all / clicks;
+  }
+
+  function offerAffEpc(offer) {
+    const clicks = Number(offer && offer.clicks);
+    if (!(clicks > 0)) return null;
+    const aff = offerAffCommission(offer);
+    return aff === null ? null : aff / clicks;
   }
 
   function countValue(value) {
@@ -19097,7 +19123,14 @@ var _NUMERIC_COL_PATTERNS = [
           : filters.tier;
       },
       publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
-        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls)
+        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
+      offerAllCommission,
+      offerAffCommission,
+      offerAllEpc,
+      offerAffEpc,
+      money,
+      shortEpc,
+      labelText
     };
   } else {
     init();
