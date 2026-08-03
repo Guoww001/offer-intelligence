@@ -21,6 +21,18 @@ function assertMatch(actual, pattern, label) {
   }
 }
 
+function assertNotEqual(actual, expected, label) {
+  if (actual === expected) {
+    throw new Error(`${label}: expected ${JSON.stringify(actual)} to differ from ${JSON.stringify(expected)}`);
+  }
+}
+
+function assertNotMatch(actual, pattern, label) {
+  if (pattern.test(actual)) {
+    throw new Error(`${label}: expected ${JSON.stringify(actual)} to NOT match ${pattern}`);
+  }
+}
+
 const elementStub = {
   addEventListener() {},
   classList: { add() {}, remove() {}, toggle() {} },
@@ -85,6 +97,7 @@ const shokz = (_offersCache.offers || []).find((o) => String(o.merchantId) === "
 assertTruthy(shokz, "Shokz 362653 offer should exist in cache");
 assertEqual(hooks.offerAllCommission(shokz), shokz.payout, "Shokz All Commission should use payout");
 assertEqual(hooks.offerAffCommission(shokz), shokz.affCommission, "Shokz Aff Commission should use affCommission");
+assertNotEqual(shokz.payout, shokz.affCommission, "Shokz payout should differ from affCommission to keep All/Aff discriminable");
 
 // 用例 2：EPC 计算
 const epcFixture = { payout: 100, affCommission: 80, clicks: 200 };
@@ -110,6 +123,7 @@ assertMatch(merchantStatsHtml, /EPC\(Aff\)/, "merchant stats should show EPC(Aff
 // 零点击 → 两种 EPC 均 null → epc(null) 显示 not available（数据驱动，不依赖 Shokz 实时 clicks）
 const noClicksOffer = Object.assign({}, shokz, { clicks: 0 });
 assertMatch(hooks.renderMerchantStats(noClicksOffer), /not available in current data/, "zero clicks EPC should render not available");
+assertNotMatch(merchantStatsHtml, /产生佣金/, "old single-value Commission made card should be gone from merchant stats");
 
 // 用例 7：i18n 键
 assertEqual(hooks.labelText("All Commission"), "总佣金", "zh label All Commission should translate");

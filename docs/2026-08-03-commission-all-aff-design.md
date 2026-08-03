@@ -63,7 +63,7 @@ offerAffEpc(offer)         → affCommission / clicks（clicks≤0 返回 null�
 - `briefOffer` 聚合对象（约 4934 行）新增字段：`allCommission: o.payout || 0`、`allEpc`、`affEpc`（复用 `offerAllEpc`/`offerAffEpc` 计算）。
 - 表头与单元格：单列 "佣金"（`money(m.affCommission)`）→ 两列 All/Aff；单列 "EPC"（`epc(m.epc)`）→ 两列 EPC(All)/EPC(Aff)。涉及三处：品类 Top 5、对比分析 Top Brands、Tier Top Brands。
 
-### 4. Excel 导出列（`objectExportColumns`，约 11253-11261 行）
+### 4. Excel 导出列（`recommendationExportColumns`，约 11280-11316 行）
 
 注：实际位置为 recommendationExportColumns（app.js:11280-11316）；objectExportColumns（app.js:11340）是通用动态表头生成器，无需改。
 
