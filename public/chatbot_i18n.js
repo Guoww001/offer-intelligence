@@ -159,7 +159,9 @@
     "Publisher Count": "Publisher 数量",
     "Success Rate": "成功率",
     "Tier 2 Optimization Idea": "Tier 2 优化建议",
-    "Notes / recommendation": "备注 / 推荐"
+    "Notes / recommendation": "备注 / 推荐",
+    "All Commission": "总佣金",
+    "Aff Commission": "联盟佣金"
   };
 
   function hasChinese(value) {

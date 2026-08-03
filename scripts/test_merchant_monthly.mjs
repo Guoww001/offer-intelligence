@@ -156,4 +156,28 @@ const statsNoRows = hooks.renderMerchantStats(shokz, null);
 assertNotMatch(statsNoRows, /merchant-month-picker/, "no monthly rows should not render picker");
 assertMatch(statsNoRows, /总佣金/, "degraded stats card should keep All Commission zh label");
 
+// ── 用例 10：概览卡片内容（有月度数据 → 下拉 + 月度指标行）──
+const overviewInner = hooks.merchantOverviewCardInner(shokz, rows4, null, "", "zh");
+assertMatch(overviewInner, /merchant-month-picker/, "overview card should render month picker with rows");
+assertMatch(overviewInner, /data-card="overview"/, "overview picker should be overview scope");
+assertMatch(overviewInner, /2026年8月/, "overview picker should show zh month labels");
+assertMatch(overviewInner, /总佣金/, "overview card should show All Commission zh label (via chatLabelText/LABELS_ZH)");
+assertMatch(overviewInner, /EPC\(All\)/, "overview card should show EPC(All) row");
+assertMatch(overviewInner, /EPC\(Aff\)/, "overview card should show EPC(Aff) row");
+assertMatch(overviewInner, /联盟佣金/, "overview card should show Aff Commission zh label");
+assertMatch(overviewInner, /\$9,600/, "overview card Revenue row should reflect merged revenue 9600 (money format $9,600)");
+
+// ── 用例 11：概览卡片 HTML（容器标识 + pending 状态）──
+const overviewHtml = hooks.merchantOverviewHtml(shokz, "(ASIN match)", "zh", rows4);
+assertMatch(overviewHtml, /data-merchant-card="merchant-card-\d+"/, "overview html should carry unique merchant-card id");
+assertMatch(overviewHtml, /data-merchant-id="362653"/, "overview html should carry merchant id");
+assertMatch(overviewHtml, /data-monthly-state="pending"/, "overview html should be pending for async enhancement");
+assertMatch(overviewHtml, /\(ASIN match\)/, "overview html should keep extra text");
+assertMatch(overviewHtml, /download-xlsx-button/, "overview html should keep download card");
+
+// ── 用例 12：概览卡片内容（无月度数据 → 降级，无下拉、无月度行）──
+const overviewNoRows = hooks.merchantOverviewCardInner(shokz, null, null, "", "zh");
+assertNotMatch(overviewNoRows, /merchant-month-picker/, "no monthly rows should not render picker in overview");
+assertNotMatch(overviewNoRows, /EPC\(All\)/, "no monthly rows should not render EPC(All) row");
+
 console.log("PASS: merchant monthly pure helpers");

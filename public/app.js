@@ -7617,11 +7617,24 @@ Examples:
     return merchantOverviewHtml(offer, extra, language);
   }
 
-  function merchantOverviewHtml(offer, extra = "", language = responseLanguageFor()) {
-    const rows = fieldRows(offer, language)
-      .map(([label, value]) => `<li><strong>${escapeHtml(chatLabelText(label, language))}:</strong> ${escapeHtml(value)}</li>`)
-      .join("");
-    return `<div class="merchant-card"><h4>${escapeHtml(offer.brand || chatCopy(language).merchantOverview || "Merchant")} ${extra}</h4><ul>${rows}</ul></div>` +
+  function merchantOverviewCardInner(offer, monthlyRows, selectedMonth, extra, language) {
+    const row = selectedMonthRow(monthlyRows, selectedMonth);
+    const active = row ? mergeMonthIntoOffer(offer, row) : offer;
+    const picker = monthlyRows && monthlyRows.length
+      ? merchantMonthPickerHtml(offer, monthlyRows, row ? row.month : null, "overview", language)
+      : "";
+    const rows = fieldRows(active, language);
+    const extras = monthlyRows && monthlyRows.length ? monthlyMetricRows(active, language) : [];
+    const listItems = rows.concat(extras).map(([label, value]) =>
+      `<li><strong>${escapeHtml(chatLabelText(label, language))}:</strong> ${escapeHtml(value)}</li>`
+    ).join("");
+    return `<h4>${escapeHtml(offer.brand || chatCopy(language).merchantOverview || "Merchant")} ${extra}</h4>${picker}<ul>${listItems}</ul>`;
+  }
+
+  function merchantOverviewHtml(offer, extra = "", language = responseLanguageFor(), monthlyRows) {
+    const cardId = "merchant-card-" + (++merchantCardSeq);
+    const content = merchantOverviewCardInner(offer, monthlyRows, null, extra, language);
+    return `<div class="merchant-card" data-merchant-card="${cardId}" data-merchant-id="${escapeHtml(String(offer.merchantId || ""))}" data-extra="${escapeHtml(extra)}" data-language="${escapeHtml(language)}" data-monthly-state="pending">${content}</div>` +
       downloadCardHtml([offer], {
         downloadType: "offers",
         filePrefix: "merchant_offer",
@@ -9107,6 +9120,22 @@ Examples:
     msg.innerHTML = html;
     els.chatLog.appendChild(msg);
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
+    return msg;
+  }
+
+  async function enhanceMerchantCards(container) {
+    if (!container || !container.querySelectorAll) return;
+    const cards = container.querySelectorAll('[data-merchant-card][data-monthly-state="pending"]');
+    for (const card of cards) {
+      card.setAttribute("data-monthly-state", "done");
+      const offer = offerByMerchantId(card.getAttribute("data-merchant-id"));
+      if (!offer) continue;
+      const monthlyRows = await fetchMerchantMonthlyRows(offer);
+      if (!monthlyRows) continue; // 无月度数据 → 保持降级渲染
+      const language = card.getAttribute("data-language") || responseLanguageFor();
+      const extra = card.getAttribute("data-extra") || "";
+      card.innerHTML = merchantOverviewCardInner(offer, monthlyRows, null, extra, language);
+    }
   }
 
   function updateDeepSkeleton(activeStep) {
@@ -10358,14 +10387,16 @@ var _NUMERIC_COL_PATTERNS = [
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     try {
       var html = answerPrompt(prompt);
+      var addedMsg;
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
         // 同步左侧 Overview 内容到 Deep Window，使信息一致
         _syncContextOverviewToDeepPanel(panel, html);
-        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
+        addedMsg = addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
-        addMessage("assistant", html);
+        addedMsg = addMessage("assistant", html);
       }
+      if (addedMsg) enhanceMerchantCards(addedMsg);
     } catch (error) {
       console.error("[analysis] answerPrompt error:", error);
       var errMsg = (language === "zh"
@@ -19267,6 +19298,9 @@ var _NUMERIC_COL_PATTERNS = [
       monthlyMetricRows,
       offerByMerchantId,
       fetchMerchantMonthlyRows,
+      merchantOverviewHtml,
+      merchantOverviewCardInner,
+      enhanceMerchantCards,
       recommendationExportColumns
     };
   } else {
