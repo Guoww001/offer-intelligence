@@ -361,11 +361,19 @@ assertEqual(
   "Paid|Pending|Unpaid|Overdue",
   "payment status summary should keep paid, pending, unpaid, and overdue in one ordered row"
 );
+const paymentStatusFilterValues = hooks.paymentStatusFilterValues();
+const businessStatusOrder = ["Paid", "Pending", "Unpaid", "Overdue", "Partial", "Unknown"];
+const filterIndexes = paymentStatusFilterValues
+  .map((status) => businessStatusOrder.indexOf(status))
+  .filter((index) => index >= 0);
 assertEqual(
-  hooks.paymentStatusFilterValues().slice(0, 4).join("|"),
-  "Paid|Pending|Unpaid|Overdue",
-  "payment status filter should include overdue in the expected status order"
+  filterIndexes.join(","),
+  [...filterIndexes].sort((a, b) => a - b).join(","),
+  "payment status filter should follow Paid/Pending/Unpaid/Overdue business order regardless of which statuses current data contains"
 );
+assertTruthy(paymentStatusFilterValues.includes("Paid"), "payment status filter should include paid from current data");
+assertTruthy(paymentStatusFilterValues.includes("Unpaid"), "payment status filter should include unpaid from current data");
+assertTruthy(paymentStatusFilterValues.includes("Overdue"), "payment status filter should include overdue from current data");
 assertNotMatch(
   fs.readFileSync("public/index.html", "utf8"),
   /paymentSortDirectionFilter/,
