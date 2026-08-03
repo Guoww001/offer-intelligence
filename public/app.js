@@ -7628,13 +7628,13 @@ Examples:
     const listItems = rows.concat(extras).map(([label, value]) =>
       `<li><strong>${escapeHtml(chatLabelText(label, language))}:</strong> ${escapeHtml(value)}</li>`
     ).join("");
-    return `<h4>${escapeHtml(offer.brand || chatCopy(language).merchantOverview || "Merchant")} ${extra}</h4>${picker}<ul>${listItems}</ul>`;
+    return `<h4>${escapeHtml(offer.brand || chatCopy(language).merchantOverview || "Merchant")} ${escapeHtml(extra)}</h4>${picker}<ul>${listItems}</ul>`;
   }
 
   function merchantOverviewHtml(offer, extra = "", language = responseLanguageFor(), monthlyRows) {
     const cardId = "merchant-card-" + (++merchantCardSeq);
     const content = merchantOverviewCardInner(offer, monthlyRows, null, extra, language);
-    return `<div class="merchant-card" data-merchant-card="${cardId}" data-merchant-id="${escapeHtml(String(offer.merchantId || ""))}" data-extra="${escapeHtml(extra)}" data-language="${escapeHtml(language)}" data-monthly-state="pending">${content}</div>` +
+    return `<div class="merchant-card" data-merchant-card="${cardId}" data-merchant-id="${escapeHtml(String(offer.merchantId || ""))}" data-extra="${extra}" data-language="${escapeHtml(language)}" data-monthly-state="pending">${content}</div>` +
       downloadCardHtml([offer], {
         downloadType: "offers",
         filePrefix: "merchant_offer",
@@ -18430,15 +18430,18 @@ var _NUMERIC_COL_PATTERNS = [
       if (!offer) return;
       const cardType = picker.getAttribute("data-card");
       const month = picker.value;
+      const selectedMonth = picker.value;
       if (cardType === "context") {
         const monthlyRows = await fetchMerchantMonthlyRows(offer);
         if (!monthlyRows) return;
+        if (picker.value !== selectedMonth) return;
         els.recBox.innerHTML = renderMerchantStats(offer, monthlyRows, month);
       } else if (cardType === "overview") {
         const container = picker.closest(".merchant-card");
         if (!container) return;
         const monthlyRows = await fetchMerchantMonthlyRows(offer);
         if (!monthlyRows) return;
+        if (picker.value !== selectedMonth) return;
         container.innerHTML = merchantOverviewCardInner(offer, monthlyRows, month,
           container.getAttribute("data-extra") || "",
           container.getAttribute("data-language") || responseLanguageFor());
