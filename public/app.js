@@ -783,6 +783,10 @@
       "label.CVR": "CVR",
       "label.Revenue made": "产生收入",
       "label.Commission made": "产生佣金",
+      "label.All Commission": "总佣金",
+      "label.Aff Commission": "联盟佣金",
+      "label.EPC(All)": "EPC(All)",
+      "label.EPC(Aff)": "EPC(Aff)",
       "label.Last checked": "上次检查",
       "label.Payment rate": "付款率",
       "label.Paid": "已付款",
@@ -1114,6 +1118,156 @@
   function epc(value) {
     if (!isAvailable(value) || !Number.isFinite(Number(value))) return "not available in current data";
     return "$" + Number(value).toFixed(3);
+  }
+
+  function offerAllCommission(offer) {
+    return isAvailable(offer && offer.payout) ? Number(offer.payout) : null;
+  }
+
+  function offerAffCommission(offer) {
+    return isAvailable(offer && offer.affCommission) ? Number(offer.affCommission) : null;
+  }
+
+  function offerAllEpc(offer) {
+    const clicks = Number(offer && offer.clicks);
+    if (!(clicks > 0)) return null;
+    const all = offerAllCommission(offer);
+    return all === null ? null : all / clicks;
+  }
+
+  function offerAffEpc(offer) {
+    const clicks = Number(offer && offer.clicks);
+    if (!(clicks > 0)) return null;
+    const aff = offerAffCommission(offer);
+    return aff === null ? null : aff / clicks;
+  }
+
+  let merchantCardSeq = 0; // 聊天区概览卡片容器唯一 id 计数器
+
+  function mergeMonthIntoOffer(offer, row) {
+    return Object.assign({}, offer, {
+      salesAmount: row.revenue,            // Revenue made
+      aov: row.aov,
+      conversionRate: row.conversionRate,
+      payout: row.payout,                  // All Commission
+      affCommission: row.affiliatePayout,  // Aff Commission（映射后 offerAffEpc/offerAffCommission 直接复用）
+      orders: row.orders,
+      clicks: row.clicks,
+      dpv: row.dpv,
+      atc: row.atc
+    });
+  }
+
+  function selectedMonthRow(monthlyRows, selectedMonth) {
+    if (!monthlyRows || !monthlyRows.length) return null;
+    if (selectedMonth) {
+      const found = monthlyRows.find((r) => r.month === selectedMonth);
+      if (found) return found;
+    }
+    return monthlyRows[0]; // SQL ORDER BY month DESC → [0] 为最新月
+  }
+
+  function formatMonthLabel(month, language) {
+    const parts = String(month || "").split("-");
+    const year = parts[0];
+    const num = parseInt(parts[1], 10);
+    if (!year || !num || isNaN(num)) return month || "";
+    if (language === "zh") return year + "年" + num + "月";
+    const enMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return enMonths[num - 1] + " " + year;
+  }
+
+  function merchantMonthPickerHtml(offer, months, selectedMonth, scope, language) {
+    const effectiveRow = selectedMonthRow(months, selectedMonth);
+    const effective = effectiveRow && effectiveRow.month;
+    const options = (months || []).map((m) => {
+      const value = String(m.month || "");
+      const sel = value && value === effective ? " selected" : "";
+      return `<option value="${escapeHtml(value)}"${sel}>${escapeHtml(formatMonthLabel(value, language))}</option>`;
+    }).join("");
+    const merchantId = escapeHtml(String(offer.merchantId || ""));
+    const items = (months || []).map((m) => {
+      const value = String(m.month || "");
+      const sel = value === effective ? " is-selected" : "";
+      const ariaSel = value === effective ? ' aria-selected="true"' : "";
+      return `<li role="option" class="month-picker-option${sel}" data-value="${escapeHtml(value)}"${ariaSel}>${escapeHtml(formatMonthLabel(value, language))}</li>`;
+    }).join("");
+    return `<div class="month-picker" data-merchant-id="${merchantId}" data-card="${escapeHtml(scope)}">
+      <select class="merchant-month-picker" data-merchant-id="${merchantId}" data-card="${escapeHtml(scope)}" aria-hidden="true" tabindex="-1">${options}</select>
+      <button type="button" class="month-picker-trigger" aria-haspopup="listbox" aria-expanded="false">
+        <span class="month-picker-value">${escapeHtml(formatMonthLabel(effective, language))}</span>
+        <svg class="month-picker-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <ul class="month-picker-menu" role="listbox" aria-label="Month">${items}</ul>
+    </div>`;
+  }
+
+  function closeAllMonthPickers() {
+    document.querySelectorAll(".month-picker.is-open").forEach(function (wrap) {
+      wrap.classList.remove("is-open");
+      const trigger = wrap.querySelector(".month-picker-trigger");
+      if (trigger) trigger.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function openMonthPicker(wrap) {
+    const trigger = wrap.querySelector(".month-picker-trigger");
+    const rect = trigger ? trigger.getBoundingClientRect() : null;
+    const spaceBelow = rect ? window.innerHeight - rect.bottom : 300;
+    wrap.classList.toggle("open-up", spaceBelow < 288);
+    wrap.classList.add("is-open");
+    if (trigger) trigger.setAttribute("aria-expanded", "true");
+  }
+
+  function toggleMonthPicker(wrap) {
+    if (wrap.classList.contains("is-open")) closeAllMonthPickers();
+    else openMonthPicker(wrap);
+  }
+
+  function monthPickerOptionFor(wrap, value) {
+    const opts = wrap.querySelectorAll(".month-picker-option");
+    for (let i = 0; i < opts.length; i++) {
+      if (opts[i].getAttribute("data-value") === value) return opts[i];
+    }
+    return null;
+  }
+
+  function selectMonthOption(wrap, value) {
+    const select = wrap.querySelector(".merchant-month-picker");
+    const option = monthPickerOptionFor(wrap, value);
+    if (!select || !option) return;
+    select.value = value;
+    const valueEl = wrap.querySelector(".month-picker-value");
+    if (valueEl) valueEl.textContent = option.textContent;
+    closeAllMonthPickers();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function monthlyMetricRows(active, language) {
+    return [
+      ["EPC(All)", epc(offerAllEpc(active))],
+      ["EPC(Aff)", epc(offerAffEpc(active))],
+      ["CVR", pct(active.conversionRate)],
+      ["Revenue", money(active.salesAmount)],
+      ["All Commission", money(offerAllCommission(active))],
+      ["Aff Commission", money(offerAffCommission(active))],
+      ["Orders", countValue(active.orders)],
+      ["Clicks", countValue(active.clicks)]
+    ];
+  }
+
+  function offerByMerchantId(merchantId) {
+    const id = String(merchantId || "").trim();
+    return id ? offersByMerchantId.get(id) || null : null;
+  }
+
+  async function fetchMerchantMonthlyRows(offer) {
+    if (!offer) return null;
+    const merchantId = String(offer.merchantId || "").trim();
+    if (!merchantId) return null;
+    const payload = await fetchMerchantMetrics(merchantId, 12);
+    const rows = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
+    return rows && rows.length ? rows : null;
   }
 
   function countValue(value) {
@@ -4942,7 +5096,10 @@ Examples:
         epc: o.epc || 0,
         aov: o.aov || 0,
         conversionRate: (o.conversionRate || 0) * 100,
-        affCommission: o.affCommission || 0
+        affCommission: o.affCommission || 0,
+        allCommission: o.payout || 0,
+        allEpc: offerAllEpc(o),
+        affEpc: offerAffEpc(o)
       };
     }
     var topMerchants = byCommission.slice(0, 5).map(briefOffer);
@@ -5093,7 +5250,10 @@ Examples:
           epc: o.epc || 0,
           aov: o.aov || 0,
           orders: o.orders || 0,
-          affCommission: o.affCommission || 0
+          affCommission: o.affCommission || 0,
+          allCommission: o.payout || 0,
+          allEpc: offerAllEpc(o),
+          affEpc: offerAffEpc(o)
         };
       });
 
@@ -5165,7 +5325,10 @@ Examples:
           epc: o.epc || 0,
           aov: o.aov || 0,
           orders: o.orders || 0,
-          affCommission: o.affCommission || 0
+          affCommission: o.affCommission || 0,
+          allCommission: o.payout || 0,
+          allEpc: offerAllEpc(o),
+          affEpc: offerAffEpc(o)
         };
       });
 
@@ -5938,10 +6101,10 @@ Examples:
     // Top & Bottom
     if (s.topMerchants && s.topMerchants.length) {
       html += "<div class=\"analysis-section\"><h4>" + (zh ? "品类 Top 5（按佣金）" : "Top 5 by Commission") + "</h4>";
-      html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "商户" : "Merchant") + "</th><th>Tier</th><th>EPC</th><th>CVR</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+      html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "商户" : "Merchant") + "</th><th>Tier</th><th>EPC(All)</th><th>EPC(Aff)</th><th>CVR</th><th>" + (zh ? "总佣金" : "All Commission") + "</th><th>" + (zh ? "联盟佣金" : "Aff Commission") + "</th></tr></thead><tbody>";
       for (var i = 0; i < s.topMerchants.length; i++) {
         var m = s.topMerchants[i];
-        html += "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(m.name) + "</td><td>" + escapeHtml(m.tier) + "</td><td>" + epc(m.epc) + "</td><td>" + pct(m.conversionRate / 100) + "</td><td>" + money(m.affCommission) + "</td></tr>";
+        html += "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(m.name) + "</td><td>" + escapeHtml(m.tier) + "</td><td>" + epc(m.allEpc) + "</td><td>" + epc(m.affEpc) + "</td><td>" + pct(m.conversionRate / 100) + "</td><td>" + money(m.allCommission) + "</td><td>" + money(m.affCommission) + "</td></tr>";
       }
       html += "</tbody></table></div>";
     }
@@ -6073,10 +6236,10 @@ Examples:
       var ent = entities[i];
       html += "<div class=\"analysis-section\"><h4>" + escapeHtml(ent.name) + (zh ? " — Top 品牌" : " — Top Brands") + "</h4>";
       if (ent.topBrands && ent.topBrands.length) {
-        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>" + (zh ? "Tier" : "Tier") + "</th><th>EPC</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>" + (zh ? "Tier" : "Tier") + "</th><th>EPC(All)</th><th>EPC(Aff)</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "总佣金" : "All Commission") + "</th><th>" + (zh ? "联盟佣金" : "Aff Commission") + "</th></tr></thead><tbody>";
         for (var b = 0; b < ent.topBrands.length; b++) {
           var brand = ent.topBrands[b];
-          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + escapeHtml(brand.tier) + "</td><td>" + epc(brand.epc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.affCommission) + "</td></tr>";
+          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + escapeHtml(brand.tier) + "</td><td>" + epc(brand.allEpc) + "</td><td>" + epc(brand.affEpc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.allCommission) + "</td><td>" + money(brand.affCommission) + "</td></tr>";
         }
         html += "</tbody></table>";
       }
@@ -6175,10 +6338,10 @@ Examples:
       var ent = entities[i];
       html += "<div class=\"analysis-section\"><h4>" + escapeHtml(ent.name) + (zh ? " — Top 品牌" : " — Top Brands") + "</h4>";
       if (ent.topBrands && ent.topBrands.length) {
-        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>EPC</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "佣金" : "Commission") + "</th></tr></thead><tbody>";
+        html += "<table class=\"analysis-table\"><thead><tr><th>#</th><th>" + (zh ? "品牌" : "Brand") + "</th><th>EPC(All)</th><th>EPC(Aff)</th><th>AOV</th><th>" + (zh ? "订单" : "Orders") + "</th><th>" + (zh ? "总佣金" : "All Commission") + "</th><th>" + (zh ? "联盟佣金" : "Aff Commission") + "</th></tr></thead><tbody>";
         for (var b = 0; b < ent.topBrands.length; b++) {
           var brand = ent.topBrands[b];
-          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + epc(brand.epc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.affCommission) + "</td></tr>";
+          html += "<tr><td>" + (b + 1) + "</td><td>" + escapeHtml(brand.name) + "</td><td>" + epc(brand.allEpc) + "</td><td>" + epc(brand.affEpc) + "</td><td>" + money(brand.aov) + "</td><td>" + number(brand.orders).toLocaleString() + "</td><td>" + money(brand.allCommission) + "</td><td>" + money(brand.affCommission) + "</td></tr>";
         }
         html += "</tbody></table>";
       }
@@ -7036,11 +7199,13 @@ Examples:
     { label: "Highlight", render: (o) => escapeHtml(highlightStatus(o)) },
     { label: "Category", render: (o) => escapeHtml(displayCategory(o)) },
     { label: "AOV", render: (o) => shortMoney(o.aov) },
-    { label: "EPC", render: (o) => shortEpc(o.epc) },
+    { label: "EPC(All)", render: (o) => shortEpc(offerAllEpc(o)) },
+    { label: "EPC(Aff)", render: (o) => shortEpc(offerAffEpc(o)) },
     { label: "CVR", render: (o) => shortPct(o.conversionRate) },
     { label: "Orders", render: (o) => number(o.orders).toLocaleString() },
     { label: "Revenue", render: (o) => shortMoney(o.salesAmount) },
-    { label: "Commission made", render: (o) => shortMoney(o.affCommission) },
+    { label: "All Commission", render: (o) => shortMoney(offerAllCommission(o)) },
+    { label: "Aff Commission", render: (o) => shortMoney(offerAffCommission(o)) },
     { label: "Payment cycle", render: (o) => escapeHtml(paymentCycleText(o, "-")) }
   ];
 
@@ -7092,26 +7257,34 @@ Examples:
     insightList(rows);
   }
 
-  function renderMerchantStats(offer) {
+  function renderMerchantStats(offer, monthlyRows, selectedMonth) {
+    const row = selectedMonthRow(monthlyRows, selectedMonth);
+    const active = row ? mergeMonthIntoOffer(offer, row) : offer;
+    const picker = monthlyRows && monthlyRows.length
+      ? merchantMonthPickerHtml(offer, monthlyRows, row ? row.month : null, "context", state.language)
+      : "";
     return `<div class="merchant-focus">
       <h4>${escapeHtml(offer.brand || "Merchant")}</h4>
+      ${picker}
       ${statCards([
-        ["Merchant ID", textValue(offer.merchantId)],
-        ["Tier", tierGroup(offer)],
-        ["Network", textValue(offer.network)],
-        ["Category", textValue(displayCategory(offer))],
-        ["AOV", money(offer.aov)],
-        ["EPC", epc(offer.epc)],
-        ["CVR", pct(offer.conversionRate)],
-        ["Revenue made", money(offer.salesAmount)],
-        ["Commission made", money(offer.affCommission)],
-        ["Orders", countValue(offer.orders)],
-        ["Clicks", countValue(offer.clicks)],
-        ["DPV", countValue(offer.dpv)],
-        ["ATC", countValue(offer.atc)],
-        ["Commission rate", (Number(offer.commissionRate) || 0).toFixed(2) + "%"],
-        ["Payment", textValue(offer.paymentStatus)],
-        ["Link status", textValue(offer.linkStatus || offer.recommendedLink)]
+        ["Merchant ID", textValue(active.merchantId)],
+        ["Tier", tierGroup(active)],
+        ["Network", textValue(active.network)],
+        ["Category", textValue(displayCategory(active))],
+        ["AOV", money(active.aov)],
+        ["EPC(All)", epc(offerAllEpc(active))],
+        ["EPC(Aff)", epc(offerAffEpc(active))],
+        ["CVR", pct(active.conversionRate)],
+        ["Revenue made", money(active.salesAmount)],
+        ["All Commission", money(offerAllCommission(active))],
+        ["Aff Commission", money(offerAffCommission(active))],
+        ["Orders", countValue(active.orders)],
+        ["Clicks", countValue(active.clicks)],
+        ["DPV", countValue(active.dpv)],
+        ["ATC", countValue(active.atc)],
+        ["Commission rate", (Number(active.commissionRate) || 0).toFixed(2) + "%"],
+        ["Payment", textValue(active.paymentStatus)],
+        ["Link status", textValue(active.linkStatus || active.recommendedLink)]
       ])}
       <div class="context-note">
         <strong>CPC:</strong> ${escapeHtml(textValue(offer.cpc))}<br>
@@ -7210,7 +7383,16 @@ Examples:
     miniTable(rows, contextColumnsFor(rows));
   }
 
+  let _contextRenderSeq = 0;
+
+  async function renderMerchantStatsPanel(offer, renderSeq) {
+    const monthlyRows = await fetchMerchantMonthlyRows(offer);
+    if (renderSeq !== _contextRenderSeq) return; // 已被更新的上下文覆盖
+    els.recBox.innerHTML = renderMerchantStats(offer, monthlyRows);
+  }
+
   function renderContextPanel(context) {
+    const renderSeq = ++_contextRenderSeq;
     const query = state.currentQuery ? `${t("context.basedOn", "Based on:")} ${state.currentQuery}` : t("context.generalFiltered", "General filtered view");
     const titles = {
       default: [t("context.defaultTitle", "Context Overview"), t("context.defaultSubtitle", "General offer snapshot")],
@@ -7228,7 +7410,7 @@ Examples:
     els.contextSubtitle.textContent = subtitle;
 
     if (context.type === "merchant") {
-      els.recBox.innerHTML = renderMerchantStats(context.items[0]);
+      renderMerchantStatsPanel(context.items[0], renderSeq);
     } else if (context.type === "asin") {
       els.recBox.innerHTML = renderASINStats(context);
     } else if (context.type === "payment") {
@@ -7494,11 +7676,24 @@ Examples:
     return merchantOverviewHtml(offer, extra, language);
   }
 
-  function merchantOverviewHtml(offer, extra = "", language = responseLanguageFor()) {
-    const rows = fieldRows(offer, language)
-      .map(([label, value]) => `<li><strong>${escapeHtml(chatLabelText(label, language))}:</strong> ${escapeHtml(value)}</li>`)
-      .join("");
-    return `<div class="merchant-card"><h4>${escapeHtml(offer.brand || chatCopy(language).merchantOverview || "Merchant")} ${extra}</h4><ul>${rows}</ul></div>` +
+  function merchantOverviewCardInner(offer, monthlyRows, selectedMonth, extra, language) {
+    const row = selectedMonthRow(monthlyRows, selectedMonth);
+    const active = row ? mergeMonthIntoOffer(offer, row) : offer;
+    const picker = monthlyRows && monthlyRows.length
+      ? merchantMonthPickerHtml(offer, monthlyRows, row ? row.month : null, "overview", language)
+      : "";
+    const rows = fieldRows(active, language);
+    const extras = monthlyRows && monthlyRows.length ? monthlyMetricRows(active, language) : [];
+    const listItems = rows.concat(extras).map(([label, value]) =>
+      `<li><strong>${escapeHtml(chatLabelText(label, language))}:</strong> ${escapeHtml(value)}</li>`
+    ).join("");
+    return `<h4>${escapeHtml(offer.brand || chatCopy(language).merchantOverview || "Merchant")} ${escapeHtml(extra)}</h4>${picker}<ul>${listItems}</ul>`;
+  }
+
+  function merchantOverviewHtml(offer, extra = "", language = responseLanguageFor(), monthlyRows) {
+    const cardId = "merchant-card-" + (++merchantCardSeq);
+    const content = merchantOverviewCardInner(offer, monthlyRows, null, extra, language);
+    return `<div class="merchant-card" data-merchant-card="${cardId}" data-merchant-id="${escapeHtml(String(offer.merchantId || ""))}" data-extra="${extra}" data-language="${escapeHtml(language)}" data-monthly-state="pending">${content}</div>` +
       downloadCardHtml([offer], {
         downloadType: "offers",
         filePrefix: "merchant_offer",
@@ -8984,6 +9179,22 @@ Examples:
     msg.innerHTML = html;
     els.chatLog.appendChild(msg);
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
+    return msg;
+  }
+
+  async function enhanceMerchantCards(container) {
+    if (!container || !container.querySelectorAll) return;
+    const cards = container.querySelectorAll('[data-merchant-card][data-monthly-state="pending"]');
+    for (const card of cards) {
+      card.setAttribute("data-monthly-state", "done");
+      const offer = offerByMerchantId(card.getAttribute("data-merchant-id"));
+      if (!offer) continue;
+      const monthlyRows = await fetchMerchantMonthlyRows(offer);
+      if (!monthlyRows) continue; // 无月度数据 → 保持降级渲染
+      const language = card.getAttribute("data-language") || responseLanguageFor();
+      const extra = card.getAttribute("data-extra") || "";
+      card.innerHTML = merchantOverviewCardInner(offer, monthlyRows, null, extra, language);
+    }
   }
 
   function updateDeepSkeleton(activeStep) {
@@ -9820,24 +10031,39 @@ Examples:
 
   // ★ Deep Mode: replace Deep Window content with context panel overview
   // 使商家/ASIN/品类分析的 Deep Window 内容直接替换为左侧 Overview 的丰富信息
-  function _syncContextOverviewToDeepPanel(panel, html) {
+  async function _syncContextOverviewToDeepPanel(panel, html) {
     // 趋势查询有自己的异步图表渲染，且此时 state.currentContext 可能是上一次
     // merchant 查询的遗留值——误用会把空 Merchant 概览覆盖到趋势结果上，故跳过
     if (html && (html.indexOf("trend-placeholder") !== -1 || html.indexOf("trend-chart-svg") !== -1)) return;
     if (!els.recBox || !panel.sectionsEl) return;
-    var contextHtml = els.recBox.innerHTML;
-    if (!contextHtml || contextHtml.length < 30) return;
-
     // 只替换 merchant / asin / category 类型，这些类型的 Overview 比原始回答更丰富
     var context = state.currentContext;
     if (!context) return;
     var syncTypes = ["merchant", "asin", "category"];
     if (syncTypes.indexOf(context.type) === -1) return;
-
     // 已经替换过则跳过
     if (panel.sectionsEl.querySelector(".deep-context-overview")) return;
-
     var headingText = state.language === "zh" ? "概览" : "Overview";
+
+    // merchant：左侧 recBox 由异步 renderMerchantStatsPanel 渲染（先 fetch 再写 innerHTML），
+    // 这里同步抓取会拿到未更新的旧内容，导致 deep window 缺失月份下拉。
+    // 改为直接 fetch 并渲染与左侧相同的 merchant-focus 结构，保证信息一致。
+    if (context.type === "merchant") {
+      var offer = context.items && context.items[0];
+      if (offer) {
+        var monthlyRows = await fetchMerchantMonthlyRows(offer);
+        var mid = escapeHtml(String(offer.merchantId || ""));
+        var body = '<div class="deep-overview-body" data-merchant-id="' + mid + '">'
+          + renderMerchantStats(offer, monthlyRows) + '</div>';
+        panel.sectionsEl.innerHTML = '<div class="deep-context-overview">'
+          + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
+          + body + '</div>';
+        return;
+      }
+    }
+
+    var contextHtml = els.recBox.innerHTML;
+    if (!contextHtml || contextHtml.length < 30) return;
     panel.sectionsEl.innerHTML = '<div class="deep-context-overview">'
       + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
       + '<div class="deep-overview-body">' + contextHtml + '</div>'
@@ -10235,14 +10461,16 @@ var _NUMERIC_COL_PATTERNS = [
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
     try {
       var html = answerPrompt(prompt);
+      var addedMsg;
       if (isDeep && panel) {
         _showQuickResultInDeepPanel(panel, html, prompt);
         // 同步左侧 Overview 内容到 Deep Window，使信息一致
-        _syncContextOverviewToDeepPanel(panel, html);
-        addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
+        await _syncContextOverviewToDeepPanel(panel, html);
+        addedMsg = addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
       } else {
-        addMessage("assistant", html);
+        addedMsg = addMessage("assistant", html);
       }
+      if (addedMsg) enhanceMerchantCards(addedMsg);
     } catch (error) {
       console.error("[analysis] answerPrompt error:", error);
       var errMsg = (language === "zh"
@@ -11254,7 +11482,8 @@ var _NUMERIC_COL_PATTERNS = [
       ["Subcategory", (offer) => offer.subCategory || ""],
       ["Main Category CN", (offer) => offer.mainCategoryCn || ""],
       ["Subcategory CN", (offer) => offer.subCategoryCn || ""],
-      ["EPC", (offer) => number(offer.epc)],
+      ["EPC(All)", (offer) => number(offerAllEpc(offer))],
+      ["EPC(Aff)", (offer) => number(offerAffEpc(offer))],
       ["AOV", (offer) => number(offer.aov)],
       ["Conversion Rate", (offer) => number(offer.conversionRate)],
       ["Clicks", (offer) => number(offer.clicks)],
@@ -11262,7 +11491,8 @@ var _NUMERIC_COL_PATTERNS = [
       ["ATC", (offer) => number(offer.atc)],
       ["Orders", (offer) => number(offer.orders)],
       ["Revenue", (offer) => number(offer.salesAmount)],
-      ["Commission", (offer) => number(offer.affCommission)],
+      ["All Commission", (offer) => number(offerAllCommission(offer))],
+      ["Aff Commission", (offer) => number(offerAffCommission(offer))],
       ["Commission Rate", (offer) => number(offer.commissionRate)],
       ["Payment Status", (offer) => offer.paymentStatus || ""],
       ["Payment Cycle", (offer) => offer.paymentCycle || ""],
@@ -18292,6 +18522,63 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.minCvr) els.minCvr.addEventListener("input", () => { state.minCvr = els.minCvr.value; renderAll(); });
     if (els.notPaidOnly) els.notPaidOnly.addEventListener("change", () => { state.notPaidOnly = els.notPaidOnly.checked; renderAll(); });
     els.dashboardCategoryTierPicker.addEventListener("change", handleDashboardCategoryTierChange);
+    // 商户信息月份下拉：自定义玻璃触发交互
+    document.addEventListener("click", function (e) {
+      const trigger = e.target && e.target.closest ? e.target.closest(".month-picker-trigger") : null;
+      if (trigger) {
+        const wrap = trigger.closest(".month-picker");
+        if (wrap) { e.preventDefault(); e.stopPropagation(); toggleMonthPicker(wrap); }
+        return;
+      }
+      const option = e.target && e.target.closest ? e.target.closest(".month-picker-option") : null;
+      if (option) {
+        const wrap = option.closest(".month-picker");
+        if (wrap) { e.preventDefault(); e.stopPropagation(); selectMonthOption(wrap, option.getAttribute("data-value")); }
+        return;
+      }
+      closeAllMonthPickers();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { closeAllMonthPickers(); return; }
+      const trigger = e.target && e.target.closest ? e.target.closest(".month-picker-trigger") : null;
+      if (!trigger) return;
+      const wrap = trigger.closest(".month-picker");
+      if (!wrap) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMonthPicker(wrap); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); openMonthPicker(wrap); }
+    });
+    // 商户信息月份切换：事件委托捕获 context/overview 下拉
+    document.addEventListener("change", async function (e) {
+      const picker = e.target && e.target.closest ? e.target.closest(".merchant-month-picker") : null;
+      if (!picker) return;
+      const offer = offerByMerchantId(picker.getAttribute("data-merchant-id"));
+      if (!offer) return;
+      const cardType = picker.getAttribute("data-card");
+      const month = picker.value;
+      const selectedMonth = picker.value;
+      if (cardType === "context") {
+        const monthlyRows = await fetchMerchantMonthlyRows(offer);
+        if (!monthlyRows) return;
+        if (picker.value !== selectedMonth) return;
+        els.recBox.innerHTML = renderMerchantStats(offer, monthlyRows, month);
+        // 同步 deep window 中同商户的 merchant 概览，保证月份切换一致
+        const mid = picker.getAttribute("data-merchant-id");
+        document.querySelectorAll(".deep-context-overview .deep-overview-body[data-merchant-id]").forEach(function (body) {
+          if (body.getAttribute("data-merchant-id") === mid) {
+            body.innerHTML = renderMerchantStats(offer, monthlyRows, month);
+          }
+        });
+      } else if (cardType === "overview") {
+        const container = picker.closest(".merchant-card");
+        if (!container) return;
+        const monthlyRows = await fetchMerchantMonthlyRows(offer);
+        if (!monthlyRows) return;
+        if (picker.value !== selectedMonth) return;
+        container.innerHTML = merchantOverviewCardInner(offer, monthlyRows, month,
+          container.getAttribute("data-extra") || "",
+          container.getAttribute("data-language") || responseLanguageFor());
+      }
+    });
     els.dashboardCategorySearch.addEventListener("input", () => {
       state.categoryReportSearch = els.dashboardCategorySearch.value;
       state.categoryReportFocusKey = "";
@@ -19137,7 +19424,29 @@ var _NUMERIC_COL_PATTERNS = [
           : filters.tier;
       },
       publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
-        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls)
+        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
+      offerAllCommission,
+      offerAffCommission,
+      offerAllEpc,
+      offerAffEpc,
+      money,
+      shortEpc,
+      labelText,
+      renderMerchantStats,
+      epc,
+      pct,
+      countValue,
+      formatMonthLabel,
+      mergeMonthIntoOffer,
+      selectedMonthRow,
+      merchantMonthPickerHtml,
+      monthlyMetricRows,
+      offerByMerchantId,
+      fetchMerchantMonthlyRows,
+      merchantOverviewHtml,
+      merchantOverviewCardInner,
+      enhanceMerchantCards,
+      recommendationExportColumns
     };
   } else {
     init();

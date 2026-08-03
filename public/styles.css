@@ -12965,3 +12965,424 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
 .trend-chart-btn {
   font-weight: 800;
 }
+
+/* ─────────────────────────────────────────────
+   商户信息月份下拉 — 自定义玻璃选择器（Ethereal Glass）
+   作用域限定 dashboard 面板内，不泄漏到 deep-window 弹窗
+   ───────────────────────────────────────────── */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  max-width: 220px;
+}
+
+/* 原生 select 仅作值载体：视觉隐藏，保留语义与 change 事件 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .merchant-month-picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 触发按钮：玻璃内核 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  color: #eaf0f9;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(156, 199, 255, 0.10), rgba(10, 20, 44, 0.40));
+  border: 1px solid rgba(156, 199, 255, 0.18);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 1px 2px rgba(2, 8, 24, 0.45);
+  cursor: pointer;
+  transition:
+    border-color 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    background 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-trigger:hover {
+  border-color: rgba(156, 199, 255, 0.38);
+  background: linear-gradient(180deg, rgba(156, 199, 255, 0.15), rgba(10, 20, 44, 0.52));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 0 0 3px rgba(156, 199, 255, 0.08);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-trigger:focus-visible {
+  outline: none;
+  border-color: rgba(156, 199, 255, 0.52);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 0 0 3px rgba(156, 199, 255, 0.15);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker.is-open .month-picker-trigger {
+  border-color: rgba(156, 199, 255, 0.44);
+  background: linear-gradient(180deg, rgba(156, 199, 255, 0.17), rgba(10, 20, 44, 0.56));
+}
+
+/* 当前值文本：超长省略 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 细线 chevron（Phosphor 风格） */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: #6f84a8;
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1), color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-trigger:hover .month-picker-chevron {
+  color: #bcd8ff;
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker.is-open .month-picker-chevron {
+  transform: rotate(180deg);
+  color: #bcd8ff;
+}
+
+/* 菜单：毛玻璃面板 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: rgba(13, 24, 49, 0.94);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(156, 199, 255, 0.16);
+  border-radius: 12px;
+  box-shadow:
+    0 14px 34px rgba(2, 8, 24, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 199, 255, 0.18) transparent;
+  transform-origin: top center;
+  transform: translateY(-4px) scale(0.985);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    visibility 0s linear 240ms;
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker.is-open .month-picker-menu {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* 视口空间不足时向上展开 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker.open-up .month-picker-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+  transform: translateY(4px) scale(0.985);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker.open-up.is-open .month-picker-menu {
+  transform: translateY(0) scale(1);
+}
+
+/* 菜单项：hover 渐变 + 左侧发光条 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 7px 10px 7px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #bcd8ff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 160ms cubic-bezier(0.32, 0.72, 0, 1), color 160ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-option::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #3b82f6, #256fd8);
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-option:hover {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(156, 199, 255, 0.14), rgba(156, 199, 255, 0.03));
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-option:hover::before {
+  transform: translateY(-50%) scaleY(1);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-option.is-selected {
+  color: #ffffff;
+  font-weight: 600;
+  background: linear-gradient(90deg, rgba(156, 199, 255, 0.10), rgba(156, 199, 255, 0.02));
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .month-picker-option.is-selected::before {
+  transform: translateY(-50%) scaleY(1);
+}
+
+/* ── Light 变体 ─────────────────────────────── */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-trigger {
+  color: var(--ink);
+  background: linear-gradient(180deg, #ffffff, #f6f8fa);
+  border-color: rgba(220, 227, 231, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 1px 2px rgba(37, 48, 56, 0.05);
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-trigger:hover {
+  border-color: rgba(29, 111, 214, 0.35);
+  background: linear-gradient(180deg, #ffffff, #eef2f7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 3px rgba(29, 111, 214, 0.10);
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-trigger:focus-visible {
+  outline: none;
+  border-color: rgba(29, 111, 214, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 3px rgba(29, 111, 214, 0.16);
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker.is-open .month-picker-trigger {
+  border-color: rgba(29, 111, 214, 0.4);
+  background: linear-gradient(180deg, #ffffff, #eef2f7);
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-trigger:hover .month-picker-chevron,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker.is-open .month-picker-chevron {
+  color: #1d6fd6;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-menu {
+  background: rgba(255, 255, 255, 0.97);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-color: rgba(220, 227, 231, 0.8);
+  box-shadow:
+    0 14px 34px rgba(37, 48, 56, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  scrollbar-color: rgba(49, 95, 155, 0.25) transparent;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-option {
+  color: #4a555b;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-option:hover {
+  color: var(--ink);
+  background: linear-gradient(90deg, rgba(29, 111, 214, 0.09), rgba(29, 111, 214, 0.02));
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-option.is-selected {
+  color: #1d6fd6;
+  font-weight: 600;
+  background: linear-gradient(90deg, rgba(29, 111, 214, 0.08), rgba(29, 111, 214, 0.02));
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .month-picker-option::before {
+  background: linear-gradient(180deg, #3b82f6, #1d6fd6);
+}
+
+/* ── Deep Window 内的月份下拉（浅色主题适配）──
+   仅作用于 deep-window 弹窗（不匹配 dashboard 面板作用域），
+   与 chat/context 面板的深色样式互不泄漏。 */
+.deep-window .month-picker {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  max-width: 220px;
+}
+.deep-window .merchant-month-picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+.deep-window .month-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  text-align: left;
+  background: linear-gradient(180deg, #ffffff, #f6f8fa);
+  border: 1px solid rgba(220, 227, 231, 0.9);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 1px 2px rgba(37, 48, 56, 0.05);
+  cursor: pointer;
+  transition:
+    border-color 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    background 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.deep-window .month-picker-trigger:hover {
+  border-color: rgba(29, 111, 214, 0.35);
+  background: linear-gradient(180deg, #ffffff, #eef2f7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 3px rgba(29, 111, 214, 0.10);
+}
+.deep-window .month-picker-trigger:focus-visible {
+  outline: none;
+  border-color: rgba(29, 111, 214, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 3px rgba(29, 111, 214, 0.16);
+}
+.deep-window .month-picker.is-open .month-picker-trigger {
+  border-color: rgba(29, 111, 214, 0.4);
+  background: linear-gradient(180deg, #ffffff, #eef2f7);
+}
+.deep-window .month-picker-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deep-window .month-picker-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1), color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.deep-window .month-picker-trigger:hover .month-picker-chevron,
+.deep-window .month-picker.is-open .month-picker-chevron {
+  color: #1d6fd6;
+}
+.deep-window .month-picker.is-open .month-picker-chevron {
+  transform: rotate(180deg);
+}
+.deep-window .month-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: rgba(255, 255, 255, 0.97);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(220, 227, 231, 0.8);
+  border-radius: 12px;
+  box-shadow:
+    0 14px 34px rgba(37, 48, 56, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(49, 95, 155, 0.25) transparent;
+  transform-origin: top center;
+  transform: translateY(-4px) scale(0.985);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    visibility 0s linear 240ms;
+}
+.deep-window .month-picker.is-open .month-picker-menu {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.deep-window .month-picker.open-up .month-picker-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+  transform: translateY(4px) scale(0.985);
+}
+.deep-window .month-picker.open-up.is-open .month-picker-menu {
+  transform: translateY(0) scale(1);
+}
+.deep-window .month-picker-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 7px 10px 7px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #4a555b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 160ms cubic-bezier(0.32, 0.72, 0, 1), color 160ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.deep-window .month-picker-option::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #3b82f6, #1d6fd6);
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.deep-window .month-picker-option:hover {
+  color: var(--ink);
+  background: linear-gradient(90deg, rgba(29, 111, 214, 0.09), rgba(29, 111, 214, 0.02));
+}
+.deep-window .month-picker-option:hover::before {
+  transform: translateY(-50%) scaleY(1);
+}
+.deep-window .month-picker-option.is-selected {
+  color: #1d6fd6;
+  font-weight: 600;
+  background: linear-gradient(90deg, rgba(29, 111, 214, 0.08), rgba(29, 111, 214, 0.02));
+}
+.deep-window .month-picker-option.is-selected::before {
+  transform: translateY(-50%) scaleY(1);
+}

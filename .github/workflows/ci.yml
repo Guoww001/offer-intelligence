@@ -53,6 +53,8 @@ jobs:
           python scripts/test_offer_network_lookup.py
           python scripts/test_workflow_cache_split.py
           node scripts/test_chatbot_intent_flow.mjs
+          node scripts/test_commission_all_aff.mjs
+          node scripts/test_merchant_monthly.mjs
           node scripts/test_tier2_recommendation_rules.mjs
           node scripts/test_sheet_categories.mjs
           node scripts/test_category_drilldown.mjs
