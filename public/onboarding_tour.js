@@ -277,6 +277,35 @@
     _popoverEl.innerHTML = html;
   }
 
+  // 等待态渲染：目标元素尚未出现（如第 2 步轮询 .deep-window 期间）时，
+  // 四块遮罩铺满全屏防误触、隐藏高亮圈、气泡居中显示"等待报告生成"文案，
+  // 避免旧步骤 UI 残留造成"卡住"的观感。probe 命中后 _renderStep 的
+  // done 回调会用真实定位（_positionMask/_positionHighlight/_positionPopover/
+  // _renderPopoverContent）覆盖本等待态。
+  function _renderWaiting(step, c) {
+    for (var i = 0; i < _maskEls.length; i++) {
+      var m = _maskEls[i];
+      m.style.left = "0px";
+      m.style.top = "0px";
+      m.style.width = window.innerWidth + "px";
+      m.style.height = window.innerHeight + "px";
+      m.style.display = "block";
+    }
+    _highlightEl.style.display = "none";
+    _popoverEl.style.left = Math.max(12, (window.innerWidth - 360) / 2) + "px";
+    _popoverEl.style.top = Math.round(window.innerHeight * 0.35) + "px";
+    var html = "";
+    html += '<div class="onboarding-popover-title">' + c[step.copyKey + "Title"] + '</div>';
+    html += '<div class="onboarding-popover-body">' + c.waitReport + '</div>';
+    html += '<div class="onboarding-step-counter">' +
+      c.stepCounter.replace("{n}", String(_stepIndex + 1)).replace("{total}", String(TOUR_STEPS.length)) +
+      '</div>';
+    html += '<div class="onboarding-popover-actions">';
+    html += '<button class="onboarding-btn onboarding-btn-skip" data-tour-action="skip" type="button">' + c.skip + '</button>';
+    html += '</div>';
+    _popoverEl.innerHTML = html;
+  }
+
   function _renderStep() {
     var step = TOUR_STEPS[_stepIndex];
     if (!step) { stopTour(); return; }
@@ -287,6 +316,7 @@
       try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
       if (!bar || bar.classList.contains("hidden")) _bodyKeyOverride = "step4NeedSwitchBody";
     }
+    _renderWaiting(step, c); // 先渲染等待态（目标未出现时给出反馈），命中后由 done 回调覆盖
     _locateTarget(step, function (el) {
       if (!_active) return;
       _targetEl = el;
