@@ -18,6 +18,7 @@ function assertMatch(actual, pattern, label) {
 }
 
 const elementStub = {
+  nodeType: 1,
   addEventListener() {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
   dataset: {}, appendChild() {}, querySelectorAll() { return []; },
   querySelector() { return null; }, setAttribute() {}, removeAttribute() {},
@@ -30,7 +31,8 @@ const selectorMap = {
   "#chatInput": elementStub,
   ".deep-window": elementStub,
   '[data-mode="fast"]': elementStub,
-  "#chatMemoryBar": elementStub
+  "#chatMemoryBar": elementStub,
+  "#chatModeToggle": elementStub
 };
 const queryAllMap = {};
 const byIdMap = {};
@@ -60,29 +62,32 @@ assertTruthy(tour, "onboarding_tour should expose window.ONBOARDING_TOUR");
 const t = tour._test;
 
 // ── 用例 1：步骤结构完整性 ──
-assertEqual(t.stepCount(), 6, "should have exactly 6 steps");
+assertEqual(t.stepCount(), 7, "should have exactly 7 steps");
 const ids = t.steps.map((s) => s.id);
 assertEqual(new Set(ids).size, ids.length, "step ids must be unique");
-assertEqual(ids.join("|"), "report-ask|deep-window|minimize-window|switch-chat|drag-memory|chat-ask", "step ids order");
+assertEqual(ids.join("|"), "intro|report-ask|deep-window|minimize-window|switch-chat|drag-memory|chat-ask", "step ids order");
 for (const s of t.steps) {
   assertTruthy(s.target, `step ${s.id} target must be a selector or function`);
   assertTruthy(s.copyKey, `step ${s.id} copyKey must be set`);
   assertEqual(["block", "pass"].includes(s.mask), true, `step ${s.id} mask must be block|pass`);
 }
-assertEqual(t.steps[0].autoFillFocus, '#chatForm button[type="submit"]', "step1 should focus send button after autofill");
-assertEqual(t.steps[0].autoNext, "sent", "step1 should autoNext on sent");
-assertEqual(t.steps[2].autoNext, "minimized", "step3 should autoNext on minimized");
-assertEqual(t.steps[2].autoNextFocus, ".deep-window.minimized", "step3 should focus pill after minimize");
-assertEqual(typeof t.steps[2].autoNextDelay, "number", "step3 should have autoNextDelay to show pill effect");
-assertEqual(t.steps[3].autoNext, "switched", "step4 should autoNext on switched");
-assertEqual(t.steps[5].autoFillFocus, '#chatForm button[type="submit"]', "step6 should focus send button after autofill");
-assertEqual(t.steps[5].autoNext, "sent", "step6 should autoNext on sent (auto-finish)");
-assertEqual(typeof t.steps[1].target, "function", "deep-window target should be a dynamic function (wait for report done)");
-assertEqual(t.steps[4].autoNext, "memory-added", "drag-memory step should autoNext on memory-added");
+assertEqual(t.steps[0].id, "intro", "step0 should be the layout intro");
+assertEqual(t.steps[0].autoNext, undefined, "intro step should have no autoNext (manual next)");
+assertEqual(t.steps[1].autoFillFocus, '#chatForm button[type="submit"]', "report-ask should focus send button after autofill");
+assertEqual(t.steps[1].autoNext, "sent", "report-ask should autoNext on sent");
+assertEqual(t.steps[3].autoNext, "minimized", "minimize step should autoNext on minimized");
+assertEqual(t.steps[3].autoNextFocus, ".deep-window.minimized", "minimize step should focus pill after minimize");
+assertEqual(typeof t.steps[3].autoNextDelay, "number", "minimize step should have autoNextDelay to show pill effect");
+assertEqual(t.steps[4].autoNext, "switched", "switch-chat should autoNext on switched");
+assertEqual(t.steps[6].autoFillFocus, '#chatForm button[type="submit"]', "chat-ask should focus send button after autofill");
+assertEqual(t.steps[6].autoNext, "sent", "chat-ask should autoNext on sent (auto-finish)");
+assertEqual(typeof t.steps[2].target, "function", "deep-window target should be a dynamic function (wait for report done)");
+assertEqual(t.steps[5].autoNext, "memory-added", "drag-memory step should autoNext on memory-added");
 assertEqual(t.steps.filter((s) => s.autoNext).length, 5, "5 steps should have autoNext (sent/minimized/switched/memory-added/sent)");
-assertEqual(t.steps[5].final, true, "chat-ask step should be final");
+assertEqual(t.steps[6].final, true, "chat-ask step should be final");
 assertEqual(t.steps.filter((s) => s.final).length, 1, "only chat-ask should be final");
-assertEqual(typeof t.steps[4].target, "function", "drag-memory target should be a dynamic function");
+assertEqual(typeof t.steps[5].target, "function", "drag-memory target should be a dynamic function");
+assertEqual(typeof t.steps[3].target, "function", "minimize step target should be a dynamic function (last panel's minimize button)");
 assertEqual(typeof t.resolveTarget(t.steps[0]), "object", "resolveTarget should resolve selector strings via document.querySelector");
 
 // ── 用例 2：i18n 键集一致 ──
@@ -123,28 +128,30 @@ tour.advance();
 assertEqual(t.currentStepIndex(), 1, "advance should move to step 1");
 tour.advance();
 tour.advance();
-assertEqual(t.currentStepIndex(), 3, "advance x3 should reach switch-chat");
 tour.advance();
-assertEqual(t.currentStepIndex(), 4, "advance should reach drag-memory");
+assertEqual(t.currentStepIndex(), 4, "advance x4 should reach switch-chat");
+tour.advance();
+assertEqual(t.currentStepIndex(), 5, "advance should reach drag-memory");
 tour.goBack();
-assertEqual(t.currentStepIndex(), 3, "goBack should return to switch-chat");
+assertEqual(t.currentStepIndex(), 4, "goBack should return to switch-chat");
 tour.advance();
-assertEqual(t.currentStepIndex(), 4, "advance should return to drag-memory");
-assertEqual(t.isFinalStep(5), true, "index 5 should be final");
-assertEqual(t.isFinalStep(4), false, "index 4 should not be final");
+assertEqual(t.currentStepIndex(), 5, "advance should return to drag-memory");
+assertEqual(t.isFinalStep(6), true, "index 6 should be final");
+assertEqual(t.isFinalStep(5), false, "index 5 should not be final");
 
 // ── 用例 5：autoNext 判定 ──
-assertEqual(t.isAutoNextStep(0, "sent"), true, "step 0 should autoNext on sent");
-assertEqual(t.isAutoNextStep(0, "other"), false, "step 0 should not autoNext on other events");
-assertEqual(t.isAutoNextStep(2, "minimized"), true, "step 2 should autoNext on minimized");
-assertEqual(t.isAutoNextStep(3, "switched"), true, "step 3 should autoNext on switched");
-assertEqual(t.isAutoNextStep(4, "memory-added"), true, "step 4 should autoNext on memory-added");
-assertEqual(t.isAutoNextStep(4, "other"), false, "step 4 should not autoNext on other events");
-assertEqual(t.isAutoNextStep(5, "sent"), true, "step 5 should autoNext on sent");
+assertEqual(t.isAutoNextStep(0, "sent"), false, "intro step should not autoNext on sent");
+assertEqual(t.isAutoNextStep(1, "sent"), true, "report-ask should autoNext on sent");
+assertEqual(t.isAutoNextStep(1, "other"), false, "report-ask should not autoNext on other events");
+assertEqual(t.isAutoNextStep(3, "minimized"), true, "minimize step should autoNext on minimized");
+assertEqual(t.isAutoNextStep(4, "switched"), true, "switch-chat should autoNext on switched");
+assertEqual(t.isAutoNextStep(5, "memory-added"), true, "drag-memory should autoNext on memory-added");
+assertEqual(t.isAutoNextStep(5, "other"), false, "drag-memory should not autoNext on other events");
+assertEqual(t.isAutoNextStep(6, "sent"), true, "chat-ask should autoNext on sent");
 
 // ── 用例 6：notify 推进 + 完成 ──
 tour.notify("memory-added");
-assertEqual(t.currentStepIndex(), 5, "notify memory-added should advance to final step");
+assertEqual(t.currentStepIndex(), 6, "notify memory-added should advance to final step");
 tour.advance();
 assertEqual(tour.isActive(), false, "advance on final step should finish tour");
 assertEqual(tour.shouldShowTour({ getItem: () => "1" }), false, "finished tour should stay hidden");
@@ -161,12 +168,22 @@ assertEqual(tour.isActive(), false, "maybeAutoStart should no-op in test mode");
 // ── 用例 9：目标动态解析 ──
 // 9a：deep-window 步等报告完成——无面板 → null 继续轮询；
 //     有面板 → 取最后一个（最新创建）的已完成面板（旧面板仍在页面的重播场景）
-assertEqual(t.resolveTarget(t.steps[1]), null, "no finished deep-window → keep polling");
+assertEqual(t.resolveTarget(t.steps[2]), null, "no finished deep-window → keep polling");
 const oldPanelStub = { ...elementStub, nodeType: 1 };
-const newPanelStub = { ...elementStub, nodeType: 1 };
+const newPanelStub = { ...elementStub, nodeType: 1, querySelector() { return null; } };
 queryAllMap[".deep-window:not(.generating)"] = [oldPanelStub, newPanelStub];
-assertEqual(t.resolveTarget(t.steps[1]), newPanelStub, "should pick the LAST finished deep-window (newest panel)");
-assertEqual(t.resolveTarget(t.steps[1]) !== oldPanelStub, true, "must not highlight an old panel behind the new one");
+assertEqual(t.resolveTarget(t.steps[2]), newPanelStub, "should pick the LAST finished deep-window (newest panel)");
+assertEqual(t.resolveTarget(t.steps[2]) !== oldPanelStub, true, "must not highlight an old panel behind the new one");
+
+// 9c：minimize 步取最后一个面板的最小化按钮（旧面板已最小化时按钮隐藏不可高光）
+const oldMinBtnStub = { ...elementStub };
+const newMinBtnStub = { ...elementStub };
+const oldMinPanelStub = { ...elementStub, querySelector() { return oldMinBtnStub; } };
+const newMinPanelStub = { ...elementStub, querySelector() { return newMinBtnStub; } };
+queryAllMap[".deep-window"] = [oldMinPanelStub, newMinPanelStub];
+assertEqual(t.resolveTarget(t.steps[3]), newMinBtnStub, "minimize step should target the LAST panel's minimize button");
+delete queryAllMap[".deep-window"];
+delete queryAllMap[".deep-window:not(.generating)"];
 
 // 9b：drag-memory 步（记忆栏不可用回退切换按钮 / 可用指向药丸框）
 const fastBtnStub = { ...elementStub };
@@ -177,24 +194,28 @@ selectorMap['[data-mode="fast"]'] = fastBtnStub;
 selectorMap['#chatMemoryBar'] = memoryBarStub;
 selectorMap['.deep-window.minimized'] = pillStub;
 byIdMap["chatMemoryBar"] = null;                 // 记忆栏不存在 → 回退切换按钮
-assertEqual(t.resolveTarget(t.steps[4]), fastBtnStub, "no memory bar → fall back to fast-mode button");
+assertEqual(t.resolveTarget(t.steps[5]), fastBtnStub, "no memory bar → fall back to fast-mode button");
 byIdMap["chatMemoryBar"] = hiddenMemoryBarStub;  // 记忆栏 hidden → 回退切换按钮
-assertEqual(t.resolveTarget(t.steps[4]), fastBtnStub, "hidden memory bar → fall back to fast-mode button");
+assertEqual(t.resolveTarget(t.steps[5]), fastBtnStub, "hidden memory bar → fall back to fast-mode button");
 byIdMap["chatMemoryBar"] = memoryBarStub;        // 记忆栏可见 → 指向最小化药丸框
-assertEqual(t.resolveTarget(t.steps[4]), pillStub, "visible memory bar → point at minimized pill");
+assertEqual(t.resolveTarget(t.steps[5]), pillStub, "visible memory bar → point at minimized pill");
 delete byIdMap["chatMemoryBar"];
 
 // ── 用例 10：自动推进事件 ──
 tour.startTour();
 assertEqual(t.currentStepIndex(), 0, "startTour should begin at step 0");
-// 10a：点发送（sent）→ 立即推进
+// 10a：点发送（sent）→ 立即推进（intro 步无 autoNext，先手动到 report-ask）
 tour.notify("sent");
-assertEqual(t.currentStepIndex(), 1, "notify sent should auto-advance from step 0");
+assertEqual(t.currentStepIndex(), 0, "intro step should not auto-advance on sent");
 tour.advance();
-assertEqual(t.currentStepIndex(), 2, "manual advance should reach minimize step");
+assertEqual(t.currentStepIndex(), 1, "manual advance should reach report-ask");
+tour.notify("sent");
+assertEqual(t.currentStepIndex(), 2, "notify sent should auto-advance from report-ask");
+tour.advance();
+assertEqual(t.currentStepIndex(), 3, "manual advance should reach minimize step");
 // 10b：点最小化（minimized）→ 先展示药丸框效果，延迟后才推进
 tour.notify("minimized");
-assertEqual(t.currentStepIndex(), 2, "minimized autoNext should delay (show pill effect first)");
+assertEqual(t.currentStepIndex(), 3, "minimized autoNext should delay (show pill effect first)");
 tour.stopTour();
 assertEqual(tour.isActive(), false, "stopTour should cancel pending autoNext delay");
 // 10c：切 Chat Mode（switched）→ 立即推进
@@ -202,18 +223,20 @@ tour.startTour();
 tour.advance(); // 1
 tour.advance(); // 2
 tour.advance(); // 3
-assertEqual(t.currentStepIndex(), 3, "advance should reach switch-chat");
+tour.advance(); // 4
+assertEqual(t.currentStepIndex(), 4, "advance should reach switch-chat");
 tour.notify("switched");
-assertEqual(t.currentStepIndex(), 4, "notify switched should auto-advance from switch-chat");
+assertEqual(t.currentStepIndex(), 5, "notify switched should auto-advance from switch-chat");
 tour.stopTour();
-// 10d：Step 6 点发送（sent）→ 自动结束引导
+// 10d：最后一步点发送（sent）→ 自动结束引导
 tour.startTour();
-tour.notify("sent"); // 1
-tour.advance(); // 2
+tour.advance(); // 1
+tour.notify("sent"); // 2
 tour.advance(); // 3
 tour.advance(); // 4
 tour.advance(); // 5
-assertEqual(t.currentStepIndex(), 5, "advance should reach final chat-ask");
+tour.advance(); // 6
+assertEqual(t.currentStepIndex(), 6, "advance should reach final chat-ask");
 tour.notify("sent");
 assertEqual(tour.isActive(), false, "notify sent on final step should finish tour");
 
@@ -221,16 +244,23 @@ assertEqual(tour.isActive(), false, "notify sent on final step should finish tou
 // currentLanguage 优先 localStorage（sandbox 恒返回 null）→ 兜底 documentElement.lang
 tour.startTour();
 assertMatch(t.popoverHtml(), /第 1 步/, "popover should render zh copy initially");
+assertMatch(t.popoverHtml(), /先认识整体布局/, "intro step should show layout copy in zh");
 sandbox.document.documentElement.lang = "en";
 t.renderStep(); // 引擎在 MutationObserver 回调中调用同一函数
-assertMatch(t.popoverHtml(), /Step 1 of 6/, "popover should re-render with en copy after lang change");
+assertMatch(t.popoverHtml(), /Step 1 of 7/, "popover should re-render with en copy after lang change");
+assertMatch(t.popoverHtml(), /Here's the layout/, "intro step should show layout copy in en");
 sandbox.document.documentElement.lang = "zh-Hans";
 t.renderStep();
 assertMatch(t.popoverHtml(), /第 1 步/, "popover should re-render back to zh copy");
 tour.stopTour();
 
 // ── 用例 12：autoNext 步骤渲染置灰动作提示按钮（防误点跳过）──
+queryAllMap[".deep-window:not(.generating)"] = [newPanelStub]; // deep-window 步立即命中（渲染完整气泡）
 tour.startTour();
+// intro（无 autoNext）→ 保留「下一步」，无 hint
+assertMatch(t.popoverHtml(), /data-tour-action="next"/, "intro step should render Next button");
+assertEqual(t.popoverHtml().indexOf("onboarding-btn-hint"), -1, "intro step should not render hint button");
+tour.advance(); // → report-ask（autoNext sent）
 assertMatch(t.popoverHtml(), /onboarding-btn-hint/, "autoNext step should render disabled hint button");
 assertMatch(t.popoverHtml(), /点击「发送」按钮继续/, "hint button should show zh action hint");
 assertMatch(t.popoverHtml(), /disabled/, "hint button should be disabled");
@@ -238,26 +268,43 @@ assertEqual(t.popoverHtml().indexOf('data-tour-action="next"'), -1, "autoNext st
 tour.advance(); // → deep-window（无 autoNext，保留「下一步」）
 assertEqual(t.popoverHtml().indexOf("onboarding-btn-hint"), -1, "non-autoNext step should not render hint button");
 assertMatch(t.popoverHtml(), /data-tour-action="next"/, "non-autoNext step should render Next button");
-assertEqual(t.popoverHtml().indexOf('data-tour-action="finish"'), -1, "step2 should not render finish");
+assertEqual(t.popoverHtml().indexOf('data-tour-action="finish"'), -1, "deep-window should not render finish");
 tour.stopTour();
 
 // ── 用例 13：第 5 步——气泡固定视口底部中央 + 投放区独立浮动提示条 ──
-assertEqual(t.steps[4].popover, "bottom-center", "drag-memory step should pin popover to bottom-center");
+assertEqual(t.steps[5].popover, "bottom-center", "drag-memory step should pin popover to bottom-center");
 assertTruthy(t.copy.zh.dropzoneTip, "zh missing dropzoneTip");
 assertTruthy(t.copy.en.dropzoneTip, "en missing dropzoneTip");
 tour.startTour();
-tour.notify("sent"); // 1
-tour.advance();      // 2
-tour.advance();      // 3
+tour.advance(); // 1
+tour.notify("sent"); // 2
+tour.advance(); // 3
+tour.advance(); // 4
 byIdMap["chatMemoryBar"] = memoryBarStub;            // 记忆栏可见
 byIdMap["chatMemoryDropzone"] = { ...elementStub, getBoundingClientRect() { return { left: 400, top: 300, width: 600, height: 60, right: 1000, bottom: 360 }; } };
-tour.advance();      // 4 → drag-memory 渲染：应创建投放区提示条
-assertTruthy(t.dropzoneTipActive(), "step5 should create dropzone tip element");
-assertMatch(t.popoverHtml(), /第 5 步/, "step5 popover should render");
-assertMatch(t.popoverHtml(), /把药丸框拖入记忆栏后继续/, "step5 should render disabled hint button");
+tour.advance(); // 5 → drag-memory 渲染：应创建投放区提示条
+assertTruthy(t.dropzoneTipActive(), "step6 should create dropzone tip element");
+assertMatch(t.popoverHtml(), /第 6 步/, "step6 popover should render");
+assertMatch(t.popoverHtml(), /把药丸框拖入记忆栏后继续/, "step6 should render disabled hint button");
 tour.stopTour();
 assertEqual(t.dropzoneTipActive(), false, "stopTour should remove dropzone tip");
 delete byIdMap["chatMemoryBar"];
 delete byIdMap["chatMemoryDropzone"];
+
+// ── 用例 14：填入示例按语言切换（英文版最后一步填入英文示例）──
+assertEqual(t.steps[6].autoFillEn, "Based on the report, give me some analysis suggestions", "chat-ask should define autoFillEn");
+tour.startTour();
+tour.advance(); // 1
+tour.notify("sent"); // 2
+tour.advance(); // 3
+tour.advance(); // 4
+tour.advance(); // 5
+tour.advance(); // 6
+assertEqual(t.currentStepIndex(), 6, "advance should reach final chat-ask");
+assertEqual(t.autoFillFor(t.steps[6]), "根据刚才的报告，给我分析建议", "zh mode should fill zh example");
+sandbox.document.documentElement.lang = "en";
+assertEqual(t.autoFillFor(t.steps[6]), "Based on the report, give me some analysis suggestions", "en mode should fill en example");
+sandbox.document.documentElement.lang = "zh-Hans";
+tour.stopTour();
 
 console.log("PASS: onboarding tour logic");

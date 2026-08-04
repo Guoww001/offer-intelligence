@@ -920,7 +920,8 @@
       "report.helpOpen": "收起使用说明",
       "report.helpClose": "使用说明",
       "report.langBtn.zh": "中文",
-      "report.langBtn.en": "English"
+      "report.langBtn.en": "English",
+      "tour.button": "🎓 新手引导"
     }
   };
 

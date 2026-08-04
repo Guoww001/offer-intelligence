@@ -13,7 +13,8 @@
   // ── 双语文案（键集 zh/en 必须一一对应）──
   var TOUR_COPY = {
     zh: {
-      welcomeTitle: "👋 欢迎使用 YeahPromos 助手",
+      introTitle: "👋 欢迎使用 YeahPromos 助手",
+      introBody: "先认识整体布局：聊天区顶部可切换 Report Mode（提问获取数据报告）与 Chat Mode（带着数据对话），输入商户名 / Merchant ID / ASIN 或品类即可查询；报告以浮窗展示，可最小化并拖入记忆栏作为对话上下文。下面我们实际操作一遍。",
       step1Title: "第 1 步：在 Report Mode 提问",
       step1Body: "在输入框输入商户名 / Merchant ID / ASIN 或品类，就能获取后台数据分析报告。填好后点击右侧「发送」按钮发起查询。试试看：",
       step2Title: "第 2 步：等待分析报告",
@@ -46,7 +47,8 @@
       dropzoneTip: "拖到这里 👇"
     },
     en: {
-      welcomeTitle: "👋 Welcome to the YeahPromos Assistant",
+      introTitle: "👋 Welcome to the YeahPromos Assistant",
+      introBody: "Here's the layout: the top of the chat area toggles between Report Mode (ask for data reports) and Chat Mode (chat with context); type a merchant name / ID / ASIN or category to query. Reports open in a floating window that you can minimize and drag into the memory bar as chat context. Let's walk through it.",
       step1Title: "Step 1: Ask in Report Mode",
       step1Body: "Type a merchant name / ID / ASIN or category to get a data analysis report. Click the Send button on the right to submit. Try it:",
       step2Title: "Step 2: Wait for the report",
@@ -80,8 +82,15 @@
     }
   };
 
-  // ── 步骤数据（纯数据；target 可为选择器字符串或返回选择器的函数）──
+  // ── 步骤数据（纯数据；target 可为选择器字符串、返回选择器的函数或返回元素的函数）──
   var TOUR_STEPS = [
+    {
+      id: "intro",
+      // 第 1 步：整体布局 + chatbot 应用场景介绍（高亮模式切换入口）
+      target: "#chatModeToggle",
+      copyKey: "intro",
+      mask: "block"
+    },
     {
       id: "report-ask",
       target: "#chatInput",
@@ -111,13 +120,24 @@
     },
     {
       id: "minimize-window",
-      target: ".deep-window .deep-window-minimize",
+      target: function () {
+        // 取最后一个（最新创建）面板的最小化按钮：重播/二次使用时旧面板仍在页面，
+        // querySelector 匹配第一个会命中旧面板的按钮——若旧面板已是最小化 pill，
+        // 其最小化按钮被 CSS 隐藏（rect 为 0），高光将不可见
+        try {
+          var list = document.querySelectorAll(".deep-window");
+          if (!list || !list.length) return null;
+          var last = list[list.length - 1];
+          var btn = last.querySelector ? last.querySelector(".deep-window-minimize") : null;
+          return btn || null;
+        } catch (e) { return null; }
+      },
       copyKey: "step3",
       mask: "block",
       // 点击最小化按钮后：高光先转移到药丸框展示最小化效果，再延迟自动进入下一步
       autoNext: "minimized",
       autoNextFocus: ".deep-window.minimized",
-      autoNextDelay: 1400
+      autoNextDelay: 2200
     },
     {
       id: "switch-chat",
@@ -148,6 +168,8 @@
       copyKey: "step6",
       mask: "block",
       autoFill: "根据刚才的报告，给我分析建议",
+      // 英文模式下填入英文示例（autoFillEn）
+      autoFillEn: "Based on the report, give me some analysis suggestions",
       // 填示例后高光转移到发送按钮，点击发送后自动结束引导
       autoFillFocus: '#chatForm button[type="submit"]',
       autoNext: "sent",
@@ -170,6 +192,7 @@
   var _autoNextTimer = null; // 自动推进延迟（展示最小化效果后再前进）
   var _focusTimer = null;    // 高光转移补定位轮询（等最小化动画完成后指向药丸框）
   var _dropzoneTip = null;   // 第 5 步投放区上方独立浮动提示条（防被气泡遮挡）
+  var _pendingPillEl = null; // 用户点击最小化的面板元素（药丸高光直接指向它，避免误查其他面板）
 
   // ── 语言 ──
   function currentLanguage() {
@@ -207,6 +230,11 @@
     try { return document.querySelector(selector); } catch (e) { return null; }
   }
   function isFinalStep(index) { return !!TOUR_STEPS[index] && !!TOUR_STEPS[index].final; }
+  // 填入示例按语言切换：英文模式优先 autoFillEn（如最后一步的英文提问示例）
+  function autoFillFor(step) {
+    if (step.autoFillEn && currentLanguage() === "en") return step.autoFillEn;
+    return step.autoFill;
+  }
   function isAutoNextStep(index, eventName) {
     var step = TOUR_STEPS[index];
     return !!step && !!step.autoNext && step.autoNext === eventName;
@@ -244,7 +272,7 @@
       if (fillBtn && TOUR_STEPS[_stepIndex] && TOUR_STEPS[_stepIndex].autoFill) {
         var input = document.querySelector("#chatInput");
         if (input) {
-          input.value = TOUR_STEPS[_stepIndex].autoFill;
+          input.value = autoFillFor(TOUR_STEPS[_stepIndex]);
           input.focus();
         }
         // 步骤配置了 autoFillFocus → 高光转移到该元素（如发送按钮），引导用户发送
@@ -365,12 +393,19 @@
     }
   }
 
-  // 步骤内高光转移：按 _focusSelector 重新解析目标并重绘遮罩/高亮/气泡
-  function _retarget() {
+  // 步骤内高光转移：按 _focusSelector 重新解析目标并重绘遮罩/高亮/气泡。
+  // 也可显式传入目标元素（如药丸高光直接指向用户点击最小化的那个面板，位置必然正确）
+  function _retarget() { _retargetTo(null); }
+  function _retargetToPill() {
+    var el = _pendingPillEl;
+    if (el && el.classList && el.classList.contains("minimized")) _retargetTo(el);
+  }
+  function _retargetTo(el) {
     var step = TOUR_STEPS[_stepIndex];
     if (!step || !_active) return;
-    var el = null;
-    try { el = document.querySelector(_focusSelector); } catch (e) {}
+    if (!el) {
+      try { el = document.querySelector(_focusSelector); } catch (e) {}
+    }
     if (!el) return;
     _targetEl = el;
     _positionMask(step, el);
@@ -499,6 +534,7 @@
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     _focusSelector = null;
+    _pendingPillEl = null;
     _removeDropzoneHint();
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
@@ -514,6 +550,7 @@
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     _focusSelector = null;
+    _pendingPillEl = null;
     _removeDropzoneHint();
     if (_stepIndex > 0) {
       _stepIndex--;
@@ -528,20 +565,25 @@
     // 目标可能仍在动画中（pill 需 250ms 才 settle，transitionend 不稳时最晚 800ms
     // fallback 加 minimized 类），轮询补定位直到出现；命中后连续重定位几次，
     // 等 pill 的 width/height auto 收缩稳定，确保高光圈尺寸正确。
+    // 定位优先使用 _pendingPillEl（用户点击最小化的那个面板）——比全局
+    // querySelector 精确，多个面板/多个 pill 时不会把高光指到别的面板上。
     if (step.autoNextFocus) {
       _focusSelector = step.autoNextFocus;
-      _retarget();
+      _retargetToPill();
       var tries = 0;
       (function pollFocus() {
         if (!_active) return;
-        var el = null;
-        try { el = document.querySelector(_focusSelector); } catch (e) {}
-        if (el) {
-          _retarget();
+        var el = _pendingPillEl;
+        if (el && !(el.classList && el.classList.contains("minimized"))) el = null;
+        if (!el) {
+          try { el = document.querySelector(_focusSelector); } catch (e) {}
+        }
+        if (el && el.classList && el.classList.contains("minimized")) {
+          _retargetTo(el);
           var settleCount = 0;
           (function settleRetarget() {
             if (!_active || settleCount++ >= 2) return;
-            _retarget();
+            _retargetTo(el);
             _focusTimer = setTimeout(settleRetarget, 130);
           })();
           return;
@@ -550,12 +592,16 @@
       })();
     }
     // autoNextDelay：展示效果（如药丸框高光）停留一段时间后再推进；
-    // 期间用户回退/停止则丢弃（_stepIndex 校验 + timer 清理）
+    // 期间用户回退/停止则丢弃（_stepIndex 校验 + timer 清理）。
+    // 推进前最后一帧重定位药丸高光——确保高光位置正确后再切走。
     if (step.autoNextDelay) {
       var idx = _stepIndex;
       _autoNextTimer = setTimeout(function () {
         _autoNextTimer = null;
-        if (_active && _stepIndex === idx) advance();
+        if (!_active || _stepIndex !== idx) return;
+        var pill = _pendingPillEl;
+        if (pill && pill.classList && pill.classList.contains("minimized")) _retargetTo(pill);
+        advance();
       }, step.autoNextDelay);
       return;
     }
@@ -567,6 +613,7 @@
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     if (_autoStartTimer) { clearTimeout(_autoStartTimer); _autoStartTimer = null; }
+    _pendingPillEl = null;
   }
 
   function stopTour() {
@@ -632,7 +679,13 @@
       if (e.target && e.target.id === "chatForm") notify("sent");
     });
     document.addEventListener("click", function (e) {
-      if (e.target && e.target.closest && e.target.closest(".deep-window-minimize")) notify("minimized");
+      if (e.target && e.target.closest && e.target.closest(".deep-window-minimize")) {
+        // 记录被点击最小化的面板元素——药丸高光直接指向它，避免误定位到其他面板
+        var panelEl = null;
+        try { panelEl = e.target.closest(".deep-window"); } catch (err) {}
+        if (panelEl) _pendingPillEl = panelEl;
+        notify("minimized");
+      }
       if (e.target && e.target.closest && e.target.closest('[data-mode="fast"]')) notify("switched");
     });
   } catch (e) {}
@@ -682,6 +735,7 @@
       isAutoNextStep: isAutoNextStep,
       currentStepIndex: currentStepIndex,
       stepCount: stepCount,
+      autoFillFor: autoFillFor,
       renderStep: _renderStep,
       popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; },
       dropzoneTipActive: function () { return !!_dropzoneTip; }
