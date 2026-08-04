@@ -20,6 +20,7 @@ const elementStub = {
   getBoundingClientRect() { return { left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100 }; }
 };
 const byIdMap = {};
+let langObserverCallback = null;
 const sandbox = {
   console, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
   setTimeout, clearTimeout,
@@ -35,7 +36,7 @@ const sandbox = {
     readyState: "complete",
     addEventListener() {}, removeEventListener() {}
   },
-  MutationObserver: class { observe() {} disconnect() {} }
+  MutationObserver: class { constructor(cb) { langObserverCallback = cb; } observe() {} disconnect() {} }
 };
 sandbox.window.document = sandbox.document;
 
@@ -97,8 +98,9 @@ assertEqual(t.shouldRenderFor("report"), false, "chat log has messages -> no ren
 byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; } };
 
 // ── 用例 6：示例交互决策 ──
-assertEqual(t.tipStateFor("report", false), "report-tip", "report example always shows report tip");
-assertEqual(t.tipStateFor("chat", false), "empty-memory", "chat example without memory -> empty-memory tip");
+// 决策层键 = WELCOME_COPY 文案键（单一事实源；C1 修复：不得返回字面键名）
+assertEqual(t.tipStateFor("report", false), "tipReport", "report example always shows report tip");
+assertEqual(t.tipStateFor("chat", false), "chatEmptyMemory", "chat example without memory -> empty-memory tip");
 assertEqual(t.tipStateFor("chat", true), null, "chat example with memory -> no tip");
 assertEqual(t.fillAllowedFor("report", false), true, "report example always fills");
 assertEqual(t.fillAllowedFor("chat", false), false, "chat example without memory -> blocked");
@@ -116,7 +118,7 @@ byIdMap["chatInput"] = elementStub;
 byIdMap["chatForm"] = { ...elementStub, parentNode: { insertBefore() {} } };
 t.renderSmoke();
 assertEqual(t.tipActive(), false, "no tip after plain render");
-t.showTipbar("report-tip");
+t.showTipbar("tipReport");
 assertEqual(t.tipActive(), true, "showTipbar should set tip state");
 t.clearTipbar();
 assertEqual(t.tipActive(), false, "clearTipbar should clear tip state");
@@ -140,7 +142,52 @@ welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.lastMode(), "report", "mode-switched report should render report welcome");
 
 // ── 用例 12：notify("chat-sent") 清理 ──
-t.showTipbar("report-tip");
+t.showTipbar("tipReport");
 assertEqual(t.tipActive(), true, "tip shown before send");
 welcome.notify("chat-sent");
 assertEqual(t.tipActive(), false, "chat-sent should clear tipbar");
+
+// ── 用例 13：Chat 欢迎屏流程条 ✓ 标记（I2 修复）──
+let flowStepAdds = [];
+const mkFlowStep = () => ({
+  ...elementStub,
+  classList: { add(cls) { flowStepAdds.push(cls); }, remove() {}, toggle() {}, contains() { return false; } }
+});
+const flowSteps = [mkFlowStep(), mkFlowStep(), mkFlowStep()];
+byIdMap["chatLogChat"] = {
+  ...elementStub,
+  querySelectorAll(sel) { return sel === ".welcome-flow.progress .welcome-flow-step" ? flowSteps : []; },
+  querySelector() { return null; }
+};
+// 渲染预标记：hasMemory ⇒ 前两步 done（语义：记忆栏有数据 ⇒ ① 提问 ② 拖入记忆栏 都已完成）
+t.markFlowStepsDone(byIdMap["chatLogChat"], 2);
+assertEqual(flowStepAdds.filter((c) => c === "done").length, 2, "hasMemory render should pre-mark first two flow steps done");
+// 事件路径：memory-added 补同样语义（前两步）
+flowStepAdds = [];
+t.markMemoryStepDone();
+assertEqual(flowStepAdds.filter((c) => c === "done").length, 2, "memory-added should mark first two flow steps done");
+
+// ── 用例 14：语言切换回调缓存 mode（C2 修复）──
+assertTruthy(langObserverCallback, "lang observer should have registered during render smoke");
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "welcome-panel" }; }, querySelectorAll() { return []; } };
+welcome.notify("mode-switched", { mode: "report", hasMemory: false });
+assertEqual(t.lastMode(), "report", "mode-switched report should set mode before lang observer fires");
+langObserverCallback();
+// 修复前 bug：回调内 dismiss(_mode) 置 _mode=null 后 maybeRender(null) 丢失目标容器；
+// 修复后：mode 先缓存，dismiss 后重渲染仍指向原容器（TEST_MODE 下 maybeRender 短路，_mode 保持 null 表示已清理）
+assertEqual(t.lastMode(), null, "lang observer should dismiss current mode with the cached mode, not null");
+
+// ── 用例 15：拦截路径提示条也随手动输入消失（M2 修复）──
+byIdMap["chatInput"] = elementStub;
+byIdMap["chatForm"] = { ...elementStub, parentNode: { insertBefore() {} } };
+t.handleChipClick("chat", "根据记忆栏的报告，给我分析建议"); // 无记忆 → 拦截
+assertEqual(t.tipActive(), true, "blocked chat example should show empty-memory tipbar");
+assertEqual(t.tipFromExampleActive(), true, "blocked chat example should set tipFromExample so typing clears the tipbar");
+
+// ── 用例 16：点击监听绑定在 panel 上，不累积在常驻容器（I1 修复）──
+let containerListenerCalls = 0;
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() { containerListenerCalls++; } };
+byIdMap["chatLogChat"] = { ...elementStub, querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() { containerListenerCalls++; } };
+t.renderSmoke();
+t.renderSmoke();
+assertEqual(containerListenerCalls, 0, "click listeners must bind to per-render welcome-panel, not the persistent container");

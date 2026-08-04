@@ -483,5 +483,24 @@ assertEqual(dashboardGroups[1].summary.totalRevenue, 500, "category revenue shou
 assertEqual(dashboardGroups[1].summary.avgAov, 50, "category AOV should aggregate revenue divided by orders");
 assertApprox(dashboardGroups[1].summary.avgCvr, 0.1, "category CVR should aggregate orders divided by clicks");
 
+// ── 欢迎屏示例措辞意图验证（final review I3）─────────────────────────────
+// 设计 §4.5：7 个示例须命中预期意图路径。以下为规则路径（无 LLM）断言。
+// 已知不匹配项（不在本段断言，见 final review fix wave 报告）：
+//   - "根据记忆栏的报告，给我分析建议"：app.js categoryForPrompt ↔ wantsRecommendationList
+//     无限递归导致 RangeError（栈溢出）——app.js 既有 bug，未修（wave 约束不动分类器）。
+//   - "总结记忆栏的数据，提出下个月的运营重点"：含"重点"→ zhIntent=recommendation 提前返回，
+//     实际命中 recommendation（预期 analysis 路径）——替代措辞待用户确认。
+//   - "查一下 {最高 commission 商户} 这个月表现"：当前数据渲染商户 Amazon US 为 knownKeyword，
+//     命中 keyword；措辞模板对普通商户（如 Kewlioo.）可命中 merchant（下方断言）。
+assertEqual(hooks.detectQueryIntent("这个月有哪些商户逾期？"), "payment", "welcome overdue example should route to payment");
+assertEqual(hooks.detectQueryIntent("Tier 2表现"), "tier", "welcome Tier 2 example should route to tier");
+const tierExampleAnswer = hooks.answerPrompt("Tier 2表现");
+assertMatch(tierExampleAnswer, /Tier 2 概览/, "welcome Tier 2 example should produce a tier overview + candidate recommendation answer");
+assertEqual(hooks.detectQueryIntent("品类趋势"), "analysis", "welcome category-trend example should route to the analysis/trend path (no concrete category entity in the wording)");
+assertEqual(hooks.detectQueryIntent("查一下 Kewlioo. 这个月表现"), "merchant", "welcome merchant example wording should route to merchant for a non-keyword merchant");
+assertEqual(hooks.detectQueryIntent("对比记忆栏里的两个商户，谁更值得重点投入"), "analysis", "welcome chat comparison example should route to analysis");
+// 记录实际路径（预期 analysis，实际 recommendation——"重点"触发 zhIntent 提前返回；替代措辞待用户确认）
+assertEqual(hooks.detectQueryIntent("总结记忆栏的数据，提出下个月的运营重点"), "recommendation", "welcome chat summary example currently routes to recommendation (design expects analysis path; needs user confirmation)");
+
 console.log("Chatbot intent flow tests passed");
 process.exit(0);

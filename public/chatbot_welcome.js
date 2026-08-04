@@ -122,9 +122,10 @@
     return true;
   }
   // kind: "report" | "chat"（示例所属分区）
+  // 决策层键 = WELCOME_COPY 文案键（单一事实源，避免渲染字面键名）
   function tipStateFor(kind, hasMemory) {
-    if (kind === "report") return "report-tip";
-    if (!hasMemory) return "empty-memory";
+    if (kind === "report") return "tipReport";
+    if (!hasMemory) return "chatEmptyMemory";
     return null;
   }
   function fillAllowedFor(kind, hasMemory) {
@@ -223,12 +224,17 @@
     container.appendChild(panel);
     _mode = mode;
     _hasMemory = !!opts.hasMemory;
-    _bindContainer(container);
+    // Chat 欢迎屏：记忆栏已有数据 ⇒ ① 提问与 ② 拖入记忆栏 都已完成，预标记 ✓
+    // （核心路径"先拖记忆再切 Chat"时 memory-added 事件先于渲染，仅靠事件补标不够）
+    if (mode === "chat" && opts.hasMemory) _markFlowStepsDone(container, 2);
+    _bindPanel(panel);
     _bindLangObserver();
   }
-  function _bindContainer(container) {
+  // 点击监听绑定在每次新建的 panel 上：panel 被 dismiss 移除时监听器随之销毁，
+  // 避免常驻容器（#chatLog/#chatLogChat）上反复绑定累积监听器。
+  function _bindPanel(panel) {
     try {
-      container.addEventListener("click", function (e) {
+      panel.addEventListener("click", function (e) {
         var chip = e.target && e.target.closest && e.target.closest(".welcome-chip");
         if (!chip) return;
         var kind = chip.getAttribute("data-kind") || "report";
@@ -238,7 +244,9 @@
   }
   function _handleChipClick(kind, text) {
     if (!fillAllowedFor(kind, _hasMemory)) {
-      _showTipbar("empty-memory");
+      _showTipbar("chatEmptyMemory");
+      // 拦截提示条同样标记为"示例触发"：用户一输入即 ≠ 旧填充值，随手动输入消失
+      _tipFromExample = true;
       return;
     }
     var input = document.getElementById("chatInput");
@@ -305,10 +313,12 @@
     if (_langObserver) return;
     try {
       _langObserver = new MutationObserver(function () {
-        if (isRendered(_mode)) {
+        // 先缓存当前 mode：dismiss 会把 _mode 置 null，若直接传 _mode 会导致重渲染丢失目标容器
+        var mode = _mode;
+        if (isRendered(mode)) {
           _clearTipbar();
-          dismiss(_mode);
-          maybeRender(_mode, { hasMemory: _hasMemory });
+          dismiss(mode);
+          maybeRender(mode, { hasMemory: _hasMemory });
         }
       });
       _langObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
@@ -364,14 +374,18 @@
       return;
     }
   }
-  // Chat 欢迎屏流程条第 2 步（拖入记忆栏）补 ✓
-  function _markMemoryStepDone() {
+  // Chat 欢迎屏流程条前 count 步补 ✓（按 index 升序）
+  function _markFlowStepsDone(container, count) {
     try {
-      var container = containerFor("chat");
-      if (!container) return;
       var steps = container.querySelectorAll(".welcome-flow.progress .welcome-flow-step");
-      if (steps && steps[1]) steps[1].classList.add("done");
+      for (var i = 0; i < count && i < steps.length; i++) steps[i].classList.add("done");
     } catch (e) {}
+  }
+  // Chat 欢迎屏流程条第 2 步（拖入记忆栏）补 ✓（memory-added 事件路径）
+  function _markMemoryStepDone() {
+    var container = containerFor("chat");
+    if (!container) return;
+    _markFlowStepsDone(container, 2);
   }
 
   // ── 手动输入零打扰：用户改动输入框文本（≠ 示例填充值）→ 清 tipbar ──
@@ -413,7 +427,9 @@
       panelTipActive: function () { return !_panelTipShown; },
       hasMemory: function () { return _hasMemory; },
       tipFromExampleActive: function () { return _tipFromExample; },
+      handleChipClick: function (kind, text) { _handleChipClick(kind, text); },
       markMemoryStepDone: function () { _markMemoryStepDone(); },
+      markFlowStepsDone: function (container, count) { _markFlowStepsDone(container, count); },
       resolveExampleText: resolveExampleText
     }
   };
