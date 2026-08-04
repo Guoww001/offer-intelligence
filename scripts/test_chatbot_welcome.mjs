@@ -39,6 +39,25 @@ function makeMainGrid() {
 }
 const mainGrid = makeMainGrid();
 
+// 可控制 Chat Mode 提醒卡片存在性的 #chatLogChat stub
+function makeChatLogChat() {
+  let hasReminder = false;
+  const log = {
+    ...elementStub,
+    firstChild: null,
+    querySelector(sel) { return sel === ".chat-reminder" ? (hasReminder ? { className: "chat-reminder" } : null) : null; },
+    querySelectorAll(sel) {
+      return sel === ".chat-reminder" ? (hasReminder ? [{ className: "chat-reminder", parentNode: log }] : []) : [];
+    },
+    insertBefore() { hasReminder = true; return null; },
+    removeChild() { hasReminder = false; return null; },
+    _reminderPresent() { return hasReminder; }
+  };
+  return log;
+}
+const chatLogChat = makeChatLogChat();
+byIdMap["chatLogChat"] = chatLogChat;
+
 const sandbox = {
   console, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
   setTimeout, clearTimeout,
@@ -201,3 +220,16 @@ mainGrid.addEventListener = () => { containerListenerCalls++; };
 t.renderSmoke();
 t.renderSmoke();
 assertEqual(containerListenerCalls, 0, "click listeners must bind to per-render welcome-panel, not the main-grid container");
+
+// ── 用例 16：Chat Mode 聊天区顶部提醒卡片（常驻 sticky，提示先注入记忆栏）──
+assertEqual(t.chatReminderActive(), false, "no reminder before entering Chat Mode");
+welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
+assertEqual(t.chatReminderActive(), true, "Chat Mode should render the reminder card");
+assertEqual(chatLogChat._reminderPresent(), true, "reminder card should live inside #chatLogChat");
+welcome.notify("mode-switched", { mode: "report", hasMemory: false });
+assertEqual(t.chatReminderActive(), false, "Report Mode should remove the reminder card");
+welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
+assertEqual(t.chatReminderActive(), true, "re-entering Chat Mode should re-render the reminder card");
+// 语言切换（lang observer）在 Chat Mode 下强制刷新文案，卡片保持存在
+langObserverCallback();
+assertEqual(t.chatReminderActive(), true, "lang switch keeps the reminder card in Chat Mode");

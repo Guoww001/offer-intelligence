@@ -2,7 +2,7 @@
 
 日期：2026-08-04
 状态：已批准（方案 B 双栏工作台 + Chat 态变体 2 进度追踪 + 示例清单确认）
-修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）；2026-08-04 二次迭代——① 按用户反馈改为「常驻 + 可折叠双态」（见 §4.2）；② Report 示例改为直接输入型（商户名/品类名/Tier 字面输入 + 趋势分析，见 §4.5）；2026-08-04 三次迭代——欢迎屏**独立为左栏卡片**，脱离聊天区、始终完整展开不折叠（用户选择"一直完整展开"，见 §4.2/§4.4）；2026-08-04 四次迭代——欢迎屏**同步双主题颜色**（深色控制室 / 浅色控制室）+ 外观优化（冰蓝信号线 / 信号徽章双环光晕 / 发丝渐变 / 统一 cubic-bezier 动效，见 §4.4）
+修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）；2026-08-04 二次迭代——① 按用户反馈改为「常驻 + 可折叠双态」（见 §4.2）；② Report 示例改为直接输入型（商户名/品类名/Tier 字面输入 + 趋势分析，见 §4.5）；2026-08-04 三次迭代——欢迎屏**独立为左栏卡片**，脱离聊天区、始终完整展开不折叠（用户选择"一直完整展开"，见 §4.2/§4.4）；2026-08-04 四次迭代——欢迎屏**同步双主题颜色**（深色控制室 / 浅色控制室）+ 外观优化（冰蓝信号线 / 信号徽章双环光晕 / 发丝渐变 / 统一 cubic-bezier 动效，见 §4.4）；2026-08-04 五次迭代——Chat Mode 聊天区顶部新增**常驻提醒卡片**「先将数据注入记忆栏，Chat才有数据可答」（sticky 固定 + 双主题同步，见 §4.6）
 
 ## 1. 背景与目标
 
@@ -133,6 +133,21 @@ dismiss(mode)         // 移除欢迎屏卡片
 - **动态商户名**：`dynamic: "merchant"` 渲染时从 offers 数组取 **1 个佣金/收入最高且未命中已知关键词（`knownKeyword: true`）的商户**（排序取 top1，跳过命中关键词商户，优先有 `merchantName` 的 offer）替换 `{merchant}`；数据未就绪/取不到 → 降级为固定示例（`Shokz`）。实现注：offers 预处理（`mergeProductKeywordsIntoOffers`，app.js）会给命中关键词的 offer 置 `knownKeyword: true`，引擎 `merchantForExample` 据此排除。当前 offers 数据用 `commissionRate`/`salesAmount` 而非 `commission` 字段，排序退化为数组序取首个非关键词商户（不影响排除目标）
 - **意图验证要求**（已实现，`scripts/test_chatbot_intent_flow.mjs`）：直接输入型 Report 示例——`Shokz`→merchant 路径 ✓、`Beauty 品类`→category 路径 ✓、`Tier 2`→tier 路径 ✓、`Shokz趋势分析`→analysis/trend 路径 ✓；Chat 示例——`对比记忆栏里的两个商户…`→analysis 路径 ✓。措辞修正记录：① Chat 首选「规划下个月的运营方向」实测命中 merchant（`规划`不在分析关键词内），落地为「分析下个月的运营方向」命中 analysis；② chat-1「根据记忆栏的报告，给我分析建议」修复了 app.js `categoryForPrompt↔wantsRecommendationList` 无限递归（此前点击即栈溢出）后正常走 analysis 路径；③ Report 示例按用户要求改为**直接输入**（商户名/品类名/Tier 字面输入 + `实体名趋势分析`），去掉「查一下…这个月表现」「逾期」「Tier 2表现」等修饰性提问——Report Mode 定位即数据获取 + 趋势分析
 
+### 4.6 Chat Mode 聊天区顶部提醒卡片（五次迭代）
+
+**需求**：在 Chat Mode 的聊天区（`#chatLogChat`）顶部固定一个常驻提醒卡片，文案「先将数据注入记忆栏，Chat才有数据可答」（en：`Drag reports into memory first — Chat only answers with data in memory`）——在聊天区自身强化「记忆栏是数据必需环节」的标准步骤提示（见 §5 标准使用步骤）。
+
+**实现**（引擎 `chatbot_welcome.js` 新增，app.js 零改动）：
+- `notify("mode-switched")` 中 `mode === "chat"` → `_renderChatReminder()` 将 `.chat-reminder` 卡片作为 `#chatLogChat` 第一个子元素插入；`mode === "report"` → `_removeChatReminder()` 移除。模式切换挂点已存在，无新增 app.js 侵入点。
+- **常驻 sticky**：`.chat-reminder` 设 `position: sticky; top: -16px`（抵消 `.chat-log` 顶部 padding 16px），消息滚动时卡片始终浮在聊天区最顶；消息只 append 在卡片之后，不影响卡片位置。渲染幂等（已存在则不重复插入）。
+- **语言切换**：lang observer 回调在 Chat Mode 下强制刷新卡片文案（`_syncChatReminder(_mode, true)`）。
+- **文案键**：`chatReminder`（zh/en 一一对应，同 WELCOME_COPY 约定）。
+
+**双主题（与欢迎屏同视觉词汇，Ethereal Glass）**：
+- 深色控制室：`rgba(21,33,63,0.92)→rgba(15,25,54,0.92)` 玻璃渐变 + 冰蓝光晕，文字 `#bcd8ff`，顶部 `::before` 冰蓝信号线
+- 浅色控制室：白玻璃 `#ffffff→#f5f9ff` + 浅蓝光晕，文字 `#1a4fa0`，发丝边框 `rgba(23,55,112,0.12)`
+- 入场动画 `chatReminderIn`（淡入 + 微下移 6px，`cubic-bezier(0.32,0.72,0,1)`，`prefers-reduced-motion` 降级）；只动画 transform/opacity；blur 仅用于 sticky 卡片
+
 ## 5. 数据流
 
 ```
@@ -144,6 +159,8 @@ dismiss(mode)         // 移除欢迎屏卡片
 报告生成 → notify("report-ready") → 面板顶部提示条（会话内首次，可关闭）
 拖入记忆栏 → notify("memory-added") → _hasMemory 置真（Chat 示例空记忆拦截依据；无进度条标记）
 切 Chat Mode → notify("mode-switched") → 面板不变（常驻），只同步记忆栏状态与最近模式
+  ├─ Chat Mode 顶部渲染常驻提醒卡片「先将数据注入记忆栏，Chat才有数据可答」（sticky，消息滚动固定）
+  ├─ 切回 Report Mode → 提醒卡片移除
   ├─ 记忆栏空 + 点分析示例 → 提示条「请先拖入报告」，不填充输入框
   └─ 记忆栏非空 + 点分析示例 → 填入输入框 + 发送按钮脉冲 → 正常提问（无提示条，最后一步）
 ```
@@ -182,6 +199,7 @@ app.js 侵入点汇总：init 渲染（1 处）、chatForm submit（1 行，清�
 9. `mode-switched` 只同步状态：`lastMode` 更新、面板不重渲染不切换；语言切换重渲染保持 `_mode`
 10. 测试模式：`__OFFER_INTELLIGENCE_TEST__` 下 maybeRender 无副作用
 11. 监听器防累积：点击监听绑定在每次新建 panel 上，不累积在主网格容器
+12. Chat Mode 提醒卡片：进入 Chat Mode → 卡片渲染进 `#chatLogChat`（`chatReminderActive` 为真）；切回 Report → 移除；再次进入 Chat → 重新渲染；语言切换下 Chat Mode 卡片保持存在
 
 CI（`.github/workflows/ci.yml` 追加）与 CLAUDE.md 命令节追加：
 ```

@@ -7,6 +7,7 @@
   //   1. init 尾部: window.CHATBOT_WELCOME.maybeRender("report", { offers })
   //   2. chatForm submit: window.CHATBOT_WELCOME.notify("chat-sent")   → 清提示条（不折叠）
   //   3. 模式切换: window.CHATBOT_WELCOME.notify("mode-switched", { mode, hasMemory }) → 同步记忆状态
+  //      + Chat Mode 时在聊天区顶部渲染常驻提醒卡片（.chat-reminder），Report Mode 移除
   //   4. _renderPanelReport 尾部: window.CHATBOT_WELCOME.notify("report-ready", { panelEl })
   //   5. _addMemoryFromPanel 尾部: window.CHATBOT_WELCOME.notify("memory-added", { hasMemory: true })
   // 样式类 .welcome-*（见 styles.css）。
@@ -35,6 +36,7 @@
       chatHelloBody: "先拖入 1 份报告，再点下面的示例，我会基于它给出建议",
       chatEmptyMemory: "请先拖入报告到记忆栏",
       panelTip: "点 ─ 最小化，拖入记忆栏后可在 Chat Mode 深度分析",
+      chatReminder: "先将数据注入记忆栏，Chat才有数据可答",
       close: "关闭",
       memoryHint: "将面板拖入此处作为上下文"
     },
@@ -57,6 +59,7 @@
       chatHelloBody: "Drag in a report first, then pick an example — I'll analyze based on it",
       chatEmptyMemory: "Drag a report into the memory bar first",
       panelTip: "Click – to minimize, then drag into memory for Chat Mode analysis",
+      chatReminder: "Drag reports into memory first — Chat only answers with data in memory",
       close: "Close",
       memoryHint: "Drag the panel here as context"
     }
@@ -301,6 +304,39 @@
     } catch (e) {}
     _tipShown = false;
   }
+  // ── Chat Mode 聊天区顶部提醒卡片 ──────────────────────
+  // 常驻 sticky 卡片（.chat-reminder），提示「先将数据注入记忆栏，Chat 才有数据可答」。
+  // 渲染进 #chatLogChat 顶部；Chat Mode（mode === "chat"）显示，Report Mode 移除。
+  // 与欢迎屏独立卡片解耦——它挂在聊天区内部，作为该模式下的使用方式提示。
+  function _chatLogChatElement() {
+    try { return document.getElementById("chatLogChat"); } catch (e) { return null; }
+  }
+  function _renderChatReminder(force) {
+    try {
+      var log = _chatLogChatElement();
+      if (!log) return;
+      if (force) _removeChatReminder();
+      if (log.querySelector && log.querySelector(".chat-reminder")) return;
+      var card = makeEl("chat-reminder",
+        '<span class="chat-reminder-icon">📌</span>' +
+        '<span class="chat-reminder-text">' + escapeHtml(currentCopy("chatReminder")) + '</span>');
+      if (log.insertBefore) log.insertBefore(card, log.firstChild || null);
+    } catch (e) {}
+  }
+  function _removeChatReminder() {
+    try {
+      var log = _chatLogChatElement();
+      if (!log || !log.querySelectorAll) return;
+      var els = log.querySelectorAll(".chat-reminder");
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].parentNode) els[i].parentNode.removeChild(els[i]);
+      }
+    } catch (e) {}
+  }
+  function _syncChatReminder(mode, force) {
+    if (mode === "chat") _renderChatReminder(!!force);
+    else _removeChatReminder();
+  }
   function _insertPanelTip(panelEl) {
     try {
       var tip = makeEl("welcome-panel-tip",
@@ -324,6 +360,7 @@
         if (isRendered(mode)) {
           _clearTipbar();
           _renderPanel(mode, { offers: _offers, hasMemory: _hasMemory });
+          _syncChatReminder(mode, true); // 语言切换：强制刷新提醒卡片文案
         }
       });
       _langObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
@@ -367,6 +404,8 @@
       if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
       var mode = payload.mode === "chat" ? "chat" : "report";
       _mode = mode;
+      // Chat Mode → 聊天区顶部渲染提醒卡片；Report Mode → 移除
+      _syncChatReminder(mode);
       return;
     }
     if (eventName === "report-ready") {
@@ -422,7 +461,14 @@
       hasMemory: function () { return _hasMemory; },
       tipFromExampleActive: function () { return _tipFromExample; },
       handleChipClick: function (kind, text) { _handleChipClick(kind, text); },
-      resolveExampleText: resolveExampleText
+      resolveExampleText: resolveExampleText,
+      chatReminderActive: function () {
+        var log = _chatLogChatElement();
+        if (!log || !log.querySelector) return false;
+        return !!log.querySelector(".chat-reminder");
+      },
+      renderChatReminder: function (force) { _renderChatReminder(!!force); },
+      removeChatReminder: function () { _removeChatReminder(); }
     }
   };
 })();
