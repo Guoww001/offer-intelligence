@@ -1,11 +1,12 @@
 (function () {
   // ── Chatbot 欢迎屏（Welcome Guide）────────────────────────────
-  // 空聊天区的能力地图 + 流程示意 + 示例问题：双栏工作台布局（左「① 先获取数据」/
-  // 右「③ 再深度分析」），示例点击即填 + 提示条贯穿「获取→分析」流程。
-  // 零依赖，挂 window.CHATBOT_WELCOME。与 app.js 的交互点：
+  // 独立卡片：能力地图 + 流程示意 + 示例问题。挂在 dashboard 主网格左列顶部
+  // （.main-grid.dashboard-page 第 1 行第 1 列），始终完整展开、不折叠、不受对话影响。
+  // 双栏工作台布局（左「① 先获取数据」/ 右「③ 再深度分析」），示例点击即填 + 提示条贯穿
+  // 「获取→分析」流程。零依赖，挂 window.CHATBOT_WELCOME。与 app.js 的交互点：
   //   1. init 尾部: window.CHATBOT_WELCOME.maybeRender("report", { offers })
-  //   2. chatForm submit: window.CHATBOT_WELCOME.notify("chat-sent")
-  //   3. 模式切换: window.CHATBOT_WELCOME.notify("mode-switched", { mode, hasMemory })
+  //   2. chatForm submit: window.CHATBOT_WELCOME.notify("chat-sent")   → 清提示条（不折叠）
+  //   3. 模式切换: window.CHATBOT_WELCOME.notify("mode-switched", { mode, hasMemory }) → 同步记忆状态
   //   4. _renderPanelReport 尾部: window.CHATBOT_WELCOME.notify("report-ready", { panelEl })
   //   5. _addMemoryFromPanel 尾部: window.CHATBOT_WELCOME.notify("memory-added", { hasMemory: true })
   // 样式类 .welcome-*（见 styles.css）。
@@ -35,11 +36,7 @@
       chatEmptyMemory: "请先拖入报告到记忆栏",
       panelTip: "点 ─ 最小化，拖入记忆栏后可在 Chat Mode 深度分析",
       close: "关闭",
-      memoryHint: "将面板拖入此处作为上下文",
-      barTitle: "欢迎指南",
-      barHint: "点击展开，看看能问什么、怎么用",
-      expand: "展开",
-      collapse: "收起"
+      memoryHint: "将面板拖入此处作为上下文"
     },
     en: {
       helloTitle: "I'm your operations analysis assistant",
@@ -61,11 +58,7 @@
       chatEmptyMemory: "Drag a report into the memory bar first",
       panelTip: "Click – to minimize, then drag into memory for Chat Mode analysis",
       close: "Close",
-      memoryHint: "Drag the panel here as context",
-      barTitle: "Welcome Guide",
-      barHint: "Click to expand — see what you can ask and how",
-      expand: "Expand",
-      collapse: "Collapse"
+      memoryHint: "Drag the panel here as context"
     }
   };
 
@@ -121,15 +114,15 @@
   }
 
   // ── 渲染判定与示例交互决策（纯函数）──
-  function containerFor(mode) {
-    if (mode === "chat") return document.getElementById("chatLogChat");
-    if (mode === "report") return document.getElementById("chatLog");
-    return null;
+  // 独立卡片：挂在 dashboard 主网格（.main-grid.dashboard-page）左列顶部，
+  // 作为 grid 第 1 行第 1 列子项，与聊天区（#chatLog/#chatLogChat）完全解耦。
+  function containerFor() {
+    return document.querySelector(".main-grid.dashboard-page");
   }
   function shouldRenderFor(mode) {
     var container = containerFor(mode);
     if (!container) return false;
-    if (container.querySelector(".welcome-panel") || container.querySelector(".welcome-bar")) return false;
+    if (container.querySelector(".welcome-panel")) return false;
     return true;
   }
   // kind: "report" | "chat"（示例所属分区）
@@ -148,9 +141,8 @@
   }
 
   // ── 状态 ──
-  var _mode = null;            // "report" | "chat" | null
-  var _collapsed = false;      // 常驻欢迎屏当前是否折叠为紧凑条
-  var _offers = null;          // 最近一次渲染的 offers（供折叠条展开 / 语言切换重渲染）
+  var _mode = null;            // "report" | "chat" | null（最近一次通知的模式，供语言重渲染）
+  var _offers = null;          // 最近一次渲染的 offers（供语言切换重渲染）
   var _tipShown = false;
   var _tipFromExample = false;
   var _lastFillValue = "";
@@ -202,9 +194,7 @@
   function headHtml() {
     return '<div class="welcome-head"><div class="welcome-avatar">🤖</div><div>' +
       '<div class="welcome-hello">' + escapeHtml(currentCopy("helloTitle")) + '</div>' +
-      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div></div>' +
-      '<button type="button" class="welcome-collapse" aria-label="' + escapeHtml(currentCopy("collapse")) + '">' +
-      escapeHtml(currentCopy("collapse")) + ' ▾</button></div>';
+      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div></div></div>';
   }
   function colHtml(kind, examples, merchant, extra) {
     var isRight = kind === "chat";
@@ -219,64 +209,30 @@
     }
     return html + "</div>";
   }
-  // 渲染完整双栏面板（展开态）。常驻：若目标聊天区已有 welcome 内容则先清除。
+  // 渲染完整双栏工作台（常驻独立卡片）。挂载为 dashboard 主网格左列第一个 grid 子项，
+  // 始终完整展开、不折叠；与聊天区内容解耦，对话不顶掉、不改变它。
   function _renderPanel(mode, opts) {
     opts = opts || {};
     var container = containerFor(mode);
     if (!container) return false;
     if (opts.offers) _offers = opts.offers;
     var merchant = exampleMerchant(opts.offers || _offers);
-    var html;
-    if (mode === "chat") {
-      html = '<div class="welcome-panel">' + headHtml() +
-        flowHtml().replace('class="welcome-flow"', 'class="welcome-flow progress"') +
-        colHtml("chat", WELCOME_EXAMPLES.chat, merchant) + "</div>";
-    } else {
-      html = '<div class="welcome-panel">' + headHtml() + flowHtml() +
-        '<div class="welcome-cols">' + colHtml("report", WELCOME_EXAMPLES.report, merchant) +
-        '<div class="welcome-cols-arrow">➜</div>' + colHtml("chat", WELCOME_EXAMPLES.chat, merchant) +
-        "</div></div>";
-    }
+    var html = '<div class="welcome-panel">' + headHtml() + flowHtml() +
+      '<div class="welcome-cols">' + colHtml("report", WELCOME_EXAMPLES.report, merchant) +
+      colHtml("chat", WELCOME_EXAMPLES.chat, merchant) +
+      "</div></div>";
     _clearWelcome(container);
     var panel = makeEl("welcome-panel", html);
-    container.appendChild(panel);
+    container.insertBefore(panel, container.firstChild);
     _mode = mode;
-    _collapsed = false;
     if (opts.hasMemory !== undefined) _hasMemory = !!opts.hasMemory;
-    // Chat 欢迎屏：记忆栏已有数据 ⇒ ① 提问与 ② 拖入记忆栏 都已完成，预标记 ✓
-    // （核心路径"先拖记忆再切 Chat"时 memory-added 事件先于渲染，仅靠事件补标不够）
-    if (mode === "chat" && _hasMemory) _markFlowStepsDone(container, 2);
     _bindPanel(panel);
     _bindLangObserver();
     return true;
   }
-  // 折叠态紧凑条：常驻聊天区顶部，点击重新展开完整面板。
-  function _renderBar(mode) {
-    var container = containerFor(mode);
-    if (!container) return false;
-    _clearWelcome(container);
-    var bar = makeEl("welcome-bar",
-      '<span class="welcome-bar-icon">📖</span>' +
-      '<span class="welcome-bar-text">' + escapeHtml(currentCopy("barTitle")) + '</span>' +
-      '<span class="welcome-bar-hint">' + escapeHtml(currentCopy("barHint")) + '</span>' +
-      '<span class="welcome-bar-toggle">' + escapeHtml(currentCopy("expand")) + ' ▾</span>');
-    container.appendChild(bar);
-    _mode = mode;
-    _collapsed = true;
-    _bindBar(bar, mode);
-    _bindLangObserver();
-    return true;
-  }
-  function _bindBar(bar, mode) {
-    try {
-      bar.addEventListener("click", function () {
-        _renderPanel(mode, { offers: _offers, hasMemory: _hasMemory });
-      });
-    } catch (e) {}
-  }
   function _clearWelcome(container) {
     if (!container) return;
-    var els = container.querySelectorAll(".welcome-panel, .welcome-bar");
+    var els = container.querySelectorAll(".welcome-panel");
     for (var i = 0; i < els.length; i++) els[i].parentNode.removeChild(els[i]);
   }
   // 点击监听绑定在每次新建的 panel 上：panel 被 dismiss 移除时监听器随之销毁，
@@ -289,10 +245,6 @@
           var chip = t.closest(".welcome-chip");
           var kind = chip.getAttribute("data-kind") || "report";
           _handleChipClick(kind, chip.getAttribute("data-text") || "");
-          return;
-        }
-        if (t && t.closest && t.closest(".welcome-collapse")) {
-          collapse(_mode);
         }
       });
     } catch (err) {}
@@ -368,15 +320,10 @@
     if (_langObserver) return;
     try {
       _langObserver = new MutationObserver(function () {
-        // 先缓存当前 mode 与折叠态：dismiss 会把 _mode/_collapsed 重置，若直接读取会丢失目标态
         var mode = _mode;
-        var collapsed = _collapsed;
         if (isRendered(mode)) {
           _clearTipbar();
-          var container = containerFor(mode);
-          _clearWelcome(container);
-          if (collapsed) _renderBar(mode);
-          else _renderPanel(mode, { offers: _offers, hasMemory: _hasMemory });
+          _renderPanel(mode, { offers: _offers, hasMemory: _hasMemory });
         }
       });
       _langObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
@@ -384,26 +331,11 @@
   }
 
   // ── 公共 API ──
-  // 常驻：目标聊天区没有 welcome 内容时渲染展开面板（首次打开）；已有内容（展开或折叠条）
-  // 则保持当前态，不强制展开——面板一经创建即常驻，对话只折叠不消失。
+  // 常驻独立卡片：dashboard 主网格没有 welcome 内容时渲染（首次打开）；已有内容则保持当前态。
   function maybeRender(mode, opts) {
     if (TEST_MODE) return shouldRenderFor(mode);
     if (!shouldRenderFor(mode)) return false;
     return _renderPanel(mode, opts || {});
-  }
-  // 折叠为紧凑条（对话开始后调用，不删除面板——常驻）。已在折叠态则幂等跳过。
-  function collapse(mode) {
-    if (!mode) return;
-    var container = containerFor(mode);
-    if (!container) return;
-    _clearTipbar();
-    _tipFromExample = false;
-    _pulseSend(false);
-    if (container.querySelector(".welcome-bar")) {
-      _collapsed = true;
-      return;
-    }
-    _renderBar(mode);
   }
   function dismiss(mode) {
     try {
@@ -414,25 +346,27 @@
     _clearTipbar();
     _tipFromExample = false;
     if (_mode === mode) _mode = null;
-    _collapsed = false;
     _pulseSend(false);
   }
   function isRendered(mode) {
     var container = containerFor(mode);
     if (!container) return false;
-    try { return !!container.querySelector(".welcome-panel, .welcome-bar"); } catch (e) { return false; }
+    try { return !!container.querySelector(".welcome-panel"); } catch (e) { return false; }
   }
   function notify(eventName, payload) {
     payload = payload || {};
     if (eventName === "chat-sent") {
-      collapse(_mode);
+      // 面板常驻完整展开：发送消息只清提示条/脉冲，不折叠、不删除
+      _clearTipbar();
+      _tipFromExample = false;
+      _pulseSend(false);
       return;
     }
     if (eventName === "mode-switched") {
+      // 面板常驻：模式切换只同步记忆栏状态，不重渲染、不切换欢迎屏
       if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
       var mode = payload.mode === "chat" ? "chat" : "report";
       _mode = mode;
-      maybeRender(mode, { hasMemory: _hasMemory });
       return;
     }
     if (eventName === "report-ready") {
@@ -443,22 +377,8 @@
     }
     if (eventName === "memory-added") {
       _hasMemory = true;
-      _markMemoryStepDone();
       return;
     }
-  }
-  // Chat 欢迎屏流程条前 count 步补 ✓（按 index 升序）
-  function _markFlowStepsDone(container, count) {
-    try {
-      var steps = container.querySelectorAll(".welcome-flow.progress .welcome-flow-step");
-      for (var i = 0; i < count && i < steps.length; i++) steps[i].classList.add("done");
-    } catch (e) {}
-  }
-  // Chat 欢迎屏流程条第 2 步（拖入记忆栏）补 ✓（memory-added 事件路径）
-  function _markMemoryStepDone() {
-    var container = containerFor("chat");
-    if (!container) return;
-    _markFlowStepsDone(container, 2);
   }
 
   // ── 手动输入零打扰：用户改动输入框文本（≠ 示例填充值）→ 清 tipbar ──
@@ -493,19 +413,15 @@
         _renderPanel("report", { offers: [], hasMemory: false });
         _renderPanel("chat", { offers: [{ merchantName: "Shokz", commission: 1 }], hasMemory: false });
       },
-      renderBar: function (mode) { return _renderBar(mode); },
       renderPanel: function (mode, opts) { return _renderPanel(mode, opts || {}); },
       tipActive: function () { return _tipShown; },
       showTipbar: function (key) { _showTipbar(key); },
       clearTipbar: function () { _clearTipbar(); },
       lastMode: function () { return _mode; },
-      collapsed: function () { return _collapsed; },
       panelTipActive: function () { return !_panelTipShown; },
       hasMemory: function () { return _hasMemory; },
       tipFromExampleActive: function () { return _tipFromExample; },
       handleChipClick: function (kind, text) { _handleChipClick(kind, text); },
-      markMemoryStepDone: function () { _markMemoryStepDone(); },
-      markFlowStepsDone: function (container, count) { _markFlowStepsDone(container, count); },
       resolveExampleText: resolveExampleText
     }
   };

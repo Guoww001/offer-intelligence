@@ -11551,6 +11551,24 @@ body.dashboard-mode .quick-actions button:active {
 body.dashboard-mode .main-grid.dashboard-page {
   gap: 16px;
   grid-template-columns: minmax(380px, 1.04fr) minmax(0, 0.96fr);
+  /* 左列两行：欢迎屏独立卡片（auto 高）+ 洞察面板（占剩余）；chat 面板跨满右列 */
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* 欢迎屏独立卡片：dashboard 主网格第 1 行第 1 列（左栏顶部），始终完整展开、不折叠。
+   chat 面板跨满右列两行，insight 面板在左列第 2 行。 */
+body.dashboard-mode .main-grid.dashboard-page > .welcome-panel {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+}
+body.dashboard-mode .main-grid.dashboard-page > .insight-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+body.dashboard-mode .main-grid.dashboard-page > .chat-panel {
+  grid-column: 2;
+  grid-row: 1 / -1;
 }
 
 /* 仪表盘页自身默认文字色：任何未单独覆盖的文本在深底上仍可读。
@@ -12003,8 +12021,16 @@ body.dashboard-mode :is(.insight-panel, .chat-panel) .context-panel {
   }
   body.dashboard-mode .main-grid.dashboard-page {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
     grid-auto-rows: auto;
     gap: 14px;
+  }
+  /* 窄屏单列：welcome 卡片 / 洞察 / 聊天按文档流上下堆叠（宽屏的显式 grid 定位复位） */
+  body.dashboard-mode .main-grid.dashboard-page > .welcome-panel,
+  body.dashboard-mode .main-grid.dashboard-page > .insight-panel,
+  body.dashboard-mode .main-grid.dashboard-page > .chat-panel {
+    grid-column: auto;
+    grid-row: auto;
   }
   body.dashboard-mode .insight-panel,
   body.dashboard-mode .chat-panel {
@@ -13725,13 +13751,10 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 }
 
 /* ── Chatbot 欢迎屏 Welcome Guide（类名 .welcome-*）──
-   视觉基调与新手引导一致：Ethereal Glass 深色玻璃拟态（发丝 hairline + 内高光 + 柔辉光），
-   动效走自定义贝塞尔曲线。欢迎屏常驻在聊天区顶部（sticky，随消息滚动固定可见），
-   折叠条 .welcome-bar 与展开面板 .welcome-panel 二态互斥。 */
+   视觉基调与新手引导一致：Ethereal Glass 深色玻璃拟态（发丝 hairline + 内高光 + 柔辉光）。
+   欢迎屏是独立卡片，挂在 dashboard 主网格左列顶部（.main-grid.dashboard-page 第 1 行
+   第 1 列），始终完整展开、不折叠；grid 定位见 body.dashboard-mode 区块。 */
 .welcome-panel {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   background: linear-gradient(165deg, rgba(30, 37, 62, 0.88) 0%, rgba(16, 20, 36, 0.86) 100%);
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   backdrop-filter: blur(24px) saturate(1.5);
@@ -13739,33 +13762,8 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   border-top: 2px solid rgba(110, 168, 255, 0.5);
   border-radius: 14px;
   padding: 14px;
-  margin: 4px 0 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-/* 折叠态紧凑条：常驻聊天区顶部，点击展开完整面板 */
-.welcome-bar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(165deg, rgba(30, 37, 62, 0.88) 0%, rgba(16, 20, 36, 0.86) 100%);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
-  backdrop-filter: blur(24px) saturate(1.5);
-  border: 1px solid rgba(110, 168, 255, 0.35);
-  border-radius: 12px;
-  padding: 8px 12px;
-  margin: 4px 0 10px;
-  cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.welcome-bar:hover { border-color: #6ea8ff; }
-.welcome-bar-icon { font-size: 14px; flex-shrink: 0; }
-.welcome-bar-text { font-size: 12px; font-weight: 600; color: #eef2f8; white-space: nowrap; }
-.welcome-bar-hint { font-size: 10.5px; color: #9aa7bd; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.welcome-bar-toggle { font-size: 10.5px; color: #6ea8ff; flex-shrink: 0; }
 .welcome-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
 .welcome-avatar {
   width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
@@ -13775,21 +13773,6 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 }
 .welcome-hello { font-size: 13px; font-weight: 600; }
 .welcome-desc { font-size: 11.5px; color: #9aa7bd; margin-top: 2px; line-height: 1.5; }
-.welcome-collapse {
-  margin-left: auto;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  color: #9aa7bd;
-  font-size: 10.5px;
-  font-family: inherit;
-  padding: 3px 10px;
-  cursor: pointer;
-  transition: color 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.welcome-collapse:hover { color: #eef2f8; border-color: rgba(255, 255, 255, 0.3); }
-
 .welcome-flow { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
 .welcome-flow-step {
   flex: 1; display: flex; gap: 6px; align-items: flex-start;
@@ -13804,15 +13787,6 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 }
 .welcome-flow-txt { font-size: 10.5px; color: #9aa7bd; line-height: 1.35; }
 .welcome-flow-arrow { color: #5d6b84; font-size: 12px; flex-shrink: 0; }
-/* 进度追踪（Chat 态）：第 1/2 步 done（✓ 灰化），第 3 步高亮 */
-.welcome-flow.progress .welcome-flow-step.done { opacity: 0.65; }
-.welcome-flow.progress .welcome-flow-step.done .welcome-flow-num::after { content: "✓"; }
-.welcome-flow.progress .welcome-flow-step.done .welcome-flow-num { background: rgba(110, 168, 255, 0.25); color: #9aa7bd; }
-.welcome-flow.progress .welcome-flow-step:last-child {
-  border-color: rgba(110, 168, 255, 0.5);
-  box-shadow: 0 0 10px rgba(110, 168, 255, 0.35);
-}
-.welcome-flow.progress .welcome-flow-step:last-child .welcome-flow-num { background: #6ea8ff; }
 
 .welcome-cols { display: flex; gap: 10px; align-items: stretch; }
 .welcome-col {
@@ -13822,9 +13796,6 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 .welcome-col.right {
   border-color: rgba(155, 123, 255, 0.35);
   background: rgba(155, 123, 255, 0.06);
-}
-.welcome-cols-arrow {
-  display: flex; align-items: center; color: #5d6b84; font-size: 14px; flex-shrink: 0;
 }
 .welcome-col-title {
   font-size: 11px; font-weight: 600; color: #9aa7bd;

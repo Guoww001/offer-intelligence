@@ -2,7 +2,7 @@
 
 日期：2026-08-04
 状态：已批准（方案 B 双栏工作台 + Chat 态变体 2 进度追踪 + 示例清单确认）
-修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）；2026-08-04 二次迭代——① 按用户反馈改为「常驻 + 可折叠双态」（见 §4.2）；② Report 示例改为直接输入型（商户名/品类名/Tier 字面输入 + 趋势分析，见 §4.5）
+修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）；2026-08-04 二次迭代——① 按用户反馈改为「常驻 + 可折叠双态」（见 §4.2）；② Report 示例改为直接输入型（商户名/品类名/Tier 字面输入 + 趋势分析，见 §4.5）；2026-08-04 三次迭代——欢迎屏**独立为左栏卡片**，脱离聊天区、始终完整展开不折叠（用户选择"一直完整展开"，见 §4.2/§4.4）
 
 ## 1. 背景与目标
 
@@ -18,14 +18,14 @@
 
 ### 2.1 相关 UI 结构（public/index.html）
 - `#chatModeToggle`：模式切换按钮组 — Report Mode（`[data-mode="deep"]`，默认）/ Chat Mode（`[data-mode="fast"]`）
-- `#chatLog`：Report Mode 聊天区；`#chatLogChat`：Chat Mode 聊天区（初始为空）
+- `#chatLog`：Report Mode 聊天区；`#chatLogChat`：Chat Mode 聊天区（初始为空）——欢迎屏**不再挂载**到这里（三次迭代起挂 dashboard 主网格左列）
 - `#chatMemoryBar`：记忆栏（`#chatMemoryChips` 芯片区 + `#chatMemoryDropzone` 投放区），仅在 Chat Mode 显示（app.js:10201 `if (!state.deepMode)`）
+- `.main-grid.dashboard-page`：dashboard 主网格（两列：左洞察面板 / 右聊天面板）——欢迎屏独立卡片挂此，grid 第 1 行第 1 列
 - `#reportHelpBtn`：📖 使用说明书（静态 Markdown，中英双语）
 
 ### 2.2 初始欢迎消息（public/app.js 已核实）
-- `19591`：`addMessage("assistant", "Loaded N internal offers. Search merchant name, merchant ID, ASIN, category, payment status, or ask for recommendations.")` — **硬编码英文，不走 i18n**，样式与普通回复相同（日志式，无示例无入口）
-- `19592-19597`：Chat Mode 聊天区同样追加 `Loaded N internal offers.` 英文消息
-- 这两条将被欢迎屏取代
+- 原 `addMessage("assistant", "Loaded N internal offers. ...")` 英文欢迎消息已被欢迎屏取代（当前 init 尾部 19637 直接调用 `maybeRender`，无英文日志消息）
+- Chat Mode 聊天区英文消息已删除
 
 ### 2.3 可复用机制（已核实）
 - **i18n**：`translations.zh` 表 + `data-i18n` 属性 + `applyStaticLanguage()` / `rerenderForLanguage()`；app.js:974 处理 `data-i18n-placeholder`
@@ -61,46 +61,42 @@
 ### 4.2 引擎 API（window.CHATBOT_WELCOME）
 
 ```
-maybeRender(mode)     // 聊天区为空时渲染欢迎屏（mode: "report" | "chat"）；有对话则跳过
+maybeRender(mode)     // 渲染独立欢迎屏卡片（mode 参数保留兼容，渲染同一完整工作台）
 notify(eventName, payload)
                       // app.js 事件：chat-sent / mode-switched / report-ready / memory-added
-isRendered(mode)      // 当前模式欢迎屏是否在显示
-dismiss(mode)         // 收起欢迎屏（手动 × 或发送消息后）
+isRendered(mode)      // 欢迎屏卡片是否在显示
+dismiss(mode)         // 移除欢迎屏卡片
 ```
 
-**关键设计：欢迎屏常驻 + 可折叠双态**（二次迭代，用户反馈"一有对话面板就没了"效果差）——欢迎屏**不**随消息日志滚动消失、**不**被对话顶掉：
-- 面板与折叠条以 `position: sticky; top: 0` 常驻在对应聊天区（`#chatLog` / `#chatLogChat`）顶部，消息在其下方滚动，面板始终固定可见。
-- 双态互斥：**展开态** `.welcome-panel`（完整双栏工作台，头部带「收起 ▾」按钮）与**折叠态** `.welcome-bar`（紧凑条，点击展开）。
-- 首条用户消息发出（`chat-sent`）→ **折叠为紧凑条而非删除**；点折叠条可随时重新展开。
-- 无持久 localStorage 标记（刷新页面后若聊天区重新为空，首开仍展开面板；常驻条本身随会话存在）。与 7 步引导的一次性状态互补。
+**关键设计：独立左栏卡片 + 常驻完整展开**（三次迭代，用户反馈欢迎屏应脱离聊天区、独立成块）——欢迎屏从聊天区**完全独立**出来：
+- 面板作为独立卡片挂在 dashboard 主网格（`.main-grid.dashboard-page`）**左列顶部**（grid 第 1 行第 1 列），与聊天区（`#chatLog` / `#chatLogChat`）完全解耦；洞察面板（`.insight-panel`）在左列第 2 行，聊天面板跨满右列两行。
+- **始终完整展开、不折叠**：无紧凑条、无收起按钮。对话、模式切换都不影响它（用户选择"一直完整展开"）。
+- `chat-sent` 只清提示条 / 发送按钮脉冲；`mode-switched` 只同步记忆栏状态（不重渲染、不切换欢迎屏变体）。
+- 窄屏（≤1120px）主网格单列堆叠：welcome 卡片在洞察 / 聊天上方，按文档流排列（显式 grid 定位复位）。
+- 无持久 localStorage 标记（刷新后重新渲染）。与 7 步引导的一次性状态互补。
 
 ### 4.3 app.js 挂点（最小侵入）
 
-1. **init 尾部**（现 19591 欢迎消息处）：`addMessage(...)` 替换为 `window.CHATBOT_WELCOME?.maybeRender("report")`；19592-19597 的 Chat 区英文消息**删除**（Chat 区欢迎屏由挂点 3 的模式切换驱动，init 时不渲染隐藏态聊天区）
-2. **chatForm submit**（发送处）：`notify("chat-sent")` → 欢迎屏**折叠为紧凑条**（常驻，不删除）、提示条收起
-3. **模式切换**（`[data-mode]` 按钮点击处理处）：`notify("mode-switched")` → 按目标模式确保常驻欢迎屏存在（首次切到该模式展开；已有内容保持当前态）
-4. **报告面板生成完成**（deep window 报告就绪处，如 `_renderPanelReport` 尾部或面板出现轮询）：`notify("report-ready", panelEl)` → 面板顶部提示条（会话内首次显示一次，可关闭）
-5. **`_addMemoryFromPanel` 尾部**（现已有 ONBOARDING_TOUR notify 处，同位置追加）：`notify("memory-added")` → Chat 欢迎屏流程条 ② 打 ✓、提示条收起
-6. **示例 chips 点击**（欢迎屏内部事件委托，不需要 app.js 参与）：填充输入框 → 高亮发送按钮（脉冲类）→ 显示提示条
+1. **init 尾部**（现 19637 欢迎屏渲染处）：`window.CHATBOT_WELCOME?.maybeRender("report", { offers })` → 渲染独立卡片到 dashboard 主网格左列顶部；Chat 区无欢迎屏
+2. **chatForm submit**（发送处，19518）：`notify("chat-sent")` → **只清提示条 / 发送按钮脉冲，不折叠、不删除**（面板常驻完整展开）
+3. **模式切换**（19543/19558）：`notify("mode-switched", { mode, hasMemory })` → **只同步记忆栏状态与最近模式**（面板常驻，不重渲染、不切换欢迎屏变体）
+4. **报告面板生成完成**（`_renderPanelReport` 尾部，10061）：`notify("report-ready", panelEl)` → 面板顶部提示条（会话内首次显示一次，可关闭）——保留不变
+5. **`_addMemoryFromPanel` 尾部**（10544）：`notify("memory-added")` → 同步 `_hasMemory`（Chat 示例空记忆拦截的依据）；无进度条标记
+6. **示例 chips 点击**（欢迎屏内部事件委托，不需要 app.js 参与）：填充输入框 → 高亮发送按钮（脉冲类）→ 显示提示条——不变
 
-### 4.4 渲染组件（纯 DOM 创建，挂载到各自聊天区）
+### 4.4 渲染组件（纯 DOM 创建，独立卡片挂 dashboard 主网格左列顶部）
 
-**Report Mode 欢迎屏**（挂 `#chatLog` 顶部，sticky 常驻）：
-- `.welcome-panel`：欢迎语（头像 + "我是你的运营分析助手" + 能力简介）
+**统一欢迎屏卡片**（`.welcome-panel`，三次迭代起 Report/Chat 合并为同一完整工作台，挂 `.main-grid.dashboard-page` 第 1 行第 1 列）：
+- 欢迎语（头像 + "我是你的运营分析助手" + 能力简介）
 - `.welcome-flow`：三步流程横条（① Report 提问获取数据 → ② 面板最小化拖入记忆栏 → ③ Chat 深度对话分析）
-- `.welcome-cols`：双栏工作台
-  - 左栏 `.welcome-col-left`：「① 先获取数据」+ 4 个示例 chips
-  - 中间箭头 ➜
-  - 右栏 `.welcome-col-right`（紫色描边区）：「③ 再深度分析」+ 3 个示例 chips + 注记「需先拖入记忆栏」
+- `.welcome-cols`：双栏工作台（无中间箭头，适配左栏窄宽）
+  - 左栏 `.welcome-col`：「① 先获取数据」+ 4 个示例 chips
+  - 右栏 `.welcome-col.right`（紫色描边区）：「③ 再深度分析」+ 3 个示例 chips + 注记「必须先拖入记忆栏」
 - 输入框上方 `.welcome-tipbar`（点击示例后浮出，玻璃风格，可关闭）：`📌 发送后，报告生成时可点 ─ 最小化，拖入记忆栏继续深度分析`
 
-**Chat Mode 欢迎屏**（挂 `#chatLogChat` 顶部，sticky 常驻）：
-- `.welcome-memory-hint`：记忆栏虚线占位提示（复用/呼应 `#chatMemoryDropzone` 视觉）
-- `.welcome-flow.progress`：进度追踪流程条（① ✓ ② ✓ ③ 高亮）
-- `.welcome-panel`：「记忆栏已就绪，开始分析吧」+ ③ 分析示例 chips
-- **Chat 示例点击行为**（二分）：
-  - 记忆栏为空（`state.reportMemory` 无数据）→ **不填充输入框**，仅显示提示条「请先拖入报告到记忆栏」（拦截保护，防止无上下文提问）
-  - 记忆栏非空 → 填入输入框 + 发送按钮脉冲（最后一步，不再显示提示条）
+**Chat 示例点击行为**（二分，面板常驻所以始终可点）：
+- 记忆栏为空（`_hasMemory` 为假，由 `mode-switched`/`memory-added` 同步）→ **不填充输入框**，仅显示提示条「请先拖入报告到记忆栏」（拦截保护，防止无上下文提问）
+- 记忆栏非空 → 填入输入框 + 发送按钮脉冲（最后一步，不再显示提示条）
 
 **报告面板提示条**：`notify("report-ready")` 时在面板头部下方插入 `.welcome-tipbar` 同风格提示条（`点 ─ 最小化，拖入记忆栏后可在 Chat Mode 深度分析`，可关闭，会话内首次报告生成显示一次）
 
@@ -130,19 +126,19 @@ dismiss(mode)         // 收起欢迎屏（手动 × 或发送消息后）
 ## 5. 数据流
 
 ```
-加载完成（init 尾部）→ maybeRender("report") → 渲染展开欢迎屏（sticky 常驻聊天区顶部，替代英文欢迎消息）
+加载完成（init 尾部）→ maybeRender("report") → 渲染独立欢迎屏卡片到 dashboard 主网格左列顶部
 点示例 chip → 填入输入框 + 发送按钮脉冲 + 提示条「发送后…最小化…拖入记忆栏」
-  ├─ 发送 → notify("chat-sent") → 欢迎屏折叠为紧凑条（常驻不消失，可点击再展开）
+  ├─ 发送 → notify("chat-sent") → 面板保持完整展开，只清提示条/脉冲（不折叠、不删除）
   ├─ 手动输入 → 无任何提示条（零打扰）
   └─ 关闭提示条 × → 仅该提示条消失
 报告生成 → notify("report-ready") → 面板顶部提示条（会话内首次，可关闭）
-拖入记忆栏 → notify("memory-added") → Chat 欢迎屏 ② 打 ✓（若在 Chat 态）
-切 Chat Mode → notify("mode-switched") → chatLogChat 首次空 → 渲染 Chat 欢迎屏（进度追踪，sticky 常驻）
+拖入记忆栏 → notify("memory-added") → _hasMemory 置真（Chat 示例空记忆拦截依据；无进度条标记）
+切 Chat Mode → notify("mode-switched") → 面板不变（常驻），只同步记忆栏状态与最近模式
   ├─ 记忆栏空 + 点分析示例 → 提示条「请先拖入报告」，不填充输入框
   └─ 记忆栏非空 + 点分析示例 → 填入输入框 + 发送按钮脉冲 → 正常提问（无提示条，最后一步）
 ```
 
-app.js 侵入点汇总：init 欢迎消息替换（1 处）、chatForm submit（1 行）、模式切换处理（1 行）、报告就绪（1 行）、`_addMemoryFromPanel`（1 行）。
+app.js 侵入点汇总：init 渲染（1 处）、chatForm submit（1 行，清提示条）、模式切换（2 行，同步状态）、报告就绪（1 行）、`_addMemoryFromPanel`（1 行）——**均为现有调用，仅引擎内部语义变化，app.js 代码零改动**。
 
 **标准使用步骤（与 onboarding 6 步对齐，2026-08-04 用户确认）**：① Report Mode 提问（直接输入商户名 / 品类名 / Tier / 「xx趋势分析」）→ ② 报告在 Deep Window 浮窗打开 → ③ 点「─」最小化为药丸框 → ④ 切到 Chat Mode（记忆栏出现）→ ⑤ 拖入记忆栏 → ⑥ 基于记忆栏数据对话。**记忆栏是使用数据的必需环节**：Chat Mode 对话依赖记忆栏中的报告上下文，没有报告在记忆栏里 AI 无法正确回答数据问题——欢迎屏 Chat 区示例在记忆栏为空时拦截不填充（见 §4.4）。支付查询 / 推荐排行 / 对比分析非核心流程，不在标准步骤内。
 
@@ -156,21 +152,26 @@ app.js 侵入点汇总：init 欢迎消息替换（1 处）、chatForm submit（
 ## 7. 错误处理
 
 - **offers 数据未就绪**：动态商户名降级为固定示例（Shokz 兜底）
-- **聊天区已有消息**：不再阻止渲染（常驻面板与消息共存，sticky 固定顶部）；`maybeRender` 仅当目标容器**已存在** welcome 内容（展开或折叠条）时跳过，保持当前态
-- **模式反复切换**：按目标模式幂等确保常驻欢迎屏存在，无残留
-- **提示条（tipbar）消失规则**（保证"手动输入零打扰"）：a) 用户发送消息（面板折叠为紧凑条，tipbar 随折叠清空）；b) 用户点 × 关闭；c) **用户手动改动输入框文本**（`input` 事件且值 ≠ 示例最后填充值 → 引擎清除 tipbar 与 `_tipFromExample` 标记）；d) 面板折叠/收起。示例点击设置 `_tipFromExample`，仅此路径触发 tipbar
+- **主网格容器缺失/非 dashboard 页**：`containerFor` 返回 null，`shouldRenderFor` false，不渲染、无副作用
+- **已渲染过**：`maybeRender` 仅当主网格**已存在** welcome 卡片时跳过，保持当前态（面板一经创建即常驻）
+- **模式反复切换**：面板常驻不随模式切换变化，无残留
+- **提示条（tipbar）消失规则**（保证"手动输入零打扰"）：a) 用户发送消息（`chat-sent` 清 tipbar 与脉冲）；b) 用户点 × 关闭；c) **用户手动改动输入框文本**（`input` 事件且值 ≠ 示例最后填充值 → 引擎清除 tipbar 与 `_tipFromExample` 标记）；d) 语言切换重渲染。示例点击设置 `_tipFromExample`，仅此路径触发 tipbar
+- **窄屏**：单列堆叠，欢迎屏卡片在洞察 / 聊天上方（显式 grid 定位复位为文档流）
 - **测试模式**：`window.__OFFER_INTELLIGENCE_TEST__` 为真时 `maybeRender` 不渲染（同 onboarding 约定）
 
 ## 8. 测试（scripts/test_chatbot_welcome.mjs，vm sandbox 范式同 test_onboarding_tour.mjs）
 
 1. WELCOME_EXAMPLES 结构：report 4 个 / chat 3 个、文本非空、dynamic 字段合法
-2. WELCOME_COPY：zh/en 键集一致
+2. WELCOME_COPY：zh/en 键集一致；无折叠条键（barTitle/collapse 已移除）
 3. 动态商户名：有 offers → 替换 `{merchant}`；空 offers → 降级固定示例
-4. 渲染/常驻双态规则：`maybeRender` 目标容器无 welcome 内容 → 渲染展开面板；已有内容（展开或折叠条）→ 保持当前态跳过；聊天区已有消息但仍无 welcome 内容 → 仍渲染（常驻，对话不顶掉）；`chat-sent` → **折叠为紧凑条而非删除**（`collapsed` 状态置真）；折叠条可点击重新展开
-5. 提示条逻辑：点示例 → tipbar 出现；手动输入（无示例点击）→ 无 tipbar；手动改动已填充文本 → tipbar 消失；点 × 关闭后消失；发送后消失（折叠清空）
+4. 独立卡片渲染规则：`shouldRenderFor` 主网格无 welcome → true；已有 welcome → false（保持当前态）；`renderPanel` 后 `isRendered` 为真；mode 参数不区分（同一完整工作台卡片）
+5. 提示条逻辑：点示例 → tipbar 出现；手动改动已填充文本 → tipbar 消失；点 × 关闭后消失
 6. Chat 空记忆栏保护：记忆栏空 + 点分析示例 → 拦截（不填充输入框）+ tipbar「请先拖入报告」；记忆栏非空 + 点示例 → 正常填充 + 脉冲（无 tipbar）
 7. `report-ready` 一次性：同一会话第二次 notify 不再插入面板提示条
-8. 测试模式：`__OFFER_INTELLIGENCE_TEST__` 下 maybeRender 无副作用
+8. `chat-sent` 常驻：发送消息后 tipbar 清空、面板仍完整展开（`isRendered` 保持真，不折叠不删除）
+9. `mode-switched` 只同步状态：`lastMode` 更新、面板不重渲染不切换；语言切换重渲染保持 `_mode`
+10. 测试模式：`__OFFER_INTELLIGENCE_TEST__` 下 maybeRender 无副作用
+11. 监听器防累积：点击监听绑定在每次新建 panel 上，不累积在主网格容器
 
 CI（`.github/workflows/ci.yml` 追加）与 CLAUDE.md 命令节追加：
 ```
