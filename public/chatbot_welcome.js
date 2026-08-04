@@ -108,6 +108,33 @@
     return null;
   }
 
+  // ── 渲染判定与示例交互决策（纯函数）──
+  function containerFor(mode) {
+    if (mode === "chat") return document.getElementById("chatLogChat");
+    if (mode === "report") return document.getElementById("chatLog");
+    return null;
+  }
+  function shouldRenderFor(mode) {
+    var container = containerFor(mode);
+    if (!container) return false;
+    if (container.querySelector(".welcome-panel")) return false;
+    if (container.querySelector(".message")) return false;
+    return true;
+  }
+  // kind: "report" | "chat"（示例所属分区）
+  function tipStateFor(kind, hasMemory) {
+    if (kind === "report") return "report-tip";
+    if (!hasMemory) return "empty-memory";
+    return null;
+  }
+  function fillAllowedFor(kind, hasMemory) {
+    if (kind === "report") return true;
+    return !!hasMemory;
+  }
+  function shouldClearTipOnInput(currentValue, lastFillValue) {
+    return currentValue !== lastFillValue;
+  }
+
   // ── 公共 API 骨架（后续任务填充实现）──
   function maybeRender(mode, opts) {
     if (TEST_MODE) return false;
@@ -126,7 +153,12 @@
       examples: WELCOME_EXAMPLES,
       copy: WELCOME_COPY,
       currentLanguage: currentLanguage,
-      merchantForExample: merchantForExample
+      merchantForExample: merchantForExample,
+      shouldRenderFor: shouldRenderFor,
+      containerFor: containerFor,
+      tipStateFor: tipStateFor,
+      fillAllowedFor: fillAllowedFor,
+      shouldClearTipOnInput: shouldClearTipOnInput
     }
   };
 })();

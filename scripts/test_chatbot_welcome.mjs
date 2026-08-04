@@ -81,3 +81,30 @@ assertEqual(
 
 // ── 用例 4：语言读取 ──
 assertEqual(t.currentLanguage(), "zh", "html lang zh-Hans -> zh");
+
+// ── 用例 5：渲染判定 ──
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; } };
+byIdMap["chatLogChat"] = { ...elementStub, querySelector() { return null; } };
+assertEqual(t.shouldRenderFor("report"), true, "empty chatLog -> should render");
+assertEqual(t.shouldRenderFor("chat"), true, "empty chatLogChat -> should render");
+assertEqual(t.shouldRenderFor("bogus"), false, "unknown mode -> never render");
+byIdMap["chatLog"] = null;
+assertEqual(t.shouldRenderFor("report"), false, "missing chatLog -> no render");
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "welcome-panel" }; } };
+assertEqual(t.shouldRenderFor("report"), false, "welcome already rendered -> no re-render");
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "message" }; } };
+assertEqual(t.shouldRenderFor("report"), false, "chat log has messages -> no render");
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; } };
+
+// ── 用例 6：示例交互决策 ──
+assertEqual(t.tipStateFor("report", false), "report-tip", "report example always shows report tip");
+assertEqual(t.tipStateFor("chat", false), "empty-memory", "chat example without memory -> empty-memory tip");
+assertEqual(t.tipStateFor("chat", true), null, "chat example with memory -> no tip");
+assertEqual(t.fillAllowedFor("report", false), true, "report example always fills");
+assertEqual(t.fillAllowedFor("chat", false), false, "chat example without memory -> blocked");
+assertEqual(t.fillAllowedFor("chat", true), true, "chat example with memory -> fills");
+
+// ── 用例 7：手动输入清除提示 ──
+assertEqual(t.shouldClearTipOnInput("abc", "abc"), false, "unchanged value -> keep tip");
+assertEqual(t.shouldClearTipOnInput("abcX", "abc"), true, "user edited value -> clear tip");
+assertEqual(t.shouldClearTipOnInput("", "abc"), true, "cleared value -> clear tip");
