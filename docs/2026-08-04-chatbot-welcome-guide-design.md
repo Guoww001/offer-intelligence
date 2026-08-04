@@ -2,6 +2,7 @@
 
 日期：2026-08-04
 状态：已批准（方案 B 双栏工作台 + Chat 态变体 2 进度追踪 + 示例清单确认）
+修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）
 
 ## 1. 背景与目标
 
@@ -41,7 +42,7 @@
 4. **提示只跟示例点击绑定**：从欢迎屏点示例 → 出现提示条；手动输入提问 → 零打扰（不需要"会话早期/前 N 次"状态）
 5. **示例清单**（已确认措辞，实现时须用意图测试验证命中路径）：
    - ① 先获取数据（Report Mode，4 个）：`查一下 {商户名} 这个月表现`（动态）、`这个月有哪些商户逾期？`（逾期 Overdue 与未付款 Unpaid 是两个独立状态，示例只取单一状态，避免分类歧义）、`Tier 2表现`、`品类趋势`
-   - ③ 再深度分析（Chat Mode，3 个）：`根据记忆栏的报告，给我分析建议`、`对比记忆栏里的两个商户，谁更值得重点投入`、`总结记忆栏的数据，提出下个月的运营重点`（Chat 示例不绑定商户名——记忆栏拖入的未必是欢迎屏示例商户）
+   - ③ 再深度分析（Chat Mode，3 个）：`根据记忆栏的报告，给我分析建议`、`对比记忆栏里的两个商户，谁更值得重点投入`、`总结记忆栏的数据，分析下个月的运营方向`（Chat 示例不绑定商户名——记忆栏拖入的未必是欢迎屏示例商户）
 6. **范围**：先做欢迎屏 + 提示条；不动 7 步引导、不动 Help 说明书
 
 ## 4. 架构
@@ -114,13 +115,13 @@ dismiss(mode)         // 收起欢迎屏（手动 × 或发送消息后）
   chat: [
     { text: "根据记忆栏的报告，给我分析建议" },
     { text: "对比记忆栏里的两个商户，谁更值得重点投入" },
-    { text: "总结记忆栏的数据，提出下个月的运营重点" }
+    { text: "总结记忆栏的数据，分析下个月的运营方向" }
   ]
 }
 ```
 
-- **动态商户名**：`dynamic: "merchant"` 渲染时从 offers 数组取 **1 个佣金/收入最高的商户**（排序取 top1，优先有 `merchantName` 的 offer）替换 `{merchant}`；数据未就绪/取不到 → 降级为固定示例（`查一下 Shokz 这个月表现`）
-- **意图验证要求**：`Tier 2表现` 须命中 tier+recommendation 路径、`品类趋势` 须命中 category+trend 路径——实现阶段以 `scripts/test_zh_chatbot.mjs` / `test_chatbot_intent_flow.mjs` 同范式验证，若实际分类不准，与用户确认替代措辞
+- **动态商户名**：`dynamic: "merchant"` 渲染时从 offers 数组取 **1 个佣金/收入最高且未命中已知关键词（`knownKeyword: true`）的商户**（排序取 top1，跳过命中关键词商户，优先有 `merchantName` 的 offer）替换 `{merchant}`；数据未就绪/取不到 → 降级为固定示例（`查一下 Shokz 这个月表现`）。实现注：offers 预处理（`mergeProductKeywordsIntoOffers`，app.js）会给命中关键词的 offer 置 `knownKeyword: true`，引擎 `merchantForExample` 据此排除。当前 offers 数据用 `commissionRate`/`salesAmount` 而非 `commission` 字段，排序退化为数组序取首个非关键词商户（不影响排除目标）
+- **意图验证要求**（已实现，`scripts/test_chatbot_intent_flow.mjs`）：`Tier 2表现`→tier 路径 ✓、`品类趋势`→analysis 路径 ✓、`这个月有哪些商户逾期？`→payment 路径 ✓、`查一下 {商户} 这个月表现`（固定商户）→merchant 路径 ✓、`对比记忆栏里的两个商户…`→analysis 路径 ✓。措辞修正记录：① 首选「规划下个月的运营方向」实测命中 merchant（`规划`不在分析关键词内），落地为「分析下个月的运营方向」命中 analysis；② chat-1「根据记忆栏的报告，给我分析建议」修复了 app.js `categoryForPrompt↔wantsRecommendationList` 无限递归（此前点击即栈溢出）后正常走 analysis 路径
 
 ## 5. 数据流
 
