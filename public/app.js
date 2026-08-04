@@ -173,6 +173,7 @@
   const dbMerchantLoading = new Set();
   const dbSearchCache = new Map();
   const dbSearchLoading = new Set();
+  let dashboardCategorySearchOptions = new Map();
   let paymentRecords = visiblePaymentRecords(withPendingPaymentPlaceholders((data.paymentRecords || []).map(normalizePaymentRecord)));
   const paymentRecordsByMerchant = new Map();
   rebuildPaymentIndex();
@@ -190,6 +191,8 @@
     descending: true,
     categoryReportTiers: STANDARD_CATEGORY_REPORT_TIERS.slice(),
     categoryReportSearch: "",
+    categoryReportSearchDraft: "",
+    categoryReportSelection: null,
     categoryReportSort: "revenue",
     categoryReportDirection: "desc",
     categoryReportFocusKey: "",
@@ -370,6 +373,12 @@
     dashboardCategoryReportSubtitle: document.getElementById("dashboardCategoryReportSubtitle"),
     dashboardCategoryReportBody: document.getElementById("dashboardCategoryReportBody"),
     dashboardCategorySearch: document.getElementById("dashboardCategorySearch"),
+    dashboardCategoryOptions: document.getElementById("dashboardCategoryOptions"),
+    dashboardCategorySearchStatus: document.getElementById("dashboardCategorySearchStatus"),
+    categoryStartDate: document.getElementById("categoryStartDate"),
+    categoryEndDate: document.getElementById("categoryEndDate"),
+    categoryDateApply: document.getElementById("categoryDateApply"),
+    categoryDateStatus: document.getElementById("categoryDateStatus"),
     table: document.getElementById("offerRows"),
     tableCount: document.getElementById("tableCount"),
     chatLog: document.getElementById("chatLog"),
@@ -10701,6 +10710,16 @@ var _NUMERIC_COL_PATTERNS = [
     return new Set(normalizeCategoryReportTiers(state.categoryReportTiers));
   }
 
+  function categoryReportDependencyTiers() {
+    const dependencies = new Set();
+    normalizeCategoryReportTiers(state.categoryReportTiers)
+      .filter((tierName) => STANDARD_CATEGORY_REPORT_TIERS.includes(tierName))
+      .forEach((tierName) => {
+        tierReportDependencyTiers(tierName).forEach((dependencyTier) => dependencies.add(dependencyTier));
+      });
+    return Array.from(dependencies);
+  }
+
   function renderDashboardCategoryTierPicker() {
     if (!els.dashboardCategoryTierPicker) return;
     const options = [
@@ -10756,7 +10775,7 @@ var _NUMERIC_COL_PATTERNS = [
     syncDashboardCategoryTierControls();
     state.categoryReportFocusKey = "";
     state.expandedCategoryKey = null;
-    renderDashboardCategoryReport();
+    ensureDashboardCategoryReportData();
   }
 
   function dashboardCategoryReportRows() {
@@ -10766,6 +10785,87 @@ var _NUMERIC_COL_PATTERNS = [
         ? sheet.rows.map((row) => ({ ...row, __tierName: tierName }))
         : [];
     });
+  }
+
+  function dashboardCategorySearchEntries(rows = dashboardCategoryReportRows()) {
+    const categoryEntries = new Map();
+    const merchantEntries = new Map();
+    (rows || []).forEach((row) => {
+      const category = tierRowCategory(row);
+      if (category && !categoryEntries.has(normalize(category))) {
+        categoryEntries.set(normalize(category), {
+          type: "category",
+          value: category,
+          category
+        });
+      }
+      const merchantId = tierRowMerchantId(row);
+      const merchantName = tierRowMerchantName(row);
+      if (!merchantId && !merchantName) return;
+      const merchantKey = merchantId ? `id:${merchantId}` : `name:${normalize(merchantName)}`;
+      if (merchantEntries.has(merchantKey)) return;
+      const label = merchantName || merchantId;
+      merchantEntries.set(merchantKey, {
+        type: "merchant",
+        value: merchantId ? `${label} · ${merchantId}` : `${label} · merchant`,
+        merchantId,
+        merchantName: label
+      });
+    });
+    const byValue = (a, b) => String(a.value).localeCompare(String(b.value), undefined, { numeric: true, sensitivity: "base" });
+    return [
+      ...Array.from(categoryEntries.values()).sort(byValue),
+      ...Array.from(merchantEntries.values()).sort(byValue)
+    ];
+  }
+
+  function refreshDashboardCategorySearchOptions(rows = dashboardCategoryReportRows()) {
+    const entries = dashboardCategorySearchEntries(rows);
+    dashboardCategorySearchOptions = new Map(entries.map((entry) => [normalize(entry.value), entry]));
+    if (els.dashboardCategoryOptions) {
+      els.dashboardCategoryOptions.innerHTML = entries.map((entry) => (
+        `<option value="${escapeHtml(entry.value)}" label="${entry.type === "category" ? "Category" : "Merchant"}"></option>`
+      )).join("");
+    }
+  }
+
+  function setDashboardCategorySearchStatus(message, isError = false) {
+    if (!els.dashboardCategorySearchStatus) return;
+    els.dashboardCategorySearchStatus.textContent = message;
+    els.dashboardCategorySearchStatus.classList.toggle("error", isError);
+  }
+
+  function applyDashboardCategorySelection() {
+    const value = String(els.dashboardCategorySearch?.value || "").trim();
+    state.categoryReportSearchDraft = value;
+    if (!value) {
+      state.categoryReportSelection = null;
+      state.categoryReportSearch = "";
+      state.categoryReportFocusKey = "";
+      state.expandedCategoryKey = null;
+      setDashboardCategorySearchStatus("Showing all categories and merchants.");
+      renderDashboardCategoryReport();
+      return true;
+    }
+    const selection = dashboardCategorySearchOptions.get(normalize(value));
+    if (!selection) {
+      setDashboardCategorySearchStatus("Select a category or merchant from the suggestions.", true);
+      return false;
+    }
+    state.categoryReportSelection = { ...selection };
+    state.categoryReportSearch = selection.type === "category"
+      ? selection.category
+      : (selection.merchantId || selection.merchantName);
+    state.categoryReportSearchDraft = selection.value;
+    state.categoryReportFocusKey = "";
+    state.expandedCategoryKey = null;
+    setDashboardCategorySearchStatus(
+      selection.type === "category"
+        ? `Showing category: ${selection.category}`
+        : `Showing merchant: ${selection.merchantName}`
+    );
+    renderDashboardCategoryReport();
+    return true;
   }
 
   function tierBreakdownText(group) {
@@ -10974,12 +11074,28 @@ var _NUMERIC_COL_PATTERNS = [
     return String(a.category || "").localeCompare(String(b.category || ""), undefined, { numeric: true, sensitivity: "base" });
   }
 
-  function filterDashboardCategoryReportGroups(groups) {
+  function filterDashboardCategoryReportGroups(groups, selection = state.categoryReportSelection) {
+    if (selection && selection.type === "category") {
+      const selectedCategory = categoryReportKey(selection.category);
+      return groups
+        .filter((group) => categoryReportKey(group.category) === selectedCategory)
+        .sort(compareDashboardCategoryReportGroups);
+    }
+    if (selection && selection.type === "merchant") {
+      const merchantId = String(selection.merchantId || "").trim();
+      const merchantName = normalize(selection.merchantName);
+      return groups
+        .filter((group) => (group.rows || []).some((row) => (
+          (merchantId && tierRowMerchantId(row) === merchantId)
+          || (merchantName && normalize(tierRowMerchantName(row)) === merchantName)
+        )))
+        .sort(compareDashboardCategoryReportGroups);
+    }
     const search = normalize(state.categoryReportSearch);
     const filtered = search
       ? groups.filter((group) => {
         const category = normalize(group.category);
-        const merchants = normalize(`${group.previewMerchants || ""} ${group.topMerchant || ""} ${(group.rows || []).slice(0, 24).map((row) => `${tierRowMerchantName(row)} ${tierRowMerchantId(row)}`).join(" ")}`);
+        const merchants = normalize(`${group.previewMerchants || ""} ${group.topMerchant || ""} ${(group.rows || []).map((row) => `${tierRowMerchantName(row)} ${tierRowMerchantId(row)}`).join(" ")}`);
         return category.includes(search) || merchants.includes(search);
       })
       : groups.slice();
@@ -11390,6 +11506,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function renderDashboardCategoryReport() {
     if (!els.dashboardCategoryReportBody) return;
+    els.dashboardCategoryReportBody.setAttribute("aria-busy", "false");
     const rows = dashboardCategoryReportRows();
     const allGroups = tierCategorySummaryRows(null, rows);
     const filteredGroups = filterDashboardCategoryReportGroups(allGroups);
@@ -11407,7 +11524,7 @@ var _NUMERIC_COL_PATTERNS = [
       const tierText = selectedTiers.length ? selectedTiers.join(", ") : "No tiers selected";
       els.dashboardCategoryReportSubtitle.textContent = `${tierText} / ${rows.length.toLocaleString()} rows / ${groups.length.toLocaleString()} of ${allGroups.length.toLocaleString()} categories`;
     }
-    if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearch;
+    if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearchDraft;
     const prevScrollEl = els.dashboardCategoryReportBody.querySelector(".table-wrap");
     const prevTableScroll = prevScrollEl ? prevScrollEl.scrollTop : 0;
     const prevDocScroll = window.scrollY;
@@ -14494,6 +14611,104 @@ var _NUMERIC_COL_PATTERNS = [
     return startDate === endDate ? startDate : `${startDate} – ${endDate}`;
   }
 
+  function renderDashboardCategoryReportPending(message, isError = false) {
+    if (!els.dashboardCategoryReportBody) return;
+    const selectedTiers = normalizeCategoryReportTiers(state.categoryReportTiers).map(categoryReportTierLabel);
+    if (els.dashboardCategoryReportSubtitle) {
+      els.dashboardCategoryReportSubtitle.textContent = `${selectedTiers.join(", ") || "No tiers selected"} / ${tierReportRangeLabel(state.tierReport.startDate, state.tierReport.endDate)}`;
+    }
+    els.dashboardCategoryReportBody.setAttribute("aria-busy", isError ? "false" : "true");
+    els.dashboardCategoryReportBody.innerHTML = `<div class="category-report-state${isError ? " error" : ""}" role="${isError ? "alert" : "status"}">
+      <span class="category-report-state-mark" aria-hidden="true"></span>
+      <div>
+        <h4>${isError ? "Category data could not be loaded" : "Updating category data"}</h4>
+        <p>${escapeHtml(message)}</p>
+      </div>
+    </div>`;
+  }
+
+  function syncDashboardCategoryReportControls() {
+    if (!els.categoryStartDate || !els.categoryEndDate || !els.categoryDateApply || !els.categoryDateStatus) return;
+    const dependencies = categoryReportDependencyTiers();
+    const liveTierCount = normalizeCategoryReportTiers(state.categoryReportTiers)
+      .filter((tierName) => STANDARD_CATEGORY_REPORT_TIERS.includes(tierName)).length;
+    const keys = dependencies.map((tierName) => tierReportKey(tierName));
+    const loading = keys.some((key) => state.tierReport.loadingKeys.has(key));
+    const error = keys.map((key) => state.tierReport.errors.get(key)).find(Boolean) || "";
+    const ready = dependencies.length > 0 && keys.every((key) => state.tierReport.payloads.has(key));
+    els.categoryStartDate.value = state.tierReport.startDate;
+    els.categoryEndDate.value = state.tierReport.endDate;
+    els.categoryStartDate.disabled = !liveTierCount || loading;
+    els.categoryEndDate.disabled = !liveTierCount || loading;
+    els.categoryDateApply.disabled = !liveTierCount || loading;
+    els.categoryDateStatus.classList.toggle("loading", loading);
+    els.categoryDateStatus.classList.toggle("error", Boolean(error));
+    if (!liveTierCount) {
+      els.categoryDateStatus.textContent = "Date range is available for Tier 1–4.";
+    } else if (loading) {
+      els.categoryDateStatus.textContent = "Loading selected tiers from YeahPromos DB…";
+    } else if (error) {
+      els.categoryDateStatus.textContent = `${error} Apply again to retry.`;
+    } else if (ready) {
+      els.categoryDateStatus.textContent = `${tierReportRangeLabel(state.tierReport.startDate, state.tierReport.endDate)} · YeahPromos DB`;
+    } else {
+      els.categoryDateStatus.textContent = "Choose one date or an inclusive range.";
+    }
+  }
+
+  function ensureDashboardCategoryReportData({ retry = false } = {}) {
+    const dependencies = categoryReportDependencyTiers();
+    if (retry) dependencies.forEach((tierName) => state.tierReport.errors.delete(tierReportKey(tierName)));
+    if (!dependencies.length) {
+      refreshDashboardCategorySearchOptions();
+      renderDashboardCategoryReport();
+      syncDashboardCategoryReportControls();
+      return;
+    }
+    const missing = dependencies.filter((tierName) => !state.tierReport.payloads.has(tierReportKey(tierName)));
+    if (missing.length) {
+      const failedTier = missing.find((tierName) => state.tierReport.errors.has(tierReportKey(tierName)));
+      const error = failedTier ? state.tierReport.errors.get(tierReportKey(failedTier)) : "";
+      renderDashboardCategoryReportPending(
+        error
+          ? `Could not load ${categoryReportTierLabel(failedTier)}: ${error}`
+          : `Loading ${missing.map(categoryReportTierLabel).join(", ")} for the selected date range…`,
+        Boolean(error)
+      );
+      missing.forEach((tierName) => {
+        const key = tierReportKey(tierName);
+        if (!state.tierReport.loadingKeys.has(key) && !state.tierReport.errors.has(key)) {
+          loadTierReport(tierName, state.tierReport.startDate, state.tierReport.endDate);
+        }
+      });
+      syncDashboardCategoryReportControls();
+      return;
+    }
+    dependencies.forEach((tierName) => {
+      const key = tierReportKey(tierName);
+      activateTierReportPayload(tierName, key, state.tierReport.payloads.get(key));
+    });
+    refreshDashboardCategorySearchOptions();
+    renderDashboardCategoryReport();
+    syncDashboardCategoryReportControls();
+  }
+
+  function applyCategoryReportDateRange() {
+    const range = tierReportRange(els.categoryStartDate.value, els.categoryEndDate.value);
+    if (!range.ok) {
+      els.categoryDateStatus.textContent = range.error;
+      els.categoryDateStatus.classList.add("error");
+      return;
+    }
+    state.tierReport.startDate = range.startDate;
+    state.tierReport.endDate = range.endDate;
+    state.categoryReportFocusKey = "";
+    state.expandedCategoryKey = null;
+    els.categoryStartDate.value = range.startDate;
+    els.categoryEndDate.value = range.endDate;
+    ensureDashboardCategoryReportData({ retry: true });
+  }
+
   function cacheOriginalTierSheetRowsForTier(tierName, rows) {
     Array.from(originalTierSheetRowIndex.entries()).forEach(([key, value]) => {
       if (value && value.sourceTier === tierName) originalTierSheetRowIndex.delete(key);
@@ -14565,6 +14780,13 @@ var _NUMERIC_COL_PATTERNS = [
         && tierReportDependencyTiers(selectedTier).includes(tierName)
       ) {
         renderTierPage(selectedTier);
+      }
+      if (
+        state.page === "category"
+        && key === tierReportKey(tierName)
+        && categoryReportDependencyTiers().includes(tierName)
+      ) {
+        ensureDashboardCategoryReportData();
       }
     }
   }
@@ -18626,7 +18848,7 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublishersPage();
     }
     if (isSheets) renderSheetPage();
-    if (isCategory) renderDashboardCategoryReport();
+    if (isCategory) ensureDashboardCategoryReportData();
     if (isTier) renderTierPage(state.selectedTierPage);
     if (isMonthlyNewMerchants) {
       renderMonthlyNewMerchantsPage();
@@ -18655,6 +18877,7 @@ var _NUMERIC_COL_PATTERNS = [
     setDatasetStamp();
     setPaymentStamp("saved", isoDate(PAYMENT_TODAY));
     renderDashboardCategoryTierPicker();
+    syncDashboardCategoryReportControls();
     updateReportsNavState();
     updatePageModeClass();
     syncMobileNavigationMode();
@@ -18737,10 +18960,25 @@ var _NUMERIC_COL_PATTERNS = [
       }
     });
     els.dashboardCategorySearch.addEventListener("input", () => {
-      state.categoryReportSearch = els.dashboardCategorySearch.value;
-      state.categoryReportFocusKey = "";
-      state.expandedCategoryKey = null;
-      renderDashboardCategoryReport();
+      state.categoryReportSearchDraft = els.dashboardCategorySearch.value;
+      setDashboardCategorySearchStatus(
+        state.categoryReportSearchDraft
+          ? "Choose a suggestion or press Enter to update the report."
+          : "Clear the field and press Enter to show all categories."
+      );
+    });
+    els.dashboardCategorySearch.addEventListener("change", applyDashboardCategorySelection);
+    els.dashboardCategorySearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyDashboardCategorySelection();
+      }
+    });
+    els.categoryDateApply.addEventListener("click", applyCategoryReportDateRange);
+    [els.categoryStartDate, els.categoryEndDate].forEach((input) => {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") applyCategoryReportDateRange();
+      });
     });
     els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategoryReportClick);
     els.dashboardCategoryReportBody.addEventListener("keydown", handleDashboardCategoryReportKeydown);
@@ -19512,6 +19750,9 @@ var _NUMERIC_COL_PATTERNS = [
       dashboardCategoryGroups,
       dashboardCategoryFocusedGroups,
       dashboardCategoryPieHtml,
+      dashboardCategorySearchEntries,
+      filterDashboardCategoryReportGroups,
+      categoryReportDependencyTiers,
       setCategoryReportFocusKey: (key) => { state.categoryReportFocusKey = String(key || ""); },
       categoryReportFocusKey: () => state.categoryReportFocusKey,
       tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName)),

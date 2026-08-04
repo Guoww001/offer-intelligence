@@ -882,10 +882,22 @@
               <div class="dashboard-category-tier-picker" id="dashboardCategoryTierPicker" aria-label="Category report tier selection"></div>
             </div>
             <div class="dashboard-category-controls" aria-label="Category report controls">
-              <label>
-                <span>Category</span>
-                <input id="dashboardCategorySearch" type="search" placeholder="Search category or merchant" />
+              <label class="dashboard-category-search-field">
+                <span>Category / merchant</span>
+                <input id="dashboardCategorySearch" type="search" list="dashboardCategoryOptions" placeholder="Select category or merchant" autocomplete="off" />
+                <datalist id="dashboardCategoryOptions"></datalist>
+                <small class="dashboard-category-search-status" id="dashboardCategorySearchStatus" aria-live="polite">Choose a suggestion to update the report.</small>
               </label>
+              <div class="tier-date-range-field dashboard-category-date-field">
+                <span>Date / range</span>
+                <div class="tier-date-range-controls">
+                  <input id="categoryStartDate" type="date" aria-label="Category report start date" />
+                  <span class="tier-date-range-separator" aria-hidden="true">–</span>
+                  <input id="categoryEndDate" type="date" aria-label="Category report end date" />
+                  <button class="secondary-button tier-date-apply" id="categoryDateApply" type="button">Apply</button>
+                </div>
+                <small class="tier-date-status" id="categoryDateStatus" aria-live="polite"></small>
+              </div>
             </div>
             <div id="dashboardCategoryReportBody"></div>
           </section>
