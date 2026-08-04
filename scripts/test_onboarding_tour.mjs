@@ -75,15 +75,16 @@ assertEqual(t.steps[0].id, "intro", "step0 should be the layout intro");
 assertEqual(t.steps[0].autoNext, undefined, "intro step should have no autoNext (manual next)");
 assertEqual(t.steps[1].autoFillFocus, '#chatForm button[type="submit"]', "report-ask should focus send button after autofill");
 assertEqual(t.steps[1].autoNext, "sent", "report-ask should autoNext on sent");
-assertEqual(t.steps[3].autoNext, "minimized", "minimize step should autoNext on minimized");
+// Step3（最小化）：不自动推进（手动「下一步」），点击最小化仅触发高光转移展示药丸效果
+assertEqual(t.steps[3].autoNext, undefined, "minimize step should NOT autoNext (manual next)");
+assertEqual(t.steps[3].focusOn, "minimized", "minimize step should focus pill on minimized event");
 assertEqual(t.steps[3].autoNextFocus, ".deep-window.minimized", "minimize step should focus pill after minimize");
-assertEqual(typeof t.steps[3].autoNextDelay, "number", "minimize step should have autoNextDelay to show pill effect");
 assertEqual(t.steps[4].autoNext, "switched", "switch-chat should autoNext on switched");
 assertEqual(t.steps[6].autoFillFocus, '#chatForm button[type="submit"]', "chat-ask should focus send button after autofill");
 assertEqual(t.steps[6].autoNext, "sent", "chat-ask should autoNext on sent (auto-finish)");
 assertEqual(typeof t.steps[2].target, "function", "deep-window target should be a dynamic function (wait for report done)");
 assertEqual(t.steps[5].autoNext, "memory-added", "drag-memory step should autoNext on memory-added");
-assertEqual(t.steps.filter((s) => s.autoNext).length, 5, "5 steps should have autoNext (sent/minimized/switched/memory-added/sent)");
+assertEqual(t.steps.filter((s) => s.autoNext).length, 4, "4 steps should have autoNext (sent/switched/memory-added/sent)");
 assertEqual(t.steps[6].final, true, "chat-ask step should be final");
 assertEqual(t.steps.filter((s) => s.final).length, 1, "only chat-ask should be final");
 assertEqual(typeof t.steps[5].target, "function", "drag-memory target should be a dynamic function");
@@ -143,7 +144,7 @@ assertEqual(t.isFinalStep(5), false, "index 5 should not be final");
 assertEqual(t.isAutoNextStep(0, "sent"), false, "intro step should not autoNext on sent");
 assertEqual(t.isAutoNextStep(1, "sent"), true, "report-ask should autoNext on sent");
 assertEqual(t.isAutoNextStep(1, "other"), false, "report-ask should not autoNext on other events");
-assertEqual(t.isAutoNextStep(3, "minimized"), true, "minimize step should autoNext on minimized");
+assertEqual(t.isAutoNextStep(3, "minimized"), false, "minimize step should NOT autoNext (manual next)");
 assertEqual(t.isAutoNextStep(4, "switched"), true, "switch-chat should autoNext on switched");
 assertEqual(t.isAutoNextStep(5, "memory-added"), true, "drag-memory should autoNext on memory-added");
 assertEqual(t.isAutoNextStep(5, "other"), false, "drag-memory should not autoNext on other events");
@@ -213,11 +214,13 @@ tour.notify("sent");
 assertEqual(t.currentStepIndex(), 2, "notify sent should auto-advance from report-ask");
 tour.advance();
 assertEqual(t.currentStepIndex(), 3, "manual advance should reach minimize step");
-// 10b：点最小化（minimized）→ 先展示药丸框效果，延迟后才推进
+// 10b：点最小化（minimized）→ 仅高光转移到药丸框展示效果，不自动推进（手动「下一步」）
 tour.notify("minimized");
-assertEqual(t.currentStepIndex(), 3, "minimized autoNext should delay (show pill effect first)");
+assertEqual(t.currentStepIndex(), 3, "minimized should NOT auto-advance (manual next)");
+tour.advance();
+assertEqual(t.currentStepIndex(), 4, "manual advance should reach switch-chat");
 tour.stopTour();
-assertEqual(tour.isActive(), false, "stopTour should cancel pending autoNext delay");
+assertEqual(tour.isActive(), false, "stopTour should clean up follow timer");
 // 10c：切 Chat Mode（switched）→ 立即推进
 tour.startTour();
 tour.advance(); // 1

@@ -66,14 +66,14 @@ isActive()             // 引导进行中？
 | 1 | intro | `#chatModeToggle`（模式切换入口） | **整体布局 + chatbot 应用场景介绍**（顶部 Report/Chat Mode 分工、聊天区输入商户/品类、浮窗报告可最小化拖入记忆栏）；无 autoNext，保留「下一步」 | block |
 | 2 | report-ask | `#chatInput` → 填示例后**高光转移到发送按钮**（`autoFillFocus: '#chatForm button[type="submit"]'`） | 「帮我填入示例」→ 填 `Shokz` → 高光引导点击「发送」发起查询；`autoNext: "sent"`（chatForm submit）自动推进 | block |
 | 3 | deep-window | **最后一个** `.deep-window:not(.generating)`（动态函数返回元素；`appear: true`，等报告完成 ≤15s） | 报告生成期间最小化按钮被 CSS 隐藏（`.generating .deep-window-minimize` 为 none）且 `_minimizeDeepPanel` 拒绝 loading 态，必须等报告完成才能进下一步。**取最后一个（最新创建）面板**：重播/二次使用时旧面板仍在页面，否则高光会落在被置顶新面板盖住的旧面板上 | block |
-| 4 | minimize-window | **最后一个面板的** `.deep-window-minimize`（动态函数返回元素） | 点击浮窗头部「─」，把浮窗最小化成药丸小框；`autoNext: "minimized"` + `autoNextFocus: ".deep-window.minimized"`（高光先转移到药丸框展示效果）+ `autoNextDelay: 2200`（展示后延迟推进）。**取最后一个面板的最小化按钮**：重播时旧面板可能已是最小化 pill（按钮被 CSS 隐藏 rect 为 0），querySelector 匹配第一个会高光不可见。高光转移三重保障：优先 `_pendingPillEl`（用户点击最小化的面板元素，click 委托记录）直接定位 + 150ms 轮询兜底（上限 20 次）+ MutationObserver 观察浮窗 `minimized` 类精确捕捉；命中后连续 2 次延迟重定位（等 pill width/height auto 收缩稳定）；**推进前最后一帧重定位**，确保高光位置正确后再切走 | block |
+| 4 | minimize-window | **最后一个面板的** `.deep-window-minimize`（动态函数返回元素） | 点击浮窗头部「─」，把浮窗最小化成药丸小框；`focusOn: "minimized"` + `autoNextFocus: ".deep-window.minimized"`——高光从点击瞬间起**每 80ms 高频跟随**（动画中 transform 移动不触发 ResizeObserver，高光圈贴着 pill 飞行不丢失），动画结束 rect 收敛到最终位置后再跟 10 次（800ms）确保稳定后停止。**不自动推进**——用户看效果后手动点「下一步」。**取最后一个面板的最小化按钮**：重播时旧面板可能已是最小化 pill（按钮被 CSS 隐藏 rect 为 0），querySelector 匹配第一个会高光不可见。定位直接使用 `_pendingPillEl`（click 委托记录的用户点击最小化的面板元素） | block |
 | 5 | switch-chat | `[data-mode="fast"]` | 点击切换到 Chat Mode，记忆栏出现；`autoNext: "switched"`（Chat Mode 按钮点击）自动推进 | block |
 | 6 | drag-memory | 动态解析（见下） | 高亮最小化后的药丸框 + 记忆栏投放区脉冲动画（`.onboarding-dropzone-hint`）+ 投放区上方**独立浮动提示条**（`.onboarding-dropzone-tip`，贴近投放区防被气泡遮挡）；用户亲手拖入记忆栏；`autoNext: "memory-added"` 自动推进。**气泡固定视口底部中央**（`popover: "bottom-center"`），避免盖住聊天区顶部的投放区 | **pass** |
 | 7 | chat-ask | `#chatInput` → 填示例后高光转移到发送按钮 | 「帮我填入示例」→ 填 `根据刚才的报告，给我分析建议`（英文模式 `autoFillEn: "Based on the report, give me some analysis suggestions"`）→ 点发送；`autoNext: "sent"` **自动结束**引导；`final: true` | block |
 
-每步配置字段：`{ id, target, copyKey, appear?, autoFill?, autoFillEn?, autoFillFocus?, autoNext?, autoNextFocus?, autoNextDelay?, popover?, mask: "block"|"pass", final? }`，其中 `target` 可为**字符串选择器、返回选择器的函数或返回元素的函数**（每步渲染前解析，支持动态目标；元素返回值由 `resolveTarget` 直接使用）；`autoFillEn` 是英文模式下「帮我填入示例」的文案（如第 7 步英文提问示例，`autoFillFor(step)` 按语言取用）；`autoFillFocus` 表示用户点击「帮我填入示例」后高光转移到的元素选择器（步骤内重定位，advance/goBack 时清空）；`autoNext` 事件由引擎模块级委托监听后 notify 触发——`sent`（`#chatForm` submit，含点按钮与回车）、`minimized`（`.deep-window-minimize` 点击，委托同时把被点击面板记录为 `_pendingPillEl`）、`switched`（`[data-mode="fast"]` 点击）、`memory-added`（app.js `_addMemoryFromPanel` 尾部 notify）；`autoNextFocus` 事件触发后高光先转移到该选择器（最小化后 pill 有 250ms 动画，引擎 `_pendingPillEl` 直接定位 + 轮询 + MutationObserver 三重保障），`autoNextDelay` 展示效果停留 ms 数后再自动推进（推进前最后一帧重定位）；`popover: "bottom-center"` 把气泡固定到视口底部中央（第 6 步防遮挡投放区）。
+每步配置字段：`{ id, target, copyKey, appear?, autoFill?, autoFillEn?, autoFillFocus?, autoNext?, focusOn?, autoNextFocus?, autoNextDelay?, popover?, mask: "block"|"pass", final? }`，其中 `target` 可为**字符串选择器、返回选择器的函数或返回元素的函数**（每步渲染前解析，支持动态目标；元素返回值由 `resolveTarget` 直接使用）；`autoFillEn` 是英文模式下「帮我填入示例」的文案（如第 7 步英文提问示例，`autoFillFor(step)` 按语言取用）；`autoFillFocus` 表示用户点击「帮我填入示例」后高光转移到的元素选择器（步骤内重定位，advance/goBack 时清空）；`autoNext` 事件由引擎模块级委托监听后 notify 触发并**自动推进**——`sent`（`#chatForm` submit，含点按钮与回车）、`switched`（`[data-mode="fast"]` 点击）、`memory-added`（app.js `_addMemoryFromPanel` 尾部 notify）；`focusOn` 事件只触发 `autoNextFocus` 高光转移**不自动推进**（如第 4 步最小化：`focusOn: "minimized"`，点击 `.deep-window-minimize` 时委托同时把被点击面板记录为 `_pendingPillEl`，高光 80ms 高频跟随动画中的 pill，动画结束收敛后停止）；`autoNextDelay` 展示效果停留 ms 数后再自动推进（当前无步骤使用）；`popover: "bottom-center"` 把气泡固定到视口底部中央（第 6 步防遮挡投放区）。
 
-**按钮规则**：autoNext 步骤不渲染可点击的主按钮（next/finish）——点击目标即自动推进或结束；主按钮位置渲染**置灰的「下一步」动作提示**（如「点击「发送」按钮继续」，`.onboarding-btn-hint` disabled），引导操作并防新用户误点「跳过」；仅保留 prev/skip 可点击。无 autoNext 的步骤（第 1 步布局介绍、第 3 步等报告）保留「下一步」。
+**按钮规则**：autoNext 步骤不渲染可点击的主按钮（next/finish）——点击目标即自动推进或结束；主按钮位置渲染**置灰的「下一步」动作提示**（如「点击「发送」按钮继续」，`.onboarding-btn-hint` disabled），引导操作并防新用户误点「跳过」；仅保留 prev/skip 可点击。无 autoNext 的步骤（第 1 步布局介绍、第 3 步等报告、第 4 步最小化）保留「下一步」。
 
 **关键交互细节**：
 - 第 6 步 `mask:"pass"`（遮罩 pointer-events 穿透），否则遮罩会拦截用户拖拽药丸框头部的 mousedown
@@ -85,7 +85,7 @@ isActive()             // 引导进行中？
 
 ```
 首次进入 → init 后延迟 ~800ms → shouldShowTour() 为真 → startTour()
-步骤推进 → 气泡按钮手动（第 1/3 步有「下一步」）+ 自动事件推进：第 2 步点发送 → sent、第 4 步点最小化 → minimized（高光转药丸框展示后延迟推进）、第 5 步点 Chat Mode → switched、第 6 步拖入记忆栏 → memory-added、第 7 步点发送 → 自动结束
+步骤推进 → 气泡按钮手动（第 1/3/4 步有「下一步」）+ 自动事件推进：第 2 步点发送 → sent、第 5 步点 Chat Mode → switched、第 6 步拖入记忆栏 → memory-added、第 7 步点发送 → 自动结束；第 4 步点最小化 → 仅高光跟随药丸框展示效果（不自动推进），看过后点「下一步」
 完成/跳过 → markCompleted() → 后续不再自动弹
 重播     → 页面顶栏「🎓 新手引导」按钮 → startTour()（不检查已完成）
 ```
@@ -110,7 +110,7 @@ app.js 侵入点：`_addMemoryFromPanel` 尾部加 `if (window.ONBOARDING_TOUR) 
 
 ## 8. 测试（scripts/test_onboarding_tour.mjs，vm sandbox 范式同 test_commission_all_aff.mjs）
 
-1. TOUR_STEPS 结构完整性：7 步、id 唯一、target/copyKey 非空、mask 值 ∈ {block, pass}、第 2/4/5/6/7 步各有 autoNext（sent/minimized/switched/memory-added/sent）、第 4 步含 autoNextFocus + autoNextDelay、第 3/6 步 target 为函数、第 2/7 步含 `autoFillFocus`、第 7 步含 `autoFillEn`
+1. TOUR_STEPS 结构完整性：7 步、id 唯一、target/copyKey 非空、mask 值 ∈ {block, pass}、第 2/5/6/7 步各有 autoNext（sent/switched/memory-added/sent）、第 4 步含 `focusOn: "minimized"` + autoNextFocus（**无 autoNext**，手动「下一步」）、第 3/6 步 target 为函数、第 2/7 步含 `autoFillFocus`、第 7 步含 `autoFillEn`
 2. TOUR_COPY：zh/en 键集一致（含全部步骤文案键）
 3. 状态逻辑：`shouldShowTour()`（localStorage 空 → true；已标记 → false）、`markCompleted()` 写入、`resetCompleted()` 清除
 4. 推进逻辑：`next()/prev()` 边界（首步无 prev、末步走 complete）、`notify("memory-added")` 仅在步骤 4 触发推进、跳过后 `markCompleted`

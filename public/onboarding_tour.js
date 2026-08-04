@@ -134,10 +134,10 @@
       },
       copyKey: "step3",
       mask: "block",
-      // 点击最小化按钮后：高光先转移到药丸框展示最小化效果，再延迟自动进入下一步
-      autoNext: "minimized",
-      autoNextFocus: ".deep-window.minimized",
-      autoNextDelay: 2200
+      // 点击最小化按钮后：高光从动画开始高频跟随并停在药丸框展示最小化效果。
+      // 不自动推进——用户看效果后手动点「下一步」进入下一步
+      focusOn: "minimized",
+      autoNextFocus: ".deep-window.minimized"
     },
     {
       id: "switch-chat",
@@ -559,53 +559,42 @@
   }
   function notify(eventName) {
     if (!_active) return;
-    if (!isAutoNextStep(_stepIndex, eventName)) return;
     var step = TOUR_STEPS[_stepIndex];
-    // autoNextFocus：事件触发后先把高光转移到指定目标（如最小化后的药丸框）。
-    // 目标可能仍在动画中（pill 需 250ms 才 settle，transitionend 不稳时最晚 800ms
-    // fallback 加 minimized 类），轮询补定位直到出现；命中后连续重定位几次，
-    // 等 pill 的 width/height auto 收缩稳定，确保高光圈尺寸正确。
-    // 定位优先使用 _pendingPillEl（用户点击最小化的那个面板）——比全局
-    // querySelector 精确，多个面板/多个 pill 时不会把高光指到别的面板上。
-    if (step.autoNextFocus) {
+    if (!step) return;
+    var isAutoNext = isAutoNextStep(_stepIndex, eventName);
+    var isFocusEvent = step.focusOn === eventName;
+    if (!isAutoNext && !isFocusEvent) return;
+    // focusOn + autoNextFocus：事件触发后高光转移到指定目标（如最小化后的药丸框）。
+    // 最小化动画期间 transform 移动不触发 ResizeObserver，且 pill 需 250ms~800ms
+    // 才 settle（加 minimized 类）——因此从点击瞬间起每 80ms 高频跟随重定位：
+    // 动画中高光圈贴着 pill 飞行（位置永不丢失），动画结束 rect 收敛到最终位置后
+    // 再跟若干次确保稳定，然后停止。定位直接使用 _pendingPillEl（用户点击最小化的
+    // 那个面板）——比全局 querySelector 精确，多个面板/多个 pill 不会指错目标。
+    if (isFocusEvent && step.autoNextFocus) {
       _focusSelector = step.autoNextFocus;
       _retargetToPill();
-      var tries = 0;
-      (function pollFocus() {
+      var followCount = 0;
+      var totalFollow = 0;
+      (function followPill() {
         if (!_active) return;
+        if (totalFollow++ >= 40) return; // 3.2s 兜底，防无限循环
         var el = _pendingPillEl;
-        if (el && !(el.classList && el.classList.contains("minimized"))) el = null;
-        if (!el) {
-          try { el = document.querySelector(_focusSelector); } catch (e) {}
-        }
-        if (el && el.classList && el.classList.contains("minimized")) {
+        if (el) {
           _retargetTo(el);
-          var settleCount = 0;
-          (function settleRetarget() {
-            if (!_active || settleCount++ >= 2) return;
-            _retargetTo(el);
-            _focusTimer = setTimeout(settleRetarget, 130);
-          })();
-          return;
+          if (el.classList && el.classList.contains("minimized") && followCount++ >= 10) return;
         }
-        if (tries++ < 20) _focusTimer = setTimeout(pollFocus, 150);
+        _focusTimer = setTimeout(followPill, 80);
       })();
     }
-    // autoNextDelay：展示效果（如药丸框高光）停留一段时间后再推进；
-    // 期间用户回退/停止则丢弃（_stepIndex 校验 + timer 清理）。
-    // 推进前最后一帧重定位药丸高光——确保高光位置正确后再切走。
     if (step.autoNextDelay) {
       var idx = _stepIndex;
       _autoNextTimer = setTimeout(function () {
         _autoNextTimer = null;
-        if (!_active || _stepIndex !== idx) return;
-        var pill = _pendingPillEl;
-        if (pill && pill.classList && pill.classList.contains("minimized")) _retargetTo(pill);
-        advance();
+        if (_active && _stepIndex === idx) advance();
       }, step.autoNextDelay);
       return;
     }
-    advance();
+    if (isAutoNext) advance();
   }
 
   function _clearTimers() {
