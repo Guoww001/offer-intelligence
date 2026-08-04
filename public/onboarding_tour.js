@@ -16,15 +16,17 @@
       welcomeTitle: "👋 欢迎使用 YeahPromos 助手",
       step1Title: "第 1 步：在 Report Mode 提问",
       step1Body: "在输入框输入商户名 / Merchant ID / ASIN 或品类，就能获取后台数据分析报告。填好后点击右侧「发送」按钮发起查询。试试看：",
-      step2Title: "第 2 步：认识分析浮窗",
-      step2Body: "分析报告在浮窗中打开。浮窗可以随意拖动，也能最小化，还支持一键导出 Excel。",
-      step3Title: "第 3 步：切换到 Chat Mode",
-      step3Body: "点击上方「Chat Mode」按钮，聊天区上方会出现记忆栏——这是把数据带进对话的入口。",
-      step4Title: "第 4 步：把数据拖入记忆栏",
-      step4Body: "先点击浮窗头部的「─」把它最小化，再把最小化后的面板拖入记忆栏，报告就会成为聊天上下文。",
-      step4NeedSwitchBody: "记忆栏只在 Chat Mode 显示，请先点击上方「Chat Mode」按钮切换。",
-      step5Title: "第 5 步：与 Chat Mode 对话",
-      step5Body: "记忆栏里已经有刚才的报告了，现在可以自由提问。填好后点击「发送」按钮。试试：",
+      step2Title: "第 2 步：等待分析报告",
+      step2Body: "报告在浮窗中打开。浮窗可以随意拖动，也能最小化，还支持一键导出 Excel。",
+      step3Title: "第 3 步：点击最小化",
+      step3Body: "点击浮窗头部的「─」按钮，把浮窗最小化成一个药丸小框——只有最小化后的浮窗才能拖入记忆栏。",
+      step4Title: "第 4 步：切换到 Chat Mode",
+      step4Body: "点击上方「Chat Mode」按钮，聊天区上方会出现记忆栏——这是把数据带进对话的入口。",
+      step5Title: "第 5 步：拖入记忆栏",
+      step5Body: "把最小化后的药丸框拖入记忆栏（上下文区域），报告就会成为聊天上下文。",
+      step5NeedSwitchBody: "记忆栏只在 Chat Mode 显示，请先点击上方「Chat Mode」按钮切换。",
+      step6Title: "第 6 步：与 Chat Mode 对话",
+      step6Body: "记忆栏里已经有刚才的报告了，现在可以自由提问。填好后点击「发送」按钮。试试：",
       completeTitle: "🎉 完成！",
       completeBody: "你已经掌握了核心用法：Report Mode 获取数据 → 拖入记忆栏 → Chat Mode 对话。随时点击 Help 可重播本引导。",
       fillExample: "帮我填入示例",
@@ -39,15 +41,17 @@
       welcomeTitle: "👋 Welcome to the YeahPromos Assistant",
       step1Title: "Step 1: Ask in Report Mode",
       step1Body: "Type a merchant name / ID / ASIN or category to get a data analysis report. Click the Send button on the right to submit. Try it:",
-      step2Title: "Step 2: Meet the report window",
+      step2Title: "Step 2: Wait for the report",
       step2Body: "Reports open in a floating window you can drag around, minimize, or export to Excel.",
-      step3Title: "Step 3: Switch to Chat Mode",
-      step3Body: "Click the Chat Mode button above; a memory bar appears above the chat area — the way to bring data into the conversation.",
-      step4Title: "Step 4: Drag data into the memory bar",
-      step4Body: "Minimize the panel with the “–” button, then drag the minimized panel into the memory bar — the report becomes chat context.",
-      step4NeedSwitchBody: "The memory bar only shows in Chat Mode — click the Chat Mode button above first.",
-      step5Title: "Step 5: Chat with context",
-      step5Body: "The report is now in your memory bar. Ask freely. Click Send to submit. Try:",
+      step3Title: "Step 3: Minimize the window",
+      step3Body: "Click the “–” button in the window header to shrink it into a pill — only minimized panels can be dragged into the memory bar.",
+      step4Title: "Step 4: Switch to Chat Mode",
+      step4Body: "Click the Chat Mode button above; a memory bar appears above the chat area — the way to bring data into the conversation.",
+      step5Title: "Step 5: Drag into the memory bar",
+      step5Body: "Drag the minimized pill into the memory bar (the context area) — the report becomes chat context.",
+      step5NeedSwitchBody: "The memory bar only shows in Chat Mode — click the Chat Mode button above first.",
+      step6Title: "Step 6: Chat with context",
+      step6Body: "The report is now in your memory bar. Ask freely. Click Send to submit. Try:",
       completeTitle: "🎉 Done!",
       completeBody: "You've learned the core flow: get data in Report Mode → drag into memory → chat in Chat Mode. Click Help anytime to replay this guide.",
       fillExample: "Fill example for me",
@@ -67,19 +71,31 @@
       target: "#chatInput",
       copyKey: "step1",
       mask: "block",
-      autoFill: "Shokz"
+      autoFill: "Shokz",
+      // 用户点击「帮我填入示例」后，高光从输入框转移到发送按钮，引导点击发送
+      autoFillFocus: '#chatForm button[type="submit"]'
     },
     {
       id: "deep-window",
-      target: ".deep-window",
+      target: function () {
+        // 等待报告完成（generating 移除）后的浮窗——生成期间最小化按钮被 CSS 隐藏，
+        // 且 _minimizeDeepPanel 拒绝 loading 态，必须等报告就绪才能进入下一步
+        try { return document.querySelector(".deep-window:not(.generating)") ? ".deep-window:not(.generating)" : null; } catch (e) { return null; }
+      },
       copyKey: "step2",
       mask: "block",
       appear: true
     },
     {
+      id: "minimize-window",
+      target: ".deep-window .deep-window-minimize",
+      copyKey: "step3",
+      mask: "block"
+    },
+    {
       id: "switch-chat",
       target: '[data-mode="fast"]',
-      copyKey: "step3",
+      copyKey: "step4",
       mask: "block"
     },
     {
@@ -87,17 +103,18 @@
       target: function () {
         var bar = null;
         try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
-        if (bar && !bar.classList.contains("hidden")) return "#chatMemoryBar";
+        // 记忆栏可见 → 高亮最小化后的药丸框，引导拖入上下文区域；否则回退切换按钮
+        if (bar && !bar.classList.contains("hidden")) return ".deep-window.minimized";
         return '[data-mode="fast"]';
       },
-      copyKey: "step4",
+      copyKey: "step5",
       mask: "pass",
       autoNext: "memory-added"
     },
     {
       id: "chat-ask",
       target: "#chatInput",
-      copyKey: "step5",
+      copyKey: "step6",
       mask: "block",
       autoFill: "根据刚才的报告，给我分析建议",
       final: true
@@ -115,6 +132,7 @@
   var _locateTimer = null;
   var _autoStartTimer = null;
   var _bodyKeyOverride = null;
+  var _focusSelector = null; // 步骤内高光转移（如填入示例后指向发送按钮）
 
   // ── 语言 ──
   function currentLanguage() {
@@ -146,7 +164,7 @@
 
   // ── 纯逻辑（可测试）──
   function resolveTarget(step) {
-    var selector = typeof step.target === "function" ? step.target() : step.target;
+    var selector = _focusSelector || (typeof step.target === "function" ? step.target() : step.target);
     try { return document.querySelector(selector); } catch (e) { return null; }
   }
   function isFinalStep(index) { return !!TOUR_STEPS[index] && !!TOUR_STEPS[index].final; }
@@ -189,6 +207,12 @@
         if (input) {
           input.value = TOUR_STEPS[_stepIndex].autoFill;
           input.focus();
+        }
+        // 步骤配置了 autoFillFocus → 高光转移到该元素（如发送按钮），引导用户发送
+        var focusSel = TOUR_STEPS[_stepIndex].autoFillFocus;
+        if (focusSel) {
+          _focusSelector = focusSel;
+          _retarget();
         }
       }
     });
@@ -254,6 +278,23 @@
     _positionPopover(_targetEl);
   }
 
+  // 步骤内高光转移：按 _focusSelector 重新解析目标并重绘遮罩/高亮/气泡
+  function _retarget() {
+    var step = TOUR_STEPS[_stepIndex];
+    if (!step || !_active) return;
+    var el = null;
+    try { el = document.querySelector(_focusSelector); } catch (e) {}
+    if (!el) return;
+    _targetEl = el;
+    _positionMask(step, el);
+    _positionHighlight(el);
+    _positionPopover(el);
+    if (_resizeObserver) {
+      try { _resizeObserver.disconnect(); } catch (e) {}
+      try { _resizeObserver.observe(el); } catch (e) {}
+    }
+  }
+
   function _renderPopoverContent(step, c) {
     var bodyKey = step.copyKey + "Body";
     if (_bodyKeyOverride) bodyKey = _bodyKeyOverride;
@@ -314,7 +355,7 @@
     if (step.id === "drag-memory") {
       var bar = null;
       try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
-      if (!bar || bar.classList.contains("hidden")) _bodyKeyOverride = "step4NeedSwitchBody";
+      if (!bar || bar.classList.contains("hidden")) _bodyKeyOverride = "step5NeedSwitchBody";
     }
     _renderWaiting(step, c); // 先渲染等待态（目标未出现时给出反馈），命中后由 done 回调覆盖
     _locateTarget(step, function (el) {
@@ -352,6 +393,7 @@
   function advance() {
     if (!_active) return;
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
+    _focusSelector = null;
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
     if (step.final) { finishTour(); return; }
@@ -363,6 +405,7 @@
   function goBack() {
     if (!_active) return;
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
+    _focusSelector = null;
     if (_stepIndex > 0) {
       _stepIndex--;
       _renderStep();
@@ -394,6 +437,7 @@
     _targetEl = null;
     _stepIndex = -1;
     _bodyKeyOverride = null;
+    _focusSelector = null;
   }
   function finishTour() { stopTour(); markCompleted(); }
   function skipTour() { markCompleted(); stopTour(); }

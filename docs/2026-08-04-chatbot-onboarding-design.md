@@ -1,7 +1,7 @@
 # Chatbot 新手引导（Onboarding Tour）设计
 
 日期：2026-08-04
-状态：已批准（用户确认方案 A + 5 步流程）
+状态：已批准（用户确认方案 A + 6 步流程，E2E 反馈后由 5 步扩展）
 
 ## 1. 背景与目标
 
@@ -26,7 +26,7 @@
 
 1. **形式**：交互式分步引导 Tour（遮罩 + 高亮 + 步骤气泡）
 2. **触发**：首次进入自动弹出；localStorage 记住完成状态；保留手动重播入口
-3. **操作深度**：提示 + 「帮我填入示例」按钮（自动填充输入框，用户回车）；拖拽步骤由用户亲手完成
+3. **操作深度**：提示 + 「帮我填入示例」按钮（自动填充输入框，高光随即转移到发送按钮，用户点击发送）；拖拽步骤由用户亲手完成
 4. **范围**：先做新手引导；进行中的 Report Mode 月份选择功能（设计/计划已提交 git）搁置，完成后恢复
 
 ## 4. 架构
@@ -55,7 +55,7 @@ isActive()             // 引导进行中？
 
 ### 4.3 渲染组件（纯 DOM 创建，挂在 document.body）
 
-- `.onboarding-mask`：全屏遮罩。**实现方式（关键）**：`mask:"block"` 时遮罩由**四个矩形 div**（上/下/左/右）围出目标元素周围的开窗——目标区域天然可点击（输入框、模式按钮都在窗口内可正常操作），其余区域被遮挡防误触；`mask:"pass"` 时遮罩单层全屏但 `pointer-events: none`（第 4 步拖拽穿透）。四块遮罩位置随目标移动更新
+- `.onboarding-mask`：全屏遮罩。**实现方式（关键）**：`mask:"block"` 时遮罩由**四个矩形 div**（上/下/左/右）围出目标元素周围的开窗——目标区域天然可点击（输入框、模式按钮都在窗口内可正常操作），其余区域被遮挡防误触；`mask:"pass"` 时遮罩单层全屏但 `pointer-events: none`（第 5 步拖拽穿透）。四块遮罩位置随目标移动更新
 - `.onboarding-highlight`：高亮圈（定位覆盖目标元素，光环 + 圆角，`ResizeObserver` 跟随目标移动，`pointer-events: none` 不拦截操作）
 - `.onboarding-popover`：步骤气泡（标题、正文、步骤条「第 N / 共 M 步」、上一步 / 下一步 / 跳过按钮；末步为「完成 🎉」）
 
@@ -63,25 +63,26 @@ isActive()             // 引导进行中？
 
 | # | id | target | 说明 | mask |
 |---|---|---|---|---|
-| 1 | report-ask | `#chatInput` | 「帮我填入示例」→ 填 `Shokz`，用户回车发起查询 | block |
-| 2 | deep-window | `.deep-window`（`appear: true`，等待出现 ≤15s） | 说明浮窗可拖拽 / 最小化 / 导出 Excel | block |
-| 3 | switch-chat | `[data-mode="fast"]` | 点击切换到 Chat Mode，记忆栏出现 | block |
-| 4 | drag-memory | 动态解析（见下） | 用户亲手把浮窗拖入记忆栏；`autoNext: "memory-added"` 自动推进 | **pass** |
-| 5 | chat-ask | `#chatInput` | 「帮我填入示例」→ 填 `根据刚才的报告，给我分析建议`；`final: true` | block |
+| 1 | report-ask | `#chatInput` → 填示例后**高光转移到发送按钮**（`autoFillFocus: '#chatForm button[type="submit"]'`） | 「帮我填入示例」→ 填 `Shokz` → 高光引导点击「发送」发起查询 | block |
+| 2 | deep-window | `.deep-window:not(.generating)`（动态函数；`appear: true`，等报告完成 ≤15s） | 报告生成期间最小化按钮被 CSS 隐藏（`.generating .deep-window-minimize` 为 none）且 `_minimizeDeepPanel` 拒绝 loading 态，必须等报告完成才能进下一步 | block |
+| 3 | minimize-window | `.deep-window .deep-window-minimize` | 点击浮窗头部「─」，把浮窗最小化成药丸小框 | block |
+| 4 | switch-chat | `[data-mode="fast"]` | 点击切换到 Chat Mode，记忆栏出现 | block |
+| 5 | drag-memory | 动态解析（见下） | 高亮最小化后的药丸框，用户亲手拖入记忆栏；`autoNext: "memory-added"` 自动推进 | **pass** |
+| 6 | chat-ask | `#chatInput` | 「帮我填入示例」→ 填 `根据刚才的报告，给我分析建议`；`final: true` | block |
 
-每步配置字段：`{ id, target, copyKey, appear?, autoFill?, autoNext?, mask: "block"|"pass", final? }`，其中 `target` 可为**字符串选择器或返回选择器的函数**（每步渲染前解析，支持动态目标）。
+每步配置字段：`{ id, target, copyKey, appear?, autoFill?, autoFillFocus?, autoNext?, mask: "block"|"pass", final? }`，其中 `target` 可为**字符串选择器或返回选择器的函数**（每步渲染前解析，支持动态目标）；`autoFillFocus` 表示用户点击「帮我填入示例」后高光转移到的元素选择器（步骤内重定位，advance/goBack 时清空）。
 
 **关键交互细节**：
-- 第 4 步 `mask:"pass"`（遮罩 pointer-events 穿透），否则遮罩会拦截用户拖拽浮窗头部的 mousedown
-- 第 4 步 target 动态解析：记忆栏只在 Chat Mode 显示。若推进到第 4 步时 `#chatMemoryBar` 仍 hidden（用户未在第 3 步点击切换），target 函数返回 `[data-mode="fast"]` 并展示对应提示文案，用户点击切换后由引擎重新解析 target 指向记忆栏（可配合轮询检测记忆栏出现）
-- 第 4 步高亮记忆栏投放区；正文提示"先点击浮窗头部「–」最小化，再把最小化后的面板拖入此处"——最小化操作由文案说明，不另做高亮（YAGNI，单高亮目标）
-- 其余步骤 `mask:"block"`，开窗内目标元素可正常点击/输入
+- 第 5 步 `mask:"pass"`（遮罩 pointer-events 穿透），否则遮罩会拦截用户拖拽药丸框头部的 mousedown
+- 第 5 步 target 动态解析：记忆栏只在 Chat Mode 显示。若推进到第 5 步时 `#chatMemoryBar` 仍 hidden（用户未在第 4 步点击切换），target 函数返回 `[data-mode="fast"]` 并展示对应提示文案（`step5NeedSwitchBody`），用户点击切换后由引擎重新解析 target 指向药丸框；记忆栏可见时返回 `.deep-window.minimized` 高亮药丸框本体
+- 第 5 步高亮药丸框（右下角最小化 pill），正文提示拖入记忆栏（上下文区域）——投放区由文案说明，不另做高亮（YAGNI，单高亮目标）
+- 第 1 步「帮我填入示例」后高光从输入框转移到发送按钮，引导用户点击发送（`autoFillFocus` 机制）；其余步骤 `mask:"block"`，开窗内目标元素可正常点击/输入
 
 ## 5. 数据流
 
 ```
 首次进入 → init 后延迟 ~800ms → shouldShowTour() 为真 → startTour()
-步骤推进 → 气泡按钮手动 + 第 4 步 notify("memory-added") 自动推进
+步骤推进 → 气泡按钮手动 + 第 5 步 notify("memory-added") 自动推进
 完成/跳过 → markCompleted() → 后续不再自动弹
 重播     → Help 面板工具栏「🎓 新手引导」按钮 → startTour()（不检查已完成）
 ```
@@ -92,19 +93,19 @@ app.js 侵入点：`_addMemoryFromPanel` 尾部加 `if (window.ONBOARDING_TOUR) 
 
 - `TOUR_COPY = { zh: {...}, en: {...} }`，zh/en 键一一对应
 - 渲染时读取当前语言：优先 `localStorage.getItem("offerLanguage")`，兜底 `document.documentElement.lang`
-- 文案覆盖：欢迎语、5 步标题/正文、按钮（上一步/下一步/跳过/完成/帮我填入示例）、步骤条格式、完成语
+- 文案覆盖：欢迎语、6 步标题/正文、按钮（上一步/下一步/跳过/完成/帮我填入示例）、步骤条格式、完成语
 
 ## 7. 错误处理
 
 - **目标未找到**：300ms 间隔重试，最多 10 次（3s）；仍失败 → 跳过该步继续
-- **浮窗未出现**（第 2 步）：轮询 `.deep-window` 出现，最多 15s；超时 → 提示并跳过
+- **报告未完成**（第 2 步）：轮询 `.deep-window:not(.generating)`，最多 15s；超时 → 提示并跳过
 - **引导中异常**：任一步可「跳过」温和退出；不强制中断用户操作
 - **localStorage 不可用**：内存标记兜底，本次会话不重复自动弹
 - **测试模式**：`window.__OFFER_INTELLIGENCE_TEST__` 为真时，`init` 不自动触发引导（不弹窗）
 
 ## 8. 测试（scripts/test_onboarding_tour.mjs，vm sandbox 范式同 test_commission_all_aff.mjs）
 
-1. TOUR_STEPS 结构完整性：5 步、id 唯一、target/copyKey 非空、mask 值 ∈ {block, pass}、仅第 4 步 autoNext、第 4 步 target 为函数（返回合法选择器字符串）
+1. TOUR_STEPS 结构完整性：6 步、id 唯一、target/copyKey 非空、mask 值 ∈ {block, pass}、仅第 5 步 autoNext、第 2/5 步 target 为函数、第 1 步含 `autoFillFocus`
 2. TOUR_COPY：zh/en 键集一致（含全部步骤文案键）
 3. 状态逻辑：`shouldShowTour()`（localStorage 空 → true；已标记 → false）、`markCompleted()` 写入、`resetCompleted()` 清除
 4. 推进逻辑：`next()/prev()` 边界（首步无 prev、末步走 complete）、`notify("memory-added")` 仅在步骤 4 触发推进、跳过后 `markCompleted`
