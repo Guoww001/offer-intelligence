@@ -41,7 +41,8 @@ const sandbox = {
     createElement() { return { ...elementStub, innerHTML: "" }; },
     body: { appendChild() {}, removeChild() {} },
     documentElement: { lang: "zh-Hans" },
-    readyState: "complete"
+    readyState: "complete",
+    addEventListener() {}, removeEventListener() {}
   },
   ResizeObserver: class { observe() {} disconnect() {} }
 };
@@ -63,9 +64,11 @@ for (const s of t.steps) {
   assertEqual(["block", "pass"].includes(s.mask), true, `step ${s.id} mask must be block|pass`);
 }
 assertEqual(t.steps[0].autoFillFocus, '#chatForm button[type="submit"]', "step1 should focus send button after autofill");
+assertEqual(t.steps[0].autoNext, "sent", "step1 should autoNext on sent");
+assertEqual(t.steps[2].autoNext, "minimized", "step3 should autoNext on minimized");
 assertEqual(typeof t.steps[1].target, "function", "deep-window target should be a dynamic function (wait for report done)");
 assertEqual(t.steps[4].autoNext, "memory-added", "drag-memory step should autoNext on memory-added");
-assertEqual(t.steps.filter((s) => s.autoNext).length, 1, "only drag-memory should have autoNext");
+assertEqual(t.steps.filter((s) => s.autoNext).length, 3, "3 steps should have autoNext (sent/minimized/memory-added)");
 assertEqual(t.steps[5].final, true, "chat-ask step should be final");
 assertEqual(t.steps.filter((s) => s.final).length, 1, "only chat-ask should be final");
 assertEqual(typeof t.steps[4].target, "function", "drag-memory target should be a dynamic function");
@@ -120,9 +123,11 @@ assertEqual(t.isFinalStep(5), true, "index 5 should be final");
 assertEqual(t.isFinalStep(4), false, "index 4 should not be final");
 
 // ── 用例 5：autoNext 判定 ──
+assertEqual(t.isAutoNextStep(0, "sent"), true, "step 0 should autoNext on sent");
+assertEqual(t.isAutoNextStep(0, "other"), false, "step 0 should not autoNext on other events");
+assertEqual(t.isAutoNextStep(2, "minimized"), true, "step 2 should autoNext on minimized");
 assertEqual(t.isAutoNextStep(4, "memory-added"), true, "step 4 should autoNext on memory-added");
 assertEqual(t.isAutoNextStep(4, "other"), false, "step 4 should not autoNext on other events");
-assertEqual(t.isAutoNextStep(0, "memory-added"), false, "step 0 should not autoNext");
 
 // ── 用例 6：notify 推进 + 完成 ──
 tour.notify("memory-added");
@@ -162,5 +167,18 @@ assertEqual(t.resolveTarget(t.steps[4]), fastBtnStub, "hidden memory bar → fal
 byIdMap["chatMemoryBar"] = memoryBarStub;        // 记忆栏可见 → 指向最小化药丸框
 assertEqual(t.resolveTarget(t.steps[4]), pillStub, "visible memory bar → point at minimized pill");
 delete byIdMap["chatMemoryBar"];
+
+// ── 用例 10：自动推进事件（点发送 → sent；点最小化 → minimized）──
+tour.startTour();
+assertEqual(t.currentStepIndex(), 0, "startTour should begin at step 0");
+tour.notify("sent");
+assertEqual(t.currentStepIndex(), 1, "notify sent should auto-advance from step 0");
+tour.advance();
+assertEqual(t.currentStepIndex(), 2, "manual advance should reach minimize step");
+tour.notify("minimized");
+assertEqual(t.currentStepIndex(), 3, "notify minimized should auto-advance from step 2");
+tour.notify("minimized");
+assertEqual(t.currentStepIndex(), 3, "stale minimized notify should not re-advance");
+tour.stopTour();
 
 console.log("PASS: onboarding tour logic");

@@ -73,7 +73,9 @@
       mask: "block",
       autoFill: "Shokz",
       // 用户点击「帮我填入示例」后，高光从输入框转移到发送按钮，引导点击发送
-      autoFillFocus: '#chatForm button[type="submit"]'
+      autoFillFocus: '#chatForm button[type="submit"]',
+      // 点击发送（chatForm submit）后自动进入下一步
+      autoNext: "sent"
     },
     {
       id: "deep-window",
@@ -90,7 +92,9 @@
       id: "minimize-window",
       target: ".deep-window .deep-window-minimize",
       copyKey: "step3",
-      mask: "block"
+      mask: "block",
+      // 点击最小化按钮后自动进入下一步
+      autoNext: "minimized"
     },
     {
       id: "switch-chat",
@@ -472,6 +476,19 @@
   } else {
     bindReplayButton();
   }
+
+  // ── 自动推进事件监听（模块级注册一次）──────────────────────────
+  // 发送：chatForm submit（含点击发送按钮与回车）→ "sent"
+  // 最小化：浮窗头部「─」按钮点击 → "minimized"
+  // notify() 内部校验 isAutoNextStep，非当前自动步骤的事件一律忽略
+  try {
+    document.addEventListener("submit", function (e) {
+      if (e.target && e.target.id === "chatForm") notify("sent");
+    });
+    document.addEventListener("click", function (e) {
+      if (e.target && e.target.closest && e.target.closest(".deep-window-minimize")) notify("minimized");
+    });
+  } catch (e) {}
 
   window.ONBOARDING_TOUR = {
     startTour: startTour,
