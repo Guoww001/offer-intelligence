@@ -79,6 +79,23 @@ assertEqual(
   "OnlyName",
   "should fall back to any merchant with a name"
 );
+// knownKeyword 商户点击示例会走 keyword 搜索而非 merchant 分析，示例商户应跳过它们
+assertEqual(
+  t.merchantForExample([
+    { merchantName: "TopBrand", commission: 99, knownKeyword: true },
+    { merchantName: "OnlyName", commission: 50 }
+  ]),
+  "OnlyName",
+  "should skip known-keyword merchants and pick the top non-keyword merchant"
+);
+assertEqual(
+  t.merchantForExample([
+    { merchantName: "TopBrand", commission: 99, knownKeyword: true },
+    { merchantName: "OnlyName", commission: 50, knownKeyword: true }
+  ]),
+  null,
+  "all known-keyword merchants -> null (welcome falls back to fixed Shokz example)"
+);
 
 // ── 用例 4：语言读取 ──
 assertEqual(t.currentLanguage(), "zh", "html lang zh-Hans -> zh");

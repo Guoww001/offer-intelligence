@@ -72,7 +72,7 @@
     chat: [
       { text: "根据记忆栏的报告，给我分析建议" },
       { text: "对比记忆栏里的两个商户，谁更值得重点投入" },
-      { text: "总结记忆栏的数据，提出下个月的运营重点" }
+      { text: "总结记忆栏的数据，分析下个月的运营方向" }
     ]
   };
 
@@ -99,6 +99,8 @@
       return (Number(b.commission) || 0) - (Number(a.commission) || 0);
     });
     for (var i = 0; i < ranked.length; i++) {
+      // 命中已知关键词的商户：点击示例会走 keyword 搜索而非 merchant 分析，跳过
+      if (ranked[i] && ranked[i].knownKeyword === true) continue;
       var name = ranked[i] && (ranked[i].merchantName || ranked[i].merchant);
       if (name) {
         var clean = String(name).trim();

@@ -485,13 +485,15 @@ assertApprox(dashboardGroups[1].summary.avgCvr, 0.1, "category CVR should aggreg
 
 // ── 欢迎屏示例措辞意图验证（final review I3）─────────────────────────────
 // 设计 §4.5：7 个示例须命中预期意图路径。以下为规则路径（无 LLM）断言。
-// 已知不匹配项（不在本段断言，见 final review fix wave 报告）：
+// 已知不匹配项（不在本段断言，见 task-6 用户裁决 fix wave）：
 //   - "根据记忆栏的报告，给我分析建议"：app.js categoryForPrompt ↔ wantsRecommendationList
-//     无限递归导致 RangeError（栈溢出）——app.js 既有 bug，未修（wave 约束不动分类器）。
-//   - "总结记忆栏的数据，提出下个月的运营重点"：含"重点"→ zhIntent=recommendation 提前返回，
-//     实际命中 recommendation（预期 analysis 路径）——替代措辞待用户确认。
-//   - "查一下 {最高 commission 商户} 这个月表现"：当前数据渲染商户 Amazon US 为 knownKeyword，
-//     命中 keyword；措辞模板对普通商户（如 Kewlioo.）可命中 merchant（下方断言）。
+//     无限递归（RangeError）为既有 bug，已随 Fix A 修复（见后续 commit 回归断言）。
+//   - "总结记忆栏的数据，提出下个月的运营重点"：含"重点"→ zhIntent=recommendation 提前返回；
+//     措辞已裁决改为"总结记忆栏的数据，分析下个月的运营方向"（实测首选"规划/方向"命中
+//     merchant 路径，"分析"命中 analysis），见下方断言。
+//   - "查一下 {最高 commission 商户} 这个月表现"：merchantForExample 已跳过 knownKeyword 商户，
+//     但当前 offers 数据未携带 knownKeyword 字段（契约性防御），Amazon US 仍会渲染并命中
+//     keyword；措辞模板对普通商户（如 Kewlioo.）可命中 merchant（下方断言）。
 assertEqual(hooks.detectQueryIntent("这个月有哪些商户逾期？"), "payment", "welcome overdue example should route to payment");
 assertEqual(hooks.detectQueryIntent("Tier 2表现"), "tier", "welcome Tier 2 example should route to tier");
 const tierExampleAnswer = hooks.answerPrompt("Tier 2表现");
@@ -499,8 +501,9 @@ assertMatch(tierExampleAnswer, /Tier 2 概览/, "welcome Tier 2 example should p
 assertEqual(hooks.detectQueryIntent("品类趋势"), "analysis", "welcome category-trend example should route to the analysis/trend path (no concrete category entity in the wording)");
 assertEqual(hooks.detectQueryIntent("查一下 Kewlioo. 这个月表现"), "merchant", "welcome merchant example wording should route to merchant for a non-keyword merchant");
 assertEqual(hooks.detectQueryIntent("对比记忆栏里的两个商户，谁更值得重点投入"), "analysis", "welcome chat comparison example should route to analysis");
-// 记录实际路径（预期 analysis，实际 recommendation——"重点"触发 zhIntent 提前返回；替代措辞待用户确认）
-assertEqual(hooks.detectQueryIntent("总结记忆栏的数据，提出下个月的运营重点"), "recommendation", "welcome chat summary example currently routes to recommendation (design expects analysis path; needs user confirmation)");
+// 用户裁决替代措辞（不含"重点/建议/推荐"触发词）：首选"规划下个月的运营方向"实测命中
+// merchant 路径，微调为"分析"后命中 analysis（禁止改分类器，只调措辞）
+assertEqual(hooks.detectQueryIntent("总结记忆栏的数据，分析下个月的运营方向"), "analysis", "welcome chat summary example should route to analysis after rewording (plan/direction hit merchant, 分析 hits analysis)");
 
 console.log("Chatbot intent flow tests passed");
 process.exit(0);
