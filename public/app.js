@@ -4272,14 +4272,16 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return score;
   }
 
-  function categoryForPrompt(text) {
+  function categoryForPrompt(text, skipWantsRec) {
     const knownCategories = allCategoryValues();
     const zhCategory = /[\u4e00-\u9fff]/.test(String(text || "")) && chatbotI18n.categoryForPrompt && chatbotI18n.categoryForPrompt(text, knownCategories);
     if (zhCategory) return zhCategory;
     const lower = String(text || "").toLowerCase();
     const phrase = cleanedCategoryPhrase(text);
     const phraseTokens = meaningfulTokens(phrase);
-    const allowFuzzyCategory = hasCategoryIntentText(text) || wantsRecommendationList(text) || phraseTokens.length > 1;
+    // skipWantsRec\uff1awantsRecommendationList \u5185\u90e8\u56de\u8c03\u672c\u51fd\u6570\u65f6\u7f6e true\uff0c\u6253\u7834
+    // categoryForPrompt \u2194 wantsRecommendationList \u53cc\u5411\u65e0\u9650\u9012\u5f52\uff08\u540e\u8005\u672b\u884c\u518d\u67e5\u524d\u8005\uff09\u3002
+    const allowFuzzyCategory = hasCategoryIntentText(text) || (!skipWantsRec && wantsRecommendationList(text)) || phraseTokens.length > 1;
     const mainCategories = uniqueCategoryValues()
       .filter((cat) => cat !== "Uncategorized")
       .sort((a, b) => String(b).length - String(a).length);
@@ -4461,7 +4463,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       hasMetricFilter ||
       Boolean(metricSort) ||
       Boolean(tierFromPrompt(text)) ||
-      Boolean(categoryForPrompt(text));
+      Boolean(categoryForPrompt(text, true));
   }
 
   function collectCategories() {

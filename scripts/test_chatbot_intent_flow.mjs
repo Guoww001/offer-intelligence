@@ -487,7 +487,7 @@ assertApprox(dashboardGroups[1].summary.avgCvr, 0.1, "category CVR should aggreg
 // 设计 §4.5：7 个示例须命中预期意图路径。以下为规则路径（无 LLM）断言。
 // 已知不匹配项（不在本段断言，见 task-6 用户裁决 fix wave）：
 //   - "根据记忆栏的报告，给我分析建议"：app.js categoryForPrompt ↔ wantsRecommendationList
-//     无限递归（RangeError）为既有 bug，已随 Fix A 修复（见后续 commit 回归断言）。
+//     无限递归（RangeError）已修复，见下方正常分类断言。
 //   - "总结记忆栏的数据，提出下个月的运营重点"：含"重点"→ zhIntent=recommendation 提前返回；
 //     措辞已裁决改为"总结记忆栏的数据，分析下个月的运营方向"（实测首选"规划/方向"命中
 //     merchant 路径，"分析"命中 analysis），见下方断言。
@@ -501,6 +501,9 @@ assertMatch(tierExampleAnswer, /Tier 2 概览/, "welcome Tier 2 example should p
 assertEqual(hooks.detectQueryIntent("品类趋势"), "analysis", "welcome category-trend example should route to the analysis/trend path (no concrete category entity in the wording)");
 assertEqual(hooks.detectQueryIntent("查一下 Kewlioo. 这个月表现"), "merchant", "welcome merchant example wording should route to merchant for a non-keyword merchant");
 assertEqual(hooks.detectQueryIntent("对比记忆栏里的两个商户，谁更值得重点投入"), "analysis", "welcome chat comparison example should route to analysis");
+// 回归：categoryForPrompt ↔ wantsRecommendationList 无限递归（栈溢出）修复后，
+// chat-1 示例（含"给我"+"分析建议"）应能正常分类到 analysis 路径而非 RangeError
+assertEqual(hooks.detectQueryIntent("根据记忆栏的报告，给我分析建议"), "analysis", "chat-1 example should classify to analysis without the recursion RangeError (Fix A regression)");
 // 用户裁决替代措辞（不含"重点/建议/推荐"触发词）：首选"规划下个月的运营方向"实测命中
 // merchant 路径，微调为"分析"后命中 analysis（禁止改分类器，只调措辞）
 assertEqual(hooks.detectQueryIntent("总结记忆栏的数据，分析下个月的运营方向"), "analysis", "welcome chat summary example should route to analysis after rewording (plan/direction hit merchant, 分析 hits analysis)");
