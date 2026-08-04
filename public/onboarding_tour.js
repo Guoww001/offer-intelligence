@@ -85,8 +85,10 @@
     {
       id: "drag-memory",
       target: function () {
-        var bar = document.getElementById("chatMemoryBar");
-        return bar && bar.classList.contains("hidden") ? '[data-mode="fast"]' : "#chatMemoryBar";
+        var bar = null;
+        try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
+        if (bar && !bar.classList.contains("hidden")) return "#chatMemoryBar";
+        return '[data-mode="fast"]';
       },
       copyKey: "step4",
       mask: "pass",
@@ -283,7 +285,7 @@
     if (step.id === "drag-memory") {
       var bar = null;
       try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
-      if (bar && bar.classList.contains("hidden")) _bodyKeyOverride = "step4NeedSwitchBody";
+      if (!bar || bar.classList.contains("hidden")) _bodyKeyOverride = "step4NeedSwitchBody";
     }
     _locateTarget(step, function (el) {
       if (!_active) return;
@@ -315,8 +317,11 @@
   }
 
   // ── 公开推进 API ──
+  // 推进/回退前必须先清 _locateTimer，使旧 probe 轮询链失效：
+  // 否则旧链耗尽后回调会用捕获的旧 step 重绘 UI（闪回），或调 advance() 踢走当前步骤。
   function advance() {
     if (!_active) return;
+    if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
     if (step.final) { finishTour(); return; }
@@ -327,6 +332,7 @@
   }
   function goBack() {
     if (!_active) return;
+    if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
     if (_stepIndex > 0) {
       _stepIndex--;
       _renderStep();

@@ -136,11 +136,18 @@ assertEqual(tour.isActive(), false, "skipTour should deactivate");
 tour.maybeAutoStart();
 assertEqual(tour.isActive(), false, "maybeAutoStart should no-op in test mode");
 
-// ── 用例 9：目标动态解析（drag-memory 记忆栏缺失时指向切换按钮）──
-byIdMap["chatMemoryBar"] = null;                             // 记忆栏不存在 → 回退到切换按钮
-assertTruthy(t.resolveTarget(t.steps[3]), "dynamic target should fall back to fast-mode button");
-byIdMap["chatMemoryBar"] = elementStub;                      // 记忆栏存在（contains=false = 未隐藏）→ 指向记忆栏
-assertEqual(t.resolveTarget(t.steps[3]) !== null, true, "dynamic target should point at memory bar when visible");
+// ── 用例 9：目标动态解析（drag-memory：记忆栏不可用回退切换按钮）──
+const fastBtnStub = { ...elementStub };
+const memoryBarStub = { ...elementStub };
+const hiddenMemoryBarStub = { ...elementStub, classList: { add() {}, remove() {}, toggle() {}, contains() { return true; } } };
+selectorMap['[data-mode="fast"]'] = fastBtnStub;
+selectorMap['#chatMemoryBar'] = memoryBarStub;
+byIdMap["chatMemoryBar"] = null;                 // 记忆栏不存在 → 回退切换按钮
+assertEqual(t.resolveTarget(t.steps[3]), fastBtnStub, "no memory bar → fall back to fast-mode button");
+byIdMap["chatMemoryBar"] = hiddenMemoryBarStub;  // 记忆栏 hidden → 回退切换按钮
+assertEqual(t.resolveTarget(t.steps[3]), fastBtnStub, "hidden memory bar → fall back to fast-mode button");
+byIdMap["chatMemoryBar"] = memoryBarStub;        // 记忆栏可见 → 指向记忆栏
+assertEqual(t.resolveTarget(t.steps[3]), memoryBarStub, "visible memory bar → point at memory bar");
 delete byIdMap["chatMemoryBar"];
 
 console.log("PASS: onboarding tour logic");
