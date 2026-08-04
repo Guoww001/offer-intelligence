@@ -158,7 +158,10 @@
       },
       copyKey: "step5",
       mask: "pass",
-      autoNext: "memory-added",
+      // 拖入记忆栏后：高光转移到上下文区域（记忆栏）展示效果——新芯片已渲染进记忆栏，
+      // 与第 4 步最小化一样不自动推进，用户看效果后手动点「下一步」
+      focusOn: "memory-added",
+      autoNextFocus: "#chatMemoryBar",
       // 气泡固定视口底部中央：投放区在聊天区顶部，默认气泡位置（目标上方/下方）会盖住它
       popover: "bottom-center"
     },
@@ -325,10 +328,12 @@
     _highlightEl.style.height = (rect.height + 12) + "px";
   }
 
-  function _positionPopover(el) {
+  function _positionPopover(el, follow) {
     var step = TOUR_STEPS[_stepIndex];
-    // 固定视口底部中央（第 5 步）：投放区在聊天区顶部，默认气泡位置会盖住它
-    if (step && step.popover === "bottom-center") {
+    // 固定视口底部中央（第 5 步）：投放区在聊天区顶部，默认气泡位置会盖住它。
+    // follow=true 表示步骤内高光重定位（如拖入记忆栏后）——气泡改为跟随新目标
+    // 定位（记忆栏在视口底部，默认逻辑会把它放到记忆栏上方），避免盖住高亮目标
+    if (step && step.popover === "bottom-center" && !follow) {
       _popoverEl.style.left = Math.max(12, (window.innerWidth - 360) / 2) + "px";
       _popoverEl.style.top = Math.max(12, window.innerHeight - 240) + "px";
       return;
@@ -410,7 +415,7 @@
     _targetEl = el;
     _positionMask(step, el);
     _positionHighlight(el);
-    _positionPopover(el);
+    _positionPopover(el, true);
     if (_resizeObserver) {
       try { _resizeObserver.disconnect(); } catch (e) {}
       try { _resizeObserver.observe(el); } catch (e) {}
@@ -564,27 +569,41 @@
     var isAutoNext = isAutoNextStep(_stepIndex, eventName);
     var isFocusEvent = step.focusOn === eventName;
     if (!isAutoNext && !isFocusEvent) return;
-    // focusOn + autoNextFocus：事件触发后高光转移到指定目标（如最小化后的药丸框）。
-    // 最小化动画期间 transform 移动不触发 ResizeObserver，且 pill 需 250ms~800ms
-    // 才 settle（加 minimized 类）——因此从点击瞬间起每 80ms 高频跟随重定位：
-    // 动画中高光圈贴着 pill 飞行（位置永不丢失），动画结束 rect 收敛到最终位置后
-    // 再跟若干次确保稳定，然后停止。定位直接使用 _pendingPillEl（用户点击最小化的
-    // 那个面板）——比全局 querySelector 精确，多个面板/多个 pill 不会指错目标。
+    // focusOn + autoNextFocus：事件触发后高光转移到指定目标展示效果，不自动推进。
+    // 两种转移方式，按事件来源区分：
+    // ① 最小化（第 4 步，_pendingPillEl 已记录）：最小化动画期间 transform 移动不触发
+    //    ResizeObserver，且 pill 需 250ms~800ms 才 settle（加 minimized 类）——因此从
+    //    点击瞬间起每 80ms 高频跟随重定位：动画中高光圈贴着 pill 飞行（位置永不丢失），
+    //    动画结束 rect 收敛到最终位置后再跟若干次确保稳定，然后停止。定位直接使用
+    //    _pendingPillEl（用户点击最小化的那个面板）——比全局 querySelector 精确。
+    // ② 拖入记忆栏（第 6 步，无 _pendingPillEl）：_addMemoryFromPanel 已同步渲染新芯片，
+    //    目标就绪，一次重定位即可，补几次短延时定位兜底（芯片/布局微调）
     if (isFocusEvent && step.autoNextFocus) {
       _focusSelector = step.autoNextFocus;
-      _retargetToPill();
-      var followCount = 0;
-      var totalFollow = 0;
-      (function followPill() {
-        if (!_active) return;
-        if (totalFollow++ >= 40) return; // 3.2s 兜底，防无限循环
-        var el = _pendingPillEl;
-        if (el) {
-          _retargetTo(el);
-          if (el.classList && el.classList.contains("minimized") && followCount++ >= 10) return;
-        }
-        _focusTimer = setTimeout(followPill, 80);
-      })();
+      if (_pendingPillEl) {
+        _retargetToPill();
+        var followCount = 0;
+        var totalFollow = 0;
+        (function followPill() {
+          if (!_active) return;
+          if (totalFollow++ >= 40) return; // 3.2s 兜底，防无限循环
+          var el = _pendingPillEl;
+          if (el) {
+            _retargetTo(el);
+            if (el.classList && el.classList.contains("minimized") && followCount++ >= 10) return;
+          }
+          _focusTimer = setTimeout(followPill, 80);
+        })();
+      } else {
+        _retarget();
+        var retryCount = 0;
+        (function retryFocus() {
+          if (!_active) return;
+          if (retryCount++ >= 4) return;
+          _retarget();
+          _focusTimer = setTimeout(retryFocus, 120);
+        })();
+      }
     }
     if (step.autoNextDelay) {
       var idx = _stepIndex;
@@ -627,8 +646,22 @@
   function finishTour() { stopTour(); markCompleted(); }
   function skipTour() { markCompleted(); stopTour(); }
 
+  // 重播时若当前处于 Chat Mode，先自动切回 Report Mode——引导从「整体布局介绍」
+  // 开始，核心流程（第 2~3 步 Report Mode 提问、生成报告）都建立在 Report Mode 上。
+  // 直接点击 [data-mode="deep"] 走 app.js 官方切换路径（state.deepMode / 聊天区/记忆栏
+  // 同步更新），比手动改状态安全。首次自动弹出时默认就是 Report Mode，判断不命中、无动作。
+  function _ensureReportMode() {
+    try {
+      var fastBtn = document.querySelector('[data-mode="fast"]');
+      if (!fastBtn || !fastBtn.classList || !fastBtn.classList.contains("active")) return;
+      var deepBtn = document.querySelector('[data-mode="deep"]');
+      if (deepBtn && deepBtn.click) deepBtn.click();
+    } catch (e) {}
+  }
+
   function startTour() {
     if (_active) return;
+    _ensureReportMode();
     _active = true;
     _stepIndex = 0;
     _ensureDom();

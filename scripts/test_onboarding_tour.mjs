@@ -83,8 +83,11 @@ assertEqual(t.steps[4].autoNext, "switched", "switch-chat should autoNext on swi
 assertEqual(t.steps[6].autoFillFocus, '#chatForm button[type="submit"]', "chat-ask should focus send button after autofill");
 assertEqual(t.steps[6].autoNext, "sent", "chat-ask should autoNext on sent (auto-finish)");
 assertEqual(typeof t.steps[2].target, "function", "deep-window target should be a dynamic function (wait for report done)");
-assertEqual(t.steps[5].autoNext, "memory-added", "drag-memory step should autoNext on memory-added");
-assertEqual(t.steps.filter((s) => s.autoNext).length, 4, "4 steps should have autoNext (sent/switched/memory-added/sent)");
+// Step6（拖入记忆栏）：不自动推进（手动「下一步」），拖入后仅高光转移到上下文区域展示效果
+assertEqual(t.steps[5].autoNext, undefined, "drag-memory should NOT autoNext (manual next)");
+assertEqual(t.steps[5].focusOn, "memory-added", "drag-memory should focus context area on memory-added");
+assertEqual(t.steps[5].autoNextFocus, "#chatMemoryBar", "drag-memory should focus the context area (memory bar) after drop");
+assertEqual(t.steps.filter((s) => s.autoNext).length, 3, "3 steps should have autoNext (sent/switched/sent)");
 assertEqual(t.steps[6].final, true, "chat-ask step should be final");
 assertEqual(t.steps.filter((s) => s.final).length, 1, "only chat-ask should be final");
 assertEqual(typeof t.steps[5].target, "function", "drag-memory target should be a dynamic function");
@@ -146,13 +149,16 @@ assertEqual(t.isAutoNextStep(1, "sent"), true, "report-ask should autoNext on se
 assertEqual(t.isAutoNextStep(1, "other"), false, "report-ask should not autoNext on other events");
 assertEqual(t.isAutoNextStep(3, "minimized"), false, "minimize step should NOT autoNext (manual next)");
 assertEqual(t.isAutoNextStep(4, "switched"), true, "switch-chat should autoNext on switched");
-assertEqual(t.isAutoNextStep(5, "memory-added"), true, "drag-memory should autoNext on memory-added");
+assertEqual(t.isAutoNextStep(5, "memory-added"), false, "drag-memory should NOT autoNext on memory-added (focus only)");
 assertEqual(t.isAutoNextStep(5, "other"), false, "drag-memory should not autoNext on other events");
 assertEqual(t.isAutoNextStep(6, "sent"), true, "chat-ask should autoNext on sent");
 
 // ── 用例 6：notify 推进 + 完成 ──
+// （用例 4 结束时停在 drag-memory 第 6 步）拖入记忆栏 → 仅高光转移到上下文区域，不自动推进
 tour.notify("memory-added");
-assertEqual(t.currentStepIndex(), 6, "notify memory-added should advance to final step");
+assertEqual(t.currentStepIndex(), 5, "notify memory-added should NOT auto-advance (focus only, manual next)");
+tour.advance();
+assertEqual(t.currentStepIndex(), 6, "manual advance should reach final step");
 tour.advance();
 assertEqual(tour.isActive(), false, "advance on final step should finish tour");
 assertEqual(tour.shouldShowTour({ getItem: () => "1" }), false, "finished tour should stay hidden");
@@ -288,7 +294,8 @@ byIdMap["chatMemoryDropzone"] = { ...elementStub, getBoundingClientRect() { retu
 tour.advance(); // 5 → drag-memory 渲染：应创建投放区提示条
 assertTruthy(t.dropzoneTipActive(), "step6 should create dropzone tip element");
 assertMatch(t.popoverHtml(), /第 6 步/, "step6 popover should render");
-assertMatch(t.popoverHtml(), /把药丸框拖入记忆栏后继续/, "step6 should render disabled hint button");
+assertMatch(t.popoverHtml(), /data-tour-action="next"/, "step6 (focusOn) should render Next button — manual advance after drop");
+assertEqual(t.popoverHtml().indexOf("onboarding-btn-hint"), -1, "step6 should not render hint button (no autoNext)");
 tour.stopTour();
 assertEqual(t.dropzoneTipActive(), false, "stopTour should remove dropzone tip");
 delete byIdMap["chatMemoryBar"];
@@ -309,5 +316,38 @@ sandbox.document.documentElement.lang = "en";
 assertEqual(t.autoFillFor(t.steps[6]), "Based on the report, give me some analysis suggestions", "en mode should fill en example");
 sandbox.document.documentElement.lang = "zh-Hans";
 tour.stopTour();
+
+// ── 用例 15：重播时若当前处于 Chat Mode，startTour 自动切回 Report Mode ──
+let deepClicked = 0;
+const fastActiveStub = { ...elementStub, classList: { add() {}, remove() {}, toggle() {}, contains() { return true; } } };
+const deepBtnStub = { ...elementStub, click() { deepClicked++; } };
+selectorMap['[data-mode="fast"]'] = fastActiveStub; // Chat Mode：fast 按钮 active
+selectorMap['[data-mode="deep"]'] = deepBtnStub;
+tour.startTour();
+assertEqual(deepClicked, 1, "startTour in Chat Mode should auto-click the Report Mode (deep) button");
+tour.stopTour();
+selectorMap['[data-mode="fast"]'] = fastBtnStub;     // Report Mode：fast 无 active
+deepClicked = 0;
+tour.startTour();
+assertEqual(deepClicked, 0, "startTour in Report Mode should not click the deep button");
+tour.stopTour();
+delete selectorMap['[data-mode="deep"]'];
+
+// ── 用例 16：第 6 步拖入记忆栏 → 高光转移到上下文区域（#chatMemoryBar），不推进 ──
+byIdMap["chatMemoryBar"] = memoryBarStub;
+tour.startTour();
+tour.advance(); // 1
+tour.notify("sent"); // 2 → deep-window
+tour.advance(); // 3
+tour.advance(); // 4
+tour.advance(); // 5 → drag-memory
+assertEqual(t.currentStepIndex(), 5, "advance should reach drag-memory");
+tour.notify("memory-added");
+assertEqual(t.currentStepIndex(), 5, "notify memory-added should NOT auto-advance (focus only, manual next)");
+assertEqual(t.resolveTarget(t.steps[5]), memoryBarStub, "after drop, highlight should retarget to the context area (#chatMemoryBar)");
+tour.advance(); // 6
+assertEqual(t.currentStepIndex(), 6, "manual advance should reach final chat-ask");
+tour.stopTour();
+delete byIdMap["chatMemoryBar"];
 
 console.log("PASS: onboarding tour logic");
