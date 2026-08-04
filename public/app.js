@@ -1320,6 +1320,8 @@
       const merchantId = String(offer.merchantId || "").trim();
       const keywordRow = byId.get(merchantId) || byBrand.get(productKeywordBrandKey(offer.brand || offer.merchantName));
       if (!keywordRow) return offer;
+      // 命中已知关键词的 offer：欢迎屏 merchantForExample 据此跳过，点击示例稳定走 merchant 分析路径
+      offer.knownKeyword = true;
       offer.productAsins = mergeUniqueValues(offer.productAsins, keywordRow.productAsins);
       offer.productTitles = mergeUniqueValues(offer.productTitles, keywordRow.productTitles);
       offer.productKeywords = mergeUniqueValues(offer.productKeywords, keywordRow.productKeywords);
