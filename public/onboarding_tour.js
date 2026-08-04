@@ -35,7 +35,15 @@
       skip: "跳过",
       finish: "完成 🎉",
       stepCounter: "第 {n} 步 / 共 {total} 步",
-      waitReport: "等待报告生成…"
+      waitReport: "等待报告生成…",
+      // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「跳过」
+      step1NextHint: "点击「发送」按钮继续",
+      step3NextHint: "点击「─」最小化按钮继续",
+      step4NextHint: "点击「Chat Mode」按钮继续",
+      step5NextHint: "把药丸框拖入记忆栏后继续",
+      step6NextHint: "点击「发送」按钮完成",
+      // 第 5 步投放区上方独立浮动提示条
+      dropzoneTip: "拖到这里 👇"
     },
     en: {
       welcomeTitle: "👋 Welcome to the YeahPromos Assistant",
@@ -60,7 +68,15 @@
       skip: "Skip",
       finish: "Finish 🎉",
       stepCounter: "Step {n} of {total}",
-      waitReport: "Waiting for the report…"
+      waitReport: "Waiting for the report…",
+      // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「Skip」
+      step1NextHint: "Click Send to continue",
+      step3NextHint: "Click “–” to continue",
+      step4NextHint: "Click Chat Mode to continue",
+      step5NextHint: "Drag the pill into the memory bar to continue",
+      step6NextHint: "Click Send to finish",
+      // Step 5 dropzone floating tip above the drop area
+      dropzoneTip: "Drag it here 👇"
     }
   };
 
@@ -81,8 +97,13 @@
       id: "deep-window",
       target: function () {
         // 等待报告完成（generating 移除）后的浮窗——生成期间最小化按钮被 CSS 隐藏，
-        // 且 _minimizeDeepPanel 拒绝 loading 态，必须等报告就绪才能进入下一步
-        try { return document.querySelector(".deep-window:not(.generating)") ? ".deep-window:not(.generating)" : null; } catch (e) { return null; }
+        // 且 _minimizeDeepPanel 拒绝 loading 态，必须等报告就绪才能进入下一步。
+        // 注意：重播/二次使用时旧面板仍在页面上，必须返回"最后一个"（最新创建）的
+        // 已完成面板——否则高光会落在被置顶新面板盖住的旧面板上，用户看不到高光。
+        try {
+          var list = document.querySelectorAll(".deep-window:not(.generating)");
+          return (list && list.length) ? list[list.length - 1] : null;
+        } catch (e) { return null; }
       },
       copyKey: "step2",
       mask: "block",
@@ -117,7 +138,9 @@
       },
       copyKey: "step5",
       mask: "pass",
-      autoNext: "memory-added"
+      autoNext: "memory-added",
+      // 气泡固定视口底部中央：投放区在聊天区顶部，默认气泡位置（目标上方/下方）会盖住它
+      popover: "bottom-center"
     },
     {
       id: "chat-ask",
@@ -146,6 +169,7 @@
   var _focusSelector = null; // 步骤内高光转移（如填入示例后指向发送按钮）
   var _autoNextTimer = null; // 自动推进延迟（展示最小化效果后再前进）
   var _focusTimer = null;    // 高光转移补定位轮询（等最小化动画完成后指向药丸框）
+  var _dropzoneTip = null;   // 第 5 步投放区上方独立浮动提示条（防被气泡遮挡）
 
   // ── 语言 ──
   function currentLanguage() {
@@ -178,6 +202,8 @@
   // ── 纯逻辑（可测试）──
   function resolveTarget(step) {
     var selector = _focusSelector || (typeof step.target === "function" ? step.target() : step.target);
+    // 动态 target 函数可返回元素本身（如"最后一个已完成面板"），直接使用
+    if (selector && typeof selector === "object" && selector.nodeType === 1) return selector;
     try { return document.querySelector(selector); } catch (e) { return null; }
   }
   function isFinalStep(index) { return !!TOUR_STEPS[index] && !!TOUR_STEPS[index].final; }
@@ -272,6 +298,13 @@
   }
 
   function _positionPopover(el) {
+    var step = TOUR_STEPS[_stepIndex];
+    // 固定视口底部中央（第 5 步）：投放区在聊天区顶部，默认气泡位置会盖住它
+    if (step && step.popover === "bottom-center") {
+      _popoverEl.style.left = Math.max(12, (window.innerWidth - 360) / 2) + "px";
+      _popoverEl.style.top = Math.max(12, window.innerHeight - 240) + "px";
+      return;
+    }
     var rect = el.getBoundingClientRect();
     var pw = 360;
     var left = Math.min(Math.max(12, rect.left + rect.width / 2 - pw / 2), window.innerWidth - pw - 12);
@@ -291,18 +324,45 @@
     _positionPopover(_targetEl);
   }
 
-  // 拖拽提示：第 5 步给记忆栏投放区加脉冲动画类（styles.css .onboarding-dropzone-hint）
+  // 拖拽提示：第 5 步给记忆栏投放区加脉冲动画类（styles.css .onboarding-dropzone-hint），
+  // 另加独立浮动提示条固定在投放区上方——气泡在视口底部中央，提示条贴近投放区不被遮挡
   function _addDropzoneHint() {
     try {
       var dz = document.getElementById("chatMemoryDropzone");
       if (dz) dz.classList.add("onboarding-dropzone-hint");
     } catch (e) {}
+    if (!_dropzoneTip) {
+      var tip = document.createElement("div");
+      tip.className = "onboarding-dropzone-tip";
+      document.body.appendChild(tip);
+      _dropzoneTip = tip;
+    }
+    _positionDropzoneTip();
+  }
+  function _positionDropzoneTip() {
+    if (!_dropzoneTip) return;
+    try { _dropzoneTip.textContent = copy(currentLanguage()).dropzoneTip; } catch (e) {}
+    var dz = null;
+    try { dz = document.getElementById("chatMemoryDropzone"); } catch (e) {}
+    if (dz) {
+      var r = dz.getBoundingClientRect();
+      _dropzoneTip.style.left = Math.round(r.left + r.width / 2) + "px";
+      _dropzoneTip.style.top = Math.round(r.top - 46) + "px";
+    } else {
+      _dropzoneTip.style.left = "50%";
+      _dropzoneTip.style.top = "150px";
+    }
+    _dropzoneTip.style.transform = "translateX(-50%)";
   }
   function _removeDropzoneHint() {
     try {
       var dz = document.getElementById("chatMemoryDropzone");
       if (dz) dz.classList.remove("onboarding-dropzone-hint");
     } catch (e) {}
+    if (_dropzoneTip) {
+      try { if (_dropzoneTip.parentNode) _dropzoneTip.parentNode.removeChild(_dropzoneTip); } catch (e) {}
+      _dropzoneTip = null;
+    }
   }
 
   // 步骤内高光转移：按 _focusSelector 重新解析目标并重绘遮罩/高亮/气泡
@@ -339,8 +399,15 @@
       html += '<button class="onboarding-btn" data-tour-action="prev" type="button">' + c.prev + '</button>';
     }
     html += '<button class="onboarding-btn onboarding-btn-skip" data-tour-action="skip" type="button">' + c.skip + '</button>';
-    // autoNext 步骤无主按钮：点击目标（发送/最小化/Chat Mode/拖入记忆栏）即自动推进或结束
-    if (!step.autoNext) {
+    // autoNext 步骤无主按钮（点击目标即自动推进或结束）：主按钮位置渲染置灰的
+    // 动作提示（如「点击「发送」按钮继续」），既引导操作又防新用户误点「跳过」
+    if (step.autoNext) {
+      var hintKey = step.copyKey + "NextHint";
+      if (c[hintKey]) {
+        html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
+          c[hintKey] + '</button>';
+      }
+    } else {
       html += '<button class="onboarding-btn onboarding-btn-primary" data-tour-action="' +
         (step.final ? "finish" : "next") + '" type="button">' + (step.final ? c.finish : c.next) + '</button>';
     }
@@ -458,7 +525,9 @@
     if (!isAutoNextStep(_stepIndex, eventName)) return;
     var step = TOUR_STEPS[_stepIndex];
     // autoNextFocus：事件触发后先把高光转移到指定目标（如最小化后的药丸框）。
-    // 目标可能仍在动画中（pill 需 250ms 才 settle），轮询补定位直到出现。
+    // 目标可能仍在动画中（pill 需 250ms 才 settle，transitionend 不稳时最晚 800ms
+    // fallback 加 minimized 类），轮询补定位直到出现；命中后连续重定位几次，
+    // 等 pill 的 width/height auto 收缩稳定，确保高光圈尺寸正确。
     if (step.autoNextFocus) {
       _focusSelector = step.autoNextFocus;
       _retarget();
@@ -467,8 +536,17 @@
         if (!_active) return;
         var el = null;
         try { el = document.querySelector(_focusSelector); } catch (e) {}
-        if (el) { _retarget(); return; }
-        if (tries++ < 10) _focusTimer = setTimeout(pollFocus, 150);
+        if (el) {
+          _retarget();
+          var settleCount = 0;
+          (function settleRetarget() {
+            if (!_active || settleCount++ >= 2) return;
+            _retarget();
+            _focusTimer = setTimeout(settleRetarget, 130);
+          })();
+          return;
+        }
+        if (tries++ < 20) _focusTimer = setTimeout(pollFocus, 150);
       })();
     }
     // autoNextDelay：展示效果（如药丸框高光）停留一段时间后再推进；
@@ -567,6 +645,21 @@
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
   } catch (e) {}
 
+  // ── autoNextFocus 兜底：浮窗元素获得 minimized 类（最小化动画 settle）的瞬间 ──
+  // 立即重定位高光到药丸框——150ms 轮询在动画时序不稳时可能漏拍，类名观察更精确
+  try {
+    new MutationObserver(function (muts) {
+      if (!_active || !_focusSelector) return;
+      for (var i = 0; i < muts.length; i++) {
+        var t = muts[i].target;
+        if (t && t.classList && t.classList.contains("minimized") && t.matches && t.matches(".deep-window")) {
+          _retarget();
+          return;
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+  } catch (e) {}
+
   window.ONBOARDING_TOUR = {
     startTour: startTour,
     stopTour: stopTour,
@@ -590,7 +683,8 @@
       currentStepIndex: currentStepIndex,
       stepCount: stepCount,
       renderStep: _renderStep,
-      popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; }
+      popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; },
+      dropzoneTipActive: function () { return !!_dropzoneTip; }
     }
   };
 })();

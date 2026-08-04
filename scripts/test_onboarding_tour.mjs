@@ -24,13 +24,15 @@ const elementStub = {
   style: {}, getBoundingClientRect() { return { left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100 }; }
 };
 
-// 可控查询：selectorMap 供 querySelector，byIdMap 供 getElementById（动态 target 测试用）
+// 可控查询：selectorMap 供 querySelector，queryAllMap 供 querySelectorAll，
+// byIdMap 供 getElementById（动态 target 测试用）
 const selectorMap = {
   "#chatInput": elementStub,
   ".deep-window": elementStub,
   '[data-mode="fast"]': elementStub,
   "#chatMemoryBar": elementStub
 };
+const queryAllMap = {};
 const byIdMap = {};
 const sandbox = {
   console, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
@@ -40,7 +42,7 @@ const sandbox = {
   document: {
     getElementById(id) { return byIdMap[id] || null; },
     querySelector(sel) { return selectorMap[sel] || null; },
-    querySelectorAll() { return []; },
+    querySelectorAll(sel) { return queryAllMap[sel] || []; },
     createElement() { return { ...elementStub, innerHTML: "" }; },
     body: { appendChild() {}, removeChild() {} },
     documentElement: { lang: "zh-Hans" },
@@ -157,11 +159,14 @@ tour.maybeAutoStart();
 assertEqual(tour.isActive(), false, "maybeAutoStart should no-op in test mode");
 
 // ── 用例 9：目标动态解析 ──
-// 9a：deep-window 步等报告完成——生成中（选择器未命中）→ null 继续轮询；完成后命中
+// 9a：deep-window 步等报告完成——无面板 → null 继续轮询；
+//     有面板 → 取最后一个（最新创建）的已完成面板（旧面板仍在页面的重播场景）
 assertEqual(t.resolveTarget(t.steps[1]), null, "no finished deep-window → keep polling");
-const finishedWinStub = { ...elementStub };
-selectorMap[".deep-window:not(.generating)"] = finishedWinStub;
-assertEqual(t.resolveTarget(t.steps[1]), finishedWinStub, "finished deep-window → resolved");
+const oldPanelStub = { ...elementStub, nodeType: 1 };
+const newPanelStub = { ...elementStub, nodeType: 1 };
+queryAllMap[".deep-window:not(.generating)"] = [oldPanelStub, newPanelStub];
+assertEqual(t.resolveTarget(t.steps[1]), newPanelStub, "should pick the LAST finished deep-window (newest panel)");
+assertEqual(t.resolveTarget(t.steps[1]) !== oldPanelStub, true, "must not highlight an old panel behind the new one");
 
 // 9b：drag-memory 步（记忆栏不可用回退切换按钮 / 可用指向药丸框）
 const fastBtnStub = { ...elementStub };
@@ -223,5 +228,36 @@ sandbox.document.documentElement.lang = "zh-Hans";
 t.renderStep();
 assertMatch(t.popoverHtml(), /第 1 步/, "popover should re-render back to zh copy");
 tour.stopTour();
+
+// ── 用例 12：autoNext 步骤渲染置灰动作提示按钮（防误点跳过）──
+tour.startTour();
+assertMatch(t.popoverHtml(), /onboarding-btn-hint/, "autoNext step should render disabled hint button");
+assertMatch(t.popoverHtml(), /点击「发送」按钮继续/, "hint button should show zh action hint");
+assertMatch(t.popoverHtml(), /disabled/, "hint button should be disabled");
+assertEqual(t.popoverHtml().indexOf('data-tour-action="next"'), -1, "autoNext step should not render Next button");
+tour.advance(); // → deep-window（无 autoNext，保留「下一步」）
+assertEqual(t.popoverHtml().indexOf("onboarding-btn-hint"), -1, "non-autoNext step should not render hint button");
+assertMatch(t.popoverHtml(), /data-tour-action="next"/, "non-autoNext step should render Next button");
+assertEqual(t.popoverHtml().indexOf('data-tour-action="finish"'), -1, "step2 should not render finish");
+tour.stopTour();
+
+// ── 用例 13：第 5 步——气泡固定视口底部中央 + 投放区独立浮动提示条 ──
+assertEqual(t.steps[4].popover, "bottom-center", "drag-memory step should pin popover to bottom-center");
+assertTruthy(t.copy.zh.dropzoneTip, "zh missing dropzoneTip");
+assertTruthy(t.copy.en.dropzoneTip, "en missing dropzoneTip");
+tour.startTour();
+tour.notify("sent"); // 1
+tour.advance();      // 2
+tour.advance();      // 3
+byIdMap["chatMemoryBar"] = memoryBarStub;            // 记忆栏可见
+byIdMap["chatMemoryDropzone"] = { ...elementStub, getBoundingClientRect() { return { left: 400, top: 300, width: 600, height: 60, right: 1000, bottom: 360 }; } };
+tour.advance();      // 4 → drag-memory 渲染：应创建投放区提示条
+assertTruthy(t.dropzoneTipActive(), "step5 should create dropzone tip element");
+assertMatch(t.popoverHtml(), /第 5 步/, "step5 popover should render");
+assertMatch(t.popoverHtml(), /把药丸框拖入记忆栏后继续/, "step5 should render disabled hint button");
+tour.stopTour();
+assertEqual(t.dropzoneTipActive(), false, "stopTour should remove dropzone tip");
+delete byIdMap["chatMemoryBar"];
+delete byIdMap["chatMemoryDropzone"];
 
 console.log("PASS: onboarding tour logic");
