@@ -50,6 +50,7 @@ python scripts/test_auth_helpers.py
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_commission_all_aff.mjs
 node scripts/test_merchant_monthly.mjs
+node scripts/test_onboarding_tour.mjs
 node scripts/test_tier2_recommendation_rules.mjs
 node scripts/test_sheet_categories.mjs
 node scripts/test_category_drilldown.mjs
