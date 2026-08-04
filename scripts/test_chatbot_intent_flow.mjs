@@ -494,12 +494,13 @@ assertApprox(dashboardGroups[1].summary.avgCvr, 0.1, "category CVR should aggreg
 //   - "查一下 {最高 commission 商户} 这个月表现"：merchantForExample 已跳过 knownKeyword 商户，
 //     但当前 offers 数据未携带 knownKeyword 字段（契约性防御），Amazon US 仍会渲染并命中
 //     keyword；措辞模板对普通商户（如 Kewlioo.）可命中 merchant（下方断言）。
-assertEqual(hooks.detectQueryIntent("这个月有哪些商户逾期？"), "payment", "welcome overdue example should route to payment");
-assertEqual(hooks.detectQueryIntent("Tier 2表现"), "tier", "welcome Tier 2 example should route to tier");
-const tierExampleAnswer = hooks.answerPrompt("Tier 2表现");
+// 直接输入型 Report 示例（§4.5 二次迭代）：商户名/品类名/Tier 字面输入 + "实体名趋势分析"
+assertEqual(hooks.detectQueryIntent("Shokz"), "merchant", "welcome merchant example (direct merchant name) should route to merchant lookup");
+assertEqual(hooks.detectQueryIntent("Beauty 品类"), "category", "welcome category example (direct category name) should route to category");
+assertEqual(hooks.detectQueryIntent("Tier 2"), "tier", "welcome Tier 2 example should route to tier");
+const tierExampleAnswer = hooks.answerPrompt("Tier 2");
 assertMatch(tierExampleAnswer, /Tier 2 概览/, "welcome Tier 2 example should produce a tier overview + candidate recommendation answer");
-assertEqual(hooks.detectQueryIntent("品类趋势"), "analysis", "welcome category-trend example should route to the analysis/trend path (no concrete category entity in the wording)");
-assertEqual(hooks.detectQueryIntent("查一下 Kewlioo. 这个月表现"), "merchant", "welcome merchant example wording should route to merchant for a non-keyword merchant");
+assertEqual(hooks.detectQueryIntent("Shokz趋势分析"), "analysis", "welcome trend-analysis example (merchant + 趋势分析) should route to the analysis/trend path");
 assertEqual(hooks.detectQueryIntent("对比记忆栏里的两个商户，谁更值得重点投入"), "analysis", "welcome chat comparison example should route to analysis");
 // 回归：categoryForPrompt ↔ wantsRecommendationList 无限递归（栈溢出）修复后，
 // chat-1 示例（含"给我"+"分析建议"）应能正常分类到 analysis 路径而非 RangeError

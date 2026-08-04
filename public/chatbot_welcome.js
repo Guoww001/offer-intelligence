@@ -70,12 +70,14 @@
   };
 
   // ── 示例数据（纯数据；dynamic 字段渲染时替换占位符）──
+  // Report Mode 只做数据获取 + 趋势分析：直接输入实体名即可（商户名/品类名/Tier），
+  // 趋势分析直接写"实体名 + 趋势分析"。示例即字面输入，不套"查一下…这个月表现"等修饰。
   var WELCOME_EXAMPLES = {
     report: [
-      { text: "查一下 {merchant} 这个月表现", dynamic: "merchant" },
-      { text: "这个月有哪些商户逾期？" },
-      { text: "Tier 2表现" },
-      { text: "品类趋势" }
+      { text: "{merchant}", dynamic: "merchant" },
+      { text: "Beauty 品类" },
+      { text: "Tier 2" },
+      { text: "{merchant}趋势分析", dynamic: "merchant" }
     ],
     chat: [
       { text: "根据记忆栏的报告，给我分析建议" },

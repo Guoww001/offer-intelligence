@@ -45,12 +45,15 @@ const welcome = sandbox.window.CHATBOT_WELCOME;
 assertTruthy(welcome, "chatbot_welcome should expose window.CHATBOT_WELCOME");
 const t = welcome._test;
 
-// ── 用例 1：示例数据结构 ──
+// ── 用例 1：示例数据结构（Report Mode 直接输入：商户名/品类名/Tier + 趋势分析）──
 assertEqual(t.examples.report.length, 4, "report examples should be 4");
 assertEqual(t.examples.chat.length, 3, "chat examples should be 3");
-assertEqual(t.examples.report[0].text, "查一下 {merchant} 这个月表现", "first report example should be the dynamic merchant query");
+assertEqual(t.examples.report[0].text, "{merchant}", "first report example should be direct merchant name input");
 assertEqual(t.examples.report[0].dynamic, "merchant", "first report example should be dynamic");
-assertEqual(t.examples.report[1].text, "这个月有哪些商户逾期？", "overdue example should use single status");
+assertEqual(t.examples.report[1].text, "Beauty 品类", "second report example should be direct category input");
+assertEqual(t.examples.report[2].text, "Tier 2", "third report example should be direct tier input");
+assertEqual(t.examples.report[3].text, "{merchant}趋势分析", "fourth report example should be direct trend analysis");
+assertEqual(t.examples.report[3].dynamic, "merchant", "trend example should use the dynamic merchant");
 for (const ex of [...t.examples.report, ...t.examples.chat]) {
   assertTruthy(ex.text, "example text must be non-empty");
 }

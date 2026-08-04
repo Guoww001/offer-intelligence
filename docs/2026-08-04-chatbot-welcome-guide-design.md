@@ -2,7 +2,7 @@
 
 日期：2026-08-04
 状态：已批准（方案 B 双栏工作台 + Chat 态变体 2 进度追踪 + 示例清单确认）
-修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）；2026-08-04 二次迭代——按用户反馈改为「常驻 + 可折叠双态」（见 §4.2）
+修订：2026-08-04 实现完成——示例措辞与动态商户逻辑已按意图验证结果与最终实现同步（见 §4.5）；2026-08-04 二次迭代——① 按用户反馈改为「常驻 + 可折叠双态」（见 §4.2）；② Report 示例改为直接输入型（商户名/品类名/Tier 字面输入 + 趋势分析，见 §4.5）
 
 ## 1. 背景与目标
 
@@ -111,10 +111,10 @@ dismiss(mode)         // 收起欢迎屏（手动 × 或发送消息后）
 ```js
 {
   report: [
-    { text: "查一下 {merchant} 这个月表现", dynamic: "merchant" },
-    { text: "这个月有哪些商户逾期？" },
-    { text: "Tier 2表现" },
-    { text: "品类趋势" }
+    { text: "{merchant}", dynamic: "merchant" },
+    { text: "Beauty 品类" },
+    { text: "Tier 2" },
+    { text: "{merchant}趋势分析", dynamic: "merchant" }
   ],
   chat: [
     { text: "根据记忆栏的报告，给我分析建议" },
@@ -124,8 +124,8 @@ dismiss(mode)         // 收起欢迎屏（手动 × 或发送消息后）
 }
 ```
 
-- **动态商户名**：`dynamic: "merchant"` 渲染时从 offers 数组取 **1 个佣金/收入最高且未命中已知关键词（`knownKeyword: true`）的商户**（排序取 top1，跳过命中关键词商户，优先有 `merchantName` 的 offer）替换 `{merchant}`；数据未就绪/取不到 → 降级为固定示例（`查一下 Shokz 这个月表现`）。实现注：offers 预处理（`mergeProductKeywordsIntoOffers`，app.js）会给命中关键词的 offer 置 `knownKeyword: true`，引擎 `merchantForExample` 据此排除。当前 offers 数据用 `commissionRate`/`salesAmount` 而非 `commission` 字段，排序退化为数组序取首个非关键词商户（不影响排除目标）
-- **意图验证要求**（已实现，`scripts/test_chatbot_intent_flow.mjs`）：`Tier 2表现`→tier 路径 ✓、`品类趋势`→analysis 路径 ✓、`这个月有哪些商户逾期？`→payment 路径 ✓、`查一下 {商户} 这个月表现`（固定商户）→merchant 路径 ✓、`对比记忆栏里的两个商户…`→analysis 路径 ✓。措辞修正记录：① 首选「规划下个月的运营方向」实测命中 merchant（`规划`不在分析关键词内），落地为「分析下个月的运营方向」命中 analysis；② chat-1「根据记忆栏的报告，给我分析建议」修复了 app.js `categoryForPrompt↔wantsRecommendationList` 无限递归（此前点击即栈溢出）后正常走 analysis 路径
+- **动态商户名**：`dynamic: "merchant"` 渲染时从 offers 数组取 **1 个佣金/收入最高且未命中已知关键词（`knownKeyword: true`）的商户**（排序取 top1，跳过命中关键词商户，优先有 `merchantName` 的 offer）替换 `{merchant}`；数据未就绪/取不到 → 降级为固定示例（`Shokz`）。实现注：offers 预处理（`mergeProductKeywordsIntoOffers`，app.js）会给命中关键词的 offer 置 `knownKeyword: true`，引擎 `merchantForExample` 据此排除。当前 offers 数据用 `commissionRate`/`salesAmount` 而非 `commission` 字段，排序退化为数组序取首个非关键词商户（不影响排除目标）
+- **意图验证要求**（已实现，`scripts/test_chatbot_intent_flow.mjs`）：直接输入型 Report 示例——`Shokz`→merchant 路径 ✓、`Beauty 品类`→category 路径 ✓、`Tier 2`→tier 路径 ✓、`Shokz趋势分析`→analysis/trend 路径 ✓；Chat 示例——`对比记忆栏里的两个商户…`→analysis 路径 ✓。措辞修正记录：① Chat 首选「规划下个月的运营方向」实测命中 merchant（`规划`不在分析关键词内），落地为「分析下个月的运营方向」命中 analysis；② chat-1「根据记忆栏的报告，给我分析建议」修复了 app.js `categoryForPrompt↔wantsRecommendationList` 无限递归（此前点击即栈溢出）后正常走 analysis 路径；③ Report 示例按用户要求改为**直接输入**（商户名/品类名/Tier 字面输入 + `实体名趋势分析`），去掉「查一下…这个月表现」「逾期」「Tier 2表现」等修饰性提问——Report Mode 定位即数据获取 + 趋势分析
 
 ## 5. 数据流
 
