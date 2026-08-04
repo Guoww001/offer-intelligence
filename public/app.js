@@ -10034,6 +10034,11 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
     panel.el.classList.remove("generating");
+
+    // 欢迎屏：会话内首次报告生成 → 面板顶部提示「最小化拖入记忆栏」
+    if (window.CHATBOT_WELCOME) {
+      window.CHATBOT_WELCOME.notify("report-ready", { panelEl: panel.el });
+    }
   }
 
   function _showPanelError(panel, message) {
@@ -10513,6 +10518,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     // 新手引导：拖入记忆栏成功 → 通知引导引擎自动进入下一步
     if (window.ONBOARDING_TOUR) {
       window.ONBOARDING_TOUR.notify("memory-added");
+    }
+    if (window.CHATBOT_WELCOME) {
+      window.CHATBOT_WELCOME.notify("memory-added", { hasMemory: true });
     }
   }
 
@@ -19485,6 +19493,7 @@ var _NUMERIC_COL_PATTERNS = [
       const prompt = els.chatInput.value.trim();
       if (!prompt) return;
       els.chatInput.value = "";
+      if (window.CHATBOT_WELCOME) window.CHATBOT_WELCOME.notify("chat-sent");
       applyPrompt(prompt);
     });
     els.chatLog.addEventListener("click", (event) => {
@@ -19509,6 +19518,12 @@ var _NUMERIC_COL_PATTERNS = [
       els.chatInput.placeholder = t("chat.placeholder", "Ask about EPC, tiers, AOV, conversion, unpaid offers...");
       _syncChatLogVisibility();
       _renderMemoryBar();
+      if (window.CHATBOT_WELCOME) {
+        window.CHATBOT_WELCOME.notify("mode-switched", {
+          mode: "chat",
+          hasMemory: !!(state.reportMemory && state.reportMemory.length)
+        });
+      }
     });
 
     els.modeDeepBtn?.addEventListener("click", () => {
@@ -19518,6 +19533,12 @@ var _NUMERIC_COL_PATTERNS = [
       els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
       _syncChatLogVisibility();
       _renderMemoryBar();
+      if (window.CHATBOT_WELCOME) {
+        window.CHATBOT_WELCOME.notify("mode-switched", {
+          mode: "report",
+          hasMemory: !!(state.reportMemory && state.reportMemory.length)
+        });
+      }
     });
 
     // Report Mode 使用说明书展开/收起
@@ -19590,12 +19611,9 @@ var _NUMERIC_COL_PATTERNS = [
       }
     });
 
-    addMessage("assistant", `Loaded <strong>${offers.length.toLocaleString()}</strong> internal offers. Search merchant name, merchant ID, ASIN, category, payment status, or ask for recommendations.`);
-    if (els.chatLogChat) {
-      var _welcomeChat = document.createElement("div");
-      _welcomeChat.className = "message assistant";
-      _welcomeChat.innerHTML = `Loaded <strong>${offers.length.toLocaleString()}</strong> internal offers.`;
-      els.chatLogChat.appendChild(_welcomeChat);
+    // 欢迎屏取代英文欢迎消息：空聊天区的能力地图 + 示例问题（chatbot_welcome.js）
+    if (window.CHATBOT_WELCOME) {
+      window.CHATBOT_WELCOME.maybeRender("report", { offers: offers, hasMemory: false });
     }
     state.currentContext = { type: "default", items: [], summary: {}, filters: {} };
     syncPaymentControls();
