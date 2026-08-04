@@ -144,6 +144,8 @@ dismiss(mode)         // 收起欢迎屏（手动 × 或发送消息后）
 
 app.js 侵入点汇总：init 欢迎消息替换（1 处）、chatForm submit（1 行）、模式切换处理（1 行）、报告就绪（1 行）、`_addMemoryFromPanel`（1 行）。
 
+**标准使用步骤（与 onboarding 6 步对齐，2026-08-04 用户确认）**：① Report Mode 提问（直接输入商户名 / 品类名 / Tier / 「xx趋势分析」）→ ② 报告在 Deep Window 浮窗打开 → ③ 点「─」最小化为药丸框 → ④ 切到 Chat Mode（记忆栏出现）→ ⑤ 拖入记忆栏 → ⑥ 基于记忆栏数据对话。**记忆栏是使用数据的必需环节**：Chat Mode 对话依赖记忆栏中的报告上下文，没有报告在记忆栏里 AI 无法正确回答数据问题——欢迎屏 Chat 区示例在记忆栏为空时拦截不填充（见 §4.4）。支付查询 / 推荐排行 / 对比分析非核心流程，不在标准步骤内。
+
 ## 6. 语言（i18n）
 
 - `WELCOME_COPY = { zh: {...}, en: {...} }`，zh/en 键一一对应（引擎自渲染，不走 data-i18n，读取 `localStorage.offerLanguage` 兜底 `<html lang>`，同 onboarding 范式）

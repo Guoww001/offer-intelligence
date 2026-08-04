@@ -1935,6 +1935,15 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提问、逐步追问，适合开放式问题与多轮讨论。
 
+**使用前提：用数据，必须先拖入记忆栏。** Chat Mode 的对话依赖记忆栏中的数据上下文——没有报告在记忆栏里，AI 无法正确回答商户 / 品类的数据问题。
+
+完整流程（与 Report Mode 配合）：
+1. **Report Mode 提问**：输入商户名 / 品类名 / Tier 或「xx趋势分析」生成报告
+2. **最小化**：点浮窗头部「─」把报告缩成药丸框
+3. **切到 Chat Mode**：记忆栏出现在聊天区上方
+4. **拖入记忆栏**：把药丸框拖进「将面板拖入此处作为上下文」投放区
+5. **基于数据对话**：在输入框提问，AI 结合记忆栏中的报告回答
+
 ## 1. 基本用法
 
 - 在输入框直接输入问题，回车发送，回答以流式逐字显示。
@@ -2086,6 +2095,15 @@ Examples:
 # Chat Mode User Guide
 
 Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig deeper in an open-ended, multi-turn discussion.
+
+**Prerequisite: to use data, you MUST drag a report into the memory bar first.** Chat Mode answers are grounded in the memory bar's context — without a report in memory, the AI cannot correctly answer data questions about merchants/categories.
+
+Full flow (working with Report Mode):
+1. **Ask in Report Mode**: type a merchant / category / tier or "xx trend analysis" to generate a report
+2. **Minimize**: click "–" in the panel header to shrink the report into a pill
+3. **Switch to Chat Mode**: the memory bar appears above the chat area
+4. **Drag into the memory bar**: drag the pill into the "drag the panel here as context" drop zone
+5. **Chat with data**: ask in the input box — the AI answers grounded in the report in memory
 
 ## 1. Basic Usage
 
