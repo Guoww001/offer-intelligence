@@ -39,10 +39,11 @@
       waitReport: "等待报告生成…",
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「跳过」
       step1NextHint: "点击「发送」按钮继续",
-      step3NextHint: "点击「─」最小化按钮继续",
       step4NextHint: "点击「Chat Mode」按钮继续",
       step5NextHint: "把药丸框拖入记忆栏后继续",
       step6NextHint: "点击「发送」按钮完成",
+      // 第 4 步：未最小化时「下一步」禁用的提示（用户点击药丸展开后不能继续）
+      minimizeRequired: "请先点击「─」最小化浮窗",
       // 第 5 步投放区上方独立浮动提示条
       dropzoneTip: "拖到这里 👇"
     },
@@ -73,10 +74,11 @@
       waitReport: "Waiting for the report…",
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「Skip」
       step1NextHint: "Click Send to continue",
-      step3NextHint: "Click “–” to continue",
       step4NextHint: "Click Chat Mode to continue",
       step5NextHint: "Drag the pill into the memory bar to continue",
       step6NextHint: "Click Send to finish",
+      // Step 4: Next disabled until the panel is minimized (user may re-expand the pill)
+      minimizeRequired: "Minimize the panel first (click the “–” button)",
       // Step 5 dropzone floating tip above the drop area
       dropzoneTip: "Drag it here 👇"
     }
@@ -137,7 +139,12 @@
       // 点击最小化按钮后：高光从动画开始高频跟随并停在药丸框展示最小化效果。
       // 不自动推进——用户看效果后手动点「下一步」进入下一步
       focusOn: "minimized",
-      autoNextFocus: ".deep-window.minimized"
+      autoNextFocus: ".deep-window.minimized",
+      // 必须最小化后才能「下一步」：用户可能点击药丸框重新展开面板（失去 minimized 类），
+      // 此时推进到后续步骤会找不到 `.deep-window.minimized` 目标而引导错乱——因此
+      // 未最小化时「下一步」禁用（渲染守卫 + advance 守卫），面板获得/失去 minimized 类
+      // 时由 classObserver 实时刷新按钮状态
+      requireMinimized: true
     },
     {
       id: "switch-chat",
@@ -233,6 +240,16 @@
     try { return document.querySelector(selector); } catch (e) { return null; }
   }
   function isFinalStep(index) { return !!TOUR_STEPS[index] && !!TOUR_STEPS[index].final; }
+  // requireMinimized 守卫（第 4 步）：最后一个（最新创建）面板必须已最小化才能推进。
+  // 用户点击药丸框可重新展开面板（失去 minimized 类）——此时不允许「下一步」
+  function minimizeGatePassed() {
+    try {
+      var list = document.querySelectorAll(".deep-window");
+      if (!list || !list.length) return false;
+      var last = list[list.length - 1];
+      return !!(last.classList && last.classList.contains("minimized"));
+    } catch (e) { return false; }
+  }
   // 填入示例按语言切换：英文模式优先 autoFillEn（如最后一步的英文提问示例）
   function autoFillFor(step) {
     if (step.autoFillEn && currentLanguage() === "en") return step.autoFillEn;
@@ -387,6 +404,14 @@
     }
     _dropzoneTip.style.transform = "translateX(-50%)";
   }
+  // 仅重渲染气泡内容（按钮状态），不重新定位——classObserver 在面板获得/失去
+  // minimized 类时调用：第 4 步「下一步」随最小化状态实时启用/禁用
+  function _refreshActionButtons() {
+    var step = TOUR_STEPS[_stepIndex];
+    if (!step || !_active) return;
+    _renderPopoverContent(step, copy(currentLanguage()));
+  }
+
   function _removeDropzoneHint() {
     try {
       var dz = document.getElementById("chatMemoryDropzone");
@@ -447,6 +472,11 @@
         html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
           c[hintKey] + '</button>';
       }
+    } else if (step.requireMinimized && !minimizeGatePassed()) {
+      // 第 4 步未最小化：禁用「下一步」（用户点击药丸展开面板后不能继续），
+      // 主按钮位置渲染置灰提示；面板获得 minimized 类后由 classObserver 刷新恢复
+      html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
+        c.minimizeRequired + '</button>';
     } else {
       html += '<button class="onboarding-btn onboarding-btn-primary" data-tour-action="' +
         (step.final ? "finish" : "next") + '" type="button">' + (step.final ? c.finish : c.next) + '</button>';
@@ -535,6 +565,10 @@
   // 否则旧链耗尽后回调会用捕获的旧 step 重绘 UI（闪回），或调 advance() 踢走当前步骤。
   function advance() {
     if (!_active) return;
+    var cur = TOUR_STEPS[_stepIndex];
+    // requireMinimized 守卫（第 4 步）：面板未最小化（如用户点击药丸重新展开）时禁止推进——
+    // 与渲染守卫双保险，后续步骤（第 5/6 步）依赖 `.deep-window.minimized` 目标
+    if (cur && cur.requireMinimized && !minimizeGatePassed()) return;
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
@@ -720,17 +754,21 @@
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
   } catch (e) {}
 
-  // ── autoNextFocus 兜底：浮窗元素获得 minimized 类（最小化动画 settle）的瞬间 ──
-  // 立即重定位高光到药丸框——150ms 轮询在动画时序不稳时可能漏拍，类名观察更精确
+  // ── autoNextFocus 兜底 + requireMinimized 守卫刷新：浮窗元素 class 属性变化的瞬间
+  // （最小化动画 settle 获得 minimized 类 / 用户点击药丸重新展开失去类）——① 获得类时
+  // 立即重定位高光到药丸框（类名观察比 150ms 轮询精确）；② 第 4 步「下一步」按钮随
+  // 状态实时启用/禁用（失去类时也必须刷新，否则按钮保持可点但 advance 守卫拦截，体验不一致）
   try {
     new MutationObserver(function (muts) {
-      if (!_active || !_focusSelector) return;
+      if (!_active) return;
+      var step = TOUR_STEPS[_stepIndex];
+      if (!step) return;
       for (var i = 0; i < muts.length; i++) {
         var t = muts[i].target;
-        if (t && t.classList && t.classList.contains("minimized") && t.matches && t.matches(".deep-window")) {
-          _retarget();
-          return;
-        }
+        if (!t || !t.matches || !t.matches(".deep-window")) continue;
+        if (step.requireMinimized) _refreshActionButtons();
+        if (_focusSelector && t.classList && t.classList.contains("minimized")) _retarget();
+        return;
       }
     }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
   } catch (e) {}
@@ -758,6 +796,8 @@
       currentStepIndex: currentStepIndex,
       stepCount: stepCount,
       autoFillFor: autoFillFor,
+      minimizeGatePassed: minimizeGatePassed,
+      refreshActions: _refreshActionButtons,
       renderStep: _renderStep,
       popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; },
       dropzoneTipActive: function () { return !!_dropzoneTip; }

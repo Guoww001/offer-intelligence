@@ -24,6 +24,13 @@ const elementStub = {
   querySelector() { return null; }, setAttribute() {}, removeAttribute() {},
   style: {}, getBoundingClientRect() { return { left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100 }; }
 };
+// 已最小化的面板（classList.contains("minimized") 为 true）——第 4 步 requireMinimized 守卫放行
+const minimizedPanelStub = {
+  ...elementStub,
+  classList: { add() {}, remove() {}, toggle() {}, contains(cls) { return cls === "minimized"; } }
+};
+// 推进序列经过第 4 步（minimize-window）前调用：面板已最小化，next 守卫放行
+function gateMinimized() { queryAllMap[".deep-window"] = [minimizedPanelStub]; }
 
 // 可控查询：selectorMap 供 querySelector，queryAllMap 供 querySelectorAll，
 // byIdMap 供 getElementById（动态 target 测试用）
@@ -79,6 +86,7 @@ assertEqual(t.steps[1].autoNext, "sent", "report-ask should autoNext on sent");
 assertEqual(t.steps[3].autoNext, undefined, "minimize step should NOT autoNext (manual next)");
 assertEqual(t.steps[3].focusOn, "minimized", "minimize step should focus pill on minimized event");
 assertEqual(t.steps[3].autoNextFocus, ".deep-window.minimized", "minimize step should focus pill after minimize");
+assertEqual(t.steps[3].requireMinimized, true, "minimize step must require the panel minimized before Next");
 assertEqual(t.steps[4].autoNext, "switched", "switch-chat should autoNext on switched");
 assertEqual(t.steps[6].autoFillFocus, '#chatForm button[type="submit"]', "chat-ask should focus send button after autofill");
 assertEqual(t.steps[6].autoNext, "sent", "chat-ask should autoNext on sent (auto-finish)");
@@ -123,6 +131,7 @@ tour.resetCompleted(memStorage);
 assertEqual(memStorage["oi_onboarding_done"], undefined, "resetCompleted should remove marker");
 
 // ── 用例 4：推进 / 回退 / 边界 ──
+gateMinimized(); // 第 4 步 requireMinimized 守卫放行（面板已最小化）
 tour.startTour();
 assertEqual(tour.isActive(), true, "startTour should activate");
 assertEqual(t.currentStepIndex(), 0, "startTour should begin at step 0");
@@ -209,6 +218,7 @@ assertEqual(t.resolveTarget(t.steps[5]), pillStub, "visible memory bar → point
 delete byIdMap["chatMemoryBar"];
 
 // ── 用例 10：自动推进事件 ──
+gateMinimized(); // 第 4 步守卫放行（10b 在 minimize 步手动 advance）
 tour.startTour();
 assertEqual(t.currentStepIndex(), 0, "startTour should begin at step 0");
 // 10a：点发送（sent）→ 立即推进（intro 步无 autoNext，先手动到 report-ask）
@@ -284,6 +294,7 @@ tour.stopTour();
 assertEqual(t.steps[5].popover, "bottom-center", "drag-memory step should pin popover to bottom-center");
 assertTruthy(t.copy.zh.dropzoneTip, "zh missing dropzoneTip");
 assertTruthy(t.copy.en.dropzoneTip, "en missing dropzoneTip");
+gateMinimized(); // 用例 13 推进序列经过第 4 步，守卫放行
 tour.startTour();
 tour.advance(); // 1
 tour.notify("sent"); // 2
@@ -303,6 +314,7 @@ delete byIdMap["chatMemoryDropzone"];
 
 // ── 用例 14：填入示例按语言切换（英文版最后一步填入英文示例）──
 assertEqual(t.steps[6].autoFillEn, "Based on the report, give me some analysis suggestions", "chat-ask should define autoFillEn");
+gateMinimized(); // 用例 14 推进序列经过第 4 步，守卫放行
 tour.startTour();
 tour.advance(); // 1
 tour.notify("sent"); // 2
@@ -335,6 +347,7 @@ delete selectorMap['[data-mode="deep"]'];
 
 // ── 用例 16：第 6 步拖入记忆栏 → 高光转移到上下文区域（#chatMemoryBar），不推进 ──
 byIdMap["chatMemoryBar"] = memoryBarStub;
+gateMinimized(); // 用例 16 推进序列经过第 4 步，守卫放行
 tour.startTour();
 tour.advance(); // 1
 tour.notify("sent"); // 2 → deep-window
@@ -349,5 +362,30 @@ tour.advance(); // 6
 assertEqual(t.currentStepIndex(), 6, "manual advance should reach final chat-ask");
 tour.stopTour();
 delete byIdMap["chatMemoryBar"];
+
+// ── 用例 17：第 4 步必须最小化后才能「下一步」（用户点击药丸重新展开面板则不能继续）──
+// 17a：面板未最小化 → next 禁用（置灰提示），advance 被守卫拦截
+// （面板能解析出最小化按钮，使第 4 步渲染完整气泡而非等待态；但面板无 minimized 类）
+queryAllMap[".deep-window"] = [{ ...elementStub, querySelector() { return { ...elementStub }; } }];
+tour.startTour();
+tour.advance(); // 1
+tour.advance(); // 2
+tour.advance(); // 3 → minimize-window
+assertEqual(t.currentStepIndex(), 3, "advance should reach minimize-window");
+assertEqual(t.minimizeGatePassed(), false, "un-minimized panel should fail the minimize gate");
+assertMatch(t.popoverHtml(), /onboarding-btn-hint/, "un-minimized → Next should render as disabled hint");
+assertMatch(t.popoverHtml(), /请先点击「─」最小化浮窗/, "hint should show the minimize-required zh copy");
+assertEqual(t.popoverHtml().indexOf('data-tour-action="next"'), -1, "un-minimized → no clickable Next button");
+tour.advance();
+assertEqual(t.currentStepIndex(), 3, "advance should be blocked while the panel is not minimized");
+// 17b：最小化完成 → next 恢复可点，advance 放行
+queryAllMap[".deep-window"] = [minimizedPanelStub];
+assertEqual(t.minimizeGatePassed(), true, "minimized panel should pass the minimize gate");
+t.refreshActions(); // 模拟 classObserver 在面板获得 minimized 类时刷新按钮
+assertMatch(t.popoverHtml(), /data-tour-action="next"/, "minimized → Next button restored");
+tour.advance();
+assertEqual(t.currentStepIndex(), 4, "advance should pass once the panel is minimized");
+tour.stopTour();
+delete queryAllMap[".deep-window"];
 
 console.log("PASS: onboarding tour logic");
