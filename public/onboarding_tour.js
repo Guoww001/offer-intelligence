@@ -23,7 +23,7 @@
       step4Title: "第 4 步：切换到 Chat Mode",
       step4Body: "点击上方「Chat Mode」按钮，聊天区上方会出现记忆栏——这是把数据带进对话的入口。",
       step5Title: "第 5 步：拖入记忆栏",
-      step5Body: "把最小化后的药丸框拖入记忆栏（上下文区域），报告就会成为聊天上下文。",
+      step5Body: "按住药丸框头部不放，把它拖到聊天区上方的「将面板拖入此处作为上下文」区域后松开，报告就会成为聊天上下文。",
       step5NeedSwitchBody: "记忆栏只在 Chat Mode 显示，请先点击上方「Chat Mode」按钮切换。",
       step6Title: "第 6 步：与 Chat Mode 对话",
       step6Body: "记忆栏里已经有刚才的报告了，现在可以自由提问。填好后点击「发送」按钮。试试：",
@@ -48,7 +48,7 @@
       step4Title: "Step 4: Switch to Chat Mode",
       step4Body: "Click the Chat Mode button above; a memory bar appears above the chat area — the way to bring data into the conversation.",
       step5Title: "Step 5: Drag into the memory bar",
-      step5Body: "Drag the minimized pill into the memory bar (the context area) — the report becomes chat context.",
+      step5Body: "Press and hold the pill header, drag it to the “drag the panel here as context” area above the chat, then release — the report becomes chat context.",
       step5NeedSwitchBody: "The memory bar only shows in Chat Mode — click the Chat Mode button above first.",
       step6Title: "Step 6: Chat with context",
       step6Body: "The report is now in your memory bar. Ask freely. Click Send to submit. Try:",
@@ -93,14 +93,18 @@
       target: ".deep-window .deep-window-minimize",
       copyKey: "step3",
       mask: "block",
-      // 点击最小化按钮后自动进入下一步
-      autoNext: "minimized"
+      // 点击最小化按钮后：高光先转移到药丸框展示最小化效果，再延迟自动进入下一步
+      autoNext: "minimized",
+      autoNextFocus: ".deep-window.minimized",
+      autoNextDelay: 1400
     },
     {
       id: "switch-chat",
       target: '[data-mode="fast"]',
       copyKey: "step4",
-      mask: "block"
+      mask: "block",
+      // 点击 Chat Mode 按钮后自动进入下一步
+      autoNext: "switched"
     },
     {
       id: "drag-memory",
@@ -121,6 +125,9 @@
       copyKey: "step6",
       mask: "block",
       autoFill: "根据刚才的报告，给我分析建议",
+      // 填示例后高光转移到发送按钮，点击发送后自动结束引导
+      autoFillFocus: '#chatForm button[type="submit"]',
+      autoNext: "sent",
       final: true
     }
   ];
@@ -137,6 +144,8 @@
   var _autoStartTimer = null;
   var _bodyKeyOverride = null;
   var _focusSelector = null; // 步骤内高光转移（如填入示例后指向发送按钮）
+  var _autoNextTimer = null; // 自动推进延迟（展示最小化效果后再前进）
+  var _focusTimer = null;    // 高光转移补定位轮询（等最小化动画完成后指向药丸框）
 
   // ── 语言 ──
   function currentLanguage() {
@@ -282,6 +291,20 @@
     _positionPopover(_targetEl);
   }
 
+  // 拖拽提示：第 5 步给记忆栏投放区加脉冲动画类（styles.css .onboarding-dropzone-hint）
+  function _addDropzoneHint() {
+    try {
+      var dz = document.getElementById("chatMemoryDropzone");
+      if (dz) dz.classList.add("onboarding-dropzone-hint");
+    } catch (e) {}
+  }
+  function _removeDropzoneHint() {
+    try {
+      var dz = document.getElementById("chatMemoryDropzone");
+      if (dz) dz.classList.remove("onboarding-dropzone-hint");
+    } catch (e) {}
+  }
+
   // 步骤内高光转移：按 _focusSelector 重新解析目标并重绘遮罩/高亮/气泡
   function _retarget() {
     var step = TOUR_STEPS[_stepIndex];
@@ -316,8 +339,11 @@
       html += '<button class="onboarding-btn" data-tour-action="prev" type="button">' + c.prev + '</button>';
     }
     html += '<button class="onboarding-btn onboarding-btn-skip" data-tour-action="skip" type="button">' + c.skip + '</button>';
-    html += '<button class="onboarding-btn onboarding-btn-primary" data-tour-action="' +
-      (step.final ? "finish" : "next") + '" type="button">' + (step.final ? c.finish : c.next) + '</button>';
+    // autoNext 步骤无主按钮：点击目标（发送/最小化/Chat Mode/拖入记忆栏）即自动推进或结束
+    if (!step.autoNext) {
+      html += '<button class="onboarding-btn onboarding-btn-primary" data-tour-action="' +
+        (step.final ? "finish" : "next") + '" type="button">' + (step.final ? c.finish : c.next) + '</button>';
+    }
     html += '</div>';
     _popoverEl.innerHTML = html;
   }
@@ -359,7 +385,11 @@
     if (step.id === "drag-memory") {
       var bar = null;
       try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
-      if (!bar || bar.classList.contains("hidden")) _bodyKeyOverride = "step5NeedSwitchBody";
+      if (!bar || bar.classList.contains("hidden")) {
+        _bodyKeyOverride = "step5NeedSwitchBody";
+      } else {
+        _addDropzoneHint();
+      }
     }
     _renderWaiting(step, c); // 先渲染等待态（目标未出现时给出反馈），命中后由 done 回调覆盖
     _locateTarget(step, function (el) {
@@ -397,7 +427,10 @@
   function advance() {
     if (!_active) return;
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
+    if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
+    if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     _focusSelector = null;
+    _removeDropzoneHint();
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
     if (step.final) { finishTour(); return; }
@@ -409,7 +442,10 @@
   function goBack() {
     if (!_active) return;
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
+    if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
+    if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     _focusSelector = null;
+    _removeDropzoneHint();
     if (_stepIndex > 0) {
       _stepIndex--;
       _renderStep();
@@ -417,11 +453,39 @@
   }
   function notify(eventName) {
     if (!_active) return;
-    if (isAutoNextStep(_stepIndex, eventName)) advance();
+    if (!isAutoNextStep(_stepIndex, eventName)) return;
+    var step = TOUR_STEPS[_stepIndex];
+    // autoNextFocus：事件触发后先把高光转移到指定目标（如最小化后的药丸框）。
+    // 目标可能仍在动画中（pill 需 250ms 才 settle），轮询补定位直到出现。
+    if (step.autoNextFocus) {
+      _focusSelector = step.autoNextFocus;
+      _retarget();
+      var tries = 0;
+      (function pollFocus() {
+        if (!_active) return;
+        var el = null;
+        try { el = document.querySelector(_focusSelector); } catch (e) {}
+        if (el) { _retarget(); return; }
+        if (tries++ < 10) _focusTimer = setTimeout(pollFocus, 150);
+      })();
+    }
+    // autoNextDelay：展示效果（如药丸框高光）停留一段时间后再推进；
+    // 期间用户回退/停止则丢弃（_stepIndex 校验 + timer 清理）
+    if (step.autoNextDelay) {
+      var idx = _stepIndex;
+      _autoNextTimer = setTimeout(function () {
+        _autoNextTimer = null;
+        if (_active && _stepIndex === idx) advance();
+      }, step.autoNextDelay);
+      return;
+    }
+    advance();
   }
 
   function _clearTimers() {
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
+    if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
+    if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     if (_autoStartTimer) { clearTimeout(_autoStartTimer); _autoStartTimer = null; }
   }
 
@@ -442,6 +506,7 @@
     _stepIndex = -1;
     _bodyKeyOverride = null;
     _focusSelector = null;
+    _removeDropzoneHint();
   }
   function finishTour() { stopTour(); markCompleted(); }
   function skipTour() { markCompleted(); stopTour(); }
@@ -480,6 +545,7 @@
   // ── 自动推进事件监听（模块级注册一次）──────────────────────────
   // 发送：chatForm submit（含点击发送按钮与回车）→ "sent"
   // 最小化：浮窗头部「─」按钮点击 → "minimized"
+  // 切模式：Chat Mode 按钮点击 → "switched"
   // notify() 内部校验 isAutoNextStep，非当前自动步骤的事件一律忽略
   try {
     document.addEventListener("submit", function (e) {
@@ -487,6 +553,7 @@
     });
     document.addEventListener("click", function (e) {
       if (e.target && e.target.closest && e.target.closest(".deep-window-minimize")) notify("minimized");
+      if (e.target && e.target.closest && e.target.closest('[data-mode="fast"]')) notify("switched");
     });
   } catch (e) {}
 

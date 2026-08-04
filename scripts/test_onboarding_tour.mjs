@@ -66,9 +66,14 @@ for (const s of t.steps) {
 assertEqual(t.steps[0].autoFillFocus, '#chatForm button[type="submit"]', "step1 should focus send button after autofill");
 assertEqual(t.steps[0].autoNext, "sent", "step1 should autoNext on sent");
 assertEqual(t.steps[2].autoNext, "minimized", "step3 should autoNext on minimized");
+assertEqual(t.steps[2].autoNextFocus, ".deep-window.minimized", "step3 should focus pill after minimize");
+assertEqual(typeof t.steps[2].autoNextDelay, "number", "step3 should have autoNextDelay to show pill effect");
+assertEqual(t.steps[3].autoNext, "switched", "step4 should autoNext on switched");
+assertEqual(t.steps[5].autoFillFocus, '#chatForm button[type="submit"]', "step6 should focus send button after autofill");
+assertEqual(t.steps[5].autoNext, "sent", "step6 should autoNext on sent (auto-finish)");
 assertEqual(typeof t.steps[1].target, "function", "deep-window target should be a dynamic function (wait for report done)");
 assertEqual(t.steps[4].autoNext, "memory-added", "drag-memory step should autoNext on memory-added");
-assertEqual(t.steps.filter((s) => s.autoNext).length, 3, "3 steps should have autoNext (sent/minimized/memory-added)");
+assertEqual(t.steps.filter((s) => s.autoNext).length, 5, "5 steps should have autoNext (sent/minimized/switched/memory-added/sent)");
 assertEqual(t.steps[5].final, true, "chat-ask step should be final");
 assertEqual(t.steps.filter((s) => s.final).length, 1, "only chat-ask should be final");
 assertEqual(typeof t.steps[4].target, "function", "drag-memory target should be a dynamic function");
@@ -126,8 +131,10 @@ assertEqual(t.isFinalStep(4), false, "index 4 should not be final");
 assertEqual(t.isAutoNextStep(0, "sent"), true, "step 0 should autoNext on sent");
 assertEqual(t.isAutoNextStep(0, "other"), false, "step 0 should not autoNext on other events");
 assertEqual(t.isAutoNextStep(2, "minimized"), true, "step 2 should autoNext on minimized");
+assertEqual(t.isAutoNextStep(3, "switched"), true, "step 3 should autoNext on switched");
 assertEqual(t.isAutoNextStep(4, "memory-added"), true, "step 4 should autoNext on memory-added");
 assertEqual(t.isAutoNextStep(4, "other"), false, "step 4 should not autoNext on other events");
+assertEqual(t.isAutoNextStep(5, "sent"), true, "step 5 should autoNext on sent");
 
 // ── 用例 6：notify 推进 + 完成 ──
 tour.notify("memory-added");
@@ -168,17 +175,37 @@ byIdMap["chatMemoryBar"] = memoryBarStub;        // 记忆栏可见 → 指向�
 assertEqual(t.resolveTarget(t.steps[4]), pillStub, "visible memory bar → point at minimized pill");
 delete byIdMap["chatMemoryBar"];
 
-// ── 用例 10：自动推进事件（点发送 → sent；点最小化 → minimized）──
+// ── 用例 10：自动推进事件 ──
 tour.startTour();
 assertEqual(t.currentStepIndex(), 0, "startTour should begin at step 0");
+// 10a：点发送（sent）→ 立即推进
 tour.notify("sent");
 assertEqual(t.currentStepIndex(), 1, "notify sent should auto-advance from step 0");
 tour.advance();
 assertEqual(t.currentStepIndex(), 2, "manual advance should reach minimize step");
+// 10b：点最小化（minimized）→ 先展示药丸框效果，延迟后才推进
 tour.notify("minimized");
-assertEqual(t.currentStepIndex(), 3, "notify minimized should auto-advance from step 2");
-tour.notify("minimized");
-assertEqual(t.currentStepIndex(), 3, "stale minimized notify should not re-advance");
+assertEqual(t.currentStepIndex(), 2, "minimized autoNext should delay (show pill effect first)");
 tour.stopTour();
+assertEqual(tour.isActive(), false, "stopTour should cancel pending autoNext delay");
+// 10c：切 Chat Mode（switched）→ 立即推进
+tour.startTour();
+tour.advance(); // 1
+tour.advance(); // 2
+tour.advance(); // 3
+assertEqual(t.currentStepIndex(), 3, "advance should reach switch-chat");
+tour.notify("switched");
+assertEqual(t.currentStepIndex(), 4, "notify switched should auto-advance from switch-chat");
+tour.stopTour();
+// 10d：Step 6 点发送（sent）→ 自动结束引导
+tour.startTour();
+tour.notify("sent"); // 1
+tour.advance(); // 2
+tour.advance(); // 3
+tour.advance(); // 4
+tour.advance(); // 5
+assertEqual(t.currentStepIndex(), 5, "advance should reach final chat-ask");
+tour.notify("sent");
+assertEqual(tour.isActive(), false, "notify sent on final step should finish tour");
 
 console.log("PASS: onboarding tour logic");

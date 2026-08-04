@@ -13525,3 +13525,12 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 .onboarding-btn-primary:hover {
   filter: brightness(1.1);
 }
+
+/* 新手引导：第 5 步拖拽提示——记忆栏投放区脉冲高亮（仅作用于引擎加类的元素） */
+.onboarding-dropzone-hint {
+  animation: onboarding-dropzone-pulse 1.3s ease-in-out infinite;
+}
+@keyframes onboarding-dropzone-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(109, 140, 255, 0.45); }
+  50% { box-shadow: 0 0 0 10px rgba(109, 140, 255, 0); }
+}
