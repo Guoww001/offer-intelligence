@@ -13,6 +13,9 @@ function assertTruthy(value, label) {
 function assertNotEqual(actual, expected, label) {
   if (actual === expected) throw new Error(`${label}: expected ${JSON.stringify(actual)} to differ from ${JSON.stringify(expected)}`);
 }
+function assertMatch(actual, pattern, label) {
+  if (!pattern.test(actual)) throw new Error(`${label}: expected ${JSON.stringify(actual)} to match ${pattern}`);
+}
 
 const elementStub = {
   addEventListener() {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
@@ -44,7 +47,8 @@ const sandbox = {
     readyState: "complete",
     addEventListener() {}, removeEventListener() {}
   },
-  ResizeObserver: class { observe() {} disconnect() {} }
+  ResizeObserver: class { observe() {} disconnect() {} },
+  MutationObserver: class { observe() {} disconnect() {} }
 };
 sandbox.window.document = sandbox.document;
 
@@ -207,5 +211,17 @@ tour.advance(); // 5
 assertEqual(t.currentStepIndex(), 5, "advance should reach final chat-ask");
 tour.notify("sent");
 assertEqual(tour.isActive(), false, "notify sent on final step should finish tour");
+
+// ── 用例 11：语言跟随——页面切换语言后重渲染气泡使用新语言 ──
+// currentLanguage 优先 localStorage（sandbox 恒返回 null）→ 兜底 documentElement.lang
+tour.startTour();
+assertMatch(t.popoverHtml(), /第 1 步/, "popover should render zh copy initially");
+sandbox.document.documentElement.lang = "en";
+t.renderStep(); // 引擎在 MutationObserver 回调中调用同一函数
+assertMatch(t.popoverHtml(), /Step 1 of 6/, "popover should re-render with en copy after lang change");
+sandbox.document.documentElement.lang = "zh-Hans";
+t.renderStep();
+assertMatch(t.popoverHtml(), /第 1 步/, "popover should re-render back to zh copy");
+tour.stopTour();
 
 console.log("PASS: onboarding tour logic");

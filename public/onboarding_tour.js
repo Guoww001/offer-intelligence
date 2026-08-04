@@ -378,6 +378,8 @@
   }
 
   function _renderStep() {
+    // 清残留 probe 链：语言切换等触发重渲染时，旧链超时后可能误 advance 踢走当前步骤
+    if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
     var step = TOUR_STEPS[_stepIndex];
     if (!step) { stopTour(); return; }
     var c = copy(currentLanguage());
@@ -557,6 +559,14 @@
     });
   } catch (e) {}
 
+  // ── 语言跟随：页面切换语言（app.js applyStaticLanguage 更新 <html lang>）时 ──
+  // 同步重渲染引导气泡（标题/正文/按钮/步骤条全部跟随页面中英文模式）
+  try {
+    new MutationObserver(function () {
+      if (_active) _renderStep();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+  } catch (e) {}
+
   window.ONBOARDING_TOUR = {
     startTour: startTour,
     stopTour: stopTour,
@@ -578,7 +588,9 @@
       isFinalStep: isFinalStep,
       isAutoNextStep: isAutoNextStep,
       currentStepIndex: currentStepIndex,
-      stepCount: stepCount
+      stepCount: stepCount,
+      renderStep: _renderStep,
+      popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; }
     }
   };
 })();

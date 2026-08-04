@@ -95,6 +95,7 @@ app.js 侵入点：`_addMemoryFromPanel` 尾部加 `if (window.ONBOARDING_TOUR) 
 
 - `TOUR_COPY = { zh: {...}, en: {...} }`，zh/en 键一一对应
 - 渲染时读取当前语言：优先 `localStorage.getItem("offerLanguage")`，兜底 `document.documentElement.lang`
+- **语言跟随**：引擎模块级 MutationObserver 观察 `<html lang>` 属性（app.js `applyStaticLanguage` 更新它）——引导进行中切换页面语言，气泡标题/正文/按钮/步骤条立即重渲染跟随；`_renderStep` 开头清 `_locateTimer` 防旧 probe 链误 advance
 - 文案覆盖：欢迎语、6 步标题/正文、按钮（上一步/下一步/跳过/完成/帮我填入示例）、步骤条格式、完成语
 
 ## 7. 错误处理
