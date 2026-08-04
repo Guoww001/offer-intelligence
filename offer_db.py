@@ -615,6 +615,8 @@ def recent_month_summary(
     start_key = start_period.strftime("%Y%m%d")
     end_key = end_day.strftime("%Y%m%d")
     output: dict[str, Any] = {
+        "aggregation": "calendar_month",
+        "cumulative": False,
         "window": {
             "startMonth": start_period.strftime("%Y-%m"),
             "endMonth": end_period.strftime("%Y-%m"),

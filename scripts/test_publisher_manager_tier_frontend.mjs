@@ -148,9 +148,14 @@ assertEqual(
   "the selected Tier should survive the portfolio loading state"
 );
 assertEqual(
-  hooks.publisherMetricEpc(metric(100)),
-  10,
-  "publisher EPC should use sales divided by clicks"
+  hooks.publisherMetricAffEpc(metric(100)),
+  0.75,
+  "publisher AFF EPC should use sales times AFF commission rate divided by clicks"
+);
+assertEqual(
+  hooks.publisherMetricAffEpc({ clicks: 0, sales: 100, allCommission: 10 }),
+  0,
+  "publisher AFF EPC should be zero when clicks are unavailable"
 );
 assertEqual(
   hooks.publisherMetricConversionRate(metric(100)),
@@ -198,8 +203,11 @@ if (!indexHtml.includes('id="publisherPortfolioTier"')) {
 if (!indexHtml.includes("<th>Tier</th>")) {
   throw new Error("publisher portfolio table should expose a Tier column");
 }
-if (!indexHtml.includes('<th class="publisher-numeric">EPC</th>')) {
-  throw new Error("publisher portfolio table should expose a right-aligned EPC column");
+if (!indexHtml.includes('<th class="publisher-numeric">AFF EPC</th>')) {
+  throw new Error("publisher portfolio table should expose a right-aligned AFF EPC column");
+}
+if (!indexHtml.includes('AFF EPC = Sales × AFF commission rate ÷ Clicks')) {
+  throw new Error("publisher portfolio should explain the AFF EPC formula");
 }
 if (!indexHtml.includes('data-i18n="publishers.conversion">Conversion</th>')) {
   throw new Error("publisher portfolio table should expose a Conversion ratio column");
