@@ -10283,6 +10283,11 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var memory = _extractPanelMemory(panel);
     state.reportMemory.push(memory);
     _renderMemoryBar();
+
+    // 新手引导：拖入记忆栏成功 → 通知引导引擎自动进入下一步
+    if (window.ONBOARDING_TOUR) {
+      window.ONBOARDING_TOUR.notify("memory-added");
+    }
   }
 
   function _updateMemoryContext() {
@@ -19387,6 +19392,11 @@ var _NUMERIC_COL_PATTERNS = [
       if (document.visibilityState && document.visibilityState !== "visible") return;
       loadDbStatus(targetDbStatusMonthKey());
     }, DB_STATUS_AUTO_REFRESH_MS);
+
+    // 新手引导：首次进入自动弹出（onboarding_tour.js，未完成过才弹）
+    if (window.ONBOARDING_TOUR) {
+      window.ONBOARDING_TOUR.maybeAutoStart();
+    }
   }
 
   cacheOriginalTierSheetRows();
