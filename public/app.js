@@ -714,7 +714,7 @@
       "publishers.earnedCommission": "AFF 实际佣金",
       "publishers.portfolioShare": "销售额占比",
       "publishers.allTiers": "全部 Tier",
-      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；EPC = 销售额 ÷ 点击量；Conversion = 订单数 ÷ 点击量。AFF 实际佣金 = ALL 实际佣金 × 75%；AFF 佣金率 = AFF 实际佣金 ÷ 销售额。",
+      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；AFF EPC = 销售额 × AFF 佣金率 ÷ 点击量；Conversion = 订单数 ÷ 点击量。AFF 实际佣金 = ALL 实际佣金 × 75%；AFF 佣金率 = AFF 实际佣金 ÷ 销售额。",
       "publishers.weightedCommission": "AFF 加权佣金率",
       "publishers.weightedBySales": "按商家销售额加权",
       "publishers.commissionProfile": "AFF 佣金概况",
@@ -12135,7 +12135,7 @@ var _NUMERIC_COL_PATTERNS = [
           category: merchant.category || "Uncategorized",
           tier: merchant.tier || "Unknown",
           aov: metric.aov == null ? "" : metric.aov,
-          epc: _publisherMetricEpc(metric),
+          affEpc: _publisherMetricAffEpc(metric),
           conversion: _publisherMetricConversionRate(metric),
           affCommissionRate: _publisherMetricAffCommissionRate(metric) ?? "",
           orders: metric.orders || 0,
@@ -12157,7 +12157,7 @@ var _NUMERIC_COL_PATTERNS = [
           ["Category", function (row) { return row.category; }],
           ["Tier", function (row) { return row.tier; }],
           ["AOV", function (row) { return row.aov; }],
-          ["EPC", function (row) { return row.epc; }],
+          ["AFF EPC", function (row) { return row.affEpc; }],
           ["Conversion", function (row) { return row.conversion; }],
           ["AFF Commission Rate", function (row) { return row.affCommissionRate; }],
           ["Orders", function (row) { return row.orders; }],
@@ -12516,9 +12516,13 @@ var _NUMERIC_COL_PATTERNS = [
     return merchant.total || null;
   }
 
-  function _publisherMetricEpc(metric) {
+  function _publisherMetricAffEpc(metric) {
     var clicks = Number((metric || {}).clicks || 0);
-    return clicks > 0 ? Number((metric || {}).sales || 0) / clicks : 0;
+    var sales = Number((metric || {}).sales || 0);
+    var affCommissionRate = _publisherMetricAffCommissionRate(metric);
+    return clicks > 0 && affCommissionRate != null
+      ? sales * (affCommissionRate / 100) / clicks
+      : 0;
   }
 
   function _publisherMetricConversionRate(metric) {
@@ -12970,7 +12974,7 @@ var _NUMERIC_COL_PATTERNS = [
           escapeHtml(merchant.tier || "Unknown") +
         '</span></td>' +
         '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
-        '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricEpc(metric))) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricAffEpc(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(_publisherMetricAffCommissionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + number(metric.orders).toLocaleString() + '</td>' +
@@ -16851,6 +16855,8 @@ var _NUMERIC_COL_PATTERNS = [
         rows
       },
       recentMonths: {
+        aggregation: "calendar_month",
+        cumulative: false,
         window: {
           startMonth: recentAggregate[0]?.month || trendMonth,
           endMonth: trendMonth,
@@ -17418,7 +17424,7 @@ var _NUMERIC_COL_PATTERNS = [
       return `${prefix} ${metric.label.toLowerCase()}`;
     }
     const tier = state.targetFilters.tier;
-    return tier === "all" ? `${metric.label} across the six-month window ending at the selected month` : `${tier} ${metric.label.toLowerCase()} trajectory from the tier snapshot`;
+    return tier === "all" ? `Independent monthly ${metric.label.toLowerCase()} across the six-month window ending at the selected month` : `${tier} independent monthly ${metric.label.toLowerCase()} from the tier snapshot`;
   }
 
   function targetTrendViewTabsHtml() {
@@ -17534,8 +17540,8 @@ var _NUMERIC_COL_PATTERNS = [
     const gridTicks = [0, 0.25, 0.5, 0.75, 1];
     const dailyStep = points.length > 1 ? innerWidth / (points.length - 1) : innerWidth;
     const dailyBarWidth = Math.max(5, Math.min(18, dailyStep * 0.58));
-    // Gradient area fill for monthly trend charts
-    var gradientId = "trendGradient";
+    // Soft area fill for monthly trend charts.
+    var gradientId = "targetTrendAreaGradient";
     var trendAreaPath = "";
     if (!isDaily) {
       var validForArea = points.filter(function(p) { return p.hasValue; });
@@ -17547,8 +17553,8 @@ var _NUMERIC_COL_PATTERNS = [
           + " L" + validForArea[validForArea.length - 1].x.toFixed(2) + "," + bottomY.toFixed(2) + " Z";
       }
     }
-    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(viewLabel)} ${escapeHtml(metric.label)} trend" data-trend-aggregation="${isDaily ? "daily-independent" : "monthly"}">
-      ${!isDaily ? `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2468f2" stop-opacity="0.35"/><stop offset="100%" stop-color="#2468f2" stop-opacity="0"/></linearGradient></defs>` : ""}
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(viewLabel)} ${escapeHtml(metric.label)} trend" data-trend-aggregation="${isDaily ? "daily-independent" : "monthly-independent"}">
+      ${!isDaily ? `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5f8ff5" stop-opacity="0.18"/><stop offset="55%" stop-color="#8fb1f7" stop-opacity="0.08"/><stop offset="100%" stop-color="#dce8ff" stop-opacity="0.02"/></linearGradient></defs>` : ""}
       ${gridTicks.map((ratio) => {
         const y = pad.top + innerHeight - ratio * innerHeight;
         const value = min + ratio * range;
@@ -17558,7 +17564,8 @@ var _NUMERIC_COL_PATTERNS = [
       ${isDaily ? "" : `<polyline points="${polyline}" class="trend-line"></polyline>`}
       ${points.map((point, index) => {
         const lastPointIndex = points.length - 1;
-        const showAxisLabel = index === 0 ||
+        const showAxisLabel = !isDaily ||
+          index === 0 ||
           index === lastPointIndex ||
           (index % labelEvery === 0 && lastPointIndex - index >= Math.max(2, labelEvery - 1));
         const tooltipWidth = 156;
@@ -17566,18 +17573,18 @@ var _NUMERIC_COL_PATTERNS = [
         const tooltipX = Math.max(4, Math.min(width - tooltipWidth - 4, point.x - tooltipWidth / 2));
         const tooltipY = point.y < pad.top + tooltipHeight + 8 ? point.y + 12 : point.y - tooltipHeight - 12;
         const tooltipValue = point.hasValue ? formatTargetMetricValue(metric.key, point.value) : "Pending";
-        return `<g class="target-trend-point ${escapeHtml(point.state || "")}${point.selected ? " selected" : ""}" tabindex="0" role="img" aria-label="${escapeHtml(point.detail || point.label)}">
+        return `<g class="target-trend-point ${escapeHtml(point.state || "")}${point.selected ? " selected" : ""}" tabindex="0" focusable="true" role="img" aria-label="${escapeHtml(point.detail || point.label)}">
           <title>${escapeHtml(point.detail || point.label)}</title>
           ${isDaily
             ? `<rect x="${(point.x - dailyBarWidth / 2).toFixed(2)}" y="${point.hasValue ? point.y.toFixed(2) : (height - pad.bottom - 4).toFixed(2)}" width="${dailyBarWidth.toFixed(2)}" height="${point.hasValue ? Math.max(4, height - pad.bottom - point.y).toFixed(2) : "4"}" rx="2.5" class="target-daily-bar ${point.hasValue ? "" : "muted"} ${escapeHtml(point.state || "")}"></rect>`
             : `<circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${point.selected ? "6" : "4.5"}" class="trend-dot ${point.hasValue ? "" : "muted"} ${escapeHtml(point.state || "")}"></circle>`}
           ${point.hasValue && (point.selected || (viewLabel === "Day" && index === points.length - 1)) ? `<text x="${point.x.toFixed(2)}" y="${Math.max(18, point.y - 14).toFixed(2)}" text-anchor="middle" class="trend-value-label">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>` : ""}
           ${showAxisLabel ? `<text x="${point.x.toFixed(2)}" y="${height - 12}" text-anchor="middle" class="trend-month">${escapeHtml(point.shortLabel || point.label)}</text>` : ""}
-          ${isDaily ? `<g class="target-trend-tooltip" transform="translate(${tooltipX.toFixed(2)} ${tooltipY.toFixed(2)})" aria-hidden="true">
+          <g class="target-trend-tooltip" transform="translate(${tooltipX.toFixed(2)} ${tooltipY.toFixed(2)})" aria-hidden="true">
             <rect width="${tooltipWidth}" height="${tooltipHeight}" rx="7"></rect>
             <text x="11" y="18" class="target-trend-tooltip-date">${escapeHtml(point.label)}</text>
             <text x="11" y="36" class="target-trend-tooltip-value">${escapeHtml(tooltipValue)}</text>
-          </g>` : ""}
+          </g>
         </g>`;
       }).join("")}
     </svg>`;
@@ -17928,7 +17935,27 @@ var _NUMERIC_COL_PATTERNS = [
     });
   }
 
+  function handleTargetTrendActivate(event) {
+    const point = event.target.closest(".target-trend-point");
+    if (!point || !els.sheetPageNotes.contains(point)) return;
+    point.classList.add("is-hovered");
+  }
+
+  function handleTargetTrendDeactivate(event) {
+    const point = event.target.closest(".target-trend-point");
+    if (!point || !els.sheetPageNotes.contains(point)) return;
+    if (event.relatedTarget && point.contains(event.relatedTarget)) return;
+    point.classList.remove("is-hovered");
+  }
+
   function handleTargetReportClick(event) {
+    const trendPoint = event.target.closest(".target-trend-point");
+    if (trendPoint) {
+      const wasActive = trendPoint.classList.contains("is-hovered");
+      trendPoint.closest(".target-trend-plot")?.querySelectorAll(".target-trend-point.is-hovered").forEach((point) => point.classList.remove("is-hovered"));
+      if (!wasActive) trendPoint.classList.add("is-hovered");
+      return;
+    }
     const cancelButton = event.target.closest("[data-target-edit-cancel]");
     if (cancelButton) {
       state.targetEditingKey = "";
@@ -18841,6 +18868,10 @@ var _NUMERIC_COL_PATTERNS = [
     });
     els.sheetPageNotes.addEventListener("click", handleTargetReportClick);
     els.sheetPageNotes.addEventListener("submit", handleTargetReportSubmit);
+    els.sheetPageNotes.addEventListener("pointerover", handleTargetTrendActivate);
+    els.sheetPageNotes.addEventListener("pointerout", handleTargetTrendDeactivate);
+    els.sheetPageNotes.addEventListener("focusin", handleTargetTrendActivate);
+    els.sheetPageNotes.addEventListener("focusout", handleTargetTrendDeactivate);
     if (els.sheetGridHead) els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
     els.publishersTableHead.addEventListener("click", handleReportSortClick);
@@ -19495,7 +19526,8 @@ var _NUMERIC_COL_PATTERNS = [
       publisherManagerMatches: _publisherManagerMatches,
       publishersForManager: _publishersForManager,
       publisherTierOptions: _publisherTierOptions,
-      publisherMetricEpc: _publisherMetricEpc,
+      publisherMetricAffEpc: _publisherMetricAffEpc,
+      publisherMetricEpc: _publisherMetricAffEpc,
       publisherMetricConversionRate: _publisherMetricConversionRate,
       publisherMetricAffCommission: _publisherMetricAffCommission,
       publisherMetricAffCommissionRate: _publisherMetricAffCommissionRate,

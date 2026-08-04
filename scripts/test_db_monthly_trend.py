@@ -77,12 +77,17 @@ class RecentMonthSummaryTests(unittest.TestCase):
         self.assertEqual(result["window"]["startMonth"], "2026-01")
         self.assertEqual(result["window"]["endMonth"], "2026-06")
         self.assertEqual(result["window"]["throughDate"], "2026-06-30")
+        self.assertEqual(result["aggregation"], "calendar_month")
+        self.assertFalse(result["cumulative"])
         self.assertEqual(result["aggregateOrders"][0]["month"], "2026-06")
         self.assertEqual(result["aggregateOrders"][0]["orders"], 58328)
         self.assertEqual(result["amazonClicks"][0]["clicks"], 1101264)
         self.assertTrue(all(params == ("20260101", "20260630") for _, params in calls))
         aggregate_sql = next(sql for sql, _ in calls if "cnpscy_order_new_aggregate" in sql)
         self.assertIn("COUNT(DISTINCT `a`.`advert_id`) AS `activeBrands`", aggregate_sql)
+        self.assertIn("GROUP BY month", aggregate_sql)
+        click_sql = next(sql for sql, _ in calls if "cnpscy_amazon_click" in sql)
+        self.assertIn("GROUP BY month", click_sql)
 
     def test_daily_complete_date_uses_the_slowest_required_source(self) -> None:
         columns = {

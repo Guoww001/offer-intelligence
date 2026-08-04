@@ -3888,6 +3888,12 @@ body.dashboard-mode .insight-panel {
   height: 230px;
 }
 
+.target-trend-plot .trend-area {
+  fill: url(#targetTrendAreaGradient);
+  opacity: 0.92;
+  pointer-events: none;
+}
+
 .trend-axis {
   stroke: #dde5ef;
   stroke-width: 1.2;
@@ -3922,11 +3928,13 @@ body.dashboard-mode .insight-panel {
 }
 
 .target-trend-point {
+  cursor: pointer;
   outline: none;
 }
 
 .target-trend-point:focus .trend-dot,
 .target-trend-point:hover .trend-dot,
+.target-trend-point.is-hovered .trend-dot,
 .target-trend-point.selected .trend-dot {
   fill: #2468f2;
   filter: drop-shadow(0 5px 9px rgba(36, 104, 242, 0.28));
@@ -3960,6 +3968,7 @@ body.dashboard-mode .insight-panel {
 }
 
 .target-trend-point:hover .target-daily-bar,
+.target-trend-point.is-hovered .target-daily-bar,
 .target-trend-point:focus .target-daily-bar {
   fill: #2468f2;
   filter: drop-shadow(0 5px 8px rgba(36, 104, 242, 0.24));
@@ -3985,6 +3994,7 @@ body.dashboard-mode .insight-panel {
 }
 
 .target-trend-point:hover .target-trend-tooltip,
+.target-trend-point.is-hovered .target-trend-tooltip,
 .target-trend-point:focus .target-trend-tooltip {
   visibility: visible;
   opacity: 1;
