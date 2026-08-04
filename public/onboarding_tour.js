@@ -295,11 +295,20 @@
           input.value = autoFillFor(TOUR_STEPS[_stepIndex]);
           input.focus();
         }
-        // 步骤配置了 autoFillFocus → 高光转移到该元素（如发送按钮），引导用户发送
+        // 步骤配置了 autoFillFocus → 高光转移到该元素（如发送按钮），引导用户发送。
+        // 不能立即转移：高光一旦跳走，输入框落入遮罩虚化区（blur+半透明），用户
+        // 看不清刚填入的示例内容。先让高光在输入框停留约 1.6s 展示示例，再自动
+        // 滑到发送按钮。复用 _focusTimer——advance/goBack/stopTour 均会清理它：
+        // 期间用户提前点发送推进步骤时，本定时器自然失效，不会误打高光。
         var focusSel = TOUR_STEPS[_stepIndex].autoFillFocus;
         if (focusSel) {
-          _focusSelector = focusSel;
-          _retarget();
+          if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
+          _focusTimer = setTimeout(function () {
+            _focusTimer = null;
+            if (!_active) return;
+            _focusSelector = focusSel;
+            _retarget();
+          }, 1600);
         }
       }
     });

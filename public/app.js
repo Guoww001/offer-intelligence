@@ -7346,6 +7346,32 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     insightList(rows);
   }
 
+  // 逐月数据快照（hidden）：面板同一时刻只渲染选中月份的 statCards，其余月份数据
+  // 从未进入 DOM，拖入记忆栏时 _extractPanelMemory 抓取 textContent 就只有一个月。
+  // hidden 元素仍计入 textContent，故把全部月份写入此处供 Chat Mode 读取；放在
+  // merchant-focus 开头，保证 8000 字符截断时逐月数据优先保留。
+  function merchantMonthlyDataSnapshotHtml(offer, monthlyRows, language) {
+    if (!monthlyRows || !monthlyRows.length) return "";
+    var lines = monthlyRows.map(function (r) {
+      var active = mergeMonthIntoOffer(offer, r);
+      return [
+        "Month: " + formatMonthLabel(r.month, language),
+        "Revenue: " + money(active.salesAmount),
+        "AOV: " + money(active.aov),
+        "EPC(All): " + epc(offerAllEpc(active)),
+        "EPC(Aff): " + epc(offerAffEpc(active)),
+        "CVR: " + pct(active.conversionRate),
+        "All Commission: " + money(offerAllCommission(active)),
+        "Aff Commission: " + money(offerAffCommission(active)),
+        "Orders: " + countValue(active.orders),
+        "Clicks: " + countValue(active.clicks),
+        "DPV: " + countValue(active.dpv),
+        "ATC: " + countValue(active.atc)
+      ].join(" | ");
+    }).join("\n");
+    return '<div class="merchant-monthly-data-snapshot" hidden>' + escapeHtml(lines) + '</div>';
+  }
+
   function renderMerchantStats(offer, monthlyRows, selectedMonth) {
     const row = selectedMonthRow(monthlyRows, selectedMonth);
     const active = row ? mergeMonthIntoOffer(offer, row) : offer;
@@ -7353,6 +7379,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       ? merchantMonthPickerHtml(offer, monthlyRows, row ? row.month : null, "context", state.language)
       : "";
     return `<div class="merchant-focus">
+      ${merchantMonthlyDataSnapshotHtml(offer, monthlyRows, state.language)}
       <h4>${escapeHtml(offer.brand || "Merchant")}</h4>
       ${picker}
       ${statCards([
