@@ -100,7 +100,7 @@ assertEqual(
 // ── 用例 4：语言读取 ──
 assertEqual(t.currentLanguage(), "zh", "html lang zh-Hans -> zh");
 
-// ── 用例 5：渲染判定 ──
+// ── 用例 5：渲染判定（常驻：只检查 welcome 内容是否已存在，不再受聊天区消息影响）──
 byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; } };
 byIdMap["chatLogChat"] = { ...elementStub, querySelector() { return null; } };
 assertEqual(t.shouldRenderFor("report"), true, "empty chatLog -> should render");
@@ -110,8 +110,14 @@ byIdMap["chatLog"] = null;
 assertEqual(t.shouldRenderFor("report"), false, "missing chatLog -> no render");
 byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "welcome-panel" }; } };
 assertEqual(t.shouldRenderFor("report"), false, "welcome already rendered -> no re-render");
-byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "message" }; } };
-assertEqual(t.shouldRenderFor("report"), false, "chat log has messages -> no render");
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "welcome-bar" }; } };
+assertEqual(t.shouldRenderFor("report"), false, "welcome already collapsed to bar -> no re-render");
+// 常驻语义：聊天区已有消息但无 welcome 内容 → 仍渲染（对话不顶掉指南）
+byIdMap["chatLog"] = {
+  ...elementStub,
+  querySelector(sel) { return sel.indexOf("welcome") !== -1 ? null : { className: "message" }; }
+};
+assertEqual(t.shouldRenderFor("report"), true, "chat log has messages but no welcome -> still render (persistent)");
 byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; } };
 
 // ── 用例 6：示例交互决策 ──
@@ -158,11 +164,25 @@ assertEqual(t.lastMode(), "chat", "mode-switched chat should render chat welcome
 welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.lastMode(), "report", "mode-switched report should render report welcome");
 
-// ── 用例 12：notify("chat-sent") 清理 ──
+// ── 用例 12：notify("chat-sent") 折叠为紧凑条（常驻，不删除面板）──
 t.showTipbar("tipReport");
 assertEqual(t.tipActive(), true, "tip shown before send");
+// 先渲染展开面板，再发消息 → 折叠而非删除
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() {} };
+byIdMap["chatLogChat"] = { ...elementStub, querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener() {} };
+t.renderPanel("report", { offers: [], hasMemory: false });
+assertEqual(t.collapsed(), false, "panel rendered expanded by default");
 welcome.notify("chat-sent");
 assertEqual(t.tipActive(), false, "chat-sent should clear tipbar");
+assertEqual(t.collapsed(), true, "chat-sent should collapse to a persistent bar, NOT delete the panel");
+
+// ── 用例 12b：折叠条可点击重新展开（常驻双态）──
+assertEqual(t.renderBar("report"), true, "renderBar returns true");
+assertEqual(t.collapsed(), true, "renderBar sets collapsed state");
+assertEqual(t.renderPanel("report", { offers: [], hasMemory: false }), true, "re-expand renders panel again");
+assertEqual(t.collapsed(), false, "re-expand clears collapsed state");
+assertEqual(t.renderBar("chat"), true, "chat mode can also collapse to a bar");
+assertEqual(t.collapsed(), true, "chat bar is collapsed");
 
 // ── 用例 13：Chat 欢迎屏流程条 ✓ 标记（I2 修复）──
 let flowStepAdds = [];
@@ -184,15 +204,14 @@ flowStepAdds = [];
 t.markMemoryStepDone();
 assertEqual(flowStepAdds.filter((c) => c === "done").length, 2, "memory-added should mark first two flow steps done");
 
-// ── 用例 14：语言切换回调缓存 mode（C2 修复）──
+// ── 用例 14：语言切换重渲染保持当前态（缓存 mode + 折叠态）──
 assertTruthy(langObserverCallback, "lang observer should have registered during render smoke");
 byIdMap["chatLog"] = { ...elementStub, querySelector() { return { className: "welcome-panel" }; }, querySelectorAll() { return []; } };
 welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.lastMode(), "report", "mode-switched report should set mode before lang observer fires");
 langObserverCallback();
-// 修复前 bug：回调内 dismiss(_mode) 置 _mode=null 后 maybeRender(null) 丢失目标容器；
-// 修复后：mode 先缓存，dismiss 后重渲染仍指向原容器（TEST_MODE 下 maybeRender 短路，_mode 保持 null 表示已清理）
-assertEqual(t.lastMode(), null, "lang observer should dismiss current mode with the cached mode, not null");
+// 常驻改造：observer 不再 dismiss（置 _mode=null），而是按缓存的 mode + 折叠态重渲染，_mode 保持
+assertEqual(t.lastMode(), "report", "lang observer should re-render current mode, keeping _mode (not null)");
 
 // ── 用例 15：拦截路径提示条也随手动输入消失（M2 修复）──
 byIdMap["chatInput"] = elementStub;

@@ -35,7 +35,11 @@
       chatEmptyMemory: "请先拖入报告到记忆栏",
       panelTip: "点 ─ 最小化，拖入记忆栏后可在 Chat Mode 深度分析",
       close: "关闭",
-      memoryHint: "将面板拖入此处作为上下文"
+      memoryHint: "将面板拖入此处作为上下文",
+      barTitle: "欢迎指南",
+      barHint: "点击展开，看看能问什么、怎么用",
+      expand: "展开",
+      collapse: "收起"
     },
     en: {
       helloTitle: "I'm your operations analysis assistant",
@@ -57,7 +61,11 @@
       chatEmptyMemory: "Drag a report into the memory bar first",
       panelTip: "Click – to minimize, then drag into memory for Chat Mode analysis",
       close: "Close",
-      memoryHint: "Drag the panel here as context"
+      memoryHint: "Drag the panel here as context",
+      barTitle: "Welcome Guide",
+      barHint: "Click to expand — see what you can ask and how",
+      expand: "Expand",
+      collapse: "Collapse"
     }
   };
 
@@ -119,8 +127,7 @@
   function shouldRenderFor(mode) {
     var container = containerFor(mode);
     if (!container) return false;
-    if (container.querySelector(".welcome-panel")) return false;
-    if (container.querySelector(".message")) return false;
+    if (container.querySelector(".welcome-panel") || container.querySelector(".welcome-bar")) return false;
     return true;
   }
   // kind: "report" | "chat"（示例所属分区）
@@ -140,6 +147,8 @@
 
   // ── 状态 ──
   var _mode = null;            // "report" | "chat" | null
+  var _collapsed = false;      // 常驻欢迎屏当前是否折叠为紧凑条
+  var _offers = null;          // 最近一次渲染的 offers（供折叠条展开 / 语言切换重渲染）
   var _tipShown = false;
   var _tipFromExample = false;
   var _lastFillValue = "";
@@ -191,7 +200,9 @@
   function headHtml() {
     return '<div class="welcome-head"><div class="welcome-avatar">🤖</div><div>' +
       '<div class="welcome-hello">' + escapeHtml(currentCopy("helloTitle")) + '</div>' +
-      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div></div></div>';
+      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div></div>' +
+      '<button type="button" class="welcome-collapse" aria-label="' + escapeHtml(currentCopy("collapse")) + '">' +
+      escapeHtml(currentCopy("collapse")) + ' ▾</button></div>';
   }
   function colHtml(kind, examples, merchant, extra) {
     var isRight = kind === "chat";
@@ -206,11 +217,13 @@
     }
     return html + "</div>";
   }
-  function _render(mode, opts) {
+  // 渲染完整双栏面板（展开态）。常驻：若目标聊天区已有 welcome 内容则先清除。
+  function _renderPanel(mode, opts) {
     opts = opts || {};
     var container = containerFor(mode);
-    if (!container) return;
-    var merchant = exampleMerchant(opts.offers);
+    if (!container) return false;
+    if (opts.offers) _offers = opts.offers;
+    var merchant = exampleMerchant(opts.offers || _offers);
     var html;
     if (mode === "chat") {
       html = '<div class="welcome-panel">' + headHtml() +
@@ -222,25 +235,63 @@
         '<div class="welcome-cols-arrow">➜</div>' + colHtml("chat", WELCOME_EXAMPLES.chat, merchant) +
         "</div></div>";
     }
+    _clearWelcome(container);
     var panel = makeEl("welcome-panel", html);
     container.appendChild(panel);
     _mode = mode;
-    _hasMemory = !!opts.hasMemory;
+    _collapsed = false;
+    if (opts.hasMemory !== undefined) _hasMemory = !!opts.hasMemory;
     // Chat 欢迎屏：记忆栏已有数据 ⇒ ① 提问与 ② 拖入记忆栏 都已完成，预标记 ✓
     // （核心路径"先拖记忆再切 Chat"时 memory-added 事件先于渲染，仅靠事件补标不够）
-    if (mode === "chat" && opts.hasMemory) _markFlowStepsDone(container, 2);
+    if (mode === "chat" && _hasMemory) _markFlowStepsDone(container, 2);
     _bindPanel(panel);
     _bindLangObserver();
+    return true;
+  }
+  // 折叠态紧凑条：常驻聊天区顶部，点击重新展开完整面板。
+  function _renderBar(mode) {
+    var container = containerFor(mode);
+    if (!container) return false;
+    _clearWelcome(container);
+    var bar = makeEl("welcome-bar",
+      '<span class="welcome-bar-icon">📖</span>' +
+      '<span class="welcome-bar-text">' + escapeHtml(currentCopy("barTitle")) + '</span>' +
+      '<span class="welcome-bar-hint">' + escapeHtml(currentCopy("barHint")) + '</span>' +
+      '<span class="welcome-bar-toggle">' + escapeHtml(currentCopy("expand")) + ' ▾</span>');
+    container.appendChild(bar);
+    _mode = mode;
+    _collapsed = true;
+    _bindBar(bar, mode);
+    _bindLangObserver();
+    return true;
+  }
+  function _bindBar(bar, mode) {
+    try {
+      bar.addEventListener("click", function () {
+        _renderPanel(mode, { offers: _offers, hasMemory: _hasMemory });
+      });
+    } catch (e) {}
+  }
+  function _clearWelcome(container) {
+    if (!container) return;
+    var els = container.querySelectorAll(".welcome-panel, .welcome-bar");
+    for (var i = 0; i < els.length; i++) els[i].parentNode.removeChild(els[i]);
   }
   // 点击监听绑定在每次新建的 panel 上：panel 被 dismiss 移除时监听器随之销毁，
   // 避免常驻容器（#chatLog/#chatLogChat）上反复绑定累积监听器。
   function _bindPanel(panel) {
     try {
       panel.addEventListener("click", function (e) {
-        var chip = e.target && e.target.closest && e.target.closest(".welcome-chip");
-        if (!chip) return;
-        var kind = chip.getAttribute("data-kind") || "report";
-        _handleChipClick(kind, chip.getAttribute("data-text") || "");
+        var t = e.target;
+        if (t && t.closest && t.closest(".welcome-chip")) {
+          var chip = t.closest(".welcome-chip");
+          var kind = chip.getAttribute("data-kind") || "report";
+          _handleChipClick(kind, chip.getAttribute("data-text") || "");
+          return;
+        }
+        if (t && t.closest && t.closest(".welcome-collapse")) {
+          collapse(_mode);
+        }
       });
     } catch (err) {}
   }
@@ -315,12 +366,15 @@
     if (_langObserver) return;
     try {
       _langObserver = new MutationObserver(function () {
-        // 先缓存当前 mode：dismiss 会把 _mode 置 null，若直接传 _mode 会导致重渲染丢失目标容器
+        // 先缓存当前 mode 与折叠态：dismiss 会把 _mode/_collapsed 重置，若直接读取会丢失目标态
         var mode = _mode;
+        var collapsed = _collapsed;
         if (isRendered(mode)) {
           _clearTipbar();
-          dismiss(mode);
-          maybeRender(mode, { hasMemory: _hasMemory });
+          var container = containerFor(mode);
+          _clearWelcome(container);
+          if (collapsed) _renderBar(mode);
+          else _renderPanel(mode, { offers: _offers, hasMemory: _hasMemory });
         }
       });
       _langObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
@@ -328,33 +382,48 @@
   }
 
   // ── 公共 API ──
+  // 常驻：目标聊天区没有 welcome 内容时渲染展开面板（首次打开）；已有内容（展开或折叠条）
+  // 则保持当前态，不强制展开——面板一经创建即常驻，对话只折叠不消失。
   function maybeRender(mode, opts) {
     if (TEST_MODE) return shouldRenderFor(mode);
     if (!shouldRenderFor(mode)) return false;
-    _render(mode, opts || {});
-    return true;
+    return _renderPanel(mode, opts || {});
+  }
+  // 折叠为紧凑条（对话开始后调用，不删除面板——常驻）。已在折叠态则幂等跳过。
+  function collapse(mode) {
+    if (!mode) return;
+    var container = containerFor(mode);
+    if (!container) return;
+    _clearTipbar();
+    _tipFromExample = false;
+    _pulseSend(false);
+    if (container.querySelector(".welcome-bar")) {
+      _collapsed = true;
+      return;
+    }
+    _renderBar(mode);
   }
   function dismiss(mode) {
     try {
       var container = containerFor(mode);
       if (!container) return;
-      var panels = container.querySelectorAll(".welcome-panel");
-      for (var i = 0; i < panels.length; i++) panels[i].parentNode.removeChild(panels[i]);
+      _clearWelcome(container);
     } catch (e) {}
     _clearTipbar();
     _tipFromExample = false;
     if (_mode === mode) _mode = null;
+    _collapsed = false;
     _pulseSend(false);
   }
   function isRendered(mode) {
     var container = containerFor(mode);
     if (!container) return false;
-    try { return !!container.querySelector(".welcome-panel"); } catch (e) { return false; }
+    try { return !!container.querySelector(".welcome-panel, .welcome-bar"); } catch (e) { return false; }
   }
   function notify(eventName, payload) {
     payload = payload || {};
     if (eventName === "chat-sent") {
-      dismiss(_mode);
+      collapse(_mode);
       return;
     }
     if (eventName === "mode-switched") {
@@ -419,13 +488,16 @@
       fillAllowedFor: fillAllowedFor,
       shouldClearTipOnInput: shouldClearTipOnInput,
       renderSmoke: function () {
-        _render("report", { offers: [], hasMemory: false });
-        _render("chat", { offers: [{ merchantName: "Shokz", commission: 1 }], hasMemory: false });
+        _renderPanel("report", { offers: [], hasMemory: false });
+        _renderPanel("chat", { offers: [{ merchantName: "Shokz", commission: 1 }], hasMemory: false });
       },
+      renderBar: function (mode) { return _renderBar(mode); },
+      renderPanel: function (mode, opts) { return _renderPanel(mode, opts || {}); },
       tipActive: function () { return _tipShown; },
       showTipbar: function (key) { _showTipbar(key); },
       clearTipbar: function () { _clearTipbar(); },
       lastMode: function () { return _mode; },
+      collapsed: function () { return _collapsed; },
       panelTipActive: function () { return !_panelTipShown; },
       hasMemory: function () { return _hasMemory; },
       tipFromExampleActive: function () { return _tipFromExample; },
