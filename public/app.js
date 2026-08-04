@@ -4753,10 +4753,20 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return findOfferByMerchantName(name);
   }
 
-  function offersInCategory(categoryName) {
+  // Tier 4 / BLACK TIER 判断（品类趋势口径：排除两者，与品类分析 sortedForCategory 一致）
+  function isTier4OrBlack(tierName) {
+    var t = canonicalTierName(tierName);
+    return t === "Tier 4" || t === "BLACK TIER";
+  }
+
+  // opts.excludeTier4Black: true 时排除 Tier 4 / BLACK TIER（仅品类趋势路径传 true；
+  // analyzeCategory 等其他调用方保持默认全量，口径不变）
+  function offersInCategory(categoryName, opts) {
     if (!categoryName) return [];
+    var excludeTier4Black = !!(opts && opts.excludeTier4Black);
     var lower = categoryName.toLowerCase().trim();
     return offers.filter(function(o) {
+      if (excludeTier4Black && isTier4OrBlack(o.tier)) return false;
       var cat = (o.mainCategory || o.category || "").toLowerCase();
       return cat === lower || cat.indexOf(lower) !== -1;
     });
@@ -5768,7 +5778,11 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   function detectTrendEntityType(target, prompt) {
-    if (!target) return "merchant";
+    if (!target) {
+      // 无目标 + prompt 含品类指示词（"品类趋势"/"category trend analysis"）→ 品类趋势下拉模式
+      if (hasCategoryIntentText(prompt)) return "category";
+      return "merchant";
+    }
     var t = tierFromPrompt(target);
     if (t) return "tier";
     // 原始 prompt 中明确的品类指示词（"X类别/品类/分类/类目/category"）优先，
@@ -5789,6 +5803,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   function trendAnalysisTitle(entityType, target, zh) {
+    if (entityType === "category" && !target) return (zh ? "品类趋势" : "Category Trend");
     if (entityType === "tier") return (zh ? "层级趋势分析: " : "Tier Trend: ") + escapeHtml(target);
     if (entityType === "category") return (zh ? "分类趋势分析: " : "Category Trend: ") + escapeHtml(target);
     return (zh ? "趋势分析: " : "Trend: ") + escapeHtml(target);
@@ -5881,31 +5896,11 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         // Category trend path
         // ════════════════════════════════════════════════
         else if (entityType === "category") {
-          var catOffers = offersInCategory(analysisTarget);
-          if (!catOffers || catOffers.length === 0) {
-            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
-              + (zh ? "未找到分类 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据。" : "No data found for category <strong>" + escapeHtml(analysisTarget) + "</strong>.")
-              + "</p></div>";
-            return;
-          }
-          label = analysisTarget;
-          // Timed fetch: if DB unavailable, quickly fall back to estimated
-          monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(catOffers, apiMonthCount), 25000, null);
-          if (monthlyMetrics && trimTarget > 0 && monthlyMetrics.length > trimTarget) {
-            monthlyMetrics = monthlyMetrics.slice(0, trimTarget);
-          }
-
-          if (!monthlyMetrics || monthlyMetrics.length < 2) {
-            var catEstimated = estimateAggregatedTrend(catOffers, requestedMonthCount);
-            if (catEstimated) {
-              renderEstimatedTrend(catEstimated, label, container, zh, language);
-              return;
-            }
-            container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
-              + (zh ? "分类 <strong>" + escapeHtml(analysisTarget) + "</strong> 的数据不足以分析趋势（需要至少 2 个月的月度数据）。" : "Insufficient data for category <strong>" + escapeHtml(analysisTarget) + "</strong> trend (need at least 2 months).")
-              + "</p></div>";
-            return;
-          }
+          // 品类趋势下拉模式：无品类名（"品类趋势"裸输入）→ 初始选 revenue 最大品类；
+          // 带品类名 → 初始选中该品类（不在 Tier1-3 列表则提示并回退第一项）。
+          // 渲染逻辑独立为 renderCategoryTrend，左面板/浮窗内下拉切换复用同一入口。
+          renderCategoryTrend(container, analysisTarget, zh, language, requestedMonthCount, apiMonthCount, trimTarget);
+          return;
         }
         // ════════════════════════════════════════════════
         // Tier trend path
@@ -5972,6 +5967,126 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return html;
   }
 
+  // 品类趋势切换竞态守卫：下拉快速连续切换时，只允许最新一次请求的结果落地渲染
+  var _trendSwitchSeq = 0;
+  // 当前选中的趋势品类（下拉 selected 状态与浮窗克隆同步用）
+  var _activeTrendCategory = null;
+
+  // 品类趋势核心渲染：左侧回答区占位 + 左上下文面板趋势 + 浮窗（克隆同步）。
+  // 由趋势路径初次调用，也由品类下拉切换（左面板/浮窗内）复用。
+  // targetCategory 为空 = 裸"品类趋势"输入 → 初始选 revenue 最大品类。
+  async function renderCategoryTrend(container, targetCategory, zh, language, requestedMonthCount, apiMonthCount, trimTarget) {
+    var categoryList = categoryListForTrend();
+    var activeCategory = null;
+    var mismatchWarning = false;
+    if (targetCategory) {
+      var lowerTarget = String(targetCategory).toLowerCase().trim();
+      for (var i = 0; i < categoryList.length; i++) {
+        var cName = String(categoryList[i].name);
+        if (cName.toLowerCase() === lowerTarget || cName.toLowerCase().indexOf(lowerTarget) !== -1) {
+          activeCategory = cName;
+          break;
+        }
+      }
+      if (!activeCategory) mismatchWarning = true;
+    }
+    if (!activeCategory && categoryList.length) activeCategory = categoryList[0].name;
+
+    if (!activeCategory) {
+      container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+        + (zh ? "未找到任何 Tier 1-3 品类的数据。" : "No Tier 1-3 category data found.")
+        + "</p></div>";
+      return null;
+    }
+
+    var warningHtml = mismatchWarning
+      ? "<p class=\"warning\">" + (zh ? "品类 <strong>" + escapeHtml(targetCategory) + "</strong> 在 Tier 1-3 中无数据，已切换为 <strong>" + escapeHtml(activeCategory) + "</strong>。" : "Category <strong>" + escapeHtml(targetCategory) + "</strong> has no Tier 1-3 data; switched to <strong>" + escapeHtml(activeCategory) + "</strong>.") + "</p>"
+      : "";
+    var catOffers = offersInCategory(activeCategory, { excludeTier4Black: true });
+    if (!catOffers || catOffers.length === 0) {
+      container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+        + (zh ? "未找到分类 <strong>" + escapeHtml(activeCategory) + "</strong> 的数据。" : "No data found for category <strong>" + escapeHtml(activeCategory) + "</strong>.")
+        + "</p></div>";
+      return null;
+    }
+    container.innerHTML = warningHtml + "<div class=\"analysis-section\"><p class=\"info\">"
+      + (zh ? "正在加载 <strong>" + escapeHtml(activeCategory) + "</strong> 的趋势数据…" : "Loading trend for <strong>" + escapeHtml(activeCategory) + "</strong>…")
+      + "</p></div>";
+
+    var monthlyMetrics = await fetchCategoryTrendMetrics(activeCategory, apiMonthCount);
+    if (monthlyMetrics && trimTarget > 0 && monthlyMetrics.length > trimTarget) {
+      monthlyMetrics = monthlyMetrics.slice(0, trimTarget);
+    }
+    if (!monthlyMetrics || monthlyMetrics.length < 2) {
+      var catEstimated = estimateAggregatedTrend(catOffers, requestedMonthCount);
+      if (catEstimated) {
+        // 挂品类下拉标记，估算模式同样支持下拉切换
+        catEstimated.categoryTrend = true;
+        catEstimated.categoryList = categoryList;
+        catEstimated.activeCategory = activeCategory;
+        renderEstimatedTrend(catEstimated, activeCategory, container, zh, language);
+        return catEstimated;
+      }
+      container.innerHTML = "<div class=\"analysis-section\"><p class=\"warning\">"
+        + (zh ? "分类 <strong>" + escapeHtml(activeCategory) + "</strong> 的数据不足以分析趋势（需要至少 2 个月的月度数据）。" : "Insufficient data for category <strong>" + escapeHtml(activeCategory) + "</strong> trend (need at least 2 months).")
+        + "</p></div>";
+      return null;
+    }
+
+    var summary = computeTrend(monthlyMetrics, null);
+    if (!summary) {
+      container.innerHTML = "<div class=\"analysis-section\"><p>" + (zh ? "无法计算趋势。" : "Unable to compute trend.") + "</p></div>";
+      return null;
+    }
+    summary.target = activeCategory;
+    // 保留品类不在 Tier1-3 时的回退警告（不随成功渲染被覆盖）
+    container.innerHTML = warningHtml + "<p class=\"info\">" + (zh ? "趋势数据已加载，详见左侧面板" : "Trend data loaded, see left panel for details.") + "</p>";
+
+    // 左上下文面板：携带品类下拉状态，浮窗经 MutationObserver 自动同步
+    _publishCategoryTrendContext(summary, categoryList, activeCategory);
+    appendTrendNarrative(container, summary, zh, language);
+    return summary;
+  }
+
+  // 品类趋势：下拉切换当前品类（左面板/浮窗内共用）。
+  // 流程：立即更新左上下文面板为 loading → 拉取品类月度数据（品类缓存命中秒开）→
+  // computeTrend → 重渲染左面板 → 浮窗 MutationObserver（_updateDeepPanelFromContext）自动同步。
+  // 竞态：_trendSwitchSeq 序号守卫，快速连续切换时丢弃过期响应。
+  async function switchTrendCategory(categoryName) {
+    var seq = ++_trendSwitchSeq;
+    var zh = state.language === "zh";
+    var categoryList = categoryListForTrend();
+    var activeCategory = String(categoryName || "");
+    if (!activeCategory && categoryList.length) activeCategory = categoryList[0].name;
+    if (!activeCategory) return null;
+    _activeTrendCategory = activeCategory;
+
+    // Loading 上下文：左面板先渲染下拉 + 加载中（含 trend-context-wrap 外壳，
+    // 保证浮窗 observer 同步 loading 态），数据到位后再替换为完整趋势
+    var loadingSummary = { target: activeCategory, categoryTrend: true, categoryList: categoryList, activeCategory: activeCategory, loading: true };
+    setContext(buildTrendContext(loadingSummary));
+
+    var catOffers = offersInCategory(activeCategory, { excludeTier4Black: true });
+    var monthlyMetrics = catOffers.length ? await fetchCategoryTrendMetrics(activeCategory, 12) : null;
+    if (seq !== _trendSwitchSeq) return null; // 竞态：期间用户又切换了品类，丢弃本次结果
+
+    var summary = null;
+    if (!monthlyMetrics || monthlyMetrics.length < 2) {
+      var estimated = estimateAggregatedTrend(catOffers, 3);
+      if (estimated) {
+        estimated.target = activeCategory;
+        estimated.estimated = true;
+        summary = estimated;
+      }
+    } else {
+      summary = computeTrend(monthlyMetrics, null);
+      if (summary) summary.target = activeCategory;
+    }
+    if (!summary) return null;
+    _publishCategoryTrendContext(summary, categoryList, activeCategory);
+    return summary;
+  }
+
   // ── Trend helper: render estimated trend (used by all entity types) ──
   function renderEstimatedTrend(summary, label, container, zh, language) {
     summary.target = label;
@@ -6034,16 +6149,13 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   async function fetchAggregatedMonthlyMetrics(offers, monthCount) {
     if (!offers || offers.length === 0) return null;
 
-    // Sort by revenue descending, take top 25 merchants for performance
-    var topOffers = offers.slice().sort(function(a, b) {
-      return (b.salesAmount || 0) - (a.salesAmount || 0);
-    }).slice(0, 25);
-
-    // Fetch metrics in batches to avoid overwhelming the API
+    // 全量聚合（不截断 Top 25）：品类趋势需要代表品类整体而非头部商户。
+    // 商户月度数据有 fetchMerchantMetrics 的 dbMerchantCache 缓存，同一商户跨品类/跨请求复用，
+    // 批处理仍按 6 并发控制 API 压力。
     var allMerchantRows = [];
     var batchSize = 6;
-    for (var i = 0; i < topOffers.length; i += batchSize) {
-      var batch = topOffers.slice(i, i + batchSize);
+    for (var i = 0; i < offers.length; i += batchSize) {
+      var batch = offers.slice(i, i + batchSize);
       var batchResults = await Promise.all(batch.map(function(o) {
         return fetchMerchantMetrics(o.merchantId, monthCount);
       }));
@@ -6086,6 +6198,50 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     }
 
     return result;
+  }
+
+  // 品类趋势月度数据缓存（会话内）：键 = 品类名 + 月份数。
+  // 商户级缓存由 fetchMerchantMetrics 的 dbMerchantCache 提供，这里只缓存品类聚合结果，
+  // 下拉切换品类/切回已看品类时秒开。
+  var _categoryMonthlyCache = {};
+
+  // 品类趋势数据：Tier 1-3 全量聚合月度数据（排除 Tier 4/BLACK，与品类分析口径一致）。
+  // 25s 超时兜底（与原 category trend path 一致），超时返回 null 由调用方走估算趋势。
+  async function fetchCategoryTrendMetrics(categoryName, monthCount) {
+    var cacheKey = String(categoryName || "") + ":" + (typeof monthCount === "number" ? monthCount : 12);
+    if (_categoryMonthlyCache[cacheKey]) return _categoryMonthlyCache[cacheKey];
+    var catOffers = offersInCategory(categoryName, { excludeTier4Black: true });
+    if (!catOffers || catOffers.length === 0) return null;
+    var metrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(catOffers, monthCount), 25000, null);
+    if (metrics && metrics.length >= 1) _categoryMonthlyCache[cacheKey] = metrics;
+    return metrics;
+  }
+
+  // 品类趋势下拉列表：Tier 1-3 商户按主品类聚合，revenue 降序（下拉默认项与排序）。
+  // 口径与 offersInCategory(cat, {excludeTier4Black:true}) 一致：o.mainCategory || o.category。
+  function categoryListForTrend() {
+    var map = {};
+    offers.forEach(function(o) {
+      if (isTier4OrBlack(o.tier)) return;
+      var cat = String(o.mainCategory || o.category || "Uncategorized").trim();
+      if (!cat) cat = "Uncategorized";
+      if (!map[cat]) map[cat] = { name: cat, revenue: 0, count: 0 };
+      map[cat].revenue += Number(o.salesAmount) || 0;
+      map[cat].count += 1;
+    });
+    var list = Object.keys(map).map(function(k) { return map[k]; });
+    list.sort(function(a, b) { return (b.revenue - a.revenue) || (b.count - a.count); });
+    return list;
+  }
+
+  // 品类趋势发布到左上下文面板：summary 挂品类下拉状态标记，setContext → recBox 重渲染 →
+  // 浮窗 MutationObserver（_updateDeepPanelFromContext）自动同步，两侧联动。
+  function _publishCategoryTrendContext(summary, categoryList, activeCategory) {
+    summary.categoryTrend = true;
+    summary.categoryList = categoryList;
+    summary.activeCategory = activeCategory;
+    _activeTrendCategory = activeCategory;
+    setContext(buildTrendContext(summary));
   }
 
   // ── Trend helper: estimated aggregated trend from offer totals (no DB) ──
@@ -7249,12 +7405,19 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   function buildTrendContext(summary) {
-    return {
+    var context = {
       type: "trend",
       summary: summary,
       target: summary.target || "",
       estimated: summary.estimated || false
     };
+    // 品类趋势附加状态（品类下拉列表/当前选中），供 renderTrendContext 渲染品类下拉
+    if (summary.categoryTrend) {
+      context.categoryTrend = true;
+      context.categoryList = summary.categoryList || [];
+      context.activeCategory = summary.activeCategory || "";
+    }
+    return context;
   }
 
   function monthStatus(month, rows) {
@@ -7609,6 +7772,28 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   function renderTrendContext(s) {
     _trendContextData = s;
     var zh = state.language === "zh";
+    // 品类趋势：渲染品类下拉（左上下文面板；浮窗克隆后事件另行绑定）
+    var categoryPickerHtml = "";
+    if (s.categoryTrend && s.categoryList && s.categoryList.length) {
+      var activeCat = String(s.activeCategory || "");
+      if (!activeCat) activeCat = String(s.categoryList[0].name || "");
+      var optsHtml = s.categoryList.map(function(c) {
+        var selected = String(c.name) === activeCat ? " selected" : "";
+        return "<option value=\"" + escapeHtml(c.name) + "\"" + selected + ">" + escapeHtml(c.name) + "</option>";
+      }).join("");
+      categoryPickerHtml = "<div class=\"trend-category-picker\">"
+        + "<label>" + (zh ? "品类" : "Category") + "</label>"
+        + "<select class=\"trend-category-select\" data-trend-category-select aria-label=\"" + (zh ? "选择品类" : "Select category") + "\">"
+        + optsHtml + "</select>"
+        + "</div>";
+    }
+    // 切换中的 loading 态：下拉 + 加载提示（含 trend-context-wrap 外壳，浮窗经 observer 同步）
+    if (s.loading) {
+      return "<div class=\"trend-context-wrap\" data-trend-loading>"
+        + categoryPickerHtml
+        + "<div class=\"trend-loading\">" + (zh ? "正在加载趋势数据…" : "Loading trend data…") + "</div>"
+        + "</div>";
+    }
     // 仅渲染用户勾选的可见指标（Display columns），至少保留 1 个
     var allMetrics = s.metrics || TREND_METRIC_DEFS.map(function(def) { return def.key; });
     var visibleMetrics = trendVisibleMetrics();
@@ -7665,6 +7850,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var tableHtml = renderTrendTable(s);
 
     return "<div class=\"trend-context-wrap\" data-trend-metric=\"" + defaultMetric + "\">"
+      + categoryPickerHtml
       + noticeHtml
       + trendColumnPickerHtml()
       + "<div class=\"trend-chart-controls\">" + btnHtml + "</div>"
@@ -7750,8 +7936,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       }
     });
 
-    // 勾选/取消勾选指标 → 保存并重渲染趋势面板
+    // 品类趋势：下拉切换品类（左上下文面板；浮窗克隆内容由 _bindDeepPanelChartControls 绑定）
     els.recBox.addEventListener("change", function(e) {
+      var catSelect = e.target.closest("[data-trend-category-select]");
+      if (catSelect) {
+        switchTrendCategory(catSelect.value);
+        return;
+      }
+      // 勾选/取消勾选指标 → 保存并重渲染趋势面板
       var checkbox = e.target.closest("[data-trend-column-check]");
       if (!checkbox || !_trendContextData) return;
       var checked = Array.from(els.recBox.querySelectorAll("[data-trend-column-check]:checked"))
@@ -10069,6 +10261,12 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   // 与左侧 recBox 的 bindTrendChartControls 行为保持一致。
   function _bindDeepPanelChartControls(container, chartWrap, panel) {
     if (!chartWrap) return;
+    // 品类趋势：浮窗克隆内容内的下拉切换（与左面板 recBox change 委托行为一致）
+    chartWrap.addEventListener("change", function (e) {
+      var catSelect = e.target.closest("[data-trend-category-select]");
+      if (!catSelect) return;
+      switchTrendCategory(catSelect.value);
+    });
     chartWrap.addEventListener("click", function (e) {
       // Display 列选择：展开/收起面板
       var toggle = e.target.closest("[data-trend-column-toggle]");
@@ -19582,7 +19780,22 @@ var _NUMERIC_COL_PATTERNS = [
       merchantOverviewHtml,
       merchantOverviewCardInner,
       enhanceMerchantCards,
-      recommendationExportColumns
+      recommendationExportColumns,
+      // 品类趋势 Deep View（品类下拉/全量聚合/切换联动）
+      isTier4OrBlack,
+      offersInCategory,
+      categoryListForTrend,
+      fetchAggregatedMonthlyMetrics,
+      fetchCategoryTrendMetrics,
+      trendAnalysisTitle,
+      renderTrendContext,
+      renderCategoryTrend,
+      switchTrendCategory,
+      buildTrendContext,
+      computeTrend,
+      trendContextData: () => _trendContextData,
+      activeTrendCategory: () => _activeTrendCategory,
+      categoryMonthlyCache: () => _categoryMonthlyCache
     };
   } else {
     init();

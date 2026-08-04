@@ -54,6 +54,7 @@ node scripts/test_onboarding_tour.mjs
 node scripts/test_tier2_recommendation_rules.mjs
 node scripts/test_sheet_categories.mjs
 node scripts/test_category_drilldown.mjs
+node scripts/test_category_trend.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
