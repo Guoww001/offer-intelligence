@@ -108,3 +108,15 @@ assertEqual(t.fillAllowedFor("chat", true), true, "chat example with memory -> f
 assertEqual(t.shouldClearTipOnInput("abc", "abc"), false, "unchanged value -> keep tip");
 assertEqual(t.shouldClearTipOnInput("abcX", "abc"), true, "user edited value -> clear tip");
 assertEqual(t.shouldClearTipOnInput("", "abc"), true, "cleared value -> clear tip");
+
+// ── 用例 8：渲染 smoke（stub DOM 下不抛异常）──
+byIdMap["chatLog"] = { ...elementStub, querySelector() { return null; }, addEventListener() {} };
+byIdMap["chatLogChat"] = { ...elementStub, querySelector() { return null; }, addEventListener() {} };
+byIdMap["chatInput"] = elementStub;
+byIdMap["chatForm"] = { ...elementStub, parentNode: { insertBefore() {} } };
+t.renderSmoke();
+assertEqual(t.tipActive(), false, "no tip after plain render");
+t.showTipbar("report-tip");
+assertEqual(t.tipActive(), true, "showTipbar should set tip state");
+t.clearTipbar();
+assertEqual(t.tipActive(), false, "clearTipbar should clear tip state");
