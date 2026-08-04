@@ -1832,7 +1832,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 | 标准提问 | 说明 |
 | --- | --- |
-| Beauty 品类表现 | 品类概览 |
+| Beauty 品类 | 品类概览 |
 | Electronics offers | 品类下 offer 排行 |
 | 美妆类别的 offer | 中文品类别名 |
 
@@ -1840,7 +1840,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 | 标准提问 | 说明 |
 | --- | --- |
-| Tier 2 整体表现 | Tier 概览 |
+| Tier 2 | Tier 概览 |
 | Tier 1 和 Tier 2 对比 | 多 Tier 对比 |
 
 ### 4. 趋势分析
@@ -1848,7 +1848,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 | 标准提问 | 说明 |
 | --- | --- |
-| Shokz 过去 3 个月的 revenue 趋势 | 商户趋势 |
+| Shokz趋势分析 | 商户趋势 |
 | Beauty 类别的趋势 | 品类趋势 |
 | Tier 2 这个季度的订单趋势 | Tier 趋势 |
 | 最近半年 EPC 趋势 | 全站指标趋势 |
@@ -1984,7 +1984,7 @@ Type a merchant name / merchant ID / ASIN directly for an overview.
 
 | Standard question | Description |
 | --- | --- |
-| Beauty category performance | Category overview |
+| Beauty category | Category overview |
 | Electronics offers | Offer ranking within a category |
 | Skincare offers | English category alias |
 
@@ -1992,7 +1992,7 @@ Type a merchant name / merchant ID / ASIN directly for an overview.
 
 | Standard question | Description |
 | --- | --- |
-| Tier 2 overall performance | Tier overview |
+| Tier 2 | Tier overview |
 | Compare Tier 1 and Tier 2 | Multi-tier comparison |
 
 ### 1.4 Trend Analysis
@@ -2000,7 +2000,7 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 
 | Standard question | Description |
 | --- | --- |
-| Shokz revenue trend for the last 3 months | Merchant trend |
+| Shokz trend analysis | Merchant trend |
 | Beauty category trend | Category trend |
 | Tier 2 order trend this quarter | Tier trend |
 | EPC trend over the last six months | Site-wide metric trend |
