@@ -259,6 +259,7 @@
   }
   function _showTipbar(key) {
     try {
+      _clearTipbar();
       var form = document.getElementById("chatForm");
       if (!form || !form.parentNode) return;
       var tip = makeEl("welcome-tipbar",
@@ -338,7 +339,53 @@
     if (!container) return false;
     try { return !!container.querySelector(".welcome-panel"); } catch (e) { return false; }
   }
-  function notify(eventName, payload) {} // Task 4 实现
+  function notify(eventName, payload) {
+    payload = payload || {};
+    if (eventName === "chat-sent") {
+      dismiss(_mode);
+      return;
+    }
+    if (eventName === "mode-switched") {
+      if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
+      var mode = payload.mode === "chat" ? "chat" : "report";
+      _mode = mode;
+      maybeRender(mode, { hasMemory: _hasMemory });
+      return;
+    }
+    if (eventName === "report-ready") {
+      if (_panelTipShown || !payload.panelEl) return;
+      _panelTipShown = true;
+      _insertPanelTip(payload.panelEl);
+      return;
+    }
+    if (eventName === "memory-added") {
+      _hasMemory = true;
+      _markMemoryStepDone();
+      return;
+    }
+  }
+  // Chat 欢迎屏流程条第 2 步（拖入记忆栏）补 ✓
+  function _markMemoryStepDone() {
+    try {
+      var container = containerFor("chat");
+      if (!container) return;
+      var steps = container.querySelectorAll(".welcome-flow.progress .welcome-flow-step");
+      if (steps && steps[1]) steps[1].classList.add("done");
+    } catch (e) {}
+  }
+
+  // ── 手动输入零打扰：用户改动输入框文本（≠ 示例填充值）→ 清 tipbar ──
+  try {
+    document.addEventListener("input", function (e) {
+      if (!_tipFromExample) return;
+      if (e.target && e.target.id === "chatInput" &&
+          shouldClearTipOnInput(e.target.value, _lastFillValue)) {
+        _clearTipbar();
+        _tipFromExample = false;
+        _pulseSend(false);
+      }
+    });
+  } catch (e) {}
 
   window.CHATBOT_WELCOME = {
     maybeRender: maybeRender,
@@ -363,6 +410,10 @@
       showTipbar: function (key) { _showTipbar(key); },
       clearTipbar: function () { _clearTipbar(); },
       lastMode: function () { return _mode; },
+      panelTipActive: function () { return !_panelTipShown; },
+      hasMemory: function () { return _hasMemory; },
+      tipFromExampleActive: function () { return _tipFromExample; },
+      markMemoryStepDone: function () { _markMemoryStepDone(); },
       resolveExampleText: resolveExampleText
     }
   };

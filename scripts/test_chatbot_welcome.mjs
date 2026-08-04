@@ -120,3 +120,27 @@ t.showTipbar("report-tip");
 assertEqual(t.tipActive(), true, "showTipbar should set tip state");
 t.clearTipbar();
 assertEqual(t.tipActive(), false, "clearTipbar should clear tip state");
+
+// ── 用例 9：notify("report-ready") 一次性 ──
+assertEqual(t.panelTipActive(), true, "panel tip should be available initially");
+welcome.notify("report-ready", { panelEl: elementStub });
+assertEqual(t.panelTipActive(), false, "panel tip should be consumed after first report");
+welcome.notify("report-ready", { panelEl: elementStub });
+assertEqual(t.panelTipActive(), false, "panel tip must NOT re-appear on second report");
+
+// ── 用例 10：notify("memory-added") ──
+assertEqual(t.hasMemory(), false, "hasMemory starts false");
+welcome.notify("memory-added", { hasMemory: true });
+assertEqual(t.hasMemory(), true, "memory-added should set hasMemory true");
+
+// ── 用例 11：notify("mode-switched") 驱动渲染 ──
+welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
+assertEqual(t.lastMode(), "chat", "mode-switched chat should render chat welcome");
+welcome.notify("mode-switched", { mode: "report", hasMemory: false });
+assertEqual(t.lastMode(), "report", "mode-switched report should render report welcome");
+
+// ── 用例 12：notify("chat-sent") 清理 ──
+t.showTipbar("report-tip");
+assertEqual(t.tipActive(), true, "tip shown before send");
+welcome.notify("chat-sent");
+assertEqual(t.tipActive(), false, "chat-sent should clear tipbar");
