@@ -358,9 +358,22 @@
     var rect = el.getBoundingClientRect();
     var pw = 360;
     var left = Math.min(Math.max(12, rect.left + rect.width / 2 - pw / 2), window.innerWidth - pw - 12);
-    var below = rect.bottom + 16;
-    var above = Math.max(12, rect.top - 16 - 220);
-    var top = below <= window.innerHeight - 240 ? below : above;
+    // 按气泡真实高度定位（内容先于定位渲染，offsetHeight 准确）：优先放目标下方，
+    // 放不下再放上方——硬编码 220px 估算在气泡实际更高时会压住高光目标
+    var popH = 0;
+    try { popH = _popoverEl.offsetHeight || 0; } catch (e) {}
+    if (popH < 60) popH = 240; // 兜底：测量不可用（如测试环境）时沿用估算
+    var gap = 16;
+    var below = rect.bottom + gap;
+    var above = rect.top - gap - popH;
+    var top;
+    if (below + popH <= window.innerHeight - 12) {
+      top = below;                 // 下方放得下
+    } else if (above >= 12) {
+      top = above;                 // 下方放不下，上方放得下
+    } else {
+      top = Math.max(12, above);   // 上下都放不下（超高气泡/短视口）：贴顶兜底，尽量少挡
+    }
     _popoverEl.style.left = left + "px";
     _popoverEl.style.top = top + "px";
   }
@@ -404,12 +417,14 @@
     }
     _dropzoneTip.style.transform = "translateX(-50%)";
   }
-  // 仅重渲染气泡内容（按钮状态），不重新定位——classObserver 在面板获得/失去
-  // minimized 类时调用：第 4 步「下一步」随最小化状态实时启用/禁用
+  // 重渲染气泡内容（按钮状态）并同步重定位——classObserver 在面板获得/失去
+  // minimized 类时调用：第 4 步「下一步」随最小化状态实时启用/禁用，
+  // 按钮文案变化可能引起气泡高度变化，需按新高度重新摆放（不压住高光目标）
   function _refreshActionButtons() {
     var step = TOUR_STEPS[_stepIndex];
     if (!step || !_active) return;
     _renderPopoverContent(step, copy(currentLanguage()));
+    if (_targetEl) _positionPopover(_targetEl);
   }
 
   function _removeDropzoneHint() {
@@ -536,8 +551,10 @@
       _targetEl = el;
       _positionMask(step, el);
       _positionHighlight(el);
-      _positionPopover(el);
+      // 先渲染气泡内容再定位——_positionPopover 按真实高度（offsetHeight）摆放，
+      // 若先定位后渲染，测到的是旧内容的高度，气泡会压住高光目标
       _renderPopoverContent(step, c);
+      _positionPopover(el);
       if (_resizeObserver) {
         try { _resizeObserver.disconnect(); } catch (e) {}
         try { _resizeObserver.observe(el); } catch (e) {}
