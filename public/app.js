@@ -250,10 +250,7 @@
       notice: "",
       noticeType: "success",
       search: "",
-      drawerOpen: false,
-      editingRecordId: null,
-      submitting: false,
-      restoreFocus: null
+      savingMerchantIds: new Set()
     },
     tierSheetFilters: {
       search: "",
@@ -458,26 +455,11 @@
     publishersTablePanel: document.getElementById("publishersTablePanel"),
     monthlyNewMerchantsPage: document.getElementById("monthlyNewMerchantsPage"),
     monthlyNewMerchantsMonth: document.getElementById("monthlyNewMerchantsMonth"),
-    monthlyNewMerchantAdd: document.getElementById("monthlyNewMerchantAdd"),
+    monthlyNewMerchantsRefresh: document.getElementById("monthlyNewMerchantsRefresh"),
     monthlyNewMerchantsNotice: document.getElementById("monthlyNewMerchantsNotice"),
     monthlyNewMerchantsSearch: document.getElementById("monthlyNewMerchantsSearch"),
     monthlyNewMerchantsCount: document.getElementById("monthlyNewMerchantsCount"),
     monthlyNewMerchantsRows: document.getElementById("monthlyNewMerchantsRows"),
-    monthlyNewMerchantDrawerBackdrop: document.getElementById("monthlyNewMerchantDrawerBackdrop"),
-    monthlyNewMerchantDrawer: document.getElementById("monthlyNewMerchantDrawer"),
-    monthlyNewMerchantDrawerTitle: document.getElementById("monthlyNewMerchantDrawerTitle"),
-    monthlyNewMerchantDrawerClose: document.getElementById("monthlyNewMerchantDrawerClose"),
-    monthlyNewMerchantForm: document.getElementById("monthlyNewMerchantForm"),
-    monthlyNewMerchantRecordId: document.getElementById("monthlyNewMerchantRecordId"),
-    monthlyNewMerchantReportMonth: document.getElementById("monthlyNewMerchantReportMonth"),
-    monthlyNewMerchantId: document.getElementById("monthlyNewMerchantId"),
-    monthlyNewMerchantName: document.getElementById("monthlyNewMerchantName"),
-    monthlyNewMerchantManager: document.getElementById("monthlyNewMerchantManager"),
-    monthlyNewMerchantGmvTarget: document.getElementById("monthlyNewMerchantGmvTarget"),
-    monthlyNewMerchantReward: document.getElementById("monthlyNewMerchantReward"),
-    monthlyNewMerchantFormError: document.getElementById("monthlyNewMerchantFormError"),
-    monthlyNewMerchantCancel: document.getElementById("monthlyNewMerchantCancel"),
-    monthlyNewMerchantSave: document.getElementById("monthlyNewMerchantSave"),
     sheetPage: document.getElementById("sheetPage"),
     categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
@@ -639,31 +621,27 @@
       "nav.category": "品类",
       "nav.monthlyNewMerchants": "上新商家",
       "monthlyNewMerchants.title": "本月上新商家",
-      "monthlyNewMerchants.subtitle": "记录本月上新商家与目标，所有内容持久化保存到数据库",
-      "monthlyNewMerchants.add": "添加商家",
+      "monthlyNewMerchants.subtitle": "商家、ID、BD 与添加时间来自 YeahPromos 后台；重点推荐、GMV 目标与奖励独立持久化",
+      "monthlyNewMerchants.refresh": "刷新数据",
       "monthlyNewMerchants.search": "搜索上新商家",
       "monthlyNewMerchants.searchPlaceholder": "搜索商家、ID 或 BD",
+      "monthlyNewMerchants.priority": "重点",
+      "monthlyNewMerchants.priorityAction": "重点推荐",
       "monthlyNewMerchants.bd": "BD",
+      "monthlyNewMerchants.added": "添加时间",
       "monthlyNewMerchants.gmvTarget": "GMV 月目标",
-      "monthlyNewMerchants.reward": "达成后奖励",
+      "monthlyNewMerchants.reward": "商家奖励",
       "monthlyNewMerchants.rewardPlaceholder": "可填写奖金、佣金提升或其他奖励",
-      "monthlyNewMerchants.updated": "更新时间",
       "monthlyNewMerchants.actions": "操作",
       "monthlyNewMerchants.merchantName": "商家",
-      "monthlyNewMerchants.drawerSubtitle": "只有商家为必填项，保存后将直接写入数据库",
-      "monthlyNewMerchants.save": "保存商家",
-      "monthlyNewMerchants.addTitle": "添加上新商家",
-      "monthlyNewMerchants.editTitle": "编辑上新商家",
+      "monthlyNewMerchants.save": "保存汇报",
       "monthlyNewMerchants.loading": "正在从数据库读取上新商家…",
       "monthlyNewMerchants.emptyTitle": "本月还没有上新商家",
-      "monthlyNewMerchants.emptyBody": "点击“添加商家”录入第一条记录。",
+      "monthlyNewMerchants.emptyBody": "后台数据库在这个月份没有找到上新商家。",
       "monthlyNewMerchants.noMatchesTitle": "没有匹配的商家",
       "monthlyNewMerchants.noMatchesBody": "请调整搜索关键词。",
-      "monthlyNewMerchants.saved": "商家信息已保存到数据库。",
-      "monthlyNewMerchants.deleted": "商家记录已从数据库删除。",
-      "monthlyNewMerchants.deleteConfirm": "确认删除这条上新商家记录吗？",
-      "monthlyNewMerchants.edit": "编辑",
-      "monthlyNewMerchants.delete": "删除",
+      "monthlyNewMerchants.saved": "重点推荐、GMV 目标和商家奖励已保存到数据库。",
+      "monthlyNewMerchants.sourceLegacy": "历史记录",
       "monthlyNewMerchants.databaseError": "数据库暂时无法读取上新商家信息。",
       "action.cancel": "取消",
       "sidebar.status": "数据状态",
@@ -18286,6 +18264,10 @@ var _NUMERIC_COL_PATTERNS = [
       merchantId: String(record.merchantId || "").trim(),
       merchantName: String(record.merchantName || "").trim(),
       businessManager: String(record.businessManager || "").trim(),
+      addedAt: String(record.addedAt || record.sourceAddedAt || "").trim(),
+      sourceAddedAt: String(record.sourceAddedAt || "").trim(),
+      sourceLinked: record.sourceLinked !== false,
+      isPriority: record.isPriority === true || record.isPriority === 1 || record.isPriority === "1",
       gmvMonthlyTarget: Number.isFinite(parsedTarget) ? parsedTarget : null,
       completionReward: String(record.completionReward || "").trim(),
       createdBy: String(record.createdBy || "").trim(),
@@ -18303,7 +18285,8 @@ var _NUMERIC_COL_PATTERNS = [
       [
         record.merchantName,
         record.merchantId,
-        record.businessManager
+        record.businessManager,
+        record.completionReward
       ].some((value) => String(value || "").toLowerCase().includes(query))
     ));
   }
@@ -18327,8 +18310,7 @@ var _NUMERIC_COL_PATTERNS = [
       ...(recordId ? { recordId } : {}),
       reportMonth: String(source.reportMonth || "").trim(),
       merchantId: String(source.merchantId || "").trim(),
-      merchantName: String(source.merchantName || "").trim(),
-      businessManager: String(source.businessManager || "").trim(),
+      isPriority: Boolean(source.isPriority),
       gmvMonthlyTarget: rawTarget ? Number(rawTarget) : null,
       completionReward: String(source.completionReward || "").trim()
     };
@@ -18345,7 +18327,7 @@ var _NUMERIC_COL_PATTERNS = [
     }).format(date);
   }
 
-  function monthlyNewMerchantUpdatedText(value) {
+  function monthlyNewMerchantAddedText(value) {
     const text = String(value || "").trim();
     if (!text) return "—";
     const date = new Date(
@@ -18357,7 +18339,10 @@ var _NUMERIC_COL_PATTERNS = [
     return new Intl.DateTimeFormat(state.language === "zh" ? "zh-CN" : "en-US", {
       year: "numeric",
       month: "short",
-      day: "numeric"
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
     }).format(date);
   }
 
@@ -18369,12 +18354,6 @@ var _NUMERIC_COL_PATTERNS = [
     els.monthlyNewMerchantsNotice.textContent = management.notice;
     els.monthlyNewMerchantsNotice.classList.toggle("hidden", !management.notice);
     els.monthlyNewMerchantsNotice.classList.toggle("error", management.noticeType === "error");
-  }
-
-  function setMonthlyNewMerchantFormError(message = "") {
-    if (!els.monthlyNewMerchantFormError) return;
-    els.monthlyNewMerchantFormError.textContent = String(message || "");
-    els.monthlyNewMerchantFormError.classList.toggle("hidden", !message);
   }
 
   function renderMonthlyNewMerchantsPage() {
@@ -18400,16 +18379,20 @@ var _NUMERIC_COL_PATTERNS = [
           ? ` · GMV 目标 ${money(totalTarget)}`
           : ` · GMV target ${money(totalTarget)}`)
         : "";
-      els.monthlyNewMerchantsCount.textContent = countText + targetText;
+      const priorityCount = rows.filter((record) => record.isPriority).length;
+      const priorityText = priorityCount
+        ? (state.language === "zh" ? ` · ${priorityCount} 个重点推荐` : ` · ${priorityCount} priority`)
+        : "";
+      els.monthlyNewMerchantsCount.textContent = countText + priorityText + targetText;
     }
     if (!els.monthlyNewMerchantsRows) return;
 
     if (management.loading && !management.records.length) {
-      els.monthlyNewMerchantsRows.innerHTML = `<tr class="monthly-new-merchants-empty"><td colspan="7">${escapeHtml(t("monthlyNewMerchants.loading", "Loading new merchants from the database…"))}</td></tr>`;
+      els.monthlyNewMerchantsRows.innerHTML = `<tr class="monthly-new-merchants-empty"><td colspan="8">${escapeHtml(t("monthlyNewMerchants.loading", "Loading new merchants from the database…"))}</td></tr>`;
       return;
     }
     if (management.error && !management.records.length) {
-      els.monthlyNewMerchantsRows.innerHTML = `<tr class="monthly-new-merchants-empty"><td colspan="7"><strong>${escapeHtml(t("monthlyNewMerchants.databaseError", "The database is temporarily unavailable."))}</strong><span>${escapeHtml(management.error)}</span></td></tr>`;
+      els.monthlyNewMerchantsRows.innerHTML = `<tr class="monthly-new-merchants-empty"><td colspan="8"><strong>${escapeHtml(t("monthlyNewMerchants.databaseError", "The database is temporarily unavailable."))}</strong><span>${escapeHtml(management.error)}</span></td></tr>`;
       return;
     }
     if (!rows.length) {
@@ -18419,25 +18402,36 @@ var _NUMERIC_COL_PATTERNS = [
         : t("monthlyNewMerchants.emptyTitle", "No new merchants have been added for this month");
       const body = searching
         ? t("monthlyNewMerchants.noMatchesBody", "Try a different merchant, ID, or BD.")
-        : t("monthlyNewMerchants.emptyBody", "Use Add merchant to create the first database record.");
-      els.monthlyNewMerchantsRows.innerHTML = `<tr class="monthly-new-merchants-empty"><td colspan="7"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span></td></tr>`;
+        : t("monthlyNewMerchants.emptyBody", "No newly added merchants were found in the backend database for this month.");
+      els.monthlyNewMerchantsRows.innerHTML = `<tr class="monthly-new-merchants-empty"><td colspan="8"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span></td></tr>`;
       return;
     }
 
     els.monthlyNewMerchantsRows.innerHTML = rows.map((record) => {
-      const reward = record.completionReward || "—";
       const merchantLabel = record.merchantName || t("monthlyNewMerchants.merchantName", "Merchant");
-      return `<tr data-monthly-new-merchant-id="${record.recordId}">
-        <td><div class="monthly-new-merchant-name"><strong>${escapeHtml(merchantLabel)}</strong></div></td>
+      const saving = management.savingMerchantIds.has(record.merchantId);
+      const rowClasses = [
+        record.isPriority ? "is-priority" : "",
+        record.sourceLinked ? "" : "is-legacy"
+      ].filter(Boolean).join(" ");
+      const priorityLabel = t("monthlyNewMerchants.priorityAction", "Priority recommendation");
+      const sourceLabel = record.sourceLinked
+        ? ""
+        : `<small>${escapeHtml(t("monthlyNewMerchants.sourceLegacy", "Historical record"))}</small>`;
+      const targetValue = record.gmvMonthlyTarget === null ? "" : String(record.gmvMonthlyTarget);
+      return `<tr class="${rowClasses}" data-monthly-new-merchant-id="${escapeHtml(record.merchantId)}">
+        <td class="monthly-new-merchant-priority-cell">
+          <button class="monthly-new-merchant-priority" type="button" data-monthly-new-merchant-action="priority" aria-pressed="${record.isPriority ? "true" : "false"}" aria-label="${escapeHtml(`${priorityLabel}: ${merchantLabel}`)}" ${!record.merchantId || saving ? "disabled" : ""}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg>
+          </button>
+        </td>
+        <td><div class="monthly-new-merchant-name"><strong>${escapeHtml(merchantLabel)}</strong>${sourceLabel}</div></td>
         <td>${record.merchantId ? escapeHtml(record.merchantId) : '<span class="monthly-new-merchant-muted">—</span>'}</td>
         <td>${record.businessManager ? escapeHtml(record.businessManager) : '<span class="monthly-new-merchant-muted">—</span>'}</td>
-        <td class="monthly-new-merchant-number">${record.gmvMonthlyTarget === null ? '<span class="monthly-new-merchant-muted">—</span>' : escapeHtml(money(record.gmvMonthlyTarget))}</td>
-        <td><span class="monthly-new-merchant-notes" title="${escapeHtml(reward)}">${escapeHtml(reward)}</span></td>
-        <td>${escapeHtml(monthlyNewMerchantUpdatedText(record.updatedAt || record.createdAt))}</td>
-        <td><div class="monthly-new-merchant-actions">
-          <button type="button" data-monthly-new-merchant-action="edit" aria-label="${escapeHtml(`Edit ${merchantLabel}`)}">${escapeHtml(t("monthlyNewMerchants.edit", "Edit"))}</button>
-          <button type="button" data-monthly-new-merchant-action="delete" aria-label="${escapeHtml(`Delete ${merchantLabel}`)}">${escapeHtml(t("monthlyNewMerchants.delete", "Delete"))}</button>
-        </div></td>
+        <td class="monthly-new-merchant-added">${escapeHtml(monthlyNewMerchantAddedText(record.addedAt))}</td>
+        <td class="monthly-new-merchant-number"><input class="monthly-new-merchant-target-input" data-monthly-new-merchant-field="gmvMonthlyTarget" type="number" inputmode="decimal" min="0" max="9999999999999999.99" step="0.01" value="${escapeHtml(targetValue)}" placeholder="0.00" ${!record.merchantId || saving ? "disabled" : ""}/></td>
+        <td><textarea class="monthly-new-merchant-reward-input" data-monthly-new-merchant-field="completionReward" maxlength="1000" rows="2" placeholder="${escapeHtml(t("monthlyNewMerchants.rewardPlaceholder", "Optional bonus, commission uplift, or other reward"))}" ${!record.merchantId || saving ? "disabled" : ""}>${escapeHtml(record.completionReward)}</textarea></td>
+        <td><button class="monthly-new-merchant-save-inline" type="button" data-monthly-new-merchant-action="save" ${!record.merchantId || saving ? "disabled" : ""}>${escapeHtml(saving ? (state.language === "zh" ? "保存中…" : "Saving…") : t("monthlyNewMerchants.save", "Save report"))}</button></td>
       </tr>`;
     }).join("");
   }
@@ -18493,163 +18487,57 @@ var _NUMERIC_COL_PATTERNS = [
     }
   }
 
-  function openMonthlyNewMerchantDrawer(record = null) {
-    const management = state.monthlyNewMerchants;
-    const normalizedRecord = record ? normalizeMonthlyNewMerchantRecord(record) : null;
-    management.restoreFocus = document.activeElement;
-    management.drawerOpen = true;
-    management.editingRecordId = normalizedRecord ? normalizedRecord.recordId : null;
-    setMonthlyNewMerchantFormError("");
-    if (els.monthlyNewMerchantForm) els.monthlyNewMerchantForm.reset();
-    if (els.monthlyNewMerchantRecordId) {
-      els.monthlyNewMerchantRecordId.value = normalizedRecord ? String(normalizedRecord.recordId) : "";
+  function monthlyNewMerchantPayloadFromRow(row, record, isPriority = record.isPriority) {
+    const targetInput = row.querySelector('[data-monthly-new-merchant-field="gmvMonthlyTarget"]');
+    const rewardInput = row.querySelector('[data-monthly-new-merchant-field="completionReward"]');
+    if (targetInput && !targetInput.checkValidity()) {
+      targetInput.reportValidity();
+      return null;
     }
-    if (els.monthlyNewMerchantReportMonth) {
-      els.monthlyNewMerchantReportMonth.value = normalizedRecord
-        ? normalizedRecord.reportMonth
-        : management.month;
-    }
-    if (els.monthlyNewMerchantId) els.monthlyNewMerchantId.value = normalizedRecord ? normalizedRecord.merchantId : "";
-    if (els.monthlyNewMerchantName) els.monthlyNewMerchantName.value = normalizedRecord ? normalizedRecord.merchantName : "";
-    if (els.monthlyNewMerchantManager) els.monthlyNewMerchantManager.value = normalizedRecord ? normalizedRecord.businessManager : "";
-    if (els.monthlyNewMerchantGmvTarget) {
-      els.monthlyNewMerchantGmvTarget.value = normalizedRecord && normalizedRecord.gmvMonthlyTarget !== null
-        ? String(normalizedRecord.gmvMonthlyTarget)
-        : "";
-    }
-    if (els.monthlyNewMerchantReward) {
-      els.monthlyNewMerchantReward.value = normalizedRecord ? normalizedRecord.completionReward : "";
-    }
-    if (els.monthlyNewMerchantDrawerTitle) {
-      els.monthlyNewMerchantDrawerTitle.textContent = normalizedRecord
-        ? t("monthlyNewMerchants.editTitle", "Edit new merchant")
-        : t("monthlyNewMerchants.addTitle", "Add new merchant");
-    }
-    if (els.monthlyNewMerchantDrawerBackdrop) {
-      els.monthlyNewMerchantDrawerBackdrop.classList.remove("hidden");
-      els.monthlyNewMerchantDrawerBackdrop.setAttribute("aria-hidden", "false");
-    }
-    document.body.classList.add("monthly-new-merchant-drawer-open");
-    window.requestAnimationFrame(() => {
-      if (els.monthlyNewMerchantName) els.monthlyNewMerchantName.focus();
+    return buildMonthlyNewMerchantPayload({
+      recordId: record.recordId,
+      reportMonth: record.reportMonth,
+      merchantId: record.merchantId,
+      isPriority,
+      gmvMonthlyTarget: targetInput ? targetInput.value : record.gmvMonthlyTarget,
+      completionReward: rewardInput ? rewardInput.value : record.completionReward
     });
   }
 
-  function closeMonthlyNewMerchantDrawer({ restoreFocus = true } = {}) {
+  async function saveMonthlyNewMerchantRow(row, record, { togglePriority = false } = {}) {
     const management = state.monthlyNewMerchants;
-    management.drawerOpen = false;
-    management.editingRecordId = null;
-    if (els.monthlyNewMerchantDrawerBackdrop) {
-      els.monthlyNewMerchantDrawerBackdrop.classList.add("hidden");
-      els.monthlyNewMerchantDrawerBackdrop.setAttribute("aria-hidden", "true");
-    }
-    document.body.classList.remove("monthly-new-merchant-drawer-open");
-    setMonthlyNewMerchantFormError("");
-    if (
-      restoreFocus
-      && management.restoreFocus
-      && typeof management.restoreFocus.focus === "function"
-    ) {
-      management.restoreFocus.focus();
-    }
-  }
-
-  function trapMonthlyNewMerchantDrawerFocus(event) {
-    if (
-      event.key !== "Tab"
-      || !state.monthlyNewMerchants.drawerOpen
-      || !els.monthlyNewMerchantDrawer
-    ) return false;
-    const focusable = Array.from(els.monthlyNewMerchantDrawer.querySelectorAll(
-      "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
-    )).filter((element) => !element.closest(".hidden"));
-    if (!focusable.length) return false;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-      return true;
-    }
-    if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-      return true;
-    }
-    return false;
-  }
-
-  async function submitMonthlyNewMerchant(event) {
-    event.preventDefault();
-    const management = state.monthlyNewMerchants;
-    if (management.submitting || !els.monthlyNewMerchantForm) return;
-    if (!els.monthlyNewMerchantForm.reportValidity()) return;
-    const payload = buildMonthlyNewMerchantPayload({
-      recordId: els.monthlyNewMerchantRecordId && els.monthlyNewMerchantRecordId.value,
-      reportMonth: els.monthlyNewMerchantReportMonth && els.monthlyNewMerchantReportMonth.value,
-      merchantId: els.monthlyNewMerchantId && els.monthlyNewMerchantId.value,
-      merchantName: els.monthlyNewMerchantName && els.monthlyNewMerchantName.value,
-      businessManager: els.monthlyNewMerchantManager && els.monthlyNewMerchantManager.value,
-      gmvMonthlyTarget: els.monthlyNewMerchantGmvTarget && els.monthlyNewMerchantGmvTarget.value,
-      completionReward: els.monthlyNewMerchantReward && els.monthlyNewMerchantReward.value
-    });
-    management.submitting = true;
-    setMonthlyNewMerchantFormError("");
-    if (els.monthlyNewMerchantSave) {
-      els.monthlyNewMerchantSave.disabled = true;
-      els.monthlyNewMerchantSave.textContent = state.language === "zh" ? "保存中…" : "Saving…";
-    }
-    try {
-      await requestMonthlyNewMerchants(payload);
-      management.submitting = false;
-      closeMonthlyNewMerchantDrawer({ restoreFocus: false });
-      management.loadedMonth = "";
-      await loadMonthlyNewMerchants({ force: true });
-      setMonthlyNewMerchantNotice(
-        t("monthlyNewMerchants.saved", "Merchant information was saved to the database.")
-      );
-      if (els.monthlyNewMerchantAdd) els.monthlyNewMerchantAdd.focus();
-    } catch (error) {
-      setMonthlyNewMerchantFormError(
-        error && error.message ? error.message : String(error)
-      );
-    } finally {
-      management.submitting = false;
-      if (els.monthlyNewMerchantSave) {
-        els.monthlyNewMerchantSave.disabled = false;
-        els.monthlyNewMerchantSave.textContent = t("monthlyNewMerchants.save", "Save merchant");
-      }
-    }
-  }
-
-  async function deleteMonthlyNewMerchant(record) {
-    const management = state.monthlyNewMerchants;
-    const normalizedRecord = normalizeMonthlyNewMerchantRecord(record);
-    if (!normalizedRecord.recordId || management.submitting) return;
-    const prompt = t(
-      "monthlyNewMerchants.deleteConfirm",
-      "Delete this monthly new merchant record?"
+    if (!record.merchantId || management.savingMerchantIds.has(record.merchantId)) return;
+    const requestedMonth = record.reportMonth;
+    const payload = monthlyNewMerchantPayloadFromRow(
+      row,
+      record,
+      togglePriority ? !record.isPriority : record.isPriority
     );
-    if (!window.confirm(`${prompt}\n${normalizedRecord.merchantName}`)) return;
-    management.submitting = true;
+    if (!payload) return;
+    management.savingMerchantIds.add(record.merchantId);
     setMonthlyNewMerchantNotice("");
+    renderMonthlyNewMerchantsPage();
     try {
-      await requestMonthlyNewMerchants({
-        action: "delete",
-        recordId: normalizedRecord.recordId
-      });
-      management.loadedMonth = "";
-      await loadMonthlyNewMerchants({ force: true });
+      const response = await requestMonthlyNewMerchants(payload);
+      if (requestedMonth !== management.month) return;
+      const saved = response.record ? normalizeMonthlyNewMerchantRecord(response.record) : null;
+      if (saved) {
+        management.records = management.records.map((item) => (
+          item.merchantId === saved.merchantId ? saved : item
+        ));
+      } else {
+        management.loadedMonth = "";
+        await loadMonthlyNewMerchants({ force: true });
+      }
       setMonthlyNewMerchantNotice(
-        t("monthlyNewMerchants.deleted", "The merchant record was deleted from the database.")
+        t("monthlyNewMerchants.saved", "Priority, GMV target, and merchant reward were saved to the database.")
       );
     } catch (error) {
-      setMonthlyNewMerchantNotice(
-        error && error.message ? error.message : String(error),
-        "error"
-      );
+      if (requestedMonth === management.month) {
+        setMonthlyNewMerchantNotice(error && error.message ? error.message : String(error), "error");
+      }
     } finally {
-      management.submitting = false;
+      management.savingMerchantIds.delete(record.merchantId);
       renderMonthlyNewMerchantsPage();
     }
   }
@@ -18658,16 +18546,14 @@ var _NUMERIC_COL_PATTERNS = [
     const button = event.target.closest("[data-monthly-new-merchant-action]");
     if (!button) return;
     const row = button.closest("[data-monthly-new-merchant-id]");
-    const recordId = Number(row && row.dataset.monthlyNewMerchantId) || 0;
+    const merchantId = String(row && row.dataset.monthlyNewMerchantId || "");
     const record = state.monthlyNewMerchants.records.find(
-      (item) => Number(item.recordId) === recordId
+      (item) => item.merchantId === merchantId
     );
     if (!record) return;
-    if (button.dataset.monthlyNewMerchantAction === "edit") {
-      openMonthlyNewMerchantDrawer(record);
-    } else if (button.dataset.monthlyNewMerchantAction === "delete") {
-      deleteMonthlyNewMerchant(record);
-    }
+    saveMonthlyNewMerchantRow(row, record, {
+      togglePriority: button.dataset.monthlyNewMerchantAction === "priority"
+    });
   }
 
   function updateReportsNavState() {
@@ -18809,9 +18695,6 @@ var _NUMERIC_COL_PATTERNS = [
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isReportPage = pageBelongsToReports(page);
     if (isReportPage) state.reportsOpen = true;
-    if (!isMonthlyNewMerchants && state.monthlyNewMerchants.drawerOpen) {
-      closeMonthlyNewMerchantDrawer({ restoreFocus: false });
-    }
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
@@ -19031,27 +18914,15 @@ var _NUMERIC_COL_PATTERNS = [
         renderMonthlyNewMerchantsPage();
       });
     }
-    if (els.monthlyNewMerchantAdd) {
-      els.monthlyNewMerchantAdd.addEventListener("click", () => openMonthlyNewMerchantDrawer());
+    if (els.monthlyNewMerchantsRefresh) {
+      els.monthlyNewMerchantsRefresh.addEventListener("click", () => {
+        state.monthlyNewMerchants.loadedMonth = "";
+        setMonthlyNewMerchantNotice("");
+        loadMonthlyNewMerchants({ force: true });
+      });
     }
     if (els.monthlyNewMerchantsRows) {
       els.monthlyNewMerchantsRows.addEventListener("click", handleMonthlyNewMerchantTableClick);
-    }
-    if (els.monthlyNewMerchantForm) {
-      els.monthlyNewMerchantForm.addEventListener("submit", submitMonthlyNewMerchant);
-    }
-    if (els.monthlyNewMerchantDrawerClose) {
-      els.monthlyNewMerchantDrawerClose.addEventListener("click", () => closeMonthlyNewMerchantDrawer());
-    }
-    if (els.monthlyNewMerchantCancel) {
-      els.monthlyNewMerchantCancel.addEventListener("click", () => closeMonthlyNewMerchantDrawer());
-    }
-    if (els.monthlyNewMerchantDrawerBackdrop) {
-      els.monthlyNewMerchantDrawerBackdrop.addEventListener("click", (event) => {
-        if (event.target === els.monthlyNewMerchantDrawerBackdrop) {
-          closeMonthlyNewMerchantDrawer();
-        }
-      });
     }
     els.targetMonthSelect.addEventListener("change", () => {
       state.targetFilters.month = els.targetMonthSelect.value;
@@ -19597,12 +19468,6 @@ var _NUMERIC_COL_PATTERNS = [
 
     // Escape 最小化最上层非推理中的面板
     document.addEventListener("keydown", function (e) {
-      if (trapMonthlyNewMerchantDrawerFocus(e)) return;
-      if (e.key === "Escape" && state.monthlyNewMerchants.drawerOpen) {
-        e.preventDefault();
-        closeMonthlyNewMerchantDrawer();
-        return;
-      }
       if (e.key === "Escape") {
         for (var i = _deepPanels.length - 1; i >= 0; i--) {
           var p = _deepPanels[i];
