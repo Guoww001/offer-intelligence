@@ -260,16 +260,16 @@ welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.lastMode(), "report", "mode-switched report should record mode");
 assertTruthy(welcome.isRendered("report"), "bubble still present after switching back");
 
-// ── 用例 12：notify("chat-sent") 首次发送自动收起 ──
+// ── 用例 12：notify("chat-sent") 只清提示条，不自动收起（收起/展开由用户点击决定）──
 t.showTipbar("tipReport");
 assertEqual(t.tipActive(), true, "tip shown before send");
 welcome.notify("chat-sent");
 assertEqual(t.tipActive(), false, "chat-sent should clear tipbar");
 assertTruthy(welcome.isRendered("report"), "chat-sent keeps the bubble mounted");
-assertTruthy(t.isCollapsed(), "first chat-sent auto-collapses the bubble");
+assertEqual(t.isCollapsed(), false, "chat-sent does NOT auto-collapse");
 const wrapAfterSend = grid.querySelector(".welcome-float");
-assertTruthy(wrapAfterSend && wrapAfterSend.classList.contains("collapsed"), "wrapper should carry collapsed class");
-assertEqual(store["oi_welcome_collapsed"], "1", "first chat-sent persists collapse");
+assertTruthy(wrapAfterSend && !wrapAfterSend.classList.contains("collapsed"), "wrapper stays expanded after send");
+assertEqual(store["oi_welcome_collapsed"], undefined, "chat-sent writes no collapse persistence");
 
 // ── 用例 13：语言切换重渲染保持当前态 ──
 function fireLangObserver() { if (observerCallbacks[0]) observerCallbacks[0](); }
@@ -430,29 +430,26 @@ assertEqual(wrap.classList.contains("collapsed"), false, "setCollapsed(false) ex
 assertEqual(store["oi_welcome_collapsed"], "1", "manual expand does NOT clear persisted collapse");
 assertMatch(t.panelElement().className, /welcome-emphasis/, "re-expanded fresh-user panel gets emphasis back");
 
-// ── 用例 28：chat-sent 自动收起只发生一次 ──
-t.resetAutoCollapse();
+// ── 用例 28：chat-sent 不自动收起（收起/展开只由用户点击驱动）──
 delete store["oi_onboarding_done"];
 delete store["oi_welcome_collapsed"];
 t.resetCollapsed();
 t.renderPanel("report", { offers: [], hasMemory: false });
 welcome.notify("chat-sent");
-assertTruthy(t.isCollapsed(), "first chat-sent collapses");
+assertEqual(t.isCollapsed(), false, "chat-sent leaves bubble expanded");
 t.setCollapsed(false, false);
 welcome.notify("chat-sent");
-assertEqual(t.isCollapsed(), false, "second chat-sent does NOT re-collapse (first send only)");
+assertEqual(t.isCollapsed(), false, "repeat chat-sent still no collapse");
 
-// ── 用例 29：chat-add 自动收起只发生一次 ──
-t.resetAutoCollapse();
+// ── 用例 29：chat-add 不自动收起（只推进流程状态）──
 delete store["oi_onboarding_done"];
 delete store["oi_welcome_collapsed"];
 t.resetCollapsed();
 t.renderPanel("report", { offers: [], hasMemory: false });
 welcome.notify("chat-add", { hasMemory: true });
-assertTruthy(t.isCollapsed(), "first chat-add collapses");
-t.setCollapsed(false, false);
-welcome.notify("chat-add", { hasMemory: true });
-assertEqual(t.isCollapsed(), false, "second chat-add does NOT re-collapse");
+assertEqual(t.isCollapsed(), false, "chat-add leaves bubble expanded");
+assertEqual(t.flowState().hasReport, true, "chat-add still sets hasReport");
+assertEqual(t.flowState().hasMemory, true, "chat-add still sets hasMemory");
 
 // ── 用例 30：Tour 激活时隐藏气泡 ──
 delete store["oi_onboarding_done"];

@@ -241,8 +241,6 @@
   var _panelEl = null;
   var _dotEl = null;
   var _bodyObserver = null;
-  var _chatSentAutoCollapsed = false;
-  var _chatAddAutoCollapsed = false;
   var _drag = null;              // 圆钮拖拽会话 {startX, startY, origLeft, origTop, wrapW/H, contW/H, moved, pointerId}
   var _suppressDotClick = false; // 拖拽结束后抑制随后的 click（避免误触发展开）
 
@@ -764,14 +762,10 @@
   function notify(eventName, payload) {
     payload = payload || {};
     if (eventName === "chat-sent") {
-      // 气泡：发送消息清提示条/脉冲；首次发送自动收起并持久化
+      // 气泡：发送消息只清提示条/脉冲——收起/展开完全由用户手动（✕ / 圆钮）决定
       _clearTipbar();
       _tipFromExample = false;
       _pulseSend(false);
-      if (!_chatSentAutoCollapsed) {
-        _chatSentAutoCollapsed = true;
-        setCollapsed(true, true);
-      }
       return;
     }
     if (eventName === "report-ready") {
@@ -798,10 +792,6 @@
       _refreshProgress();
       _clearTipbar();
       _pulseSend(false);
-      if (!_chatAddAutoCollapsed) {
-        _chatAddAutoCollapsed = true;
-        setCollapsed(true, true);
-      }
       return;
     }
     if (eventName === "mode-switched") {
@@ -854,7 +844,6 @@
       tourHidden: function () { return _tourHidden; },
       setCollapsed: setCollapsed,
       resetCollapsed: function () { _collapsed = defaultCollapsed(); },
-      resetAutoCollapse: function () { _chatSentAutoCollapsed = false; _chatAddAutoCollapsed = false; },
       refreshTourHidden: _applyTourHidden,
       wrapElement: function () { return _wrapEl; },
       panelElement: function () { return _panelEl; },
