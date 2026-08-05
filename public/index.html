@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260804-onboarding2" />
+    <link rel="stylesheet" href="./styles.css?v=20260805-bubble12" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -273,7 +273,20 @@
           </section>
 
           <section class="chat-panel" id="chatPanel" aria-label="Chat">
-            <div class="chat-log" id="chatLog"></div>
+            <div class="chat-log" id="chatLog">
+              <aside class="report-mode-guide" role="note" aria-labelledby="reportModeGuideTitle">
+                <div class="report-mode-guide-mark" aria-hidden="true">▣</div>
+                <div class="report-mode-guide-content">
+                  <span class="report-mode-guide-kicker" data-i18n="report.modeGuideKicker">Report Mode</span>
+                  <h3 id="reportModeGuideTitle" data-i18n="report.modeGuideTitle">Start with a data report</h3>
+                  <p data-i18n="report.modeGuideBody">Use Report Mode to query merchants, ASINs, categories, and metrics, then generate a structured report.</p>
+                  <p class="report-mode-guide-reminder">
+                    <span aria-hidden="true">→</span>
+                    <strong data-i18n="report.modeGuideReminder">For specific requirements, switch to Chat Mode</strong>
+                  </p>
+                </div>
+              </aside>
+            </div>
             <div class="chat-log hidden" id="chatLogChat"></div>
             <div class="chat-memory-bar hidden" id="chatMemoryBar">
               <div class="chat-memory-chips" id="chatMemoryChips"></div>
@@ -1046,9 +1059,10 @@
 
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
     <script src="./onboarding_tour.js?v=20260804-onboarding12"></script>
+    <script src="./chatbot_welcome.js?v=20260805-bubble9"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260804-onboarding1"></script>
+    <script src="./auth.js?v=20260804-welcome9"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。

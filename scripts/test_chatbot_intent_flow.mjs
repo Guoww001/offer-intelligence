@@ -483,5 +483,31 @@ assertEqual(dashboardGroups[1].summary.totalRevenue, 500, "category revenue shou
 assertEqual(dashboardGroups[1].summary.avgAov, 50, "category AOV should aggregate revenue divided by orders");
 assertApprox(dashboardGroups[1].summary.avgCvr, 0.1, "category CVR should aggregate orders divided by clicks");
 
+// ── 欢迎屏示例措辞意图验证（final review I3）─────────────────────────────
+// 设计 §4.5：7 个示例须命中预期意图路径。以下为规则路径（无 LLM）断言。
+// 已知不匹配项（不在本段断言，见 task-6 用户裁决 fix wave）：
+//   - "根据记忆栏的报告，给我分析建议"：app.js categoryForPrompt ↔ wantsRecommendationList
+//     无限递归（RangeError）已修复，见下方正常分类断言。
+//   - "总结记忆栏的数据，提出下个月的运营重点"：含"重点"→ zhIntent=recommendation 提前返回；
+//     措辞已裁决改为"总结记忆栏的数据，分析下个月的运营方向"（实测首选"规划/方向"命中
+//     merchant 路径，"分析"命中 analysis），见下方断言。
+//   - "查一下 {最高 commission 商户} 这个月表现"：merchantForExample 已跳过 knownKeyword 商户，
+//     但当前 offers 数据未携带 knownKeyword 字段（契约性防御），Amazon US 仍会渲染并命中
+//     keyword；措辞模板对普通商户（如 Kewlioo.）可命中 merchant（下方断言）。
+// 直接输入型 Report 示例（§4.5 二次迭代）：商户名/品类名/Tier 字面输入 + "实体名趋势分析"
+assertEqual(hooks.detectQueryIntent("Shokz"), "merchant", "welcome merchant example (direct merchant name) should route to merchant lookup");
+assertEqual(hooks.detectQueryIntent("Beauty 品类"), "category", "welcome category example (direct category name) should route to category");
+assertEqual(hooks.detectQueryIntent("Tier 2"), "tier", "welcome Tier 2 example should route to tier");
+const tierExampleAnswer = hooks.answerPrompt("Tier 2");
+assertMatch(tierExampleAnswer, /Tier 2 概览/, "welcome Tier 2 example should produce a tier overview + candidate recommendation answer");
+assertEqual(hooks.detectQueryIntent("Shokz趋势分析"), "analysis", "welcome trend-analysis example (merchant + 趋势分析) should route to the analysis/trend path");
+assertEqual(hooks.detectQueryIntent("对比记忆栏里的两个商户，谁更值得重点投入"), "analysis", "welcome chat comparison example should route to analysis");
+// 回归：categoryForPrompt ↔ wantsRecommendationList 无限递归（栈溢出）修复后，
+// chat-1 示例（含"给我"+"分析建议"）应能正常分类到 analysis 路径而非 RangeError
+assertEqual(hooks.detectQueryIntent("根据记忆栏的报告，给我分析建议"), "analysis", "chat-1 example should classify to analysis without the recursion RangeError (Fix A regression)");
+// 用户裁决替代措辞（不含"重点/建议/推荐"触发词）：首选"规划下个月的运营方向"实测命中
+// merchant 路径，微调为"分析"后命中 analysis（禁止改分类器，只调措辞）
+assertEqual(hooks.detectQueryIntent("总结记忆栏的数据，分析下个月的运营方向"), "analysis", "welcome chat summary example should route to analysis after rewording (plan/direction hit merchant, 分析 hits analysis)");
+
 console.log("Chatbot intent flow tests passed");
 process.exit(0);

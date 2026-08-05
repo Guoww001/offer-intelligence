@@ -554,3 +554,11 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 1. **自动洞察** — 定时推送异常检测报告（高价值商户流失预警、品类异动）
 2. **更精细的趋势** — 日粒度趋势、同比对比、更长的历史窗口
 3. **多轮对话记忆增强** — 跨提问持久上下文
+
+## 16. 新手流程引导（Flow Onboarding）
+
+主路径：**Report Mode 提问 → 报告浮窗点「加入对话」→ 自动切到 Chat Mode → 直接对话**。
+
+- 报告生成完成后，Deep Window 头部出现「加入对话」按钮：点击后报告自动加入记忆栏、自动切换到 Chat Mode，并在聊天区顶部注入引导消息（含 2 个示例 chips）。同一报告重复点击会变为「已加入」并禁用。
+- 欢迎屏（`chatbot_welcome.js`）维护流程状态机 `noReport → reportReady → memoryReady → chatActive`，以 3 步进度条展示「① 在 Report 提问 → ② 点「加入对话」→ ③ 在 Chat 对话」，并在关键时刻就地提示：报告完成提示点「加入对话」；最小化后提示切 Chat Mode 拖入记忆栏；Chat Mode 空记忆时提醒卡片提供「去生成报告」按钮。
+- 首次新手引导（`onboarding_tour.js`）为 5 步：布局介绍 → Report 提问 → 等待报告 → 点「加入对话」→ Chat 提问。最小化 + 拖拽保留为高级用法（见 Chat Mode 使用说明）。

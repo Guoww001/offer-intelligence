@@ -51,9 +51,11 @@ node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_commission_all_aff.mjs
 node scripts/test_merchant_monthly.mjs
 node scripts/test_onboarding_tour.mjs
+node scripts/test_chatbot_welcome.mjs
 node scripts/test_tier2_recommendation_rules.mjs
 node scripts/test_sheet_categories.mjs
 node scripts/test_category_drilldown.mjs
+node scripts/test_category_trend.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
@@ -158,6 +160,7 @@ A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs d
 | 6292–7464 | **Tier sheet management** | `sheetByName()`, `storageApi()`, `isTierMoveTarget()`, `isTierDataSheet()`, `loadManualTierMoves()`, `persistManualTierMoves()`, `tierMoveAdminToken()`, `tierMovePayload()`, `renderAfterTierMoveSync()`, `defineTierRowMeta()`, `cloneTierRow()`, `cacheOriginalTierSheetRows()`, `applyManualTierMoves()`, `applyManualTierMovesToOffers()`, `hasManualTierMoves()`, `tierLogicItems()`, `renderTierLogicSummary()`, `renderTierSummary()`, `renderSheetTable()`, `tier2PhaseKind()`, `normalizeVisualStatusColor()`, `explicitVisualStatusColor()`, `tierRowRuleHighlightKind()`, `visualStatusForTierRow()`, `displayHeadersForSheet()`, `selectedHeadersForTierSheet()`, `visibleHeadersForSheet()`, `renderTierColumnPanel()`, `offerForSheetRow()`, `offerToTierSheetRow()`, `tierSheetRowsForDisplay()`, `renderTierSheetTable()`, `canExpandTierSheet()`, `syncTierSheetOverlay()`, `openTierSheetOverlay()`, `closeTierSheetOverlay()`, `renderTierMoveDialog()`, `getFilteredTierSheetRows()`, `tierCategorySummaryRows()`, `renderTierCategorySummary()`, `renderTierPage()` |
 | 7465–8729 | **Targets page & DB status dashboard** | `targetOverrideKey()`, `applyTargetOverride()`, `targetRecords()`, `derivedTargetRecordsFromTierSheets()`, `filteredTargetRecords()`, `refreshTargetFilters()`, `targetRowsForMonth()`, `targetSummary()`, `compactNumber()`, `compactMoney()`, `dateKey()`, `monthKeyFromText()`, `dbDailyTrendRows()`, `dbStatusViewModel()`, `dbStatusDemoEnabled()`, `demoDbStatusPayload()`, `deltaText()`, `dbTrendPath()`, `dbDailyTrendChartHtml()` (SVG), `dbStatusPanelHtml()`, `refreshDbStatusUi()`, `targetMetricConfig()`, `targetDeltaHtml()`, `renderSheetSummary()`, `targetGoal()`, `targetGoalCardHtml()`, `targetProgressHtml()`, `targetTrendPlotHtml()` (SVG chart ~line 8336), `targetMatrixHtml()`, `renderSheetPage()`, `refreshTargetMetricViews()`, `handleTargetReportClick()`, `handleTargetReportSubmit()` |
 | 8730–8901 | **`init()` — event bindings** | All DOM event listeners wired up: chat submit, report sort clicks, tier move buttons, payment filters, language toggle, download buttons, column toggle, overlay open/close, keyboard Escape handlers. `switchPage()` (line ~8695) handles SPA page routing. |
+| 8902+ | **Flow onboarding** | `_switchToChatMode()`, `_switchToReportMode()`, `_addToChat()`, `_injectChatStarter()` — 一键「加入对话」与模式切换公共函数 |
 
 **How to use this index:**
 1. Identify the feature area you need (e.g., "payment overdue logic")
