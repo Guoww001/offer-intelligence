@@ -27,6 +27,7 @@ const elementStub = {
 // 已完成面板（含「加入对话」按钮）——第 3 步 add-to-chat 目标解析与推进序列命中用
 const addToChatBtnStub = { ...elementStub };
 const addToChatPanelStub = { ...elementStub, querySelector() { return addToChatBtnStub; } };
+const minimizeBtnStub = { ...elementStub };
 // Chat Mode 切换按钮 stub（用例 15 重播切回 Report Mode 用）
 const fastBtnStub = { ...elementStub };
 
@@ -37,10 +38,21 @@ const selectorMap = {
   ".deep-window": elementStub,
   '[data-mode="fast"]': elementStub,
   "#chatMemoryBar": elementStub,
+  ".deep-window-minimize": minimizeBtnStub,
   "#chatModeToggle": elementStub
 };
 const queryAllMap = {};
 const byIdMap = {};
+const mutationObservers = [];
+class TestMutationObserver {
+  constructor(callback) {
+    this.callback = callback;
+    this.target = null;
+    mutationObservers.push(this);
+  }
+  observe(target) { this.target = target; }
+  disconnect() {}
+}
 const sandbox = {
   console, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
   setTimeout, clearTimeout,
@@ -57,9 +69,15 @@ const sandbox = {
     addEventListener() {}, removeEventListener() {}
   },
   ResizeObserver: class { observe() {} disconnect() {} },
-  MutationObserver: class { observe() {} disconnect() {} }
+  MutationObserver: TestMutationObserver
 };
 sandbox.window.document = sandbox.document;
+
+function emitBodyClassMutation(target) {
+  for (const observer of mutationObservers) {
+    if (observer.target === sandbox.document.body) observer.callback([{ target }]);
+  }
+}
 
 runScript("public/onboarding_tour.js", sandbox);
 const tour = sandbox.window.ONBOARDING_TOUR;
@@ -83,15 +101,22 @@ assertEqual(t.steps[1].autoNext, "sent", "report-ask should autoNext on sent");
 assertEqual(t.steps[2].id, "deep-window", "step2 should wait for report");
 assertEqual(typeof t.steps[2].target, "function", "deep-window target should be a dynamic function");
 assertEqual(t.steps[3].id, "add-to-chat", "step3 should be add-to-chat");
-assertEqual(t.steps[3].autoNext, "chat-add", "add-to-chat should autoNext on chat-add");
+assertEqual(t.steps[3].autoNext, undefined, "add-to-chat should wait for the guided memory reveal");
+assertEqual(t.steps[3].focusOn, "chat-add", "add-to-chat should react to chat-add as a focus transition");
+assertEqual(t.steps[3].autoNextFocus, ".deep-window-minimize", "chat-add should focus the minimize button");
+assertEqual(t.steps[3].nextPhaseOn, "panel-minimized", "add-to-chat should reveal memory after minimization");
 assertEqual(typeof t.steps[3].target, "function", "add-to-chat target should be a dynamic function");
 assertEqual(t.steps[4].id, "chat-ask", "step4 should be chat-ask");
 assertEqual(t.steps[4].autoFillFocus, '#chatForm button[type="submit"]', "chat-ask should focus send button after autofill");
 assertEqual(t.steps[4].autoNext, "sent", "chat-ask should autoNext on sent");
 assertEqual(t.steps[4].final, true, "chat-ask should be final");
-assertEqual(t.steps.filter((s) => s.autoNext).length, 3, "3 steps should have autoNext (sent/chat-add/sent)");
+assertEqual(t.steps.filter((s) => s.autoNext).length, 2, "2 steps should have autoNext (sent/sent)");
 assertEqual(t.steps.filter((s) => s.final).length, 1, "only chat-ask should be final");
 assertEqual(t.steps[3].autoFill, undefined, "add-to-chat should not have autoFill");
+assertTruthy(t.copy.zh.step3MinimizeBody, "zh should explain minimizing the Deep Window");
+assertTruthy(t.copy.en.step3MinimizeBody, "en should explain minimizing the Deep Window");
+assertTruthy(t.copy.zh.step3MemoryBody, "zh should explain the memory card");
+assertTruthy(t.copy.en.step3MemoryBody, "en should explain the memory card");
 
 // ── 用例 2：i18n 键集一致 ──
 const zhKeys = Object.keys(t.copy.zh).sort();
@@ -135,9 +160,16 @@ assertEqual(t.currentStepIndex(), 1, "advance should move to step 1");
 tour.advance();
 tour.advance();
 tour.advance();
-assertEqual(t.currentStepIndex(), 4, "advance x4 should reach chat-ask");
+assertEqual(t.currentStepIndex(), 3, "advance x3 should stop at guided add-to-chat");
+tour.notify("chat-add");
+tour.notify("panel-minimized");
+tour.advance();
+assertEqual(t.currentStepIndex(), 4, "Next after memory reveal should reach chat-ask");
 tour.goBack();
 assertEqual(t.currentStepIndex(), 3, "goBack should return to add-to-chat");
+assertEqual(t.phase(), "await-add", "going back should reset add-to-chat phase");
+tour.notify("chat-add");
+tour.notify("panel-minimized");
 tour.advance();
 assertEqual(t.currentStepIndex(), 4, "advance should return to chat-ask");
 assertEqual(t.isFinalStep(4), true, "index 4 should be final");
@@ -149,7 +181,7 @@ delete queryAllMap[".deep-window"];
 assertEqual(t.isAutoNextStep(0, "sent"), false, "intro should not autoNext on sent");
 assertEqual(t.isAutoNextStep(1, "sent"), true, "report-ask should autoNext on sent");
 assertEqual(t.isAutoNextStep(1, "other"), false, "report-ask should not autoNext on other events");
-assertEqual(t.isAutoNextStep(3, "chat-add"), true, "add-to-chat should autoNext on chat-add");
+assertEqual(t.isAutoNextStep(3, "chat-add"), false, "add-to-chat should not autoNext on chat-add");
 assertEqual(t.isAutoNextStep(3, "memory-added"), false, "add-to-chat should not autoNext on memory-added");
 assertEqual(t.isAutoNextStep(4, "sent"), true, "chat-ask should autoNext on sent");
 
@@ -160,7 +192,11 @@ tour.notify("sent"); // 2 -> deep-window
 tour.advance(); // 3 -> add-to-chat
 assertEqual(t.currentStepIndex(), 3, "advance should reach add-to-chat");
 tour.notify("chat-add");
-assertEqual(t.currentStepIndex(), 4, "notify chat-add should auto-advance to chat-ask");
+assertEqual(t.currentStepIndex(), 3, "notify chat-add should keep the guided step active");
+assertEqual(t.phase(), "await-minimize", "notify chat-add should enter await-minimize");
+tour.notify("panel-minimized");
+tour.advance();
+assertEqual(t.currentStepIndex(), 4, "Next after panel-minimized should enter chat-ask");
 tour.notify("sent");
 assertEqual(tour.isActive(), false, "notify sent on final step should finish tour");
 assertEqual(tour.shouldShowTour({ getItem: () => "1" }), false, "finished tour should stay hidden");
@@ -197,7 +233,10 @@ tour.notify("sent"); // 2
 tour.advance(); // 3
 assertEqual(t.currentStepIndex(), 3, "advance should reach add-to-chat");
 tour.notify("chat-add");
-assertEqual(t.currentStepIndex(), 4, "notify chat-add should reach chat-ask");
+assertEqual(t.currentStepIndex(), 3, "chat-add should not reach chat-ask directly");
+tour.notify("panel-minimized");
+tour.advance();
+assertEqual(t.currentStepIndex(), 4, "manual Next should reach chat-ask");
 tour.notify("sent");
 assertEqual(tour.isActive(), false, "final sent should finish tour");
 
@@ -227,7 +266,13 @@ tour.advance(); // 3 -> add-to-chat（target 函数依赖 queryAllMap[.deep-wind
 assertMatch(t.popoverHtml(), /onboarding-btn-hint/, "add-to-chat should render disabled hint");
 assertMatch(t.popoverHtml(), /点击「加入对话」按钮继续/, "hint should show zh action hint");
 assertMatch(t.popoverHtml(), /disabled/, "hint should be disabled");
-assertEqual(t.popoverHtml().indexOf('data-tour-action="next"'), -1, "autoNext step should not render Next");
+assertEqual(t.popoverHtml().indexOf('data-tour-action="next"'), -1, "await-add phase should not render Next");
+tour.notify("chat-add");
+assertMatch(t.popoverHtml(), /最小化/, "await-minimize phase should explain minimizing the window");
+assertEqual(t.popoverHtml().indexOf('data-tour-action="next"'), -1, "await-minimize phase should not render Next");
+tour.notify("panel-minimized");
+assertMatch(t.popoverHtml(), /记忆卡片/, "memory-revealed phase should explain the memory card");
+assertMatch(t.popoverHtml(), /data-tour-action="next"/, "memory-revealed phase should render Next");
 tour.stopTour();
 delete queryAllMap[".deep-window"];
 delete queryAllMap[".deep-window:not(.generating)"];
@@ -238,6 +283,9 @@ tour.startTour();
 tour.advance(); // 1
 tour.notify("sent"); // 2
 tour.advance(); // 3
+tour.advance(); // blocked at add-to-chat until the guided phases complete
+tour.notify("chat-add");
+tour.notify("panel-minimized");
 tour.advance(); // 4
 assertEqual(t.currentStepIndex(), 4, "advance should reach final chat-ask");
 assertEqual(t.autoFillFor(t.steps[4]), "根据刚才的报告，给我分析建议", "zh mode should fill zh example");
@@ -261,5 +309,41 @@ tour.startTour();
 assertEqual(deepClicked, 0, "startTour in Report Mode should not click the deep button");
 tour.stopTour();
 delete selectorMap['[data-mode="deep"]'];
+
+// ── 用例 16：旧面板最小化不能提前揭示最新报告的记忆栏 ──
+function observerPanel(isMinimized) {
+  return {
+    ...addToChatPanelStub,
+    matches(sel) { return sel === ".deep-window"; },
+    classList: {
+      add() {}, remove() {}, toggle() {},
+      contains(name) { return name === "minimized" && isMinimized(); }
+    },
+    querySelector(sel) {
+      if (sel === ".deep-window-chat-add") return addToChatBtnStub;
+      if (sel === ".deep-window-minimize") return minimizeBtnStub;
+      return null;
+    }
+  };
+}
+let oldPanelMinimized = false;
+let latestPanelMinimized = false;
+const observerOldPanel = observerPanel(() => oldPanelMinimized);
+const observerLatestPanel = observerPanel(() => latestPanelMinimized);
+queryAllMap[".deep-window"] = [observerOldPanel, observerLatestPanel];
+tour.startTour();
+tour.advance();
+tour.notify("sent");
+tour.advance();
+assertEqual(t.currentStepIndex(), 3, "observer test should start on add-to-chat");
+tour.notify("chat-add");
+oldPanelMinimized = true;
+emitBodyClassMutation(observerOldPanel);
+assertEqual(t.phase(), "await-minimize", "old panel minimize must not reveal memory");
+latestPanelMinimized = true;
+emitBodyClassMutation(observerLatestPanel);
+assertEqual(t.phase(), "memory-revealed", "latest panel minimize should reveal memory");
+tour.stopTour();
+delete queryAllMap[".deep-window"];
 
 console.log("PASS: onboarding tour logic");

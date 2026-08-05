@@ -161,10 +161,12 @@ assertEqual(t.examples.report[3].dynamic, "merchant", "trend example should use 
 for (const ex of [...t.examples.report, ...t.examples.chat]) {
   assertTruthy(ex.text, "example text must be non-empty");
 }
-assertEqual(t.examples.chat[0].text, "根据记忆栏的报告，给我分析建议", "first chat example should reference memory bar");
+assertEqual(t.examples.chat[0].text, "给我分析建议", "first chat example should omit the memory-bar prefix");
 assertEqual(t.examples.chat[0].dynamic, undefined, "chat examples must NOT be dynamic");
-assertEqual(t.examples.chat[3].text, "用表格展示记忆栏中的指标数据", "fourth chat example asks for a metrics table");
-assertEqual(t.examples.chat[3].textEn, "Show the metrics from memory in a table", "table example has en counterpart");
+assertEqual(t.examples.chat[1].text, "对比两个商户，谁更值得重点投入", "comparison chat example should omit the memory-bar prefix");
+assertEqual(t.examples.chat[2].text, "总结数据，分析下个月的运营方向", "planning chat example should omit the memory-bar prefix");
+assertEqual(t.examples.chat[3].text, "用表格展示指标数据", "table chat example should omit the memory-bar prefix");
+assertEqual(t.examples.chat[3].textEn, "Show the metrics in a table", "table example has en counterpart");
 
 // ── 用例 2：文案键集 zh/en 一致（新增气泡键）──
 const zhKeys = Object.keys(t.copy.zh).sort();
@@ -297,7 +299,7 @@ wrapLang = t.wrapElement();
 assertTruthy(wrapLang && wrapLang.classList.contains("welcome-lang-zh"), "back to zh -> welcome-lang-zh restored");
 
 // ── 用例 14：拦截路径提示条也随手动输入消失（M2 修复）──
-t.handleChipClick("chat", "根据记忆栏的报告，给我分析建议"); // 无记忆 → 拦截
+t.handleChipClick("chat", "给我分析建议"); // 无记忆 → 拦截
 assertEqual(t.tipActive(), true, "blocked chat example should show empty-memory tipbar");
 assertEqual(t.tipFromExampleActive(), true, "blocked chat example should set tipFromExample so typing clears the tipbar");
 
@@ -323,12 +325,17 @@ assertEqual(t.chatReminderActive(), true, "lang switch keeps the reminder card i
 // ── 用例 17：流程状态机 flowStage（8 种布尔组合）──
 assertEqual(t.flowStage({ hasReport: false, hasMemory: false, isChat: false }), "noReport", "all false -> noReport");
 assertEqual(t.flowStage({ hasReport: true, hasMemory: false, isChat: false }), "reportReady", "report only -> reportReady");
-assertEqual(t.flowStage({ hasReport: false, hasMemory: true, isChat: false }), "memoryReady", "memory only -> memoryReady");
-assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: false }), "memoryReady", "report+memory -> memoryReady");
+assertEqual(t.flowStage({ hasReport: false, hasMemory: true, isChat: false }), "noReport", "memory only does not complete report or add-to-chat steps");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: false }), "reportReady", "report+memory remains at report step until add-to-chat");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, hasAddedToChat: true, isChat: false }), "memoryReady", "add-to-chat -> memoryReady");
 assertEqual(t.flowStage({ hasReport: false, hasMemory: false, isChat: true }), "noReport", "chat only -> noReport");
 assertEqual(t.flowStage({ hasReport: true, hasMemory: false, isChat: true }), "reportReady", "chat+report -> reportReady");
-assertEqual(t.flowStage({ hasReport: false, hasMemory: true, isChat: true }), "chatActive", "chat+memory -> chatActive");
-assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: true }), "chatActive", "all true -> chatActive");
+assertEqual(t.flowStage({ hasReport: false, hasMemory: true, isChat: true }), "noReport", "chat+memory without user send -> noReport");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: true }), "reportReady", "chat+memory without user send remains at report step");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, hasAddedToChat: true, isChat: true }), "memoryReady", "chat+memory without user send remains at add-to-chat step");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), "chatActive", "chat send -> chatActive");
+assertEqual(t.flowStage({ hasReport: false, hasAddedToChat: true, hasChatSent: true, isChat: true }), "noReport", "later events cannot complete before Report send");
+assertEqual(t.flowStage({ hasReport: true, hasAddedToChat: false, hasChatSent: true, isChat: true }), "reportReady", "Chat send cannot complete before add-to-chat");
 assertEqual(t.flowStage({ hasReport: true, hasPill: true, hasMemory: false, isChat: false }), "reportReady", "hasPill alone does not change stage");
 
 // ── 用例 18：新增文案键存在（zh/en 键集一致性由用例 2 兜底）──
@@ -340,9 +347,9 @@ for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressA
 // ── 用例 19：进度条渲染（progressHtml 纯函数）──
 assertMatch(t.progressHtml({ hasReport: false, hasMemory: false, isChat: false }), /data-stage="noReport"/, "noReport progress stage");
 assertMatch(t.progressHtml({ hasReport: true, hasMemory: false, isChat: false }), /data-stage="reportReady"/, "reportReady progress stage");
-assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, isChat: false }), /data-stage="memoryReady"/, "memoryReady progress stage");
-assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }), /data-stage="chatActive"/, "chatActive progress stage");
-assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }), /welcome-progress-step done/, "chatActive renders done steps");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, isChat: false }), /data-stage="memoryReady"/, "memoryReady progress stage");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /data-stage="chatActive"/, "chatActive progress stage");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /welcome-progress-step done/, "chatActive renders done steps");
 
 // ── 用例 20：notify 状态事件 ──
 welcome.notify("panel-minimized", {});
@@ -357,8 +364,17 @@ minimizedPanels = [];
 
 // ── 用例 21：notify("chat-add") ──
 welcome.notify("chat-add", { hasMemory: true });
-assertEqual(t.flowState().hasReport, true, "chat-add sets hasReport");
+assertEqual(t.flowState().hasReport, false, "chat-add does not complete Report step");
 assertEqual(t.flowState().hasMemory, true, "chat-add sets hasMemory");
+assertEqual(t.flowState().hasAddedToChat, true, "chat-add sets hasAddedToChat");
+assertEqual(t.flowState().hasChatSent, false, "chat-add does not complete Chat step");
+
+// ── 用例 21b：发送事件按 Report / Chat 模式分别推进 ──
+welcome.notify("chat-sent", { mode: "report" });
+assertEqual(t.flowState().hasReport, true, "Report send sets hasReport");
+assertEqual(t.flowState().hasChatSent, false, "Report send does not complete Chat step");
+welcome.notify("chat-sent", { mode: "chat" });
+assertEqual(t.flowState().hasChatSent, true, "Chat send sets hasChatSent");
 
 // ── 用例 22：提醒卡片包含「去生成报告」按钮，点击 dispatch chatbot-go-report 并填入示例 ──
 welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
@@ -382,7 +398,7 @@ assertEqual(t.resolveExampleText(t.examples.report[1], null), "Beauty 品类", "
 // en 模式：返回英文示例
 sandbox.document.documentElement.lang = "en";
 assertEqual(t.resolveExampleText(t.examples.report[1], null), "Beauty category", "en mode should use textEn");
-assertEqual(t.resolveExampleText(t.examples.chat[0], null), "Analyze the reports in memory and give me suggestions", "en chat example should use textEn");
+assertEqual(t.resolveExampleText(t.examples.chat[0], null), "Give me analysis suggestions", "en chat example should use textEn");
 assertEqual(t.resolveExampleText(t.examples.report[0], "Shokz"), "Shokz", "en dynamic merchant example still substitutes merchant");
 sandbox.document.documentElement.lang = "zh-Hans";
 assertEqual(t.resolveExampleText(t.examples.report[0], "Shokz"), "Shokz", "zh dynamic merchant example substitutes merchant");

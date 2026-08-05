@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260805-bubble11" />
+    <link rel="stylesheet" href="./styles.css?v=20260805-bubble12" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -273,7 +273,20 @@
           </section>
 
           <section class="chat-panel" id="chatPanel" aria-label="Chat">
-            <div class="chat-log" id="chatLog"></div>
+            <div class="chat-log" id="chatLog">
+              <aside class="report-mode-guide" role="note" aria-labelledby="reportModeGuideTitle">
+                <div class="report-mode-guide-mark" aria-hidden="true">▣</div>
+                <div class="report-mode-guide-content">
+                  <span class="report-mode-guide-kicker" data-i18n="report.modeGuideKicker">Report Mode</span>
+                  <h3 id="reportModeGuideTitle" data-i18n="report.modeGuideTitle">Start with a data report</h3>
+                  <p data-i18n="report.modeGuideBody">Use Report Mode to query merchants, ASINs, categories, and metrics, then generate a structured report.</p>
+                  <p class="report-mode-guide-reminder">
+                    <span aria-hidden="true">→</span>
+                    <strong data-i18n="report.modeGuideReminder">For specific requirements, switch to Chat Mode</strong>
+                  </p>
+                </div>
+              </aside>
+            </div>
             <div class="chat-log hidden" id="chatLogChat"></div>
             <div class="chat-memory-bar hidden" id="chatMemoryBar">
               <div class="chat-memory-chips" id="chatMemoryChips"></div>

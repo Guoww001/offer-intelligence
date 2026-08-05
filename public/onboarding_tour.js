@@ -35,6 +35,9 @@
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「跳过」
       step1NextHint: "点击「发送」按钮继续",
       step3NextHint: "点击「加入对话」按钮继续",
+      step3MinimizeBody: "先将 Deep Window 最小化，避免挡住记忆栏。点击窗口顶部的「─」按钮。",
+      step3MinimizeHint: "请先最小化 Deep Window",
+      step3MemoryBody: "记忆栏已经显示刚加入的记忆卡片。看清这个效果后，点击「下一步」进入 Chat Mode。",
       step4NextHint: "点击「发送」按钮完成"
     },
     en: {
@@ -60,6 +63,9 @@
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「Skip」
       step1NextHint: "Click Send to continue",
       step3NextHint: "Click “Add to chat” to continue",
+      step3MinimizeBody: "First minimize the Deep Window so it does not cover the memory bar. Click the “─” button in the window header.",
+      step3MinimizeHint: "Minimize the Deep Window first",
+      step3MemoryBody: "The memory bar now shows the report memory card. After seeing it, click Next to continue to Chat Mode.",
       step4NextHint: "Click Send to finish"
     }
   };
@@ -115,8 +121,10 @@
       },
       copyKey: "step3",
       mask: "block",
-      // 点击「加入对话」（模块级事件委托）后自动进入下一步
-      autoNext: "chat-add"
+      // 点击「加入对话」后先转移高光到最小化按钮，最小化完成后再展示记忆栏
+      focusOn: "chat-add",
+      autoNextFocus: ".deep-window-minimize",
+      nextPhaseOn: "panel-minimized"
     },
     {
       id: "chat-ask",
@@ -136,6 +144,7 @@
   // ── 状态 ──
   var _active = false;
   var _stepIndex = -1;
+  var _tourPhase = null; // add-to-chat: await-add → await-minimize → memory-revealed
   var _maskEls = [];
   var _highlightEl = null;
   var _popoverEl = null;
@@ -147,6 +156,7 @@
   var _focusSelector = null; // 步骤内高光转移（如填入示例后指向发送按钮）
   var _autoNextTimer = null; // 自动推进延迟（展示最小化效果后再前进）
   var _focusTimer = null;    // 高光转移补定位轮询（等最小化动画完成后指向药丸框）
+  var _memoryRevealTimer = null;
 
   // ── 语言 ──
   function currentLanguage() {
@@ -206,6 +216,19 @@
   function currentStepIndex() { return _stepIndex; }
   function stepCount() { return TOUR_STEPS.length; }
   function isActive() { return _active; }
+  function phase() { return _tourPhase; }
+  function canAdvance() {
+    return _stepIndex !== 3 || _tourPhase === "memory-revealed";
+  }
+  function _syncStepPhase(step) {
+    if (step && step.id === "add-to-chat") {
+      if (_tourPhase !== "await-add" && _tourPhase !== "await-minimize" && _tourPhase !== "memory-revealed") {
+        _tourPhase = "await-add";
+      }
+    } else {
+      _tourPhase = null;
+    }
+  }
 
   // ── DOM 层 ──
   function _ensureDom() {
@@ -356,7 +379,15 @@
     var step = TOUR_STEPS[_stepIndex];
     if (!step || !_active) return;
     if (!el) {
-      try { el = document.querySelector(_focusSelector); } catch (e) {}
+      try {
+        if (_focusSelector === ".deep-window-minimize") {
+          var panels = document.querySelectorAll(".deep-window");
+          var lastPanel = panels && panels.length ? panels[panels.length - 1] : null;
+          el = lastPanel && lastPanel.querySelector ? lastPanel.querySelector(_focusSelector) : null;
+        } else {
+          el = document.querySelector(_focusSelector);
+        }
+      } catch (e) {}
     }
     if (!el) return;
     _targetEl = el;
@@ -367,6 +398,46 @@
       try { _resizeObserver.disconnect(); } catch (e) {}
       try { _resizeObserver.observe(el); } catch (e) {}
     }
+  }
+
+  function _queueRetarget() {
+    _retarget();
+    var retryCount = 0;
+    (function retryFocus() {
+      if (!_active) return;
+      if (retryCount++ >= 4) return;
+      _retarget();
+      _focusTimer = setTimeout(retryFocus, 120);
+    })();
+  }
+
+  function _revealMemoryPhase() {
+    if (!_active || _stepIndex !== 3 || _tourPhase !== "await-minimize") return;
+    _tourPhase = "memory-revealed";
+    _focusSelector = "#chatMemoryBar";
+    _bodyKeyOverride = "step3MemoryBody";
+    var bar = null;
+    var chip = null;
+    try {
+      bar = document.querySelector("#chatMemoryBar");
+      if (bar && bar.classList) bar.classList.add("onboarding-memory-reveal");
+      if (bar && bar.querySelector) {
+        chip = bar.querySelector(".chat-memory-chip:last-child");
+        if (chip && chip.classList) chip.classList.add("onboarding-memory-chip-reveal");
+      }
+    } catch (e) {}
+    if (_memoryRevealTimer) { clearTimeout(_memoryRevealTimer); _memoryRevealTimer = null; }
+    if (bar || chip) {
+      _memoryRevealTimer = setTimeout(function () {
+        _memoryRevealTimer = null;
+        try {
+          if (bar && bar.classList) bar.classList.remove("onboarding-memory-reveal");
+          if (chip && chip.classList) chip.classList.remove("onboarding-memory-chip-reveal");
+        } catch (e) {}
+      }, 1800);
+    }
+    _queueRetarget();
+    _refreshActionButtons();
   }
 
   function _renderPopoverContent(step, c) {
@@ -386,9 +457,14 @@
       html += '<button class="onboarding-btn" data-tour-action="prev" type="button">' + c.prev + '</button>';
     }
     html += '<button class="onboarding-btn onboarding-btn-skip" data-tour-action="skip" type="button">' + c.skip + '</button>';
+    // add-to-chat 第三步的内部阶段：加入对话后必须先完成最小化，再开放 Next。
+    if (step.id === "add-to-chat" && _tourPhase !== "memory-revealed") {
+      var phaseHint = _tourPhase === "await-minimize" ? c.step3MinimizeHint : c.step3NextHint;
+      html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
+        phaseHint + '</button>';
     // autoNext 步骤无主按钮（点击目标即自动推进或结束）：主按钮位置渲染置灰的
     // 动作提示（如「点击「发送」按钮继续」），既引导操作又防新用户误点「跳过」
-    if (step.autoNext) {
+    } else if (step.autoNext) {
       var hintKey = step.copyKey + "NextHint";
       if (c[hintKey]) {
         html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
@@ -442,7 +518,12 @@
     var step = TOUR_STEPS[_stepIndex];
     if (!step) { stopTour(); return; }
     var c = copy(currentLanguage());
+    _syncStepPhase(step);
     _bodyKeyOverride = null;
+    if (step.id === "add-to-chat") {
+      if (_tourPhase === "await-minimize") _bodyKeyOverride = "step3MinimizeBody";
+      if (_tourPhase === "memory-revealed") _bodyKeyOverride = "step3MemoryBody";
+    }
     _renderWaiting(step, c); // 先渲染等待态（目标未出现时给出反馈），命中后由 done 回调覆盖
     _locateTarget(step, function (el) {
       if (!_active) return;
@@ -481,6 +562,7 @@
   function advance() {
     if (!_active) return;
     var cur = TOUR_STEPS[_stepIndex];
+    if (_stepIndex === 3 && _tourPhase !== "memory-revealed") return;
     // requireMinimized 守卫（第 4 步）：面板未最小化（如用户点击药丸重新展开）时禁止推进——
     // 与渲染守卫双保险，后续步骤（第 5/6 步）依赖 `.deep-window.minimized` 目标
     if (cur && cur.requireMinimized && !minimizeGatePassed()) return;
@@ -511,6 +593,19 @@
     if (!_active) return;
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
+    if (_stepIndex === 3 && eventName === "chat-add") {
+      if (_tourPhase !== "await-add") return;
+      _tourPhase = "await-minimize";
+      _focusSelector = step.autoNextFocus;
+      _bodyKeyOverride = "step3MinimizeBody";
+      _queueRetarget();
+      _refreshActionButtons();
+      return;
+    }
+    if (_stepIndex === 3 && eventName === step.nextPhaseOn) {
+      _revealMemoryPhase();
+      return;
+    }
     var isAutoNext = isAutoNextStep(_stepIndex, eventName);
     var isFocusEvent = step.focusOn === eventName;
     if (!isAutoNext && !isFocusEvent) return;
@@ -542,6 +637,7 @@
     if (_locateTimer) { clearTimeout(_locateTimer); _locateTimer = null; }
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
+    if (_memoryRevealTimer) { clearTimeout(_memoryRevealTimer); _memoryRevealTimer = null; }
     if (_autoStartTimer) { clearTimeout(_autoStartTimer); _autoStartTimer = null; }
   }
 
@@ -560,6 +656,7 @@
     _popoverEl = null;
     _targetEl = null;
     _stepIndex = -1;
+    _tourPhase = null;
     _bodyKeyOverride = null;
     _focusSelector = null;
   }
@@ -644,6 +741,14 @@
       for (var i = 0; i < muts.length; i++) {
         var t = muts[i].target;
         if (!t || !t.matches || !t.matches(".deep-window")) continue;
+        var panels = document.querySelectorAll(".deep-window");
+        var latestPanel = panels && panels.length ? panels[panels.length - 1] : null;
+        if (t !== latestPanel) continue;
+        if (_stepIndex === 3 && _tourPhase === "await-minimize" &&
+            t.classList && t.classList.contains("minimized")) {
+          _revealMemoryPhase();
+          return;
+        }
         if (step.requireMinimized) _refreshActionButtons();
         if (_focusSelector && t.classList && t.classList.contains("minimized")) _retarget();
         return;
@@ -672,6 +777,8 @@
       isFinalStep: isFinalStep,
       isAutoNextStep: isAutoNextStep,
       currentStepIndex: currentStepIndex,
+      phase: phase,
+      canAdvance: canAdvance,
       stepCount: stepCount,
       autoFillFor: autoFillFor,
       minimizeGatePassed: minimizeGatePassed,

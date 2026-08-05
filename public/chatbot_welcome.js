@@ -5,7 +5,7 @@
   // 双栏工作台布局（左「① 先获取数据」/ 右「③ 再深度分析」），示例点击即填 + 提示条贯穿
   // 「获取→分析」流程。零依赖，挂 window.CHATBOT_WELCOME。与 app.js 的交互点：
   //   1. init 尾部: window.CHATBOT_WELCOME.maybeRender("report", { offers })
-  //   2. chatForm submit: window.CHATBOT_WELCOME.notify("chat-sent")   → 清提示条（不折叠）
+  //   2. chatForm submit: window.CHATBOT_WELCOME.notify("chat-sent", { mode })   → 按模式推进流程并清提示条（不折叠）
   //   3. 模式切换: window.CHATBOT_WELCOME.notify("mode-switched", { mode, hasMemory }) → 同步记忆状态
   //      + Chat Mode 时在聊天区顶部渲染常驻提醒卡片（.chat-reminder），Report Mode 移除
   //   4. _renderPanelReport 尾部: window.CHATBOT_WELCOME.notify("report-ready", { panelEl })
@@ -92,10 +92,10 @@
       { text: "{merchant}趋势分析", textEn: "{merchant} trend analysis", dynamic: "merchant" }
     ],
     chat: [
-      { text: "根据记忆栏的报告，给我分析建议", textEn: "Analyze the reports in memory and give me suggestions" },
-      { text: "对比记忆栏里的两个商户，谁更值得重点投入", textEn: "Compare the two merchants in memory — who deserves more investment" },
-      { text: "总结记忆栏的数据，分析下个月的运营方向", textEn: "Summarize the data in memory and plan next month's direction" },
-      { text: "用表格展示记忆栏中的指标数据", textEn: "Show the metrics from memory in a table" }
+      { text: "给我分析建议", textEn: "Give me analysis suggestions" },
+      { text: "对比两个商户，谁更值得重点投入", textEn: "Compare the two merchants — who deserves more investment" },
+      { text: "总结数据，分析下个月的运营方向", textEn: "Summarize the data and plan next month's direction" },
+      { text: "用表格展示指标数据", textEn: "Show the metrics in a table" }
     ]
   };
 
@@ -133,15 +133,22 @@
   function flowStage(state) {
     state = state || {};
     var hasReport = !!state.hasReport;
-    var hasMemory = !!state.hasMemory;
-    var isChat = !!state.isChat;
-    if (hasMemory && isChat) return "chatActive";
-    if (hasMemory) return "memoryReady";
+    var hasAddedToChat = !!state.hasAddedToChat;
+    var hasChatSent = !!state.hasChatSent;
+    if (hasReport && hasAddedToChat && hasChatSent) return "chatActive";
+    if (hasReport && hasAddedToChat) return "memoryReady";
     if (hasReport) return "reportReady";
     return "noReport";
   }
   function _flowState() {
-    return { hasReport: _hasReport, hasPill: _hasPill, hasMemory: _hasMemory, isChat: _mode === "chat" };
+    return {
+      hasReport: _hasReport,
+      hasPill: _hasPill,
+      hasMemory: _hasMemory,
+      hasAddedToChat: _hasAddedToChat,
+      hasChatSent: _hasChatSent,
+      isChat: _mode === "chat"
+    };
   }
   function _anyMinimizedPanel() {
     try { return document.querySelectorAll(".deep-window.minimized").length > 0; } catch (e) { return false; }
@@ -232,7 +239,9 @@
   var _tipFromExample = false;
   var _lastFillValue = "";
   var _hasMemory = false;
-  var _hasReport = false;      // 是否已有生成完成的报告（主路径 ① 完成标记）
+  var _hasReport = false;      // 是否已在 Report Mode 点击发送（主路径 ① 完成标记）
+  var _hasAddedToChat = false; // 是否点击过「加入对话」（主路径 ② 完成标记）
+  var _hasChatSent = false;    // 是否在 Chat Mode 发送过消息（主路径 ③ 完成标记）
   var _hasPill = false;        // 是否已有最小化药丸（高级路径标记）
   var _panelTipShown = false;
   var _langObserver = null;
@@ -763,6 +772,9 @@
   function notify(eventName, payload) {
     payload = payload || {};
     if (eventName === "chat-sent") {
+      if (payload.mode === "report") _hasReport = true;
+      if (payload.mode === "chat") _hasChatSent = true;
+      _refreshProgress();
       // 气泡：发送消息只清提示条/脉冲——收起/展开完全由用户手动（✕ / 圆钮）决定
       _clearTipbar();
       _tipFromExample = false;
@@ -770,7 +782,6 @@
       return;
     }
     if (eventName === "report-ready") {
-      _hasReport = true;
       _refreshProgress();
       if (_panelTipShown || !payload.panelEl) return;
       _panelTipShown = true;
@@ -788,7 +799,7 @@
       return;
     }
     if (eventName === "chat-add") {
-      _hasReport = true;
+      _hasAddedToChat = true;
       if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
       _refreshProgress();
       _clearTipbar();
@@ -807,7 +818,6 @@
     }
     if (eventName === "memory-added") {
       _hasMemory = true;
-      _hasReport = true;
       _refreshProgress();
       return;
     }
@@ -883,7 +893,14 @@
       removeChatReminder: function () { _removeChatReminder(); },
       flowStage: flowStage,
       flowState: function () {
-        return { hasReport: _hasReport, hasPill: _hasPill, hasMemory: _hasMemory, isChat: _mode === "chat" };
+        return {
+          hasReport: _hasReport,
+          hasPill: _hasPill,
+          hasMemory: _hasMemory,
+          hasAddedToChat: _hasAddedToChat,
+          hasChatSent: _hasChatSent,
+          isChat: _mode === "chat"
+        };
       },
       progressHtml: progressHtml,
       chatReminderHtml: function () {

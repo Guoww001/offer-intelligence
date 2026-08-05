@@ -916,6 +916,10 @@
       "deep.placeholder": "在 Deep Window 中查看分析结果…",
       "deep.fast.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer…",
       "deep.report.defaultTitle": "分析报告",
+      "report.modeGuideKicker": "报告模式",
+      "report.modeGuideTitle": "先获取数据报告",
+      "report.modeGuideBody": "Report Mode 用于查询商户、ASIN、品类和指标，生成结构化分析报告。",
+      "report.modeGuideReminder": "具体要求请转至聊天模式",
       "deep.chat.summaryPrefix": "📊 深度分析：",
       "deep.chat.errorPrefix": "📊 深度分析失败：",
       "deep.chat.clickToExpand": "点击查看完整分析",
@@ -19936,7 +19940,11 @@ var _NUMERIC_COL_PATTERNS = [
       const prompt = els.chatInput.value.trim();
       if (!prompt) return;
       els.chatInput.value = "";
-      if (window.CHATBOT_WELCOME) window.CHATBOT_WELCOME.notify("chat-sent");
+      if (window.CHATBOT_WELCOME) {
+        window.CHATBOT_WELCOME.notify("chat-sent", {
+          mode: state.deepMode ? "report" : "chat"
+        });
+      }
       applyPrompt(prompt);
     });
     els.chatLog.addEventListener("click", (event) => {
