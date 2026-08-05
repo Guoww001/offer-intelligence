@@ -82,15 +82,15 @@
   // 趋势分析直接写"实体名 + 趋势分析"。示例即字面输入，不套"查一下…这个月表现"等修饰。
   var WELCOME_EXAMPLES = {
     report: [
-      { text: "{merchant}", dynamic: "merchant" },
-      { text: "Beauty 品类" },
-      { text: "Tier 2" },
-      { text: "{merchant}趋势分析", dynamic: "merchant" }
+      { text: "{merchant}", textEn: "{merchant}", dynamic: "merchant" },
+      { text: "Beauty 品类", textEn: "Beauty category" },
+      { text: "Tier 2", textEn: "Tier 2" },
+      { text: "{merchant}趋势分析", textEn: "{merchant} trend analysis", dynamic: "merchant" }
     ],
     chat: [
-      { text: "根据记忆栏的报告，给我分析建议" },
-      { text: "对比记忆栏里的两个商户，谁更值得重点投入" },
-      { text: "总结记忆栏的数据，分析下个月的运营方向" }
+      { text: "根据记忆栏的报告，给我分析建议", textEn: "Analyze the reports in memory and give me suggestions" },
+      { text: "对比记忆栏里的两个商户，谁更值得重点投入", textEn: "Compare the two merchants in memory — who deserves more investment" },
+      { text: "总结记忆栏的数据，分析下个月的运营方向", textEn: "Summarize the data in memory and plan next month's direction" }
     ]
   };
 
@@ -225,9 +225,10 @@
     if (html !== undefined) el.innerHTML = html;
     return el;
   }
-  // 渲染时替换动态占位符（chip 的 data-text 存最终文本）
+  // 渲染时替换动态占位符（chip 的 data-text 存最终文本）。
+  // 示例文案跟随页面语言：en 模式优先 textEn（点击示例填入输入框的也是对应语言文本）
   function resolveExampleText(ex, merchant) {
-    var text = ex.text;
+    var text = currentLanguage() === "en" && ex.textEn ? ex.textEn : ex.text;
     if (ex.dynamic === "merchant") {
       text = text.replace("{merchant}", merchant || FALLBACK_MERCHANT);
     }

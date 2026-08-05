@@ -308,4 +308,18 @@ assertEqual(byIdMap["chatInput"].value, "Shokz", "goReport should fill the first
 assertEqual(welcome.fillInput("Tier 2"), true, "fillInput should return true when input exists");
 assertEqual(byIdMap["chatInput"].value, "Tier 2", "fillInput should set input value");
 
+// ── 用例 24：示例提问跟随中英文模式（textEn 字段 + resolveExampleText 按语言选择）──
+for (const ex of [...t.examples.report, ...t.examples.chat]) {
+  assertTruthy(ex.textEn, `example missing textEn: ${ex.text}`);
+}
+// zh 模式：返回原中文示例
+assertEqual(t.resolveExampleText(t.examples.report[1], null), "Beauty 品类", "zh mode keeps zh example text");
+// en 模式：返回英文示例
+sandbox.document.documentElement.lang = "en";
+assertEqual(t.resolveExampleText(t.examples.report[1], null), "Beauty category", "en mode should use textEn");
+assertEqual(t.resolveExampleText(t.examples.chat[0], null), "Analyze the reports in memory and give me suggestions", "en chat example should use textEn");
+assertEqual(t.resolveExampleText(t.examples.report[0], "Shokz"), "Shokz", "en dynamic merchant example still substitutes merchant");
+sandbox.document.documentElement.lang = "zh-Hans";
+assertEqual(t.resolveExampleText(t.examples.report[0], "Shokz"), "Shokz", "zh dynamic merchant example substitutes merchant");
+
 console.log("PASS: welcome logic");
