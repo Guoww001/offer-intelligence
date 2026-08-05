@@ -35,6 +35,8 @@ jobs:
           node --check public/app.js
           node --check public/chatbot_i18n.js
           node --check public/tier2_recommendation_rules.js
+          node --check public/chatbot_welcome.js
+          node --check public/onboarding_tour.js
 
       - name: Run regression tests
         run: |
