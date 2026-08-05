@@ -14070,9 +14070,11 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 .welcome-float {
   position: absolute;
   right: 14px;
-  bottom: 76px;
+  bottom: 115px; /* 避开底部 mode 切换区（38px）+ 输入框（65px）+ 间距，底边不遮任何控件 */
   width: 350px;
   max-width: calc(100% - 28px);
+  max-height: calc(100% - 135px); /* 不超过聊天区可视高度，内容超出时容器内滚动 */
+  overflow-y: auto;
   z-index: 40;
 }
 .welcome-float.tour-hidden { display: none; }
