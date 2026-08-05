@@ -14509,8 +14509,18 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   display: flex; align-items: center; gap: 9px;
   font-size: 12px; color: #8a97b3; min-width: 0;
 }
-.welcome-progress-step.active { color: #eef2f8; }
-.welcome-progress-step.done { color: #9fc5ff; }
+/* 未完成：整体退暗（灰色 + 半透明），与已完成/进行中形成强对比 */
+.welcome-progress-step:not(.active):not(.done) { opacity: 0.5; }
+/* 进行中：纯白文字，徽章呼吸发光（下一步要做的事） */
+.welcome-progress-step.active { color: #ffffff; font-weight: 600; }
+/* 已完成：整行点亮 —— 冰蓝渐变光带 + 左侧 2px 竖条，一眼区分「做完了」 */
+.welcome-progress-step.done {
+  color: #d6e7ff;
+  background: linear-gradient(90deg, rgba(110, 168, 255, 0.16) 0%, rgba(110, 168, 255, 0.03) 100%);
+  border-left: 2px solid #6ea8ff;
+  border-radius: 8px;
+  padding: 4px 10px;
+}
 .welcome-progress-num {
   width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -14524,8 +14534,9 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   box-shadow: 0 0 10px rgba(110, 168, 255, 0.45);
 }
 .welcome-progress-step.done .welcome-progress-num {
-  background: rgba(110, 168, 255, 0.20); color: #bcd8ff;
-  border-color: rgba(110, 168, 255, 0.35);
+  background: linear-gradient(135deg, #5a9cff, #7fb3ff);
+  color: #0b0e14; border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 8px rgba(110, 168, 255, 0.4);
 }
 .welcome-progress-label { white-space: normal; /* 垂直列表：每步完整显示，不截断 */ }
 .deep-window-chat-add {
@@ -14623,7 +14634,16 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-progress {
 }
 body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step { color: #6b7a9c; }
 body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.active { color: #16294f; }
-body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.done { color: #1a4fa0; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.done {
+  color: #1a4fa0;
+  background: linear-gradient(90deg, rgba(26, 86, 168, 0.10) 0%, rgba(26, 86, 168, 0.02) 100%);
+  border-left-color: #3a72dc;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.done .welcome-progress-num {
+  background: linear-gradient(135deg, #4c86ea, #3a72dc);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 8px rgba(26, 86, 168, 0.30);
+}
 body.dashboard-mode[data-dash-theme="light"] .welcome-progress-num {
   background: rgba(76, 130, 205, 0.10); color: #7a86a3;
   border-color: rgba(26, 86, 168, 0.16);

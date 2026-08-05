@@ -151,7 +151,7 @@ const t = welcome._test;
 
 // ── 用例 1：示例数据结构（Report Mode 直接输入：商户名/品类名/Tier + 趋势分析）──
 assertEqual(t.examples.report.length, 4, "report examples should be 4");
-assertEqual(t.examples.chat.length, 3, "chat examples should be 3");
+assertEqual(t.examples.chat.length, 4, "chat examples should be 4");
 assertEqual(t.examples.report[0].text, "{merchant}", "first report example should be direct merchant name input");
 assertEqual(t.examples.report[0].dynamic, "merchant", "first report example should be dynamic");
 assertEqual(t.examples.report[1].text, "Beauty 品类", "second report example should be direct category input");
@@ -163,6 +163,8 @@ for (const ex of [...t.examples.report, ...t.examples.chat]) {
 }
 assertEqual(t.examples.chat[0].text, "根据记忆栏的报告，给我分析建议", "first chat example should reference memory bar");
 assertEqual(t.examples.chat[0].dynamic, undefined, "chat examples must NOT be dynamic");
+assertEqual(t.examples.chat[3].text, "用表格展示记忆栏中的指标数据", "fourth chat example asks for a metrics table");
+assertEqual(t.examples.chat[3].textEn, "Show the metrics from memory in a table", "table example has en counterpart");
 
 // ── 用例 2：文案键集 zh/en 一致（新增气泡键）──
 const zhKeys = Object.keys(t.copy.zh).sort();

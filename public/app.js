@@ -1036,6 +1036,9 @@
     applyStaticLanguage();
     syncDashboardOptionLabels();
     updateQuickPromptLabels();
+    _refreshChatStarterLanguage(); // 「已加入对话」示例 chips 跟随语言切换
+    // deep window「加入对话」按钮文本跟随语言（Added ↔ 已加入）
+    _deepPanels.forEach(function (p) { _syncChatAddButton(p); });
     refreshPaymentFilterOptions();
     refreshTargetFilters();
     syncControls();
@@ -9965,21 +9968,25 @@ Full flow (working with Report Mode):
     el.querySelector(".deep-window-close")?.classList.remove("hidden");
     el.querySelector(".deep-window-export")?.classList.remove("hidden");
 
-    // 「加入对话」按钮状态：仅内容态可见；已加入 → 禁用 + 「已加入」
-    var chatAddBtn = el.querySelector(".deep-window-chat-add");
-    if (chatAddBtn) {
-      if (panel.state === "content") {
-        chatAddBtn.classList.remove("hidden");
-        chatAddBtn.disabled = !!panel._addedToMemory;
-        chatAddBtn.textContent = panel._addedToMemory
-          ? t("deep.chatAdded", "Added")
-          : t("deep.chatAdd", "Add to chat");
-      } else {
-        chatAddBtn.classList.add("hidden");
-      }
-    }
-
+    _syncChatAddButton(panel);
     _bringPanelToFront(panel);
+  }
+
+  // 「加入对话」按钮状态同步：仅内容态可见；已加入 → 禁用 + 「已加入」。
+  // 供 _showDeepPanel 与记忆栏移除（_removeReportMemory）共用——记忆被 × 掉后按钮要能恢复可点。
+  function _syncChatAddButton(panel) {
+    if (!panel || !panel.el) return;
+    var chatAddBtn = panel.el.querySelector(".deep-window-chat-add");
+    if (!chatAddBtn) return;
+    if (panel.state === "content") {
+      chatAddBtn.classList.remove("hidden");
+      chatAddBtn.disabled = !!panel._addedToMemory;
+      chatAddBtn.textContent = panel._addedToMemory
+        ? t("deep.chatAdded", "Added")
+        : t("deep.chatAdd", "Add to chat");
+    } else {
+      chatAddBtn.classList.add("hidden");
+    }
   }
 
   function _resetPanelToDefaultPos(panel) {
@@ -10548,7 +10555,19 @@ Full flow (working with Report Mode):
   }
 
   function _removeReportMemory(id) {
-    state.reportMemory = state.reportMemory.filter(function (m) { return m.id !== id; });
+    var removed = null;
+    state.reportMemory = state.reportMemory.filter(function (m) {
+      if (m.id === id) { removed = m; return false; }
+      return true;
+    });
+    // 记忆被移除 → 对应 deep window 的「加入对话」按钮复位（重新可点）
+    if (removed && removed.panelId) {
+      var panel = _deepPanels.find(function (p) { return p.id === removed.panelId; });
+      if (panel && panel._addedToMemory) {
+        panel._addedToMemory = false;
+        _syncChatAddButton(panel);
+      }
+    }
     _renderMemoryBar();
   }
 
@@ -10642,9 +10661,16 @@ Full flow (working with Report Mode):
   function _injectChatStarter(title) {
     try {
       var log = els.chatLogChat;
-      if (!log || log.querySelector(".chat-memory-starter")) return;
+      if (!log) return;
+      var old = log.querySelector(".chat-memory-starter");
+      if (old) {
+        // 语言切换刷新（_refreshChatStarterLanguage）：读回缓存 title 并整体重注入，跟随当前语言
+        title = title || old.getAttribute("data-title") || "";
+        old.parentNode.removeChild(old);
+      }
       var starter = document.createElement("div");
       starter.className = "chat-memory-starter";
+      starter.setAttribute("data-title", title);
       var p = document.createElement("p");
       p.textContent = t("chat.addedMessage", "Report “{title}” added to chat — try asking:").replace("{title}", title);
       starter.appendChild(p);
@@ -10670,6 +10696,14 @@ Full flow (working with Report Mode):
       var reminder = log.querySelector(".chat-reminder");
       if (reminder && reminder.nextSibling) log.insertBefore(starter, reminder.nextSibling);
       else log.insertBefore(starter, log.firstChild || null);
+    } catch (e) {}
+  }
+  // 语言切换时刷新「已加入对话」starter（文案跟随 UI 语言；无 starter 时无操作）
+  function _refreshChatStarterLanguage() {
+    try {
+      var log = els.chatLogChat;
+      if (!log || !log.querySelector(".chat-memory-starter")) return;
+      _injectChatStarter();
     } catch (e) {}
   }
 

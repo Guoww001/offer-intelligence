@@ -94,7 +94,8 @@
     chat: [
       { text: "根据记忆栏的报告，给我分析建议", textEn: "Analyze the reports in memory and give me suggestions" },
       { text: "对比记忆栏里的两个商户，谁更值得重点投入", textEn: "Compare the two merchants in memory — who deserves more investment" },
-      { text: "总结记忆栏的数据，分析下个月的运营方向", textEn: "Summarize the data in memory and plan next month's direction" }
+      { text: "总结记忆栏的数据，分析下个月的运营方向", textEn: "Summarize the data in memory and plan next month's direction" },
+      { text: "用表格展示记忆栏中的指标数据", textEn: "Show the metrics from memory in a table" }
     ]
   };
 
