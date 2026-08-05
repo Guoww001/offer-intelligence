@@ -14,22 +14,17 @@
   var TOUR_COPY = {
     zh: {
       introTitle: "👋 欢迎使用 YeahPromos 助手",
-      introBody: "先认识整体布局：聊天区顶部可切换 Report Mode（提问获取数据报告）与 Chat Mode（带着数据对话），输入商户名 / Merchant ID / ASIN 或品类即可查询；报告以浮窗展示，可最小化并拖入记忆栏作为对话上下文。下面我们实际操作一遍。",
+      introBody: "先认识整体布局：聊天区顶部可切换 Report Mode（提问获取数据报告）与 Chat Mode（带着数据对话），输入商户名 / Merchant ID / ASIN 或品类即可查询；报告以浮窗展示，点击「加入对话」即可把报告带进 Chat Mode。下面我们实际操作一遍。",
       step1Title: "第 1 步：在 Report Mode 提问",
       step1Body: "在输入框输入商户名 / Merchant ID / ASIN 或品类，就能获取后台数据分析报告。填好后点击右侧「发送」按钮发起查询。试试看：",
       step2Title: "第 2 步：等待分析报告",
-      step2Body: "报告在浮窗中打开。浮窗可以随意拖动，也能最小化，还支持一键导出 Excel。",
-      step3Title: "第 3 步：点击最小化",
-      step3Body: "点击浮窗头部的「─」按钮，把浮窗最小化成一个药丸小框——只有最小化后的浮窗才能拖入记忆栏。",
-      step4Title: "第 4 步：切换到 Chat Mode",
-      step4Body: "点击上方「Chat Mode」按钮，聊天区上方会出现记忆栏——这是把数据带进对话的入口。",
-      step5Title: "第 5 步：拖入记忆栏",
-      step5Body: "按住药丸框头部不放，把它拖到聊天区上方的「将面板拖入此处作为上下文」区域后松开，报告就会成为聊天上下文。",
-      step5NeedSwitchBody: "记忆栏只在 Chat Mode 显示，请先点击上方「Chat Mode」按钮切换。",
-      step6Title: "第 6 步：与 Chat Mode 对话",
-      step6Body: "记忆栏里已经有刚才的报告了，现在可以自由提问。填好后点击「发送」按钮。试试：",
+      step2Body: "报告在浮窗中打开。生成完成后，浮窗头部会出现「加入对话」按钮。",
+      step3Title: "第 3 步：点「加入对话」",
+      step3Body: "点击浮窗头部的「加入对话」按钮，报告会自动加入记忆栏并切换到 Chat Mode。",
+      step4Title: "第 4 步：与 Chat Mode 对话",
+      step4Body: "记忆栏里已经有刚才的报告了，现在可以自由提问。填好后点击「发送」按钮。试试：\n（高级用法：也可以点「─」最小化浮窗，再拖入记忆栏。）",
       completeTitle: "🎉 完成！",
-      completeBody: "你已经掌握了核心用法：Report Mode 获取数据 → 拖入记忆栏 → Chat Mode 对话。随时点击 Help 可重播本引导。",
+      completeBody: "你已经掌握了核心用法：Report 提问 → 点「加入对话」→ Chat 对话。随时点击 Help 可重播本引导。",
       fillExample: "帮我填入示例",
       prev: "上一步",
       next: "下一步",
@@ -39,32 +34,22 @@
       waitReport: "等待报告生成…",
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「跳过」
       step1NextHint: "点击「发送」按钮继续",
-      step4NextHint: "点击「Chat Mode」按钮继续",
-      step5NextHint: "把药丸框拖入记忆栏后继续",
-      step6NextHint: "点击「发送」按钮完成",
-      // 第 4 步：未最小化时「下一步」禁用的提示（用户点击药丸展开后不能继续）
-      minimizeRequired: "请先点击「─」最小化浮窗",
-      // 第 5 步投放区上方独立浮动提示条
-      dropzoneTip: "拖到这里 👇"
+      step3NextHint: "点击「加入对话」按钮继续",
+      step4NextHint: "点击「发送」按钮完成"
     },
     en: {
       introTitle: "👋 Welcome to the YeahPromos Assistant",
-      introBody: "Here's the layout: the top of the chat area toggles between Report Mode (ask for data reports) and Chat Mode (chat with context); type a merchant name / ID / ASIN or category to query. Reports open in a floating window that you can minimize and drag into the memory bar as chat context. Let's walk through it.",
+      introBody: "Here's the layout: the top of the chat area toggles between Report Mode (ask for data reports) and Chat Mode (chat with context); type a merchant name / ID / ASIN or category to query. Reports open in a floating window — click “Add to chat” to bring the report into Chat Mode. Let's walk through it.",
       step1Title: "Step 1: Ask in Report Mode",
       step1Body: "Type a merchant name / ID / ASIN or category to get a data analysis report. Click the Send button on the right to submit. Try it:",
       step2Title: "Step 2: Wait for the report",
-      step2Body: "Reports open in a floating window you can drag around, minimize, or export to Excel.",
-      step3Title: "Step 3: Minimize the window",
-      step3Body: "Click the “–” button in the window header to shrink it into a pill — only minimized panels can be dragged into the memory bar.",
-      step4Title: "Step 4: Switch to Chat Mode",
-      step4Body: "Click the Chat Mode button above; a memory bar appears above the chat area — the way to bring data into the conversation.",
-      step5Title: "Step 5: Drag into the memory bar",
-      step5Body: "Press and hold the pill header, drag it to the “drag the panel here as context” area above the chat, then release — the report becomes chat context.",
-      step5NeedSwitchBody: "The memory bar only shows in Chat Mode — click the Chat Mode button above first.",
-      step6Title: "Step 6: Chat with context",
-      step6Body: "The report is now in your memory bar. Ask freely. Click Send to submit. Try:",
+      step2Body: "Reports open in a floating window. Once ready, an “Add to chat” button appears in the header.",
+      step3Title: "Step 3: Click Add to chat",
+      step3Body: "Click “Add to chat” in the window header — the report is added to memory and you're switched to Chat Mode automatically.",
+      step4Title: "Step 4: Chat with context",
+      step4Body: "The report is now in your memory bar. Ask freely. Click Send to submit. Try:\n(Advanced: you can also click “–” to minimize the window, then drag it into the memory bar.)",
       completeTitle: "🎉 Done!",
-      completeBody: "You've learned the core flow: get data in Report Mode → drag into memory → chat in Chat Mode. Click Help anytime to replay this guide.",
+      completeBody: "You've learned the core flow: ask in Report Mode → click Add to chat → chat in Chat Mode. Click Help anytime to replay this guide.",
       fillExample: "Fill example for me",
       prev: "Back",
       next: "Next",
@@ -74,21 +59,17 @@
       waitReport: "Waiting for the report…",
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「Skip」
       step1NextHint: "Click Send to continue",
-      step4NextHint: "Click Chat Mode to continue",
-      step5NextHint: "Drag the pill into the memory bar to continue",
-      step6NextHint: "Click Send to finish",
-      // Step 4: Next disabled until the panel is minimized (user may re-expand the pill)
-      minimizeRequired: "Minimize the panel first (click the “–” button)",
-      // Step 5 dropzone floating tip above the drop area
-      dropzoneTip: "Drag it here 👇"
+      step3NextHint: "Click “Add to chat” to continue",
+      step4NextHint: "Click Send to finish"
     }
   };
 
   // ── 步骤数据（纯数据；target 可为选择器字符串、返回选择器的函数或返回元素的函数）──
+  // 主路径 5 步：布局介绍 → Report 提问 → 等待报告 → 点「加入对话」→ Chat 提问。
+  // 最小化 + 拖入记忆栏保留为高级用法（见第 4 步正文说明），不再进入主引导流程。
   var TOUR_STEPS = [
     {
       id: "intro",
-      // 第 1 步：整体布局 + chatbot 应用场景介绍（高亮模式切换入口）
       target: "#chatModeToggle",
       copyKey: "intro",
       mask: "block"
@@ -121,61 +102,26 @@
       appear: true
     },
     {
-      id: "minimize-window",
+      id: "add-to-chat",
       target: function () {
-        // 取最后一个（最新创建）面板的最小化按钮：重播/二次使用时旧面板仍在页面，
-        // querySelector 匹配第一个会命中旧面板的按钮——若旧面板已是最小化 pill，
-        // 其最小化按钮被 CSS 隐藏（rect 为 0），高光将不可见
+        // 取最后一个（最新创建）面板的「加入对话」按钮：重播/二次使用时旧面板仍在页面，
+        // 必须指向最新面板的按钮——旧面板的按钮可能已「已加入」禁用，高光不可见
         try {
           var list = document.querySelectorAll(".deep-window");
           if (!list || !list.length) return null;
           var last = list[list.length - 1];
-          var btn = last.querySelector ? last.querySelector(".deep-window-minimize") : null;
-          return btn || null;
+          return last.querySelector ? last.querySelector(".deep-window-chat-add") : null;
         } catch (e) { return null; }
       },
       copyKey: "step3",
       mask: "block",
-      // 点击最小化按钮后：高光从动画开始高频跟随并停在药丸框展示最小化效果。
-      // 不自动推进——用户看效果后手动点「下一步」进入下一步
-      focusOn: "minimized",
-      autoNextFocus: ".deep-window.minimized",
-      // 必须最小化后才能「下一步」：用户可能点击药丸框重新展开面板（失去 minimized 类），
-      // 此时推进到后续步骤会找不到 `.deep-window.minimized` 目标而引导错乱——因此
-      // 未最小化时「下一步」禁用（渲染守卫 + advance 守卫），面板获得/失去 minimized 类
-      // 时由 classObserver 实时刷新按钮状态
-      requireMinimized: true
-    },
-    {
-      id: "switch-chat",
-      target: '[data-mode="fast"]',
-      copyKey: "step4",
-      mask: "block",
-      // 点击 Chat Mode 按钮后自动进入下一步
-      autoNext: "switched"
-    },
-    {
-      id: "drag-memory",
-      target: function () {
-        var bar = null;
-        try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
-        // 记忆栏可见 → 高亮最小化后的药丸框，引导拖入上下文区域；否则回退切换按钮
-        if (bar && !bar.classList.contains("hidden")) return ".deep-window.minimized";
-        return '[data-mode="fast"]';
-      },
-      copyKey: "step5",
-      mask: "pass",
-      // 拖入记忆栏后：高光转移到上下文区域（记忆栏）展示效果——新芯片已渲染进记忆栏，
-      // 与第 4 步最小化一样不自动推进，用户看效果后手动点「下一步」
-      focusOn: "memory-added",
-      autoNextFocus: "#chatMemoryBar",
-      // 气泡固定视口底部中央：投放区在聊天区顶部，默认气泡位置（目标上方/下方）会盖住它
-      popover: "bottom-center"
+      // 点击「加入对话」（模块级事件委托）后自动进入下一步
+      autoNext: "chat-add"
     },
     {
       id: "chat-ask",
       target: "#chatInput",
-      copyKey: "step6",
+      copyKey: "step4",
       mask: "block",
       autoFill: "根据刚才的报告，给我分析建议",
       // 英文模式下填入英文示例（autoFillEn）
@@ -201,8 +147,6 @@
   var _focusSelector = null; // 步骤内高光转移（如填入示例后指向发送按钮）
   var _autoNextTimer = null; // 自动推进延迟（展示最小化效果后再前进）
   var _focusTimer = null;    // 高光转移补定位轮询（等最小化动画完成后指向药丸框）
-  var _dropzoneTip = null;   // 第 5 步投放区上方独立浮动提示条（防被气泡遮挡）
-  var _pendingPillEl = null; // 用户点击最小化的面板元素（药丸高光直接指向它，避免误查其他面板）
 
   // ── 语言 ──
   function currentLanguage() {
@@ -396,36 +340,6 @@
     _positionPopover(_targetEl);
   }
 
-  // 拖拽提示：第 5 步给记忆栏投放区加脉冲动画类（styles.css .onboarding-dropzone-hint），
-  // 另加独立浮动提示条固定在投放区上方——气泡在视口底部中央，提示条贴近投放区不被遮挡
-  function _addDropzoneHint() {
-    try {
-      var dz = document.getElementById("chatMemoryDropzone");
-      if (dz) dz.classList.add("onboarding-dropzone-hint");
-    } catch (e) {}
-    if (!_dropzoneTip) {
-      var tip = document.createElement("div");
-      tip.className = "onboarding-dropzone-tip";
-      document.body.appendChild(tip);
-      _dropzoneTip = tip;
-    }
-    _positionDropzoneTip();
-  }
-  function _positionDropzoneTip() {
-    if (!_dropzoneTip) return;
-    try { _dropzoneTip.textContent = copy(currentLanguage()).dropzoneTip; } catch (e) {}
-    var dz = null;
-    try { dz = document.getElementById("chatMemoryDropzone"); } catch (e) {}
-    if (dz) {
-      var r = dz.getBoundingClientRect();
-      _dropzoneTip.style.left = Math.round(r.left + r.width / 2) + "px";
-      _dropzoneTip.style.top = Math.round(r.top - 46) + "px";
-    } else {
-      _dropzoneTip.style.left = "50%";
-      _dropzoneTip.style.top = "150px";
-    }
-    _dropzoneTip.style.transform = "translateX(-50%)";
-  }
   // 重渲染气泡内容（按钮状态）并同步重定位——classObserver 在面板获得/失去
   // minimized 类时调用：第 4 步「下一步」随最小化状态实时启用/禁用，
   // 按钮文案变化可能引起气泡高度变化，需按新高度重新摆放（不压住高光目标）
@@ -436,24 +350,8 @@
     if (_targetEl) _positionPopover(_targetEl);
   }
 
-  function _removeDropzoneHint() {
-    try {
-      var dz = document.getElementById("chatMemoryDropzone");
-      if (dz) dz.classList.remove("onboarding-dropzone-hint");
-    } catch (e) {}
-    if (_dropzoneTip) {
-      try { if (_dropzoneTip.parentNode) _dropzoneTip.parentNode.removeChild(_dropzoneTip); } catch (e) {}
-      _dropzoneTip = null;
-    }
-  }
-
   // 步骤内高光转移：按 _focusSelector 重新解析目标并重绘遮罩/高亮/气泡。
-  // 也可显式传入目标元素（如药丸高光直接指向用户点击最小化的那个面板，位置必然正确）
   function _retarget() { _retargetTo(null); }
-  function _retargetToPill() {
-    var el = _pendingPillEl;
-    if (el && el.classList && el.classList.contains("minimized")) _retargetTo(el);
-  }
   function _retargetTo(el) {
     var step = TOUR_STEPS[_stepIndex];
     if (!step || !_active) return;
@@ -545,15 +443,6 @@
     if (!step) { stopTour(); return; }
     var c = copy(currentLanguage());
     _bodyKeyOverride = null;
-    if (step.id === "drag-memory") {
-      var bar = null;
-      try { bar = document.getElementById("chatMemoryBar"); } catch (e) {}
-      if (!bar || bar.classList.contains("hidden")) {
-        _bodyKeyOverride = "step5NeedSwitchBody";
-      } else {
-        _addDropzoneHint();
-      }
-    }
     _renderWaiting(step, c); // 先渲染等待态（目标未出现时给出反馈），命中后由 done 回调覆盖
     _locateTarget(step, function (el) {
       if (!_active) return;
@@ -599,8 +488,6 @@
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     _focusSelector = null;
-    _pendingPillEl = null;
-    _removeDropzoneHint();
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
     if (step.final) { finishTour(); return; }
@@ -615,8 +502,6 @@
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     _focusSelector = null;
-    _pendingPillEl = null;
-    _removeDropzoneHint();
     if (_stepIndex > 0) {
       _stepIndex--;
       _renderStep();
@@ -630,40 +515,17 @@
     var isFocusEvent = step.focusOn === eventName;
     if (!isAutoNext && !isFocusEvent) return;
     // focusOn + autoNextFocus：事件触发后高光转移到指定目标展示效果，不自动推进。
-    // 两种转移方式，按事件来源区分：
-    // ① 最小化（第 4 步，_pendingPillEl 已记录）：最小化动画期间 transform 移动不触发
-    //    ResizeObserver，且 pill 需 250ms~800ms 才 settle（加 minimized 类）——因此从
-    //    点击瞬间起每 80ms 高频跟随重定位：动画中高光圈贴着 pill 飞行（位置永不丢失），
-    //    动画结束 rect 收敛到最终位置后再跟若干次确保稳定，然后停止。定位直接使用
-    //    _pendingPillEl（用户点击最小化的那个面板）——比全局 querySelector 精确。
-    // ② 拖入记忆栏（第 6 步，无 _pendingPillEl）：_addMemoryFromPanel 已同步渲染新芯片，
-    //    目标就绪，一次重定位即可，补几次短延时定位兜底（芯片/布局微调）
+    // 目标就绪后一次重定位即可，补几次短延时定位兜底（布局微调）
     if (isFocusEvent && step.autoNextFocus) {
       _focusSelector = step.autoNextFocus;
-      if (_pendingPillEl) {
-        _retargetToPill();
-        var followCount = 0;
-        var totalFollow = 0;
-        (function followPill() {
-          if (!_active) return;
-          if (totalFollow++ >= 40) return; // 3.2s 兜底，防无限循环
-          var el = _pendingPillEl;
-          if (el) {
-            _retargetTo(el);
-            if (el.classList && el.classList.contains("minimized") && followCount++ >= 10) return;
-          }
-          _focusTimer = setTimeout(followPill, 80);
-        })();
-      } else {
+      _retarget();
+      var retryCount = 0;
+      (function retryFocus() {
+        if (!_active) return;
+        if (retryCount++ >= 4) return;
         _retarget();
-        var retryCount = 0;
-        (function retryFocus() {
-          if (!_active) return;
-          if (retryCount++ >= 4) return;
-          _retarget();
-          _focusTimer = setTimeout(retryFocus, 120);
-        })();
-      }
+        _focusTimer = setTimeout(retryFocus, 120);
+      })();
     }
     if (step.autoNextDelay) {
       var idx = _stepIndex;
@@ -681,7 +543,6 @@
     if (_autoNextTimer) { clearTimeout(_autoNextTimer); _autoNextTimer = null; }
     if (_focusTimer) { clearTimeout(_focusTimer); _focusTimer = null; }
     if (_autoStartTimer) { clearTimeout(_autoStartTimer); _autoStartTimer = null; }
-    _pendingPillEl = null;
   }
 
   function stopTour() {
@@ -701,7 +562,6 @@
     _stepIndex = -1;
     _bodyKeyOverride = null;
     _focusSelector = null;
-    _removeDropzoneHint();
   }
   function finishTour() { stopTour(); markCompleted(); }
   function skipTour() { markCompleted(); stopTour(); }
@@ -753,22 +613,14 @@
 
   // ── 自动推进事件监听（模块级注册一次）──────────────────────────
   // 发送：chatForm submit（含点击发送按钮与回车）→ "sent"
-  // 最小化：浮窗头部「─」按钮点击 → "minimized"
-  // 切模式：Chat Mode 按钮点击 → "switched"
+  // 加入对话：浮窗头部「加入对话」按钮点击 → "chat-add"
   // notify() 内部校验 isAutoNextStep，非当前自动步骤的事件一律忽略
   try {
     document.addEventListener("submit", function (e) {
       if (e.target && e.target.id === "chatForm") notify("sent");
     });
     document.addEventListener("click", function (e) {
-      if (e.target && e.target.closest && e.target.closest(".deep-window-minimize")) {
-        // 记录被点击最小化的面板元素——药丸高光直接指向它，避免误定位到其他面板
-        var panelEl = null;
-        try { panelEl = e.target.closest(".deep-window"); } catch (err) {}
-        if (panelEl) _pendingPillEl = panelEl;
-        notify("minimized");
-      }
-      if (e.target && e.target.closest && e.target.closest('[data-mode="fast"]')) notify("switched");
+      if (e.target && e.target.closest && e.target.closest(".deep-window-chat-add")) notify("chat-add");
     });
   } catch (e) {}
 
@@ -825,8 +677,7 @@
       minimizeGatePassed: minimizeGatePassed,
       refreshActions: _refreshActionButtons,
       renderStep: _renderStep,
-      popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; },
-      dropzoneTipActive: function () { return !!_dropzoneTip; }
+      popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; }
     }
   };
 })();
