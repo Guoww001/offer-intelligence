@@ -11730,20 +11730,13 @@ body.dashboard-mode .quick-actions button:active {
 body.dashboard-mode .main-grid.dashboard-page {
   gap: 16px;
   grid-template-columns: minmax(380px, 1.04fr) minmax(0, 0.96fr);
-  /* 左列两行：欢迎屏独立卡片（auto 高）+ 洞察面板（占剩余）；chat 面板跨满右列 */
-  grid-template-rows: auto minmax(0, 1fr);
+  /* 左列洞察面板 + 右列聊天面板，各跨满整列 */
+  grid-template-rows: minmax(0, 1fr);
 }
 
-/* 欢迎屏独立卡片：dashboard 主网格第 1 行第 1 列（左栏顶部），始终完整展开、不折叠。
-   chat 面板跨满右列两行，insight 面板在左列第 2 行。 */
-body.dashboard-mode .main-grid.dashboard-page > .welcome-panel {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: start;
-}
 body.dashboard-mode .main-grid.dashboard-page > .insight-panel {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1 / -1;
 }
 body.dashboard-mode .main-grid.dashboard-page > .chat-panel {
   grid-column: 2;
@@ -12219,8 +12212,7 @@ body.dashboard-mode :is(.insight-panel, .chat-panel) .context-panel {
     grid-auto-rows: auto;
     gap: 14px;
   }
-  /* 窄屏单列：welcome 卡片 / 洞察 / 聊天按文档流上下堆叠（宽屏的显式 grid 定位复位） */
-  body.dashboard-mode .main-grid.dashboard-page > .welcome-panel,
+  /* 窄屏单列：洞察 / 聊天按文档流上下堆叠（宽屏的显式 grid 定位复位） */
   body.dashboard-mode .main-grid.dashboard-page > .insight-panel,
   body.dashboard-mode .main-grid.dashboard-page > .chat-panel {
     grid-column: auto;
@@ -14074,6 +14066,100 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 }
 .welcome-note { font-size: 10px; color: #7b87a3; margin-top: 7px; letter-spacing: 0.01em; }
 
+/* ── 悬浮气泡容器（方案 C：聊天面板右下角）── */
+.welcome-float {
+  position: absolute;
+  right: 14px;
+  bottom: 76px;
+  width: 350px;
+  max-width: calc(100% - 28px);
+  z-index: 40;
+}
+.welcome-float.tour-hidden { display: none; }
+.welcome-float .welcome-float-dot { display: none; }
+.welcome-float.collapsed .welcome-panel { display: none; }
+.welcome-float.collapsed .welcome-float-dot { display: flex; }
+
+.welcome-float-dot {
+  width: 44px; height: 44px; margin-left: auto; border-radius: 50%;
+  border: 1px solid rgba(110, 168, 255, 0.45);
+  background: linear-gradient(135deg, #6ea8ff 0%, #9b7bff 100%);
+  color: #0b0e14; font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow:
+    0 0 0 4px rgba(110, 168, 255, 0.12),
+    0 8px 20px rgba(2, 8, 25, 0.35);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.welcome-float-dot:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow:
+    0 0 0 6px rgba(110, 168, 255, 0.18),
+    0 10px 26px rgba(2, 8, 25, 0.4);
+}
+.welcome-float-dot:focus-visible {
+  outline: 2px solid rgba(110, 168, 255, 0.8);
+  outline-offset: 2px;
+}
+
+.welcome-head-main { flex: 1; min-width: 0; }
+.welcome-hello { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.welcome-collapse-btn {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid rgba(156, 199, 255, 0.18);
+  background: rgba(156, 199, 255, 0.08); color: #cfe0fa;
+  font-size: 11px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+}
+.welcome-collapse-btn:hover {
+  background: rgba(110, 168, 255, 0.2);
+  border-color: rgba(110, 168, 255, 0.5);
+  transform: scale(1.05);
+}
+.welcome-collapse-btn:focus-visible { outline: 2px solid rgba(110, 168, 255, 0.8); outline-offset: 2px; }
+
+.welcome-new-badge {
+  display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+  padding: 2px 8px; border-radius: 999px; vertical-align: 2px;
+  background: linear-gradient(135deg, #6ea8ff, #9b7bff); color: #0b0e14;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 10px rgba(110, 168, 255, 0.35);
+}
+
+/* 新用户强调态 */
+.welcome-panel.welcome-emphasis {
+  border-color: rgba(110, 168, 255, 0.55);
+  background:
+    radial-gradient(ellipse 90% 65% at 12% 0%, rgba(110, 168, 255, 0.20) 0%, transparent 60%),
+    linear-gradient(180deg, #1a2a52 0%, #122048 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(110, 168, 255, 0.28),
+    0 0 28px rgba(110, 168, 255, 0.28),
+    0 18px 44px rgba(2, 8, 25, 0.4);
+}
+.welcome-panel.welcome-emphasis .welcome-hello { font-size: 16px; }
+.welcome-panel.welcome-emphasis .welcome-desc { font-size: 12px; }
+@media (prefers-reduced-motion: no-preference) {
+  .welcome-panel.welcome-emphasis { animation: welcomeBubbleAttention 4s cubic-bezier(0.45, 0, 0.55, 1) 0.3s 1 both; }
+}
+@keyframes welcomeBubbleAttention {
+  0%, 100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 0 1px rgba(110, 168, 255, 0.28),
+      0 0 28px rgba(110, 168, 255, 0.28),
+      0 18px 44px rgba(2, 8, 25, 0.4);
+  }
+  25%, 60% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 0 0 1px rgba(110, 168, 255, 0.5),
+      0 0 44px rgba(110, 168, 255, 0.5),
+      0 18px 44px rgba(2, 8, 25, 0.45);
+  }
+}
+
 /* ── 浅色控制室（data-dash-theme="light"）：欢迎屏随主题切为白昼玻璃 ──
    与洞察/聊天面板同一套浅色词汇：白底 + 冰蓝光晕 + 深海军蓝文字 + 发丝边框。 */
 body.dashboard-mode[data-dash-theme="light"] .welcome-panel {
@@ -14131,6 +14217,33 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-chip:hover {
   box-shadow: 0 4px 14px rgba(26, 86, 168, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 body.dashboard-mode[data-dash-theme="light"] .welcome-note { color: #7a86a3; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-panel.welcome-emphasis {
+  border-color: rgba(26, 86, 168, 0.42);
+  background:
+    radial-gradient(ellipse 90% 65% at 12% 0%, rgba(76, 130, 205, 0.14) 0%, transparent 60%),
+    linear-gradient(180deg, #ffffff 0%, #edf5ff 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(26, 86, 168, 0.18),
+    0 0 24px rgba(26, 86, 168, 0.18),
+    0 16px 36px rgba(31, 61, 124, 0.12);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-collapse-btn {
+  border-color: rgba(26, 86, 168, 0.2);
+  background: rgba(26, 86, 168, 0.06); color: #55688f;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-collapse-btn:hover {
+  background: rgba(26, 86, 168, 0.14);
+  border-color: rgba(26, 86, 168, 0.45); color: #16294f;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-new-badge {
+  background: linear-gradient(135deg, #4c86ea, #3a72dc); color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 10px rgba(26, 86, 168, 0.18);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
+  border-color: rgba(26, 86, 168, 0.4);
+  box-shadow: 0 0 0 4px rgba(26, 86, 168, 0.1), 0 8px 20px rgba(31, 61, 124, 0.16);
+}
 body.dashboard-mode[data-dash-theme="light"] .welcome-tipbar {
   background: rgba(26, 86, 168, 0.06);
   border-color: rgba(26, 86, 168, 0.24);
@@ -14212,26 +14325,45 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   width: 100%; margin-top: 5px; font-size: 9.5px; color: #7b87a3;
 }
 .deep-window-chat-add {
-  /* Deep Window 头部是白玻璃压条：浅底配深蓝文字（与 Export 按钮同一视觉语言），
-     近白文字在浅蓝半透明底上会对比度不足看不清 */
-  border: 1px solid rgba(36, 104, 242, 0.22);
-  background: linear-gradient(180deg, rgba(36, 104, 242, 0.09) 0%, rgba(36, 104, 242, 0.05) 100%);
-  color: #2468f2; border-radius: 999px; padding: 4px 12px;
-  font-size: 11px; font-weight: 650; cursor: pointer; font-family: inherit;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70);
-  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), background 0.3s, border-color 0.3s;
+  /* 主 CTA：实心品牌渐变 + 深色文字 + 蓝色光晕——在白玻璃头部上从 Export 等
+     次要按钮中脱颖而出。渐变/文字色复用项目既有 .welcome-progress-num active 语言 */
+  position: relative;
+  border: 1px solid rgba(155, 123, 255, 0.55);
+  background: linear-gradient(135deg, #6ea8ff 0%, #9b7bff 100%);
+  color: #0b0e14; border-radius: 999px; padding: 5px 14px;
+  font-size: 11px; font-weight: 750; cursor: pointer; font-family: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    0 1px 3px rgba(20, 30, 60, 0.25),
+    0 0 14px rgba(110, 168, 255, 0.50);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.3s, filter 0.3s, border-color 0.3s, background 0.3s, color 0.3s;
+  animation: welcome-chat-add-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .deep-window-chat-add:hover {
-  transform: translateY(-1px);
-  background: linear-gradient(180deg, rgba(36, 104, 242, 0.14) 0%, rgba(36, 104, 242, 0.08) 100%);
-  border-color: rgba(36, 104, 242, 0.42);
-  color: #1a4fa0;
+  transform: translateY(-1px) scale(1.05);
+  filter: brightness(1.1);
+  border-color: rgba(155, 123, 255, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 2px 6px rgba(20, 30, 60, 0.30),
+    0 0 22px rgba(110, 168, 255, 0.75);
+}
+.deep-window-chat-add:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 0 10px rgba(110, 168, 255, 0.45);
 }
 .deep-window-chat-add:disabled,
 .deep-window-chat-add.added {
-  opacity: 0.65; cursor: default; transform: none;
-  background: rgba(36, 104, 242, 0.05); border-color: rgba(36, 104, 242, 0.12);
-  color: #8aa0c8;
+  opacity: 0.55; cursor: default; transform: none;
+  background: rgba(36, 104, 242, 0.08); border-color: rgba(36, 104, 242, 0.16);
+  color: #7a86a3;
+  box-shadow: none; filter: none; animation: none;
+}
+/* 报告完成按钮浮现：轻微弹入（display none → block 时重启） */
+@keyframes welcome-chat-add-in {
+  0% { transform: scale(0.7) translateY(2px); opacity: 0; }
+  60% { transform: scale(1.07) translateY(0); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 .deep-window.generating .deep-window-chat-add,
 .deep-window.minimized .deep-window-chat-add { display: none; }
