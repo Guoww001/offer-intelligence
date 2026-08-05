@@ -16,7 +16,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from offer_db import MONTHLY_NEW_MERCHANTS_TABLE_DDL
+from offer_db import (
+    MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE,
+    MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL,
+    MONTHLY_NEW_MERCHANTS_TABLE_DDL,
+)
 
 PAYMENT_RECORD_COLUMN_MIGRATIONS = {
     "paymentMadeDate": (
@@ -100,6 +104,14 @@ def main():
             print("  created")
         else:
             print("[ddl] cnpscy_oi_monthly_new_merchants already exists, skipping")
+
+        if not table_exists(conn, MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE):
+            print(f"[ddl] CREATE TABLE {MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE} ...")
+            with conn.cursor() as cur:
+                cur.execute(MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL)
+            print("  created")
+        else:
+            print(f"[ddl] {MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE} already exists, skipping")
 
         # Tier movement history is immutable and is written in the same
         # transaction as cnpscy_oi_tier_assignments.

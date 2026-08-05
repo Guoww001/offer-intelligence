@@ -296,7 +296,7 @@ def handle_ui_monthly_new_merchants(target, query, method):
         if result.get("ok"):
             send_json(target, 200, result, methods="GET, POST, OPTIONS")
             return
-        status = 404 if result.get("code") == "record_not_found" else 409
+        status = 404 if result.get("code") in {"record_not_found", "merchant_not_found"} else 409
         send_json(target, status, result, methods="GET, POST, OPTIONS")
     except (ValueError, json.JSONDecodeError) as error:
         send_json(
