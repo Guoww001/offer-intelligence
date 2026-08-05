@@ -233,3 +233,22 @@ assertEqual(t.chatReminderActive(), true, "re-entering Chat Mode should re-rende
 // 语言切换（lang observer）在 Chat Mode 下强制刷新文案，卡片保持存在
 langObserverCallback();
 assertEqual(t.chatReminderActive(), true, "lang switch keeps the reminder card in Chat Mode");
+
+// ── 用例 17：流程状态机 flowStage（8 种布尔组合）──
+assertEqual(t.flowStage({ hasReport: false, hasMemory: false, isChat: false }), "noReport", "all false -> noReport");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: false, isChat: false }), "reportReady", "report only -> reportReady");
+assertEqual(t.flowStage({ hasReport: false, hasMemory: true, isChat: false }), "memoryReady", "memory only -> memoryReady");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: false }), "memoryReady", "report+memory -> memoryReady");
+assertEqual(t.flowStage({ hasReport: false, hasMemory: false, isChat: true }), "noReport", "chat only -> noReport");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: false, isChat: true }), "reportReady", "chat+report -> reportReady");
+assertEqual(t.flowStage({ hasReport: false, hasMemory: true, isChat: true }), "chatActive", "chat+memory -> chatActive");
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: true }), "chatActive", "all true -> chatActive");
+assertEqual(t.flowStage({ hasReport: true, hasPill: true, hasMemory: false, isChat: false }), "reportReady", "hasPill alone does not change stage");
+
+// ── 用例 18：新增文案键存在（zh/en 键集一致性由用例 2 兜底）──
+for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressAdvanced", "minimizedTip", "goReport"]) {
+  assertTruthy(t.copy.zh[key], `zh missing ${key}`);
+  assertTruthy(t.copy.en[key], `en missing ${key}`);
+}
+
+console.log("PASS: welcome logic");

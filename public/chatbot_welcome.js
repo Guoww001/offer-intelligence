@@ -35,7 +35,13 @@
       chatHelloTitle: "记忆栏已就绪，开始分析吧",
       chatHelloBody: "先拖入 1 份报告，再点下面的示例，我会基于它给出建议",
       chatEmptyMemory: "请先拖入报告到记忆栏",
-      panelTip: "点 ─ 最小化，拖入记忆栏后可在 Chat Mode 深度分析",
+      panelTip: "点「加入对话」一键带进对话；或点 ─ 最小化后拖入记忆栏（高级用法）",
+      progressStep1: "① 在 Report 提问",
+      progressStep2: "② 点「加入对话」",
+      progressStep3: "③ 在 Chat 对话",
+      progressAdvanced: "高级用法：最小化后拖入记忆栏",
+      minimizedTip: "已最小化：切到 Chat Mode，把药丸拖到记忆栏",
+      goReport: "去生成报告",
       chatReminder: "先将数据注入记忆栏，Chat才有数据可答",
       close: "关闭",
       memoryHint: "将面板拖入此处作为上下文"
@@ -58,7 +64,13 @@
       chatHelloTitle: "Memory ready — start analyzing",
       chatHelloBody: "Drag in a report first, then pick an example — I'll analyze based on it",
       chatEmptyMemory: "Drag a report into the memory bar first",
-      panelTip: "Click – to minimize, then drag into memory for Chat Mode analysis",
+      panelTip: "Click “Add to chat” to start instantly, or click – to minimize and drag into the memory bar (advanced)",
+      progressStep1: "① Ask in Report Mode",
+      progressStep2: "② Click Add to chat",
+      progressStep3: "③ Chat in Chat Mode",
+      progressAdvanced: "Advanced: minimize, then drag into the memory bar",
+      minimizedTip: "Minimized: switch to Chat Mode and drag the pill into the memory bar",
+      goReport: "Go generate a report",
       chatReminder: "Drag reports into memory first — Chat only answers with data in memory",
       close: "Close",
       memoryHint: "Drag the panel here as context"
@@ -96,6 +108,18 @@
   function currentCopy(key) {
     var lang = currentLanguage();
     return (WELCOME_COPY[lang] && WELCOME_COPY[lang][key]) || WELCOME_COPY.zh[key] || key;
+  }
+
+  // ── 流程状态机：主路径 3 步（① Report 提问 → ② 加入对话 → ③ Chat 对话）──
+  function flowStage(state) {
+    state = state || {};
+    var hasReport = !!state.hasReport;
+    var hasMemory = !!state.hasMemory;
+    var isChat = !!state.isChat;
+    if (hasMemory && isChat) return "chatActive";
+    if (hasMemory) return "memoryReady";
+    if (hasReport) return "reportReady";
+    return "noReport";
   }
 
   // ── 动态商户名：取 commission 最高的商户 ──
@@ -150,6 +174,8 @@
   var _tipFromExample = false;
   var _lastFillValue = "";
   var _hasMemory = false;
+  var _hasReport = false;      // 是否已有生成完成的报告（主路径 ① 完成标记）
+  var _hasPill = false;        // 是否已有最小化药丸（高级路径标记）
   var _panelTipShown = false;
   var _langObserver = null;
 
@@ -468,7 +494,11 @@
         return !!log.querySelector(".chat-reminder");
       },
       renderChatReminder: function (force) { _renderChatReminder(!!force); },
-      removeChatReminder: function () { _removeChatReminder(); }
+      removeChatReminder: function () { _removeChatReminder(); },
+      flowStage: flowStage,
+      flowState: function () {
+        return { hasReport: _hasReport, hasPill: _hasPill, hasMemory: _hasMemory, isChat: _mode === "chat" };
+      }
     }
   };
 })();
