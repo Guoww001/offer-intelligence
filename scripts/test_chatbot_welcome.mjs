@@ -16,34 +16,67 @@ function assertMatch(actual, pattern, label) {
 
 const elementStub = {
   nodeType: 1,
-  addEventListener() {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-  dataset: {}, appendChild() {}, removeChild() {}, insertBefore() {},
+  addEventListener() {}, dataset: {},
+  appendChild() {}, removeChild() {}, insertBefore() {},
   querySelectorAll() { return []; }, querySelector() { return null; },
   setAttribute() {}, removeAttribute() {}, style: {}, innerHTML: "", value: "",
   getBoundingClientRect() { return { left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100 }; }
 };
-const byIdMap = {};
-let langObserverCallback = null;
 
-// 可控制欢迎屏卡片存在性的 dashboard 主网格 stub（welcome 独立卡片挂在这）
-function makeMainGrid() {
-  let hasWelcome = false;
-  const mainGrid = {
-    ...elementStub,
-    querySelector(sel) { return sel === ".welcome-panel" ? (hasWelcome ? { className: "welcome-panel" } : null) : null; },
-    querySelectorAll(sel) {
-      return sel === ".welcome-panel" ? (hasWelcome ? [{ className: "welcome-panel", parentNode: mainGrid }] : []) : [];
+// 可写 localStorage stub
+const store = {};
+const localStorageStub = {
+  getItem(key) { return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null; },
+  setItem(key, value) { store[key] = String(value); },
+  removeItem(key) { delete store[key]; }
+};
+
+// 真实 classList stub（className 同步维护，供 collapsed/tour-hidden 断言）
+function makeElement(className) {
+  const el = { ...elementStub, className: className || "", children: [], parentNode: null };
+  const set = new Set();
+  el.classList = {
+    add(cls) { set.add(cls); el.className = [...set].join(" "); },
+    remove(cls) { set.delete(cls); el.className = [...set].join(" "); },
+    toggle(cls, force) {
+      const on = force === undefined ? !set.has(cls) : !!force;
+      if (on) set.add(cls); else set.delete(cls);
+      el.className = [...set].join(" ");
+      return on;
     },
-    insertBefore() { hasWelcome = true; return null; },
-    removeChild() { hasWelcome = false; return null; },
-    _welcomePresent() { return hasWelcome; }
+    contains(cls) { return set.has(cls); }
   };
-  return mainGrid;
+  return el;
 }
-const mainGrid = makeMainGrid();
+
+// #chatPanel 容器 stub（欢迎气泡挂载点）
+function makeChatPanel() {
+  let wrapper = null;
+  const panelProbe = makeElement("welcome-panel");
+  const chatPanel = {
+    ...elementStub,
+    querySelector(sel) {
+      if (sel === ".welcome-float") return wrapper;
+      if (sel === ".welcome-panel") return wrapper ? panelProbe : null;
+      if (sel === ".welcome-float-dot") return wrapper ? makeElement("welcome-float-dot") : null;
+      return null;
+    },
+    querySelectorAll(sel) {
+      if (sel === ".welcome-float") return wrapper ? [wrapper] : [];
+      if (sel === ".welcome-panel") return wrapper ? [panelProbe] : [];
+      return [];
+    },
+    appendChild(child) { wrapper = child; child.parentNode = chatPanel; return null; },
+    insertBefore(child) { wrapper = child; child.parentNode = chatPanel; return null; },
+    removeChild(child) { if (child === wrapper) wrapper = null; return null; },
+    _welcomePresent() { return !!wrapper; }
+  };
+  return chatPanel;
+}
+const chatPanel = makeChatPanel();
+const byIdMap = { chatPanel };
 
 // 可控制 Chat Mode 提醒卡片存在性的 #chatLogChat stub
-// 保存实际插入的卡片元素（含 innerHTML / querySelector），供 chatReminderHtml() 断言
 function makeChatLogChat() {
   let hasReminder = false;
   let reminderCard = null;
@@ -63,22 +96,28 @@ function makeChatLogChat() {
 const chatLogChat = makeChatLogChat();
 byIdMap["chatLogChat"] = chatLogChat;
 
+let tourMaskEls = [];
+let observerCallbacks = [];
+
 const sandbox = {
   console, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
   setTimeout, clearTimeout,
   window: { __OFFER_INTELLIGENCE_TEST__: true },
-  localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+  localStorage: localStorageStub,
   document: {
     getElementById(id) { return byIdMap[id] || null; },
-    querySelector(sel) { return sel === ".main-grid.dashboard-page" ? mainGrid : null; },
-    querySelectorAll(sel) { return []; },
-    createElement() { return { ...elementStub }; },
+    querySelector() { return null; },
+    querySelectorAll(sel) {
+      if (sel === ".onboarding-mask-piece, .onboarding-popover") return tourMaskEls;
+      return [];
+    },
+    createElement() { return makeElement(""); },
     body: { appendChild() {}, removeChild() {} },
     documentElement: { lang: "zh-Hans" },
     readyState: "complete",
     addEventListener() {}, removeEventListener() {}
   },
-  MutationObserver: class { constructor(cb) { langObserverCallback = cb; } observe() {} disconnect() {} }
+  MutationObserver: class { constructor(cb) { observerCallbacks.push(cb); } observe() {} disconnect() {} }
 };
 sandbox.window.document = sandbox.document;
 
@@ -89,8 +128,7 @@ const documentWithFlow = {
   ...sandbox.document,
   querySelectorAll(sel) {
     if (sel === ".deep-window.minimized") return minimizedPanels;
-    if (sel === ".welcome-panel") return mainGrid.querySelectorAll(sel);
-    return [];
+    return sandbox.document.querySelectorAll(sel);
   },
   dispatchEvent(evt) { dispatchedEvents.push(evt && evt.type); return true; }
 };
@@ -118,12 +156,14 @@ for (const ex of [...t.examples.report, ...t.examples.chat]) {
 assertEqual(t.examples.chat[0].text, "根据记忆栏的报告，给我分析建议", "first chat example should reference memory bar");
 assertEqual(t.examples.chat[0].dynamic, undefined, "chat examples must NOT be dynamic");
 
-// ── 用例 2：文案键集 zh/en 一致（无折叠条键）──
+// ── 用例 2：文案键集 zh/en 一致（新增气泡键）──
 const zhKeys = Object.keys(t.copy.zh).sort();
 const enKeys = Object.keys(t.copy.en).sort();
 assertEqual(enKeys.join("|"), zhKeys.join("|"), "zh/en copy keys must match exactly");
 assertEqual(zhKeys.includes("barTitle"), false, "bar keys removed (no collapsed bar)");
-assertEqual(zhKeys.includes("collapse"), false, "collapse key removed (always fully expanded)");
+assertEqual(zhKeys.includes("collapse"), true, "collapse key added for bubble collapse button");
+assertEqual(zhKeys.includes("newBadge"), true, "newBadge key added for new-user emphasis");
+assertEqual(zhKeys.includes("showGuide"), true, "showGuide key added for collapsed dot label");
 
 // ── 用例 3：动态商户名 ──
 assertEqual(t.merchantForExample(null), null, "no offers -> null");
@@ -142,7 +182,6 @@ assertEqual(
   "OnlyName",
   "should fall back to any merchant with a name"
 );
-// knownKeyword 商户点击示例会走 keyword 搜索而非 merchant 分析，示例商户应跳过它们
 assertEqual(
   t.merchantForExample([
     { merchantName: "TopBrand", commission: 99, knownKeyword: true },
@@ -163,16 +202,14 @@ assertEqual(
 // ── 用例 4：语言读取 ──
 assertEqual(t.currentLanguage(), "zh", "html lang zh-Hans -> zh");
 
-// ── 用例 5：渲染判定（独立卡片挂 dashboard 主网格，与聊天区完全解耦）──
-assertEqual(t.shouldRenderFor("report"), true, "empty main grid -> should render");
-assertEqual(t.shouldRenderFor("chat"), true, "mode is ignored — same persistent card");
-// 已有欢迎屏内容 → 保持当前态，不重复渲染
+// ── 用例 5：渲染判定（气泡挂 #chatPanel）──
+assertEqual(t.shouldRenderFor("report"), true, "empty chat panel -> should render");
+assertEqual(t.shouldRenderFor("chat"), true, "mode is ignored — same persistent bubble");
 t.renderPanel("report", { offers: [], hasMemory: false });
-assertEqual(t.shouldRenderFor("report"), false, "welcome already rendered -> no re-render");
-assertTruthy(welcome.isRendered("report"), "panel should be present after render");
+assertEqual(t.shouldRenderFor("report"), false, "bubble already rendered -> no re-render");
+assertTruthy(welcome.isRendered("report"), "bubble should be present after render");
 
 // ── 用例 6：示例交互决策 ──
-// 决策层键 = WELCOME_COPY 文案键（单一事实源；C1 修复：不得返回字面键名）
 assertEqual(t.tipStateFor("report", false), "tipReport", "report example always shows report tip");
 assertEqual(t.tipStateFor("chat", false), "chatEmptyMemory", "chat example without memory -> empty-memory tip");
 assertEqual(t.tipStateFor("chat", true), null, "chat example with memory -> no tip");
@@ -207,40 +244,45 @@ assertEqual(t.hasMemory(), false, "hasMemory starts false");
 welcome.notify("memory-added", { hasMemory: true });
 assertEqual(t.hasMemory(), true, "memory-added should set hasMemory true");
 
-// ── 用例 11：notify("mode-switched") 只同步状态，不重渲染、不切换欢迎屏 ──
+// ── 用例 11：notify("mode-switched") 只同步状态，不重渲染、不切换气泡 ──
 welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
 assertEqual(t.lastMode(), "chat", "mode-switched chat should record mode");
-assertTruthy(welcome.isRendered("chat"), "persistent card stays rendered across mode switch (no re-render swap)");
+assertTruthy(welcome.isRendered("chat"), "bubble stays rendered across mode switch (no re-render swap)");
 welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.lastMode(), "report", "mode-switched report should record mode");
-assertTruthy(welcome.isRendered("report"), "card still present after switching back");
+assertTruthy(welcome.isRendered("report"), "bubble still present after switching back");
 
-// ── 用例 12：notify("chat-sent") 常驻——发送消息只清提示条，面板保持完整展开 ──
+// ── 用例 12：notify("chat-sent") 首次发送自动收起 ──
 t.showTipbar("tipReport");
 assertEqual(t.tipActive(), true, "tip shown before send");
 welcome.notify("chat-sent");
 assertEqual(t.tipActive(), false, "chat-sent should clear tipbar");
-assertTruthy(welcome.isRendered("report"), "chat-sent must NOT remove the panel (always fully expanded)");
+assertTruthy(welcome.isRendered("report"), "chat-sent keeps the bubble mounted");
+assertTruthy(t.isCollapsed(), "first chat-sent auto-collapses the bubble");
+const wrapAfterSend = chatPanel.querySelector(".welcome-float");
+assertTruthy(wrapAfterSend && wrapAfterSend.classList.contains("collapsed"), "wrapper should carry collapsed class");
+assertEqual(store["oi_welcome_collapsed"], "1", "first chat-sent persists collapse");
 
 // ── 用例 13：语言切换重渲染保持当前态 ──
-assertTruthy(langObserverCallback, "lang observer should have registered during render smoke");
+function fireLangObserver() { if (observerCallbacks[0]) observerCallbacks[0](); }
+assertTruthy(observerCallbacks.length >= 1, "lang observer should have registered during render");
 welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.lastMode(), "report", "mode-switched report should set mode before lang observer fires");
-langObserverCallback();
-assertEqual(t.lastMode(), "report", "lang observer should re-render the persistent card, keeping _mode");
-assertTruthy(welcome.isRendered("report"), "card remains after language re-render");
+fireLangObserver();
+assertEqual(t.lastMode(), "report", "lang observer should re-render the bubble, keeping _mode");
+assertTruthy(welcome.isRendered("report"), "bubble remains after language re-render");
 
 // ── 用例 14：拦截路径提示条也随手动输入消失（M2 修复）──
 t.handleChipClick("chat", "根据记忆栏的报告，给我分析建议"); // 无记忆 → 拦截
 assertEqual(t.tipActive(), true, "blocked chat example should show empty-memory tipbar");
 assertEqual(t.tipFromExampleActive(), true, "blocked chat example should set tipFromExample so typing clears the tipbar");
 
-// ── 用例 15：点击监听绑定在每次新建的 panel 上，不累积在主网格容器 ──
+// ── 用例 15：点击监听绑定在每次新建的 panel 上，不累积在 #chatPanel 容器 ──
 let containerListenerCalls = 0;
-mainGrid.addEventListener = () => { containerListenerCalls++; };
+chatPanel.addEventListener = () => { containerListenerCalls++; };
 t.renderSmoke();
 t.renderSmoke();
-assertEqual(containerListenerCalls, 0, "click listeners must bind to per-render welcome-panel, not the main-grid container");
+assertEqual(containerListenerCalls, 0, "click listeners must bind to per-render elements, not the chat panel container");
 
 // ── 用例 16：Chat Mode 聊天区顶部提醒卡片（常驻 sticky，提示先注入记忆栏）──
 assertEqual(t.chatReminderActive(), false, "no reminder before entering Chat Mode");
@@ -251,8 +293,7 @@ welcome.notify("mode-switched", { mode: "report", hasMemory: false });
 assertEqual(t.chatReminderActive(), false, "Report Mode should remove the reminder card");
 welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
 assertEqual(t.chatReminderActive(), true, "re-entering Chat Mode should re-render the reminder card");
-// 语言切换（lang observer）在 Chat Mode 下强制刷新文案，卡片保持存在
-langObserverCallback();
+fireLangObserver();
 assertEqual(t.chatReminderActive(), true, "lang switch keeps the reminder card in Chat Mode");
 
 // ── 用例 17：流程状态机 flowStage（8 种布尔组合）──
@@ -267,7 +308,7 @@ assertEqual(t.flowStage({ hasReport: true, hasMemory: true, isChat: true }), "ch
 assertEqual(t.flowStage({ hasReport: true, hasPill: true, hasMemory: false, isChat: false }), "reportReady", "hasPill alone does not change stage");
 
 // ── 用例 18：新增文案键存在（zh/en 键集一致性由用例 2 兜底）──
-for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressAdvanced", "minimizedTip", "goReport"]) {
+for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressAdvanced", "minimizedTip", "goReport", "newBadge", "collapse", "showGuide"]) {
   assertTruthy(t.copy.zh[key], `zh missing ${key}`);
   assertTruthy(t.copy.en[key], `en missing ${key}`);
 }
@@ -321,5 +362,90 @@ assertEqual(t.resolveExampleText(t.examples.chat[0], null), "Analyze the reports
 assertEqual(t.resolveExampleText(t.examples.report[0], "Shokz"), "Shokz", "en dynamic merchant example still substitutes merchant");
 sandbox.document.documentElement.lang = "zh-Hans";
 assertEqual(t.resolveExampleText(t.examples.report[0], "Shokz"), "Shokz", "zh dynamic merchant example substitutes merchant");
+
+// ── 用例 25：新老用户默认收起判定（纯函数）──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+assertEqual(t.defaultCollapsed(), false, "fresh user -> expanded by default");
+store["oi_onboarding_done"] = "1";
+assertEqual(t.defaultCollapsed(), true, "onboarding done -> collapsed by default");
+delete store["oi_onboarding_done"];
+assertEqual(t.defaultCollapsed(), false, "fresh user again -> expanded");
+store["oi_welcome_collapsed"] = "1";
+assertEqual(t.defaultCollapsed(), true, "explicit collapse wins even when onboarding not done");
+store["oi_onboarding_done"] = "1";
+assertEqual(t.defaultCollapsed(), true, "both markers -> collapsed");
+
+// ── 用例 26：渲染默认态（新用户展开 + 强调 / 老用户收起）──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+let wrap = chatPanel.querySelector(".welcome-float");
+assertTruthy(wrap, "bubble wrapper should render");
+assertEqual(wrap.classList.contains("collapsed"), false, "new user renders expanded");
+assertMatch(t.panelElement().className, /welcome-emphasis/, "new user panel carries emphasis class");
+
+store["oi_onboarding_done"] = "1";
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+wrap = chatPanel.querySelector(".welcome-float");
+assertEqual(wrap.classList.contains("collapsed"), true, "returning user renders collapsed");
+assertEqual(t.panelElement().className.includes("welcome-emphasis"), false, "returning user panel has no emphasis");
+
+// ── 用例 27：收起/展开 + 持久化 ──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+t.setCollapsed(true, true);
+wrap = chatPanel.querySelector(".welcome-float");
+assertEqual(wrap.classList.contains("collapsed"), true, "setCollapsed(true) collapses wrapper");
+assertEqual(store["oi_welcome_collapsed"], "1", "collapse with persist writes storage");
+t.setCollapsed(false, false);
+wrap = chatPanel.querySelector(".welcome-float");
+assertEqual(wrap.classList.contains("collapsed"), false, "setCollapsed(false) expands wrapper");
+assertEqual(store["oi_welcome_collapsed"], "1", "manual expand does NOT clear persisted collapse");
+assertMatch(t.panelElement().className, /welcome-emphasis/, "re-expanded fresh-user panel gets emphasis back");
+
+// ── 用例 28：chat-sent 自动收起只发生一次 ──
+t.resetAutoCollapse();
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+welcome.notify("chat-sent");
+assertTruthy(t.isCollapsed(), "first chat-sent collapses");
+t.setCollapsed(false, false);
+welcome.notify("chat-sent");
+assertEqual(t.isCollapsed(), false, "second chat-sent does NOT re-collapse (first send only)");
+
+// ── 用例 29：chat-add 自动收起只发生一次 ──
+t.resetAutoCollapse();
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+welcome.notify("chat-add", { hasMemory: true });
+assertTruthy(t.isCollapsed(), "first chat-add collapses");
+t.setCollapsed(false, false);
+welcome.notify("chat-add", { hasMemory: true });
+assertEqual(t.isCollapsed(), false, "second chat-add does NOT re-collapse");
+
+// ── 用例 30：Tour 激活时隐藏气泡 ──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+assertEqual(t.tourHidden(), false, "tour not active initially");
+tourMaskEls = [{ className: "onboarding-mask-piece" }];
+t.refreshTourHidden();
+assertEqual(t.tourHidden(), true, "tour active -> hidden state true");
+wrap = chatPanel.querySelector(".welcome-float");
+assertEqual(wrap.classList.contains("tour-hidden"), true, "wrapper carries tour-hidden class");
+tourMaskEls = [];
+t.refreshTourHidden();
+assertEqual(t.tourHidden(), false, "tour ended -> hidden state false");
+assertEqual(wrap.classList.contains("tour-hidden"), false, "wrapper removes tour-hidden class");
 
 console.log("PASS: welcome logic");
