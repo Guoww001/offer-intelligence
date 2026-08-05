@@ -10,6 +10,9 @@ function assertEqual(actual, expected, label) {
 function assertTruthy(value, label) {
   if (!value) throw new Error(`${label}: expected a truthy value, got ${JSON.stringify(value)}`);
 }
+function assertMatch(actual, pattern, label) {
+  if (!pattern.test(actual)) throw new Error(`${label}: expected ${JSON.stringify(actual)} to match ${pattern}`);
+}
 
 const elementStub = {
   nodeType: 1,
@@ -40,17 +43,19 @@ function makeMainGrid() {
 const mainGrid = makeMainGrid();
 
 // 可控制 Chat Mode 提醒卡片存在性的 #chatLogChat stub
+// 保存实际插入的卡片元素（含 innerHTML / querySelector），供 chatReminderHtml() 断言
 function makeChatLogChat() {
   let hasReminder = false;
+  let reminderCard = null;
   const log = {
     ...elementStub,
     firstChild: null,
-    querySelector(sel) { return sel === ".chat-reminder" ? (hasReminder ? { className: "chat-reminder" } : null) : null; },
+    querySelector(sel) { return sel === ".chat-reminder" ? (reminderCard || null) : null; },
     querySelectorAll(sel) {
-      return sel === ".chat-reminder" ? (hasReminder ? [{ className: "chat-reminder", parentNode: log }] : []) : [];
+      return sel === ".chat-reminder" ? (reminderCard ? [reminderCard] : []) : [];
     },
-    insertBefore() { hasReminder = true; return null; },
-    removeChild() { hasReminder = false; return null; },
+    insertBefore(card) { card.parentNode = log; reminderCard = card; hasReminder = true; return null; },
+    removeChild(child) { if (child === reminderCard) { reminderCard = null; hasReminder = false; } return null; },
     _reminderPresent() { return hasReminder; }
   };
   return log;
@@ -76,6 +81,22 @@ const sandbox = {
   MutationObserver: class { constructor(cb) { langObserverCallback = cb; } observe() {} disconnect() {} }
 };
 sandbox.window.document = sandbox.document;
+
+// 流程引导测试：.deep-window.minimized 查询映射 + 事件派发记录 + CustomEvent
+let minimizedPanels = [];
+let dispatchedEvents = [];
+const documentWithFlow = {
+  ...sandbox.document,
+  querySelectorAll(sel) {
+    if (sel === ".deep-window.minimized") return minimizedPanels;
+    if (sel === ".welcome-panel") return mainGrid.querySelectorAll(sel);
+    return [];
+  },
+  dispatchEvent(evt) { dispatchedEvents.push(evt && evt.type); return true; }
+};
+sandbox.document = documentWithFlow;
+sandbox.window.document = documentWithFlow;
+sandbox.CustomEvent = class { constructor(type) { this.type = type; } };
 
 runScript("public/chatbot_welcome.js", sandbox);
 const welcome = sandbox.window.CHATBOT_WELCOME;
@@ -250,5 +271,41 @@ for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressA
   assertTruthy(t.copy.zh[key], `zh missing ${key}`);
   assertTruthy(t.copy.en[key], `en missing ${key}`);
 }
+
+// ── 用例 19：进度条渲染（progressHtml 纯函数）──
+assertMatch(t.progressHtml({ hasReport: false, hasMemory: false, isChat: false }), /data-stage="noReport"/, "noReport progress stage");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: false, isChat: false }), /data-stage="reportReady"/, "reportReady progress stage");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, isChat: false }), /data-stage="memoryReady"/, "memoryReady progress stage");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }), /data-stage="chatActive"/, "chatActive progress stage");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }), /welcome-progress-step done/, "chatActive renders done steps");
+
+// ── 用例 20：notify 状态事件 ──
+welcome.notify("panel-minimized", {});
+assertEqual(t.flowState().hasPill, true, "panel-minimized sets hasPill");
+minimizedPanels = [];
+welcome.notify("panel-expanded", {});
+assertEqual(t.flowState().hasPill, false, "panel-expanded recomputes hasPill false when no minimized panels");
+minimizedPanels = [{ className: "deep-window minimized" }];
+welcome.notify("panel-expanded", {});
+assertEqual(t.flowState().hasPill, true, "panel-expanded recomputes hasPill true when a minimized panel exists");
+minimizedPanels = [];
+
+// ── 用例 21：notify("chat-add") ──
+welcome.notify("chat-add", { hasMemory: true });
+assertEqual(t.flowState().hasReport, true, "chat-add sets hasReport");
+assertEqual(t.flowState().hasMemory, true, "chat-add sets hasMemory");
+
+// ── 用例 22：提醒卡片包含「去生成报告」按钮，点击 dispatch chatbot-go-report 并填入示例 ──
+welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
+assertMatch(t.chatReminderHtml(), /chat-reminder-action/, "reminder card should include go-report action");
+byIdMap["chatInput"] = { ...elementStub, value: "" };
+dispatchedEvents = [];
+t.triggerGoReport();
+assertEqual(dispatchedEvents.includes("chatbot-go-report"), true, "goReport should dispatch chatbot-go-report");
+assertEqual(byIdMap["chatInput"].value, "Shokz", "goReport should fill the first report example (fallback Shokz)");
+
+// ── 用例 23：fillInput 公共 API ──
+assertEqual(welcome.fillInput("Tier 2"), true, "fillInput should return true when input exists");
+assertEqual(byIdMap["chatInput"].value, "Tier 2", "fillInput should set input value");
 
 console.log("PASS: welcome logic");

@@ -121,6 +121,40 @@
     if (hasReport) return "reportReady";
     return "noReport";
   }
+  function _flowState() {
+    return { hasReport: _hasReport, hasPill: _hasPill, hasMemory: _hasMemory, isChat: _mode === "chat" };
+  }
+  function _anyMinimizedPanel() {
+    try { return document.querySelectorAll(".deep-window.minimized").length > 0; } catch (e) { return false; }
+  }
+  function _refreshProgress() {
+    try {
+      var container = containerFor(_mode);
+      if (!container) return;
+      var panel = container.querySelector(".welcome-panel");
+      var box = panel && panel.querySelector(".welcome-progress");
+      if (box) box.outerHTML = progressHtml(_flowState());
+    } catch (e) {}
+  }
+  function progressHtml(state) {
+    var stage = flowStage(state);
+    var steps = [
+      { key: "progressStep1", state: "active" },
+      { key: "progressStep2", state: "" },
+      { key: "progressStep3", state: "" }
+    ];
+    if (stage === "reportReady") { steps[0].state = "done"; steps[1].state = "active"; }
+    else if (stage === "memoryReady") { steps[0].state = "done"; steps[1].state = "done"; steps[2].state = "active"; }
+    else if (stage === "chatActive") { steps[0].state = "done"; steps[1].state = "done"; steps[2].state = "done"; }
+    return '<div class="welcome-progress" data-stage="' + escapeHtml(stage) + '">' +
+      steps.map(function (s, i) {
+        var cls = "welcome-progress-step" + (s.state ? " " + s.state : "");
+        var icon = s.state === "done" ? "✓" : String(i + 1);
+        return '<div class="' + cls + '"><span class="welcome-progress-num">' + escapeHtml(icon) + '</span>' +
+          '<span class="welcome-progress-label">' + escapeHtml(currentCopy(s.key)) + '</span></div>';
+      }).join('<span class="welcome-progress-arrow">→</span>') +
+      '<div class="welcome-progress-advanced">' + escapeHtml(currentCopy("progressAdvanced")) + '</div></div>';
+  }
 
   // ── 动态商户名：取 commission 最高的商户 ──
   function merchantForExample(offers) {
@@ -204,15 +238,6 @@
   }
 
   // ── 欢迎屏渲染 ──
-  function flowHtml() {
-    var keys = [["flow1Title", "flow1Sub"], ["flow2Title", "flow2Sub"], ["flow3Title", "flow3Sub"]];
-    var nums = ["①", "②", "③"];
-    return '<div class="welcome-flow">' + keys.map(function (pair, i) {
-      return '<div class="welcome-flow-step"><span class="welcome-flow-num">' +
-        escapeHtml(nums[i]) + '</span><span class="welcome-flow-txt">' +
-        escapeHtml(currentCopy(pair[0])) + '<br>' + escapeHtml(currentCopy(pair[1])) + '</span></div>';
-    }).join('<span class="welcome-flow-arrow">→</span>') + '</div>';
-  }
   function chipsHtml(examples, kind, merchant) {
     return '<div class="welcome-chips">' + examples.map(function (ex) {
       var text = resolveExampleText(ex, merchant);
@@ -246,7 +271,7 @@
     if (!container) return false;
     if (opts.offers) _offers = opts.offers;
     var merchant = exampleMerchant(opts.offers || _offers);
-    var html = '<div class="welcome-panel">' + headHtml() + flowHtml() +
+    var html = '<div class="welcome-panel">' + headHtml() + progressHtml(_flowState()) +
       '<div class="welcome-cols">' + colHtml("report", WELCOME_EXAMPLES.report, merchant) +
       colHtml("chat", WELCOME_EXAMPLES.chat, merchant) +
       "</div></div>";
@@ -345,9 +370,31 @@
       if (log.querySelector && log.querySelector(".chat-reminder")) return;
       var card = makeEl("chat-reminder",
         '<span class="chat-reminder-icon">📌</span>' +
-        '<span class="chat-reminder-text">' + escapeHtml(currentCopy("chatReminder")) + '</span>');
+        '<span class="chat-reminder-text">' + escapeHtml(currentCopy("chatReminder")) + '</span>' +
+        '<button type="button" class="chat-reminder-action">' + escapeHtml(currentCopy("goReport")) + '</button>');
+      var actionBtn = card.querySelector(".chat-reminder-action");
+      if (actionBtn) actionBtn.addEventListener("click", _goReportFromReminder);
       if (log.insertBefore) log.insertBefore(card, log.firstChild || null);
     } catch (e) {}
+  }
+  function _goReportFromReminder() {
+    try { document.dispatchEvent(new CustomEvent("chatbot-go-report")); } catch (e) {}
+    _fillFirstReportExample();
+  }
+  function _fillFirstReportExample() {
+    var ex = WELCOME_EXAMPLES.report[0];
+    if (!ex) return;
+    fillInput(resolveExampleText(ex, exampleMerchant(_offers)));
+  }
+  function fillInput(text) {
+    var input = null;
+    try { input = document.getElementById("chatInput"); } catch (e) {}
+    if (!input) return false;
+    input.value = text;
+    _lastFillValue = text;
+    _tipFromExample = true;
+    _pulseSend(true);
+    return true;
   }
   function _removeChatReminder() {
     try {
@@ -425,23 +472,45 @@
       _pulseSend(false);
       return;
     }
-    if (eventName === "mode-switched") {
-      // 面板常驻：模式切换只同步记忆栏状态，不重渲染、不切换欢迎屏
-      if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
-      var mode = payload.mode === "chat" ? "chat" : "report";
-      _mode = mode;
-      // Chat Mode → 聊天区顶部渲染提醒卡片；Report Mode → 移除
-      _syncChatReminder(mode);
-      return;
-    }
     if (eventName === "report-ready") {
+      _hasReport = true;
+      _refreshProgress();
       if (_panelTipShown || !payload.panelEl) return;
       _panelTipShown = true;
       _insertPanelTip(payload.panelEl);
       return;
     }
+    if (eventName === "panel-minimized") {
+      _hasPill = true;
+      _showTipbar("minimizedTip");
+      return;
+    }
+    if (eventName === "panel-expanded") {
+      _hasPill = _anyMinimizedPanel();
+      if (!_hasPill) _clearTipbar();
+      return;
+    }
+    if (eventName === "chat-add") {
+      _hasReport = true;
+      if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
+      _refreshProgress();
+      _clearTipbar();
+      _pulseSend(false);
+      return;
+    }
+    if (eventName === "mode-switched") {
+      if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
+      var mode = payload.mode === "chat" ? "chat" : "report";
+      _mode = mode;
+      _refreshProgress();
+      // Chat Mode → 聊天区顶部渲染提醒卡片；Report Mode → 移除
+      _syncChatReminder(mode);
+      return;
+    }
     if (eventName === "memory-added") {
       _hasMemory = true;
+      _hasReport = true;
+      _refreshProgress();
       return;
     }
   }
@@ -464,6 +533,7 @@
     notify: notify,
     dismiss: dismiss,
     isRendered: isRendered,
+    fillInput: fillInput,
     _test: {
       examples: WELCOME_EXAMPLES,
       copy: WELCOME_COPY,
@@ -498,7 +568,15 @@
       flowStage: flowStage,
       flowState: function () {
         return { hasReport: _hasReport, hasPill: _hasPill, hasMemory: _hasMemory, isChat: _mode === "chat" };
-      }
+      },
+      progressHtml: progressHtml,
+      chatReminderHtml: function () {
+        var log = _chatLogChatElement();
+        if (!log || !log.querySelector) return "";
+        var card = log.querySelector(".chat-reminder");
+        return card && card.innerHTML ? card.innerHTML : "";
+      },
+      triggerGoReport: _goReportFromReminder
     }
   };
 })();
