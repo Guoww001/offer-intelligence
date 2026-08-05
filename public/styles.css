@@ -14212,22 +14212,26 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   width: 100%; margin-top: 5px; font-size: 9.5px; color: #7b87a3;
 }
 .deep-window-chat-add {
-  border: 1px solid rgba(110, 168, 255, 0.38);
-  background: linear-gradient(180deg, rgba(110, 168, 255, 0.18) 0%, rgba(110, 168, 255, 0.08) 100%);
-  color: #dceaff; border-radius: 999px; padding: 4px 12px;
+  /* Deep Window 头部是白玻璃压条：浅底配深蓝文字（与 Export 按钮同一视觉语言），
+     近白文字在浅蓝半透明底上会对比度不足看不清 */
+  border: 1px solid rgba(36, 104, 242, 0.22);
+  background: linear-gradient(180deg, rgba(36, 104, 242, 0.09) 0%, rgba(36, 104, 242, 0.05) 100%);
+  color: #2468f2; border-radius: 999px; padding: 4px 12px;
   font-size: 11px; font-weight: 650; cursor: pointer; font-family: inherit;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 0 12px rgba(110, 168, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70);
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), background 0.3s, border-color 0.3s;
 }
 .deep-window-chat-add:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, rgba(110, 168, 255, 0.28) 0%, rgba(110, 168, 255, 0.12) 100%);
-  border-color: rgba(110, 168, 255, 0.6);
+  background: linear-gradient(180deg, rgba(36, 104, 242, 0.14) 0%, rgba(36, 104, 242, 0.08) 100%);
+  border-color: rgba(36, 104, 242, 0.42);
+  color: #1a4fa0;
 }
 .deep-window-chat-add:disabled,
 .deep-window-chat-add.added {
   opacity: 0.65; cursor: default; transform: none;
-  background: rgba(110, 168, 255, 0.08); border-color: rgba(110, 168, 255, 0.18);
+  background: rgba(36, 104, 242, 0.05); border-color: rgba(36, 104, 242, 0.12);
+  color: #8aa0c8;
 }
 .deep-window.generating .deep-window-chat-add,
 .deep-window.minimized .deep-window-chat-add { display: none; }
