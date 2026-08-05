@@ -128,7 +128,8 @@ const documentWithFlow = {
   ...sandbox.document,
   querySelectorAll(sel) {
     if (sel === ".deep-window.minimized") return minimizedPanels;
-    return sandbox.document.querySelectorAll(sel);
+    if (sel === ".onboarding-mask-piece, .onboarding-popover") return tourMaskEls;
+    return [];
   },
   dispatchEvent(evt) { dispatchedEvents.push(evt && evt.type); return true; }
 };

@@ -43,6 +43,9 @@
       minimizedTip: "已最小化：切到 Chat Mode，把药丸拖到记忆栏",
       goReport: "去生成报告",
       chatReminder: "先将数据注入记忆栏，Chat才有数据可答",
+      newBadge: "新手引导",
+      collapse: "收起",
+      showGuide: "查看使用引导",
       close: "关闭",
       memoryHint: "将面板拖入此处作为上下文"
     },
@@ -72,6 +75,9 @@
       minimizedTip: "Minimized: switch to Chat Mode and drag the pill into the memory bar",
       goReport: "Go generate a report",
       chatReminder: "Drag reports into memory first — Chat only answers with data in memory",
+      newBadge: "First time?",
+      collapse: "Collapse",
+      showGuide: "Show guide",
       close: "Close",
       memoryHint: "Drag the panel here as context"
     }
@@ -109,6 +115,20 @@
     var lang = currentLanguage();
     return (WELCOME_COPY[lang] && WELCOME_COPY[lang][key]) || WELCOME_COPY.zh[key] || key;
   }
+
+  // ── 持久化与用户状态（新老用户判定 / 气泡收起）──
+  function storageGet(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
+  }
+  function storageRemove(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+  function tourDone() { return !!storageGet("oi_onboarding_done"); }
+  function collapsedPersisted() { return storageGet("oi_welcome_collapsed") === "1"; }
+  function defaultCollapsed() { return collapsedPersisted() || tourDone(); }
 
   // ── 流程状态机：主路径 3 步（① Report 提问 → ② 加入对话 → ③ Chat 对话）──
   function flowStage(state) {
@@ -175,10 +195,9 @@
   }
 
   // ── 渲染判定与示例交互决策（纯函数）──
-  // 独立卡片：挂在 dashboard 主网格（.main-grid.dashboard-page）左列顶部，
-  // 作为 grid 第 1 行第 1 列子项，与聊天区（#chatLog/#chatLogChat）完全解耦。
+  // 悬浮气泡：挂在聊天面板 #chatPanel 内部右下角，随聊天面板隐藏而隐藏。
   function containerFor() {
-    return document.querySelector(".main-grid.dashboard-page");
+    try { return document.getElementById("chatPanel"); } catch (e) { return null; }
   }
   function shouldRenderFor(mode) {
     var container = containerFor(mode);
@@ -212,6 +231,14 @@
   var _hasPill = false;        // 是否已有最小化药丸（高级路径标记）
   var _panelTipShown = false;
   var _langObserver = null;
+  var _collapsed = defaultCollapsed();
+  var _tourHidden = false;
+  var _wrapEl = null;
+  var _panelEl = null;
+  var _dotEl = null;
+  var _bodyObserver = null;
+  var _chatSentAutoCollapsed = false;
+  var _chatAddAutoCollapsed = false;
 
   // ── DOM 工具 ──
   function escapeHtml(value) {
@@ -246,10 +273,17 @@
         escapeHtml(text) + '">' + escapeHtml(text) + '</button>';
     }).join("") + '</div>';
   }
-  function headHtml() {
-    return '<div class="welcome-head"><div class="welcome-avatar">🤖</div><div>' +
-      '<div class="welcome-hello">' + escapeHtml(currentCopy("helloTitle")) + '</div>' +
-      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div></div></div>';
+  function headHtml(emphasis) {
+    var badge = emphasis
+      ? '<span class="welcome-new-badge">' + escapeHtml(currentCopy("newBadge")) + '</span>'
+      : "";
+    return '<div class="welcome-head"><div class="welcome-avatar">🤖</div>' +
+      '<div class="welcome-head-main">' +
+      '<div class="welcome-hello">' + escapeHtml(currentCopy("helloTitle")) + badge + '</div>' +
+      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div>' +
+      '</div>' +
+      '<button type="button" class="welcome-collapse-btn" aria-label="' + escapeHtml(currentCopy("collapse")) + '" title="' + escapeHtml(currentCopy("collapse")) + '">✕</button>' +
+      '</div>';
   }
   function colHtml(kind, examples, merchant, extra) {
     var isRight = kind === "chat";
@@ -264,31 +298,89 @@
     }
     return html + "</div>";
   }
-  // 渲染完整双栏工作台（常驻独立卡片）。挂载为 dashboard 主网格左列第一个 grid 子项，
-  // 始终完整展开、不折叠；与聊天区内容解耦，对话不顶掉、不改变它。
+  // 渲染完整双栏工作台（悬浮气泡）。挂载为 #chatPanel 内部右下角绝对定位层，
+  // 新用户默认展开 + 强调态；老用户/已收起默认折叠为圆钮；Tour 激活时隐藏。
   function _renderPanel(mode, opts) {
     opts = opts || {};
     var container = containerFor(mode);
     if (!container) return false;
     if (opts.offers) _offers = opts.offers;
     var merchant = exampleMerchant(opts.offers || _offers);
-    var html = '<div class="welcome-panel">' + headHtml() + progressHtml(_flowState()) +
+    var emphasis = !tourDone() && !_collapsed;
+    var panelHtml = headHtml(emphasis) + progressHtml(_flowState()) +
       '<div class="welcome-cols">' + colHtml("report", WELCOME_EXAMPLES.report, merchant) +
       colHtml("chat", WELCOME_EXAMPLES.chat, merchant) +
-      "</div></div>";
+      "</div>";
     _clearWelcome(container);
-    var panel = makeEl("welcome-panel", html);
-    container.insertBefore(panel, container.firstChild);
+    var wrap = makeEl("welcome-float", "");
+    if (_collapsed) wrap.classList.add("collapsed");
+    if (_tourHidden) wrap.classList.add("tour-hidden");
+    var panel = makeEl("welcome-panel", panelHtml);
+    if (emphasis) panel.classList.add("welcome-emphasis");
+    var dot = makeEl("welcome-float-dot", "🤖");
+    dot.setAttribute("aria-label", currentCopy("showGuide"));
+    dot.setAttribute("aria-expanded", String(!_collapsed));
+    wrap.appendChild(panel);
+    wrap.appendChild(dot);
+    _wrapEl = wrap;
+    _panelEl = panel;
+    _dotEl = dot;
+    container.appendChild(wrap);
     _mode = mode;
     if (opts.hasMemory !== undefined) _hasMemory = !!opts.hasMemory;
     _bindPanel(panel);
+    _bindBubbleControls(panel, dot);
     _bindLangObserver();
+    _bindTourObserver();
+    _applyTourHidden();
     return true;
   }
   function _clearWelcome(container) {
     if (!container) return;
-    var els = container.querySelectorAll(".welcome-panel");
+    var els = container.querySelectorAll(".welcome-float");
     for (var i = 0; i < els.length; i++) els[i].parentNode.removeChild(els[i]);
+    _wrapEl = null;
+    _panelEl = null;
+    _dotEl = null;
+  }
+  // 收起/展开：persist=true 写入 oi_welcome_collapsed（手动收起/自动收起），
+  // persist=false 只改当前会话（手动展开不覆盖持久化，刷新仍按默认规则）。
+  function setCollapsed(collapsed, persist) {
+    _collapsed = !!collapsed;
+    if (_wrapEl) _wrapEl.classList.toggle("collapsed", _collapsed);
+    if (_dotEl) _dotEl.setAttribute("aria-expanded", String(!_collapsed));
+    if (_panelEl) _panelEl.classList.toggle("welcome-emphasis", !tourDone() && !_collapsed);
+    if (persist) {
+      if (_collapsed) storageSet("oi_welcome_collapsed", "1");
+      else storageRemove("oi_welcome_collapsed");
+    }
+  }
+  function _bindBubbleControls(panel, dot) {
+    try {
+      if (panel) {
+        var closeBtn = panel.querySelector(".welcome-collapse-btn");
+        if (closeBtn) closeBtn.addEventListener("click", function () { setCollapsed(true, true); });
+      }
+    } catch (e) {}
+    try {
+      if (dot) dot.addEventListener("click", function () { setCollapsed(false, false); });
+    } catch (e) {}
+  }
+  function _tourElementsPresent() {
+    try {
+      return document.querySelectorAll(".onboarding-mask-piece, .onboarding-popover").length > 0;
+    } catch (e) { return false; }
+  }
+  function _applyTourHidden() {
+    _tourHidden = _tourElementsPresent();
+    if (_wrapEl) _wrapEl.classList.toggle("tour-hidden", _tourHidden);
+  }
+  function _bindTourObserver() {
+    if (_bodyObserver) return;
+    try {
+      _bodyObserver = new MutationObserver(function () { _applyTourHidden(); });
+      _bodyObserver.observe(document.body, { childList: true, subtree: true });
+    } catch (e) {}
   }
   // 点击监听绑定在每次新建的 panel 上：panel 被 dismiss 移除时监听器随之销毁，
   // 避免常驻容器（#chatLog/#chatLogChat）上反复绑定累积监听器。
@@ -467,10 +559,14 @@
   function notify(eventName, payload) {
     payload = payload || {};
     if (eventName === "chat-sent") {
-      // 面板常驻完整展开：发送消息只清提示条/脉冲，不折叠、不删除
+      // 气泡：发送消息清提示条/脉冲；首次发送自动收起并持久化
       _clearTipbar();
       _tipFromExample = false;
       _pulseSend(false);
+      if (!_chatSentAutoCollapsed) {
+        _chatSentAutoCollapsed = true;
+        setCollapsed(true, true);
+      }
       return;
     }
     if (eventName === "report-ready") {
@@ -497,6 +593,10 @@
       _refreshProgress();
       _clearTipbar();
       _pulseSend(false);
+      if (!_chatAddAutoCollapsed) {
+        _chatAddAutoCollapsed = true;
+        setCollapsed(true, true);
+      }
       return;
     }
     if (eventName === "mode-switched") {
@@ -542,6 +642,16 @@
       merchantForExample: merchantForExample,
       shouldRenderFor: shouldRenderFor,
       containerFor: containerFor,
+      defaultCollapsed: defaultCollapsed,
+      tourDone: tourDone,
+      isCollapsed: function () { return _collapsed; },
+      tourHidden: function () { return _tourHidden; },
+      setCollapsed: setCollapsed,
+      resetCollapsed: function () { _collapsed = defaultCollapsed(); },
+      resetAutoCollapse: function () { _chatSentAutoCollapsed = false; _chatAddAutoCollapsed = false; },
+      refreshTourHidden: _applyTourHidden,
+      wrapElement: function () { return _wrapEl; },
+      panelElement: function () { return _panelEl; },
       tipStateFor: tipStateFor,
       fillAllowedFor: fillAllowedFor,
       shouldClearTipOnInput: shouldClearTipOnInput,
