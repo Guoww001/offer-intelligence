@@ -19,7 +19,6 @@
   var WELCOME_COPY = {
     zh: {
       helloTitle: "我是你的运营分析助手",
-      helloBody: "查商户、看风险、找机会、出建议 —— 先从左边获取数据，再拖入记忆栏到右边深度分析",
       flow1Title: "Report 提问",
       flow1Sub: "获取数据",
       flow2Title: "面板最小化",
@@ -51,7 +50,6 @@
     },
     en: {
       helloTitle: "I'm your operations analysis assistant",
-      helloBody: "Check merchants, spot risks, find opportunities, get advice — fetch data on the left first, then drag it into memory for deep analysis on the right",
       flow1Title: "Ask in Report Mode",
       flow1Sub: "Get data",
       flow2Title: "Minimize the panel",
@@ -172,7 +170,7 @@
         var icon = s.state === "done" ? "✓" : String(i + 1);
         return '<div class="' + cls + '"><span class="welcome-progress-num">' + escapeHtml(icon) + '</span>' +
           '<span class="welcome-progress-label">' + escapeHtml(currentCopy(s.key)) + '</span></div>';
-      }).join('<span class="welcome-progress-arrow">→</span>') +
+      }).join("") +
       '<div class="welcome-progress-advanced">' + escapeHtml(currentCopy("progressAdvanced")) + '</div></div>';
   }
 
@@ -239,6 +237,8 @@
   var _bodyObserver = null;
   var _chatSentAutoCollapsed = false;
   var _chatAddAutoCollapsed = false;
+  var _drag = null;              // 圆钮拖拽会话 {startX, startY, origLeft, origTop, wrapW/H, contW/H, moved, pointerId}
+  var _suppressDotClick = false; // 拖拽结束后抑制随后的 click（避免误触发展开）
 
   // ── DOM 工具 ──
   function escapeHtml(value) {
@@ -280,7 +280,6 @@
     return '<div class="welcome-head"><div class="welcome-avatar">🤖</div>' +
       '<div class="welcome-head-main">' +
       '<div class="welcome-hello">' + escapeHtml(currentCopy("helloTitle")) + badge + '</div>' +
-      '<div class="welcome-desc">' + escapeHtml(currentCopy("helloBody")) + '</div>' +
       '</div>' +
       '<button type="button" class="welcome-collapse-btn" aria-label="' + escapeHtml(currentCopy("collapse")) + '" title="' + escapeHtml(currentCopy("collapse")) + '">✕</button>' +
       '</div>';
@@ -326,6 +325,7 @@
     _panelEl = panel;
     _dotEl = dot;
     container.appendChild(wrap);
+    _applyDotPos(wrap);
     _mode = mode;
     if (opts.hasMemory !== undefined) _hasMemory = !!opts.hasMemory;
     _bindPanel(panel);
@@ -363,7 +363,138 @@
       }
     } catch (e) {}
     try {
-      if (dot) dot.addEventListener("click", function () { setCollapsed(false, false); });
+      if (dot) {
+        dot.addEventListener("click", function () {
+          if (_suppressDotClick) { _suppressDotClick = false; return; }
+          setCollapsed(false, false);
+        });
+        _bindDotDrag(dot);
+      }
+    } catch (e) {}
+  }
+  // ── 圆钮自由拖拽：pointer 事件 + capture，拖动整个气泡组（wrap），
+  //    按圆钮自身位置 clamp（圆钮可自由拖到面板任意位置），位置持久化 ──
+  var DOT_DRAG_THRESHOLD = 4; // px：累计位移超过阈值视为拖拽（不触发展开），否则视为点击展开
+  function clampDotPos(left, top, contW, contH, dotW, dotH) {
+    return {
+      left: Math.min(Math.max(Math.round(left), 0), Math.max(0, contW - dotW)),
+      top: Math.min(Math.max(Math.round(top), 0), Math.max(0, contH - dotH))
+    };
+  }
+  function _dotPosPersisted() {
+    try {
+      var raw = storageGet("oi_welcome_dot_pos");
+      if (!raw) return null;
+      var pos = JSON.parse(raw);
+      if (typeof pos.left !== "number" || typeof pos.top !== "number") return null;
+      return pos;
+    } catch (e) { return null; }
+  }
+  // 内联 left/top 定位时，必须同时把 right/bottom 置为 auto，
+  // 否则样式表默认 right:14px / bottom:115px 恢复，top+bottom（或 left+right）同时生效会把
+  // absolute 元素拉伸成不可控尺寸。
+  function _pinPosition(wrap) {
+    wrap.style.right = "auto";
+    wrap.style.bottom = "auto";
+  }
+  function _applyDotPos(wrap) {
+    try {
+      var pos = _dotPosPersisted();
+      if (pos && wrap) {
+        wrap.style.left = pos.left + "px";
+        wrap.style.top = pos.top + "px";
+        _pinPosition(wrap);
+      }
+    } catch (e) {}
+  }
+  function _dotPointerDown(e) {
+    var dot = _dotEl, wrap = _wrapEl;
+    if (!dot || !wrap || !_collapsed || _tourHidden) { _drag = null; return; }
+    var container = containerFor();
+    if (!container) return;
+    try {
+      var wrapRect = wrap.getBoundingClientRect();
+      var contRect = container.getBoundingClientRect();
+      var dotRect = dot.getBoundingClientRect();
+      _drag = {
+        startX: e.clientX, startY: e.clientY,
+        origLeft: wrapRect.left - contRect.left,
+        origTop: wrapRect.top - contRect.top,
+        dotOffLeft: dotRect.left - wrapRect.left,
+        dotOffTop: dotRect.top - wrapRect.top,
+        dotW: dotRect.width, dotH: dotRect.height,
+        contW: contRect.width, contH: contRect.height,
+        moved: false, pointerId: e.pointerId || 0
+      };
+      if (dot.setPointerCapture) { try { dot.setPointerCapture(_drag.pointerId); } catch (err) {} }
+      if (wrap.classList) wrap.classList.add("dragging");
+    } catch (err) { _drag = null; }
+  }
+  function _dotPointerMove(e) {
+    if (!_drag) return;
+    var dx = e.clientX - _drag.startX;
+    var dy = e.clientY - _drag.startY;
+    if (Math.abs(dx) + Math.abs(dy) > DOT_DRAG_THRESHOLD) _drag.moved = true;
+    if (!_drag.moved || !_wrapEl) return;
+    // 按圆钮自身位置 clamp（圆钮可自由拖到面板任意位置），wrap 跟随其内部偏移
+    var dotLeft = _drag.origLeft + _drag.dotOffLeft + dx;
+    var dotTop = _drag.origTop + _drag.dotOffTop + dy;
+    var pos = clampDotPos(dotLeft, dotTop, _drag.contW, _drag.contH, _drag.dotW, _drag.dotH);
+    _wrapEl.style.left = (pos.left - _drag.dotOffLeft) + "px";
+    _wrapEl.style.top = (pos.top - _drag.dotOffTop) + "px";
+    _pinPosition(_wrapEl);
+  }
+  // 圆钮拖到边缘后展开时，把 wrap 拉回面板内，保证展开面板完整可见（不持久化）。
+  // 必须在展开后调用：用展开后的真实高度计算边界。
+  // 底部保留 115px 避让（与 CSS .welcome-float bottom:115px 一致）：不遮 mode 切换区
+  // （38px）+ 输入框（65px）+ 间距。
+  var WELCOME_BOTTOM_GUARD = 115;
+  function _ensureWrapInside() {
+    if (!_wrapEl) return;
+    var container = containerFor();
+    if (!container) return;
+    try {
+      var wr = _wrapEl.getBoundingClientRect();
+      var cr = container.getBoundingClientRect();
+      var left = Math.min(Math.max(wr.left - cr.left, 0), Math.max(0, cr.width - wr.width));
+      var maxTop = Math.max(0, cr.height - wr.height - WELCOME_BOTTOM_GUARD);
+      var top = Math.min(Math.max(wr.top - cr.top, 0), maxTop);
+      _wrapEl.style.left = left + "px";
+      _wrapEl.style.top = top + "px";
+      _pinPosition(_wrapEl);
+    } catch (e) {}
+  }
+  function _dotPointerUp() {
+    if (!_drag) return;
+    var moved = _drag.moved;
+    if (!moved) {
+      setCollapsed(false, false); // 未移动 → 视为点击展开
+      _ensureWrapInside();        // 展开后拉回面板内（用展开后高度）
+    } else {
+      _suppressDotClick = true;   // 拖拽后的 click 不再触发展开
+      if (_wrapEl) {
+        try {
+          storageSet("oi_welcome_dot_pos", JSON.stringify({
+            left: parseFloat(_wrapEl.style.left || "") || 0,
+            top: parseFloat(_wrapEl.style.top || "") || 0
+          }));
+        } catch (err) {}
+      }
+    }
+    if (_dotEl && _dotEl.releasePointerCapture) {
+      try { _dotEl.releasePointerCapture(_drag.pointerId || 0); } catch (err) {}
+    }
+    if (_wrapEl && _wrapEl.classList) _wrapEl.classList.remove("dragging");
+    _drag = null;
+  }
+  function _bindDotDrag(dot) {
+    try {
+      dot.addEventListener("pointerdown", _dotPointerDown);
+      dot.addEventListener("pointermove", _dotPointerMove);
+      dot.addEventListener("pointerup", function (e) {
+        if (_drag) _drag.pointerId = e.pointerId || _drag.pointerId;
+        _dotPointerUp();
+      });
     } catch (e) {}
   }
   function _tourElementsPresent() {
@@ -652,6 +783,11 @@
       refreshTourHidden: _applyTourHidden,
       wrapElement: function () { return _wrapEl; },
       panelElement: function () { return _panelEl; },
+      clampDotPos: clampDotPos,
+      dotPosPersisted: _dotPosPersisted,
+      dotPointerDown: _dotPointerDown,
+      dotPointerMove: _dotPointerMove,
+      dotPointerUp: _dotPointerUp,
       tipStateFor: tipStateFor,
       fillAllowedFor: fillAllowedFor,
       shouldClearTipOnInput: shouldClearTipOnInput,

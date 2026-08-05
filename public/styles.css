@@ -11770,10 +11770,11 @@ body.dashboard-mode .chat-panel {
 @media (prefers-reduced-motion: no-preference) {
   body.dashboard-mode .insight-panel,
   body.dashboard-mode .chat-panel {
-    animation: dashPanelIn 0.55s cubic-bezier(0.32, 0.72, 0, 1) both;
-  }
-  body.dashboard-mode .chat-panel {
-    animation-delay: 0.08s;
+    /* 不用 fill-mode both：动画结束后 transform 必须完全回退（computed "none"）。
+       fill 残留会把 keyframes 里的 transform:none 序列化为 identity matrix，非 none 的
+       transform 创建 stacking context，把面板内部元素（欢迎气泡）的 z-index 锁死在面板
+       层，永远盖不过 body 层的 deep-window(1000)。 */
+    animation: dashPanelIn 0.55s cubic-bezier(0.32, 0.72, 0, 1);
   }
 }
 
@@ -11784,7 +11785,10 @@ body.dashboard-mode .chat-panel {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    /* to 帧省略 transform：动画结束时 transform 回退为 none，不残留任何 transform。
+       注意不能用 transform: translateY(0) 或 transform: none —— Chrome 都会把它序列化
+       成 identity matrix，而非 none 的 transform 创建 stacking context，会把面板内部
+       元素（欢迎气泡）的 z-index 锁死在面板层，盖不过 deep-window(1000) */
   }
 }
 
@@ -13999,7 +14003,6 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
     0 0 18px rgba(110, 168, 255, 0.45);
 }
 .welcome-hello { font-size: 13px; font-weight: 650; letter-spacing: -0.01em; color: #eef2f8; }
-.welcome-desc { font-size: 11px; color: #93a1bb; margin-top: 2px; line-height: 1.55; }
 .welcome-flow { display: flex; align-items: center; gap: 5px; margin-bottom: 12px; }
 .welcome-flow-step {
   flex: 1; display: flex; gap: 6px; align-items: flex-start;
@@ -14075,7 +14078,7 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   max-width: calc(100% - 28px);
   max-height: calc(100% - 135px); /* 不超过聊天区可视高度，内容超出时容器内滚动 */
   overflow-y: auto;
-  z-index: 40;
+  z-index: 1100; /* 顶层：盖过报告 deep-window（1000），仍低于全屏抽屉遮罩（1300） */
 }
 .welcome-float.tour-hidden { display: none; }
 .welcome-float .welcome-float-dot { display: none; }
@@ -14086,12 +14089,22 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   width: 44px; height: 44px; margin-left: auto; border-radius: 50%;
   border: 1px solid rgba(110, 168, 255, 0.45);
   background: linear-gradient(135deg, #6ea8ff 0%, #9b7bff 100%);
-  color: #0b0e14; font-size: 18px; cursor: pointer;
+  color: #0b0e14; font-size: 18px; cursor: grab;
   display: flex; align-items: center; justify-content: center;
+  touch-action: none; user-select: none; /* 可拖拽：禁止触摸滚动与文本选择 */
   box-shadow:
     0 0 0 4px rgba(110, 168, 255, 0.12),
     0 8px 20px rgba(2, 8, 25, 0.35);
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* 拖拽中：grabbing 光标、禁用 hover 位移/过渡防抖动、阴影提升 */
+.welcome-float.dragging .welcome-float-dot {
+  cursor: grabbing;
+  transform: none;
+  transition: none;
+  box-shadow:
+    0 0 0 6px rgba(110, 168, 255, 0.22),
+    0 14px 32px rgba(2, 8, 25, 0.45);
 }
 .welcome-float-dot:hover {
   transform: translateY(-2px) scale(1.05);
@@ -14141,7 +14154,6 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
     0 18px 44px rgba(2, 8, 25, 0.4);
 }
 .welcome-panel.welcome-emphasis .welcome-hello { font-size: 16px; }
-.welcome-panel.welcome-emphasis .welcome-desc { font-size: 12px; }
 @media (prefers-reduced-motion: no-preference) {
   .welcome-panel.welcome-emphasis { animation: welcomeBubbleAttention 4s cubic-bezier(0.45, 0, 0.55, 1) 0.3s 1 both; }
 }
@@ -14178,7 +14190,6 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-panel::before {
   background: linear-gradient(90deg, transparent 2%, rgba(26, 86, 168, 0.45) 50%, transparent 98%);
 }
 body.dashboard-mode[data-dash-theme="light"] .welcome-hello { color: #16294f; }
-body.dashboard-mode[data-dash-theme="light"] .welcome-desc,
 body.dashboard-mode[data-dash-theme="light"] .welcome-flow-txt,
 body.dashboard-mode[data-dash-theme="light"] .welcome-col-title { color: #55688f; }
 body.dashboard-mode[data-dash-theme="light"] .welcome-flow-step {
@@ -14292,15 +14303,15 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
 
 /* ── Chatbot 流程引导（Flow Onboarding）── */
 .welcome-progress {
-  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  margin-bottom: 12px; padding: 8px 10px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px;
+  margin-bottom: 12px; padding: 9px 10px;
   background: linear-gradient(180deg, rgba(156, 199, 255, 0.06) 0%, rgba(156, 199, 255, 0.02) 100%);
   border: 1px solid rgba(156, 199, 255, 0.10);
   border-radius: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .welcome-progress-step {
-  display: flex; align-items: center; gap: 5px; flex: 1;
+  display: flex; align-items: center; gap: 7px;
   font-size: 10.5px; color: #7b87a3; min-width: 0;
 }
 .welcome-progress-step.active { color: #eef2f8; }
@@ -14321,8 +14332,7 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   background: rgba(110, 168, 255, 0.20); color: #bcd8ff;
   border-color: rgba(110, 168, 255, 0.35);
 }
-.welcome-progress-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.welcome-progress-arrow { color: #5d6b84; font-size: 11px; flex-shrink: 0; }
+.welcome-progress-label { white-space: normal; /* 垂直列表：每步完整显示，不截断 */ }
 .welcome-progress-advanced {
   width: 100%; margin-top: 5px; font-size: 9.5px; color: #7b87a3;
 }
@@ -14402,7 +14412,6 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-progress-num {
   background: rgba(76, 130, 205, 0.10); color: #7a86a3;
   border-color: rgba(26, 86, 168, 0.16);
 }
-body.dashboard-mode[data-dash-theme="light"] .welcome-progress-arrow { color: #8da0c2; }
 body.dashboard-mode[data-dash-theme="light"] .welcome-progress-advanced { color: #7a86a3; }
 body.dashboard-mode[data-dash-theme="light"] .chat-reminder-action {
   background: linear-gradient(180deg, #ffffff 0%, #eaf2ff 100%);

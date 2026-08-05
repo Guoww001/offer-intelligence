@@ -69,6 +69,8 @@ function makeChatPanel() {
     appendChild(child) { wrapper = child; child.parentNode = chatPanel; return null; },
     insertBefore(child) { wrapper = child; child.parentNode = chatPanel; return null; },
     removeChild(child) { if (child === wrapper) wrapper = null; return null; },
+    // 拖拽 clamp 用：聊天面板视口比气泡大，供位置边界测试
+    getBoundingClientRect() { return { left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 }; },
     _welcomePresent() { return !!wrapper; }
   };
   return chatPanel;
@@ -448,5 +450,58 @@ tourMaskEls = [];
 t.refreshTourHidden();
 assertEqual(t.tourHidden(), false, "tour ended -> hidden state false");
 assertEqual(wrap.classList.contains("tour-hidden"), false, "wrapper removes tour-hidden class");
+
+// ── 用例 31：三步进度垂直渲染（去掉 → 箭头，每步文案完整可见）──
+const progNoReport = t.progressHtml({ hasReport: false, hasMemory: false, isChat: false });
+assertEqual(progNoReport.includes("welcome-progress-arrow"), false, "vertical progress removes arrow separators");
+assertEqual(progNoReport.includes("① 在 Report 提问"), true, "step 1 label fully present (no ellipsis truncation)");
+assertEqual(progNoReport.includes("② 点「加入对话」"), true, "step 2 label fully present");
+assertEqual(progNoReport.includes("③ 在 Chat 对话"), true, "step 3 label fully present");
+assertEqual(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }).includes("✓"), true, "chatActive renders done checkmarks");
+
+// ── 用例 32：拖拽位置 clamp 纯函数 ──
+assertEqual(JSON.stringify(t.clampDotPos(10, 10, 800, 600, 350, 300)), JSON.stringify({ left: 10, top: 10 }), "in-bounds position unchanged");
+assertEqual(JSON.stringify(t.clampDotPos(-50, 20, 800, 600, 350, 300)), JSON.stringify({ left: 0, top: 20 }), "negative left clamps to 0");
+assertEqual(JSON.stringify(t.clampDotPos(900, 700, 800, 600, 350, 300)), JSON.stringify({ left: 450, top: 300 }), "overflow clamps inside container");
+assertEqual(JSON.stringify(t.clampDotPos(40.6, 10.4, 800, 600, 350, 300)), JSON.stringify({ left: 41, top: 10 }), "position rounds to integer px");
+
+// ── 用例 33：渲染应用持久化位置（oi_welcome_dot_pos）──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+delete store["oi_welcome_dot_pos"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+wrap = chatPanel.querySelector(".welcome-float");
+assertEqual(wrap.style.left, undefined, "no persisted position -> no inline left");
+assertEqual(wrap.style.top, undefined, "no persisted position -> no inline top");
+store["oi_welcome_dot_pos"] = JSON.stringify({ left: 40, top: 30 });
+t.renderPanel("report", { offers: [], hasMemory: false });
+wrap = chatPanel.querySelector(".welcome-float");
+assertEqual(wrap.style.left, "40px", "persisted left applied on re-render");
+assertEqual(wrap.style.top, "30px", "persisted top applied on re-render");
+
+// ── 用例 34：圆钮拖拽（移动 → 不展开 + 持久化；未移动 → 展开）──
+t.setCollapsed(true, true); // 收起为圆钮
+t.dotPointerDown({ clientX: 100, clientY: 50, pointerId: 1 });
+t.dotPointerMove({ clientX: 140, clientY: 60, pointerId: 1 }); // 位移 44px > 4px 阈值
+t.dotPointerUp();
+assertEqual(t.isCollapsed(), true, "drag beyond threshold does NOT expand");
+const dragPos = JSON.parse(store["oi_welcome_dot_pos"]);
+assertEqual(dragPos.left, 40, "dragged position persisted left (0 + 40, clamped)");
+assertEqual(dragPos.top, 10, "dragged position persisted top (0 + 10)");
+t.dotPointerDown({ clientX: 100, clientY: 50, pointerId: 2 });
+t.dotPointerUp();
+assertEqual(t.isCollapsed(), false, "pointer down+up without move expands the dot");
+
+// ── 用例 35：helloBody 无用文案已移除 ──
+assertEqual("helloBody" in t.copy.zh, false, "zh helloBody removed");
+assertEqual("helloBody" in t.copy.en, false, "en helloBody removed");
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+delete store["oi_welcome_dot_pos"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+assertEqual(t.panelElement().innerHTML.includes("welcome-desc"), false, "panel no longer renders welcome-desc");
+assertEqual(t.panelElement().innerHTML.includes("查商户"), false, "panel no longer renders useless hello body copy");
 
 console.log("PASS: welcome logic");
