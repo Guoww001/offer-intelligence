@@ -38,10 +38,16 @@
       progressStep1: "在 Report 提问",
       progressStep2: "点「加入对话」",
       progressStep3: "在 Chat 对话",
+      completionPrompt: "三步操作都完成了吗？",
+      completionConfirm: "已完成，重新开始",
+      completionLater: "还没完成",
       progressAdvanced: "高级用法：最小化后拖入记忆栏",
       minimizedTip: "已最小化：切到 Chat Mode，把药丸拖到记忆栏",
       goReport: "去生成报告",
-      chatReminder: "先将数据注入记忆栏，Chat才有数据可答",
+      chatReminderKicker: "Chat Mode",
+      chatReminderTitle: "把报告放进记忆栏，再开始对话",
+      chatReminderBody: "Chat Mode 会基于记忆栏中的报告进行多轮追问、比较和深度分析。",
+      chatReminderReminder: "还没有报告？先去 Report Mode 生成一份",
       newBadge: "新手引导",
       collapse: "收起",
       showGuide: "查看使用引导",
@@ -69,10 +75,16 @@
       progressStep1: "Ask in Report Mode",
       progressStep2: "Click Add to chat",
       progressStep3: "Chat in Chat Mode",
+      completionPrompt: "Have you completed all three steps?",
+      completionConfirm: "Yes, start over",
+      completionLater: "Not yet",
       progressAdvanced: "Advanced: minimize, then drag into the memory bar",
       minimizedTip: "Minimized: switch to Chat Mode and drag the pill into the memory bar",
       goReport: "Go generate a report",
-      chatReminder: "Drag reports into memory first — Chat only answers with data in memory",
+      chatReminderKicker: "Chat Mode",
+      chatReminderTitle: "Bring a report into memory, then start the conversation",
+      chatReminderBody: "Chat Mode uses reports in the memory bar for follow-ups, comparisons, and deeper analysis.",
+      chatReminderReminder: "No report yet? Generate one in Report Mode first",
       newBadge: "First time?",
       collapse: "Collapse",
       showGuide: "Show guide",
@@ -147,6 +159,7 @@
       hasMemory: _hasMemory,
       hasAddedToChat: _hasAddedToChat,
       hasChatSent: _hasChatSent,
+      completionPromptDismissed: _completionPromptDismissed,
       isChat: _mode === "chat"
     };
   }
@@ -172,13 +185,21 @@
     if (stage === "reportReady") { steps[0].state = "done"; steps[1].state = "active"; }
     else if (stage === "memoryReady") { steps[0].state = "done"; steps[1].state = "done"; steps[2].state = "active"; }
     else if (stage === "chatActive") { steps[0].state = "done"; steps[1].state = "done"; steps[2].state = "done"; }
+    var completionHtml = stage === "chatActive" && !state.completionPromptDismissed
+      ? '<div class="welcome-progress-confirmation">' +
+        '<span class="welcome-progress-confirmation-text">' + escapeHtml(currentCopy("completionPrompt")) + '</span>' +
+        '<div class="welcome-progress-confirmation-actions">' +
+        '<button type="button" class="welcome-progress-confirm-yes" data-flow-action="confirm">' + escapeHtml(currentCopy("completionConfirm")) + '</button>' +
+        '<button type="button" class="welcome-progress-confirm-later" data-flow-action="later">' + escapeHtml(currentCopy("completionLater")) + '</button>' +
+        '</div></div>'
+      : "";
     return '<div class="welcome-progress" data-stage="' + escapeHtml(stage) + '">' +
       steps.map(function (s, i) {
         var cls = "welcome-progress-step" + (s.state ? " " + s.state : "");
         var icon = s.state === "done" ? "✓" : String(i + 1);
         return '<div class="' + cls + '"><span class="welcome-progress-num">' + escapeHtml(icon) + '</span>' +
           '<span class="welcome-progress-label">' + escapeHtml(currentCopy(s.key)) + '</span></div>';
-      }).join("") + '</div>';
+      }).join("") + completionHtml + '</div>';
   }
 
   // ── 动态商户名：取 commission 最高的商户 ──
@@ -242,6 +263,7 @@
   var _hasReport = false;      // 是否已在 Report Mode 点击发送（主路径 ① 完成标记）
   var _hasAddedToChat = false; // 是否点击过「加入对话」（主路径 ② 完成标记）
   var _hasChatSent = false;    // 是否在 Chat Mode 发送过消息（主路径 ③ 完成标记）
+  var _completionPromptDismissed = false; // 是否暂时关闭了三步完成确认
   var _hasPill = false;        // 是否已有最小化药丸（高级路径标记）
   var _panelTipShown = false;
   var _langObserver = null;
@@ -253,6 +275,7 @@
   var _bodyObserver = null;
   var _drag = null;              // 圆钮拖拽会话 {startX, startY, origLeft, origTop, wrapW/H, contW/H, moved, pointerId}
   var _suppressDotClick = false; // 拖拽结束后抑制随后的 click（避免误触发展开）
+  var _tourDragEnabled = false;  // 新手引导仅在第二步临时开放面板拖拽
 
   // ── DOM 工具 ──
   function escapeHtml(value) {
@@ -314,7 +337,7 @@
     return html + "</div>";
   }
   // 渲染完整双栏工作台（悬浮气泡）。挂载为 #chatPanel 内部右下角绝对定位层，
-  // 新用户默认展开 + 强调态；老用户/已收起默认折叠为圆钮；Tour 激活时隐藏。
+  // 新用户默认展开 + 强调态；老用户/已收起默认折叠为圆钮；Tour 激活时保持可见并高光。
   function _renderPanel(mode, opts) {
     opts = opts || {};
     var container = containerFor(mode);
@@ -329,7 +352,8 @@
     _clearWelcome(container);
     var wrap = makeEl("welcome-float", "");
     if (_collapsed) wrap.classList.add("collapsed");
-    if (_tourHidden) wrap.classList.add("tour-hidden");
+    if (_tourHidden) wrap.classList.add("onboarding-tour-active");
+    if (_tourDragEnabled) wrap.classList.add("onboarding-tour-drag-enabled");
     // 语言 class：驱动 CSS 宽度自适应（英文文案长，面板加宽，见 styles.css .welcome-lang-en）
     wrap.classList.add(currentLanguage() === "en" ? "welcome-lang-en" : "welcome-lang-zh");
     _applyModeClass(wrap, mode);
@@ -442,7 +466,7 @@
   }
   function _startDrag(e, byDot) {
     var wrap = _wrapEl, dot = _dotEl;
-    if (!wrap || _tourHidden) { _drag = null; return; }
+    if (!wrap || (_tourHidden && !_tourDragEnabled)) { _drag = null; return; }
     if (byDot && !_collapsed) { _drag = null; return; }  // 圆钮只在收起态可拖
     if (!byDot && _collapsed) { _drag = null; return; }  // 面板只在展开态可拖
     var container = containerFor();
@@ -485,6 +509,13 @@
     } catch (err) {}
     _startDrag(e, false);
   }
+  function _notifyTour(eventName) {
+    try {
+      if (window.ONBOARDING_TOUR && window.ONBOARDING_TOUR.notify) {
+        window.ONBOARDING_TOUR.notify(eventName);
+      }
+    } catch (e) {}
+  }
   function _dotPointerMove(e) {
     if (!_drag) return;
     var dx = e.clientX - _drag.startX;
@@ -505,6 +536,7 @@
       _wrapEl.style.top = p.top + "px";
     }
     _pinPosition(_wrapEl);
+    if (_tourDragEnabled) _notifyTour("assistant-panel-drag");
   }
   // 圆钮拖到边缘后展开时，把 wrap 拉回面板内，保证展开面板完整可见（不持久化）。
   // 必须在展开后调用：用展开后的真实高度计算边界。
@@ -548,6 +580,7 @@
         } catch (err) {}
       }
     }
+    if (moved && _tourDragEnabled) _notifyTour("assistant-panel-drag-end");
     var captureEl = byDot ? _dotEl : _wrapEl;
     if (captureEl && captureEl.releasePointerCapture) {
       try { captureEl.releasePointerCapture(_drag.pointerId || 0); } catch (err) {}
@@ -586,7 +619,35 @@
   }
   function _applyTourHidden() {
     _tourHidden = _tourElementsPresent();
-    if (_wrapEl) _wrapEl.classList.toggle("tour-hidden", _tourHidden);
+    if (!_tourHidden) _tourDragEnabled = false;
+    if (_wrapEl) {
+      _wrapEl.classList.remove("tour-hidden");
+      _wrapEl.classList.toggle("onboarding-tour-active", _tourHidden);
+      _wrapEl.classList.toggle("onboarding-tour-drag-enabled", _tourDragEnabled);
+    }
+  }
+  function prepareForTour() {
+    _tourHidden = true;
+    _tourDragEnabled = false;
+    setCollapsed(true, false);
+    if (_wrapEl) {
+      _wrapEl.classList.remove("tour-hidden");
+      _wrapEl.classList.add("onboarding-tour-active");
+      _wrapEl.classList.remove("onboarding-tour-drag-enabled");
+    }
+  }
+  function setTourDragEnabled(enabled) {
+    _tourDragEnabled = !!enabled && _tourHidden;
+    if (_wrapEl) _wrapEl.classList.toggle("onboarding-tour-drag-enabled", _tourDragEnabled);
+  }
+  function endTour() {
+    _tourHidden = false;
+    _tourDragEnabled = false;
+    if (_wrapEl) {
+      _wrapEl.classList.remove("tour-hidden");
+      _wrapEl.classList.remove("onboarding-tour-active");
+      _wrapEl.classList.remove("onboarding-tour-drag-enabled");
+    }
   }
   function _bindTourObserver() {
     if (_bodyObserver) return;
@@ -601,13 +662,34 @@
     try {
       panel.addEventListener("click", function (e) {
         var t = e.target;
+        var flowAction = t && t.closest && t.closest("[data-flow-action]");
+        if (flowAction) {
+          var action = flowAction.getAttribute("data-flow-action");
+          if (action === "confirm") _resetCompletedFlow();
+          if (action === "later") _dismissCompletionPrompt();
+          return;
+        }
         if (t && t.closest && t.closest(".welcome-chip")) {
           var chip = t.closest(".welcome-chip");
           var kind = chip.getAttribute("data-kind") || "report";
+          _requestMode(kind === "chat" ? "chat" : "report");
           _handleChipClick(kind, chip.getAttribute("data-text") || "");
+          return;
+        }
+        var col = t && t.closest && t.closest(".welcome-col");
+        if (col) {
+          _requestMode(col.classList && col.classList.contains("chat") ? "chat" : "report");
         }
       });
     } catch (err) {}
+  }
+  function _requestMode(mode) {
+    if (mode !== "report" && mode !== "chat") return;
+    try {
+      document.dispatchEvent(new CustomEvent("chatbot-mode-requested", {
+        detail: { mode: mode }
+      }));
+    } catch (e) {}
   }
   function _handleChipClick(kind, text) {
     if (!fillAllowedFor(kind, _hasMemory)) {
@@ -662,7 +744,7 @@
     _tipShown = false;
   }
   // ── Chat Mode 聊天区顶部提醒卡片 ──────────────────────
-  // 常驻 sticky 卡片（.chat-reminder），提示「先将数据注入记忆栏，Chat 才有数据可答」。
+  // 常驻 sticky 卡片（.chat-reminder），用与 Report Mode 相同的层级说明 Chat 的使用方式。
   // 渲染进 #chatLogChat 顶部；Chat Mode（mode === "chat"）显示，Report Mode 移除。
   // 与欢迎屏独立卡片解耦——它挂在聊天区内部，作为该模式下的使用方式提示。
   function _chatLogChatElement() {
@@ -675,9 +757,17 @@
       if (force) _removeChatReminder();
       if (log.querySelector && log.querySelector(".chat-reminder")) return;
       var card = makeEl("chat-reminder",
-        '<span class="chat-reminder-icon">📌</span>' +
-        '<span class="chat-reminder-text">' + escapeHtml(currentCopy("chatReminder")) + '</span>' +
-        '<button type="button" class="chat-reminder-action">' + escapeHtml(currentCopy("goReport")) + '</button>');
+        '<div class="chat-reminder-mark" aria-hidden="true">◈</div>' +
+        '<div class="chat-reminder-content">' +
+        '<span class="chat-reminder-kicker">' + escapeHtml(currentCopy("chatReminderKicker")) + '</span>' +
+        '<h3 class="chat-reminder-title" id="chatModeReminderTitle">' + escapeHtml(currentCopy("chatReminderTitle")) + '</h3>' +
+        '<p class="chat-reminder-body">' + escapeHtml(currentCopy("chatReminderBody")) + '</p>' +
+        '<p class="chat-reminder-reminder"><span aria-hidden="true">→</span>' +
+        '<strong>' + escapeHtml(currentCopy("chatReminderReminder")) + '</strong>' +
+        '<button type="button" class="chat-reminder-action">' + escapeHtml(currentCopy("goReport")) + '</button></p>' +
+        '</div>');
+      card.setAttribute("role", "note");
+      card.setAttribute("aria-labelledby", "chatModeReminderTitle");
       var actionBtn = card.querySelector(".chat-reminder-action");
       if (actionBtn) actionBtn.addEventListener("click", _goReportFromReminder);
       if (log.insertBefore) log.insertBefore(card, log.firstChild || null);
@@ -715,6 +805,21 @@
   function _syncChatReminder(mode, force) {
     if (mode === "chat") _renderChatReminder(!!force);
     else _removeChatReminder();
+  }
+  function _resetCompletedFlow() {
+    if (flowStage(_flowState()) !== "chatActive") return;
+    _hasReport = false;
+    _hasAddedToChat = false;
+    _hasChatSent = false;
+    _completionPromptDismissed = false;
+    _refreshProgress();
+    _clearTipbar();
+    _pulseSend(false);
+  }
+  function _dismissCompletionPrompt() {
+    if (flowStage(_flowState()) !== "chatActive") return;
+    _completionPromptDismissed = true;
+    _refreshProgress();
   }
   function _insertPanelTip(panelEl) {
     try {
@@ -781,6 +886,10 @@
       _pulseSend(false);
       return;
     }
+    if (eventName === "flow-complete-confirmed") {
+      _resetCompletedFlow();
+      return;
+    }
     if (eventName === "report-ready") {
       _refreshProgress();
       if (_panelTipShown || !payload.panelEl) return;
@@ -842,6 +951,9 @@
     dismiss: dismiss,
     isRendered: isRendered,
     fillInput: fillInput,
+    prepareForTour: prepareForTour,
+    endTour: endTour,
+    setTourDragEnabled: setTourDragEnabled,
     _test: {
       examples: WELCOME_EXAMPLES,
       copy: WELCOME_COPY,
@@ -853,6 +965,9 @@
       tourDone: tourDone,
       isCollapsed: function () { return _collapsed; },
       tourHidden: function () { return _tourHidden; },
+      prepareForTour: prepareForTour,
+      endTour: endTour,
+      setTourDragEnabled: setTourDragEnabled,
       setCollapsed: setCollapsed,
       resetCollapsed: function () { _collapsed = defaultCollapsed(); },
       refreshTourHidden: _applyTourHidden,
@@ -876,6 +991,7 @@
       showTipbar: function (key) { _showTipbar(key); },
       clearTipbar: function () { _clearTipbar(); },
       lastMode: function () { return _mode; },
+      requestMode: _requestMode,
       modeClass: function () { // 当前 wrap 的模式焦点类（供测试断言）
         return _wrapEl ? (_wrapEl.classList.contains("mode-chat") ? "chat" : "report") : null;
       },
@@ -892,6 +1008,8 @@
       renderChatReminder: function (force) { _renderChatReminder(!!force); },
       removeChatReminder: function () { _removeChatReminder(); },
       flowStage: flowStage,
+      resetCompletedFlow: _resetCompletedFlow,
+      dismissCompletionPrompt: _dismissCompletionPrompt,
       flowState: function () {
         return {
           hasReport: _hasReport,
@@ -899,6 +1017,7 @@
           hasMemory: _hasMemory,
           hasAddedToChat: _hasAddedToChat,
           hasChatSent: _hasChatSent,
+          completionPromptDismissed: _completionPromptDismissed,
           isChat: _mode === "chat"
         };
       },

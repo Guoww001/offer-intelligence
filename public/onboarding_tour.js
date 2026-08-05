@@ -13,12 +13,15 @@
   // ── 双语文案（键集 zh/en 必须一一对应）──
   var TOUR_COPY = {
     zh: {
-      introTitle: "👋 欢迎使用 YeahPromos 助手",
-      introBody: "先认识整体布局：聊天区顶部可切换 Report Mode（提问获取数据报告）与 Chat Mode（带着数据对话），输入商户名 / Merchant ID / ASIN 或品类即可查询；报告以浮窗展示，点击「加入对话」即可把报告带进 Chat Mode。下面我们实际操作一遍。",
+      introTitle: "👋 先打开 Chatbot 使用助手",
+      introBody: "先点击助手图标，打开 Chatbot 使用助手面板。面板会全程展示这次引导的三步状态；打开后我们先认识整体布局：聊天区顶部可切换 Report Mode（提问获取数据报告）与 Chat Mode（带着数据对话），输入商户名 / Merchant ID / ASIN 或品类即可查询；报告以浮窗展示，点击「加入对话」即可把报告带进 Chat Mode。下面我们实际操作一遍。",
       step1Title: "第 1 步：在 Report Mode 提问",
       step1Body: "在输入框输入商户名 / Merchant ID / ASIN 或品类，就能获取后台数据分析报告。填好后点击右侧「发送」按钮发起查询。试试看：",
       step2Title: "第 2 步：等待分析报告",
       step2Body: "报告在浮窗中打开。生成完成后，浮窗头部会出现「加入对话」按钮。",
+      step2MoveTitle: "第 2 步：先移开助手面板",
+      step2MoveBody: "为避免 Chatbot 使用助手挡住 Deep Window，请按住面板顶部的头像或标题区域，把面板拖到不遮挡聊天区的位置。拖动时橙色高光会跟随面板；移开后会继续等待报告。",
+      step2MoveHint: "请拖动助手面板，移开 Deep Window 区域",
       step3Title: "第 3 步：点「加入对话」",
       step3Body: "点击浮窗头部的「加入对话」按钮，报告会自动加入记忆栏并切换到 Chat Mode。",
       step4Title: "第 4 步：与 Chat Mode 对话",
@@ -33,6 +36,7 @@
       stepCounter: "第 {n} 步 / 共 {total} 步",
       waitReport: "等待报告生成…",
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「跳过」
+      introNextHint: "点击助手图标打开使用助手",
       step1NextHint: "点击「发送」按钮继续",
       step3NextHint: "点击「加入对话」按钮继续",
       step3MinimizeBody: "先将 Deep Window 最小化，避免挡住记忆栏。点击窗口顶部的「─」按钮。",
@@ -41,12 +45,15 @@
       step4NextHint: "点击「发送」按钮完成"
     },
     en: {
-      introTitle: "👋 Welcome to the YeahPromos Assistant",
-      introBody: "Here's the layout: the top of the chat area toggles between Report Mode (ask for data reports) and Chat Mode (chat with context); type a merchant name / ID / ASIN or category to query. Reports open in a floating window — click “Add to chat” to bring the report into Chat Mode. Let's walk through it.",
+      introTitle: "👋 Open the Chatbot Assistant",
+      introBody: "First click the assistant icon to open the Chatbot Assistant panel. It will stay visible throughout this guide so you can see the three-step status change. Here's the layout: the top of the chat area toggles between Report Mode (ask for data reports) and Chat Mode (chat with context); type a merchant name / ID / ASIN or category to query. Reports open in a floating window — click “Add to chat” to bring the report into Chat Mode. Let's walk through it.",
       step1Title: "Step 1: Ask in Report Mode",
       step1Body: "Type a merchant name / ID / ASIN or category to get a data analysis report. Click the Send button on the right to submit. Try it:",
       step2Title: "Step 2: Wait for the report",
       step2Body: "Reports open in a floating window. Once ready, an “Add to chat” button appears in the header.",
+      step2MoveTitle: "Step 2: Move the assistant panel first",
+      step2MoveBody: "To keep the Chatbot Assistant from covering the Deep Window, hold the avatar or title area at the top of the panel and drag it somewhere clear of the chat area. The orange highlight follows while you drag; once moved, the guide will keep waiting for the report.",
+      step2MoveHint: "Drag the assistant panel away from the Deep Window",
       step3Title: "Step 3: Click Add to chat",
       step3Body: "Click “Add to chat” in the window header — the report is added to memory and you're switched to Chat Mode automatically.",
       step4Title: "Step 4: Chat with context",
@@ -61,6 +68,7 @@
       stepCounter: "Step {n} of {total}",
       waitReport: "Waiting for the report…",
       // autoNext 步骤主按钮（置灰不可点）的动作提示——防止新用户误点「Skip」
+      introNextHint: "Click the assistant icon to open the guide",
       step1NextHint: "Click Send to continue",
       step3NextHint: "Click “Add to chat” to continue",
       step3MinimizeBody: "First minimize the Deep Window so it does not cover the memory bar. Click the “─” button in the window header.",
@@ -76,9 +84,10 @@
   var TOUR_STEPS = [
     {
       id: "intro",
-      target: "#chatModeToggle",
+      target: ".welcome-float-dot",
       copyKey: "intro",
-      mask: "block"
+      mask: "block",
+      autoNext: "assistant-opened"
     },
     {
       id: "report-ask",
@@ -153,10 +162,13 @@
   var _locateTimer = null;
   var _autoStartTimer = null;
   var _bodyKeyOverride = null;
+  var _titleKeyOverride = null;
   var _focusSelector = null; // 步骤内高光转移（如填入示例后指向发送按钮）
   var _autoNextTimer = null; // 自动推进延迟（展示最小化效果后再前进）
   var _focusTimer = null;    // 高光转移补定位轮询（等最小化动画完成后指向药丸框）
   var _memoryRevealTimer = null;
+  var _replayButtonPulseTimer = null;
+  var REPLAY_BUTTON_PULSE_MS = 2000;
 
   // ── 语言 ──
   function currentLanguage() {
@@ -221,7 +233,9 @@
     return _stepIndex !== 3 || _tourPhase === "memory-revealed";
   }
   function _syncStepPhase(step) {
-    if (step && step.id === "add-to-chat") {
+    if (step && step.id === "deep-window") {
+      if (_tourPhase !== "await-report") _tourPhase = "move-assistant";
+    } else if (step && step.id === "add-to-chat") {
       if (_tourPhase !== "await-add" && _tourPhase !== "await-minimize" && _tourPhase !== "memory-revealed") {
         _tourPhase = "await-add";
       }
@@ -444,7 +458,8 @@
     var bodyKey = step.copyKey + "Body";
     if (_bodyKeyOverride) bodyKey = _bodyKeyOverride;
     var html = "";
-    html += '<div class="onboarding-popover-title">' + c[step.copyKey + "Title"] + '</div>';
+    var titleKey = _titleKeyOverride || (step.copyKey + "Title");
+    html += '<div class="onboarding-popover-title">' + c[titleKey] + '</div>';
     html += '<div class="onboarding-popover-body">' + c[bodyKey] + '</div>';
     if (step.autoFill) {
       html += '<button class="onboarding-fill-btn" type="button">' + c.fillExample + '</button>';
@@ -458,7 +473,11 @@
     }
     html += '<button class="onboarding-btn onboarding-btn-skip" data-tour-action="skip" type="button">' + c.skip + '</button>';
     // add-to-chat 第三步的内部阶段：加入对话后必须先完成最小化，再开放 Next。
-    if (step.id === "add-to-chat" && _tourPhase !== "memory-revealed") {
+    if (step.id === "deep-window" && _tourPhase === "move-assistant") {
+      html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
+        c.step2MoveHint + '</button>';
+    // add-to-chat 第三步的内部阶段：加入对话后必须先完成最小化，再开放 Next。
+    } else if (step.id === "add-to-chat" && _tourPhase !== "memory-revealed") {
       var phaseHint = _tourPhase === "await-minimize" ? c.step3MinimizeHint : c.step3NextHint;
       html += '<button class="onboarding-btn onboarding-btn-primary onboarding-btn-hint" type="button" disabled>' +
         phaseHint + '</button>';
@@ -501,7 +520,8 @@
     _popoverEl.style.left = Math.max(12, (window.innerWidth - 360) / 2) + "px";
     _popoverEl.style.top = Math.round(window.innerHeight * 0.35) + "px";
     var html = "";
-    html += '<div class="onboarding-popover-title">' + c[step.copyKey + "Title"] + '</div>';
+    var titleKey = _titleKeyOverride || (step.copyKey + "Title");
+    html += '<div class="onboarding-popover-title">' + c[titleKey] + '</div>';
     html += '<div class="onboarding-popover-body">' + c.waitReport + '</div>';
     html += '<div class="onboarding-step-counter">' +
       c.stepCounter.replace("{n}", String(_stepIndex + 1)).replace("{total}", String(TOUR_STEPS.length)) +
@@ -520,6 +540,15 @@
     var c = copy(currentLanguage());
     _syncStepPhase(step);
     _bodyKeyOverride = null;
+    _titleKeyOverride = null;
+    if (step.id === "deep-window" && _tourPhase === "move-assistant") {
+      _focusSelector = ".welcome-float";
+      _bodyKeyOverride = "step2MoveBody";
+      _titleKeyOverride = "step2MoveTitle";
+      _setChatbotTourDragEnabled(true);
+    } else if (step.id === "deep-window") {
+      _setChatbotTourDragEnabled(false);
+    }
     if (step.id === "add-to-chat") {
       if (_tourPhase === "await-minimize") _bodyKeyOverride = "step3MinimizeBody";
       if (_tourPhase === "memory-revealed") _bodyKeyOverride = "step3MemoryBody";
@@ -562,6 +591,7 @@
   function advance() {
     if (!_active) return;
     var cur = TOUR_STEPS[_stepIndex];
+    if (_stepIndex === 2 && _tourPhase !== "await-report") return;
     if (_stepIndex === 3 && _tourPhase !== "memory-revealed") return;
     // requireMinimized 守卫（第 4 步）：面板未最小化（如用户点击药丸重新展开）时禁止推进——
     // 与渲染守卫双保险，后续步骤（第 5/6 步）依赖 `.deep-window.minimized` 目标
@@ -593,6 +623,21 @@
     if (!_active) return;
     var step = TOUR_STEPS[_stepIndex];
     if (!step) return;
+    if (_stepIndex === 2 && (_tourPhase === "move-assistant" || _tourPhase === "await-report")) {
+      if (eventName === "assistant-panel-drag") {
+        if (_targetEl) _reposition();
+        return;
+      }
+      if (eventName === "assistant-panel-drag-end" && _tourPhase === "move-assistant") {
+        _tourPhase = "await-report";
+        _focusSelector = null;
+        _bodyKeyOverride = null;
+        _titleKeyOverride = null;
+        _setChatbotTourDragEnabled(false);
+        _renderStep();
+        return;
+      }
+    }
     if (_stepIndex === 3 && eventName === "chat-add") {
       if (_tourPhase !== "await-add") return;
       _tourPhase = "await-minimize";
@@ -642,6 +687,7 @@
   }
 
   function stopTour() {
+    var wasActive = _active;
     _active = false;
     _clearTimers();
     if (_resizeObserver) { try { _resizeObserver.disconnect(); } catch (e) {} _resizeObserver = null; }
@@ -658,7 +704,10 @@
     _stepIndex = -1;
     _tourPhase = null;
     _bodyKeyOverride = null;
+    _titleKeyOverride = null;
     _focusSelector = null;
+    _setChatbotTourDragEnabled(false);
+    if (wasActive) _setChatbotTourState(false);
   }
   function finishTour() { stopTour(); markCompleted(); }
   function skipTour() { markCompleted(); stopTour(); }
@@ -676,9 +725,26 @@
     } catch (e) {}
   }
 
+  function _setChatbotTourState(active) {
+    try {
+      var assistant = window.CHATBOT_WELCOME;
+      if (!assistant) return;
+      if (active && assistant.prepareForTour) assistant.prepareForTour();
+      if (!active && assistant.endTour) assistant.endTour();
+    } catch (e) {}
+  }
+
+  function _setChatbotTourDragEnabled(enabled) {
+    try {
+      var assistant = window.CHATBOT_WELCOME;
+      if (assistant && assistant.setTourDragEnabled) assistant.setTourDragEnabled(!!enabled);
+    } catch (e) {}
+  }
+
   function startTour() {
     if (_active) return;
     _ensureReportMode();
+    _setChatbotTourState(true);
     _active = true;
     _stepIndex = 0;
     _ensureDom();
@@ -688,12 +754,34 @@
   // 首次进入自动弹（app.js init() 尾部调用）；完成/跳过过则不再弹
   function maybeAutoStart() {
     if (TEST_MODE) return;
+    pulseReplayButton();
     if (_active) return;
     if (!shouldShowTour()) return;
     _clearTimers();
     _autoStartTimer = setTimeout(function () {
       if (!_active && shouldShowTour()) startTour();
     }, 800);
+  }
+
+  // 仪表盘数据加载完成后提醒用户顶部的「新手引导」入口；动画只播放一次，
+  // 计时结束移除 class，避免持续打扰已经熟悉页面的用户。
+  function pulseReplayButton() {
+    var btn = null;
+    try { btn = document.getElementById("reportHelpTourBtn"); } catch (e) {}
+    if (!btn || !btn.classList) return false;
+    if (_replayButtonPulseTimer) {
+      clearTimeout(_replayButtonPulseTimer);
+      _replayButtonPulseTimer = null;
+    }
+    btn.classList.remove("onboarding-tour-btn-attention");
+    // 允许重复触发时重新建立 CSS animation 的起点；页面首次打开时也保持确定性。
+    void btn.offsetWidth;
+    btn.classList.add("onboarding-tour-btn-attention");
+    _replayButtonPulseTimer = setTimeout(function () {
+      _replayButtonPulseTimer = null;
+      try { btn.classList.remove("onboarding-tour-btn-attention"); } catch (e) {}
+    }, REPLAY_BUTTON_PULSE_MS);
+    return true;
   }
 
   // 重播入口（Help 面板工具栏「🎓 新手引导」按钮）
@@ -717,6 +805,10 @@
       if (e.target && e.target.id === "chatForm") notify("sent");
     });
     document.addEventListener("click", function (e) {
+      if (e.target && e.target.closest && e.target.closest(".welcome-float-dot")) {
+        notify("assistant-opened");
+        return;
+      }
       if (e.target && e.target.closest && e.target.closest(".deep-window-chat-add")) notify("chat-add");
     });
   } catch (e) {}
@@ -782,6 +874,16 @@
       stepCount: stepCount,
       autoFillFor: autoFillFor,
       minimizeGatePassed: minimizeGatePassed,
+      highlightPosition: function () {
+        return _highlightEl && _highlightEl.style ? {
+          left: _highlightEl.style.left,
+          top: _highlightEl.style.top,
+          width: _highlightEl.style.width,
+          height: _highlightEl.style.height
+        } : null;
+      },
+      pulseReplayButton: pulseReplayButton,
+      replayButtonPulseDuration: function () { return REPLAY_BUTTON_PULSE_MS; },
       refreshActions: _refreshActionButtons,
       renderStep: _renderStep,
       popoverHtml: function () { return _popoverEl ? _popoverEl.innerHTML : ""; }

@@ -19841,6 +19841,13 @@ var _NUMERIC_COL_PATTERNS = [
       _switchToReportMode();
     });
 
+    // Chatbot 使用助手面板的 Report / Chat 分区 → 切换到对应模式
+    document.addEventListener("chatbot-mode-requested", function (event) {
+      var mode = event && event.detail && event.detail.mode;
+      if (mode === "chat") _switchToChatMode();
+      if (mode === "report") _switchToReportMode();
+    });
+
     // Report Mode 使用说明书展开/收起
     els.reportHelpBtn?.addEventListener("click", toggleReportHelp);
     els.reportHelpLangBtn?.addEventListener("click", toggleReportHelpLang);
