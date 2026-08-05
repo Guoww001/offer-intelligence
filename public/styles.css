@@ -14174,3 +14174,103 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   0%, 100% { box-shadow: 0 0 10px rgba(110, 168, 255, 0.35); }
   50% { box-shadow: 0 0 22px rgba(110, 168, 255, 0.6); transform: translateY(-1px); }
 }
+
+/* ── Chatbot 流程引导（Flow Onboarding）── */
+.welcome-progress {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(156, 199, 255, 0.06) 0%, rgba(156, 199, 255, 0.02) 100%);
+  border: 1px solid rgba(156, 199, 255, 0.10);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.welcome-progress-step {
+  display: flex; align-items: center; gap: 5px; flex: 1;
+  font-size: 10.5px; color: #7b87a3; min-width: 0;
+}
+.welcome-progress-step.active { color: #eef2f8; }
+.welcome-progress-step.done { color: #9fc5ff; }
+.welcome-progress-num {
+  width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 700;
+  background: rgba(156, 199, 255, 0.12); color: #9aa7bd;
+  border: 1px solid rgba(156, 199, 255, 0.18);
+}
+.welcome-progress-step.active .welcome-progress-num {
+  background: linear-gradient(135deg, #6ea8ff, #9b7bff);
+  color: #0b0e14; border-color: transparent;
+  box-shadow: 0 0 10px rgba(110, 168, 255, 0.45);
+}
+.welcome-progress-step.done .welcome-progress-num {
+  background: rgba(110, 168, 255, 0.20); color: #bcd8ff;
+  border-color: rgba(110, 168, 255, 0.35);
+}
+.welcome-progress-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.welcome-progress-arrow { color: #5d6b84; font-size: 11px; flex-shrink: 0; }
+.welcome-progress-advanced {
+  width: 100%; margin-top: 5px; font-size: 9.5px; color: #7b87a3;
+}
+.deep-window-chat-add {
+  border: 1px solid rgba(110, 168, 255, 0.38);
+  background: linear-gradient(180deg, rgba(110, 168, 255, 0.18) 0%, rgba(110, 168, 255, 0.08) 100%);
+  color: #dceaff; border-radius: 999px; padding: 4px 12px;
+  font-size: 11px; font-weight: 650; cursor: pointer; font-family: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 0 12px rgba(110, 168, 255, 0.18);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), background 0.3s, border-color 0.3s;
+}
+.deep-window-chat-add:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, rgba(110, 168, 255, 0.28) 0%, rgba(110, 168, 255, 0.12) 100%);
+  border-color: rgba(110, 168, 255, 0.6);
+}
+.deep-window-chat-add:disabled,
+.deep-window-chat-add.added {
+  opacity: 0.65; cursor: default; transform: none;
+  background: rgba(110, 168, 255, 0.08); border-color: rgba(110, 168, 255, 0.18);
+}
+.deep-window.generating .deep-window-chat-add,
+.deep-window.minimized .deep-window-chat-add { display: none; }
+.chat-reminder-action {
+  margin-left: auto; flex-shrink: 0;
+  border: 1px solid rgba(110, 168, 255, 0.42);
+  background: linear-gradient(180deg, rgba(110, 168, 255, 0.20) 0%, rgba(110, 168, 255, 0.08) 100%);
+  color: #dceaff; border-radius: 999px; padding: 3px 10px;
+  font-size: 10.5px; font-weight: 650; cursor: pointer; font-family: inherit;
+}
+.chat-reminder-action:hover {
+  background: linear-gradient(180deg, rgba(110, 168, 255, 0.30) 0%, rgba(110, 168, 255, 0.12) 100%);
+  border-color: rgba(110, 168, 255, 0.65);
+}
+.chat-memory-starter {
+  margin: 0 0 8px; padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(155, 123, 255, 0.12) 0%, rgba(155, 123, 255, 0.05) 100%);
+  border: 1px solid rgba(155, 123, 255, 0.30);
+  border-radius: 12px; font-size: 11px; color: #e7e2ff; line-height: 1.5;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.chat-memory-starter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+
+/* ── 浅色主题覆盖 ── */
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress {
+  background: linear-gradient(180deg, rgba(76, 130, 205, 0.05) 0%, rgba(76, 130, 205, 0.02) 100%);
+  border-color: rgba(26, 86, 168, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step { color: #7a86a3; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.active { color: #16294f; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.done { color: #1a4fa0; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-num {
+  background: rgba(76, 130, 205, 0.10); color: #7a86a3;
+  border-color: rgba(26, 86, 168, 0.16);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-arrow { color: #8da0c2; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-advanced { color: #7a86a3; }
+body.dashboard-mode[data-dash-theme="light"] .chat-reminder-action {
+  background: linear-gradient(180deg, #ffffff 0%, #eaf2ff 100%);
+  border-color: rgba(26, 86, 168, 0.28); color: #1a4fa0;
+}
+body.dashboard-mode[data-dash-theme="light"] .chat-memory-starter {
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.08) 0%, rgba(124, 92, 255, 0.03) 100%);
+  border-color: rgba(124, 92, 255, 0.24); color: #3c2f7d;
+}
