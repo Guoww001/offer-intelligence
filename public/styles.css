@@ -14434,32 +14434,36 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
   width: 100%; margin-top: 8px; font-size: 10.5px; color: #7b87a3;
 }
 .deep-window-chat-add {
-  /* 主 CTA：实心品牌渐变 + 深色文字 + 蓝色光晕——在白玻璃头部上从 Export 等
-     次要按钮中脱颖而出。渐变/文字色复用项目既有 .welcome-progress-num active 语言 */
+  /* 主 CTA：实心品牌渐变 + 深色文字 + 呼吸发光——在白玻璃头部上与 Export 等
+     次要按钮形成明确主次：更大尺寸 + 左侧间距 + 常亮光晕，一眼可辨。
+     渐变/文字色复用项目既有 .welcome-progress-num active 语言 */
   position: relative;
+  margin-left: 8px; /* 与左侧次要按钮（Export 等）拉开主次距离 */
   border: 1px solid rgba(155, 123, 255, 0.55);
   background: linear-gradient(135deg, #6ea8ff 0%, #9b7bff 100%);
-  color: #0b0e14; border-radius: 999px; padding: 5px 14px;
-  font-size: 11px; font-weight: 750; cursor: pointer; font-family: inherit;
+  color: #0b0e14; border-radius: 999px; padding: 6px 16px;
+  font-size: 12px; font-weight: 750; cursor: pointer; font-family: inherit;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.40),
     0 1px 3px rgba(20, 30, 60, 0.25),
     0 0 14px rgba(110, 168, 255, 0.50);
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 0.3s, filter 0.3s, border-color 0.3s, background 0.3s, color 0.3s;
-  animation: welcome-chat-add-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+    filter 0.3s, border-color 0.3s, background 0.3s, color 0.3s;
+  /* 弹入一次 + 持续呼吸发光（glow 只动画 box-shadow，不碰 transform，避免与 hover 冲突；
+     入场动画 100% 帧省略 transform —— fill-mode both 才不会残留 identity matrix
+     锁死 hover/active 的 transform） */
+  animation:
+    welcome-chat-add-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both,
+    welcome-chat-add-glow 2.4s ease-in-out 0.45s infinite;
 }
 .deep-window-chat-add:hover {
   transform: translateY(-1px) scale(1.05);
-  filter: brightness(1.1);
+  filter: brightness(1.15) saturate(1.1);
   border-color: rgba(155, 123, 255, 0.75);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45),
-    0 2px 6px rgba(20, 30, 60, 0.30),
-    0 0 22px rgba(110, 168, 255, 0.75);
+  /* box-shadow 由 glow 呼吸动画接管（动画优先级高于常规规则），hover 不再单独设置 */
 }
 .deep-window-chat-add:active {
   transform: translateY(0) scale(0.97);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 0 10px rgba(110, 168, 255, 0.45);
+  filter: brightness(0.95);
 }
 .deep-window-chat-add:disabled,
 .deep-window-chat-add.added {
@@ -14472,7 +14476,27 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
 @keyframes welcome-chat-add-in {
   0% { transform: scale(0.7) translateY(2px); opacity: 0; }
   60% { transform: scale(1.07) translateY(0); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  100% { opacity: 1; } /* 省略 transform：fill both 结束时不残留 identity matrix */
+}
+/* 加入对话按钮呼吸发光：只动画 box-shadow（蓝紫双色光晕淡入淡出），不动 transform */
+@keyframes welcome-chat-add-glow {
+  0%, 100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      0 1px 3px rgba(20, 30, 60, 0.25),
+      0 0 12px rgba(110, 168, 255, 0.35);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      0 1px 3px rgba(20, 30, 60, 0.3),
+      0 0 28px rgba(110, 168, 255, 0.8),
+      0 0 44px rgba(155, 123, 255, 0.35);
+  }
+}
+/* 减少动效偏好：只保留静态光晕（基础 box-shadow 常亮），无呼吸/弹入动画 */
+@media (prefers-reduced-motion: reduce) {
+  .deep-window-chat-add { animation: none; }
 }
 .deep-window.generating .deep-window-chat-add,
 .deep-window.minimized .deep-window-chat-add { display: none; }
