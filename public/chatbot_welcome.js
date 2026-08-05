@@ -193,8 +193,15 @@
   }
 
   // ── 渲染判定与示例交互决策（纯函数）──
-  // 悬浮气泡：挂在聊天面板 #chatPanel 内部右下角，随聊天面板隐藏而隐藏。
+  // 悬浮气泡：挂在 dashboard 主网格（.main-grid.dashboard-page）内。
+  // 主网格 = 整个 dashboard 页，气泡可拖到页面任意位置（不再受 #chatPanel 的
+  // overflow:hidden 裁剪），随页面切换一起隐藏；右下角即聊天面板右下角（chatPanel
+  // 占右列整行），默认位置不变。grid 为 position:relative（见 styles.css）。
   function containerFor() {
+    try {
+      var grid = document.querySelector(".main-grid.dashboard-page");
+      if (grid) return grid;
+    } catch (e) {}
     try { return document.getElementById("chatPanel"); } catch (e) { return null; }
   }
   function shouldRenderFor(mode) {

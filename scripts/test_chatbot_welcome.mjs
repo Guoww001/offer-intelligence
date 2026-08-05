@@ -49,11 +49,11 @@ function makeElement(className) {
   return el;
 }
 
-// #chatPanel 容器 stub（欢迎气泡挂载点）
-function makeChatPanel() {
+// dashboard 主网格 stub（欢迎气泡挂载点：containerFor 查询 .main-grid.dashboard-page）
+function makeGrid() {
   let wrapper = null;
   const panelProbe = makeElement("welcome-panel");
-  const chatPanel = {
+  const grid = {
     ...elementStub,
     querySelector(sel) {
       if (sel === ".welcome-float") return wrapper;
@@ -66,16 +66,21 @@ function makeChatPanel() {
       if (sel === ".welcome-panel") return wrapper ? [panelProbe] : [];
       return [];
     },
-    appendChild(child) { wrapper = child; child.parentNode = chatPanel; return null; },
-    insertBefore(child) { wrapper = child; child.parentNode = chatPanel; return null; },
+    appendChild(child) { wrapper = child; child.parentNode = grid; return null; },
+    insertBefore(child) { wrapper = child; child.parentNode = grid; return null; },
     removeChild(child) { if (child === wrapper) wrapper = null; return null; },
-    // 拖拽 clamp 用：聊天面板视口比气泡大，供位置边界测试
-    getBoundingClientRect() { return { left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 }; },
+    // 拖拽 clamp 用：主网格 = 整个 dashboard 页（1200×800），供页面任意位置拖拽测试
+    getBoundingClientRect() { return { left: 0, top: 0, right: 1200, bottom: 800, width: 1200, height: 800 }; },
     _welcomePresent() { return !!wrapper; }
   };
-  return chatPanel;
+  return grid;
 }
-const chatPanel = makeChatPanel();
+const grid = makeGrid();
+// #chatPanel fallback stub（containerFor 兜底路径，正常测试不触发）
+const chatPanel = {
+  ...elementStub,
+  getBoundingClientRect() { return { left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 }; }
+};
 const byIdMap = { chatPanel };
 
 // 可控制 Chat Mode 提醒卡片存在性的 #chatLogChat stub
@@ -108,7 +113,7 @@ const sandbox = {
   localStorage: localStorageStub,
   document: {
     getElementById(id) { return byIdMap[id] || null; },
-    querySelector() { return null; },
+    querySelector(sel) { return sel === ".main-grid.dashboard-page" ? grid : null; },
     querySelectorAll(sel) {
       if (sel === ".onboarding-mask-piece, .onboarding-popover") return tourMaskEls;
       return [];
@@ -262,7 +267,7 @@ welcome.notify("chat-sent");
 assertEqual(t.tipActive(), false, "chat-sent should clear tipbar");
 assertTruthy(welcome.isRendered("report"), "chat-sent keeps the bubble mounted");
 assertTruthy(t.isCollapsed(), "first chat-sent auto-collapses the bubble");
-const wrapAfterSend = chatPanel.querySelector(".welcome-float");
+const wrapAfterSend = grid.querySelector(".welcome-float");
 assertTruthy(wrapAfterSend && wrapAfterSend.classList.contains("collapsed"), "wrapper should carry collapsed class");
 assertEqual(store["oi_welcome_collapsed"], "1", "first chat-sent persists collapse");
 
@@ -280,9 +285,9 @@ t.handleChipClick("chat", "根据记忆栏的报告，给我分析建议"); // �
 assertEqual(t.tipActive(), true, "blocked chat example should show empty-memory tipbar");
 assertEqual(t.tipFromExampleActive(), true, "blocked chat example should set tipFromExample so typing clears the tipbar");
 
-// ── 用例 15：点击监听绑定在每次新建的 panel 上，不累积在 #chatPanel 容器 ──
+// ── 用例 15：点击监听绑定在每次新建的 panel 上，不累积在挂载容器（主网格）──
 let containerListenerCalls = 0;
-chatPanel.addEventListener = () => { containerListenerCalls++; };
+grid.addEventListener = () => { containerListenerCalls++; };
 t.renderSmoke();
 t.renderSmoke();
 assertEqual(containerListenerCalls, 0, "click listeners must bind to per-render elements, not the chat panel container");
@@ -384,7 +389,7 @@ delete store["oi_onboarding_done"];
 delete store["oi_welcome_collapsed"];
 t.resetCollapsed();
 t.renderPanel("report", { offers: [], hasMemory: false });
-let wrap = chatPanel.querySelector(".welcome-float");
+let wrap = grid.querySelector(".welcome-float");
 assertTruthy(wrap, "bubble wrapper should render");
 assertEqual(wrap.classList.contains("collapsed"), false, "new user renders expanded");
 assertMatch(t.panelElement().className, /welcome-emphasis/, "new user panel carries emphasis class");
@@ -392,7 +397,7 @@ assertMatch(t.panelElement().className, /welcome-emphasis/, "new user panel carr
 store["oi_onboarding_done"] = "1";
 t.resetCollapsed();
 t.renderPanel("report", { offers: [], hasMemory: false });
-wrap = chatPanel.querySelector(".welcome-float");
+wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.classList.contains("collapsed"), true, "returning user renders collapsed");
 assertEqual(t.panelElement().className.includes("welcome-emphasis"), false, "returning user panel has no emphasis");
 
@@ -402,11 +407,11 @@ delete store["oi_welcome_collapsed"];
 t.resetCollapsed();
 t.renderPanel("report", { offers: [], hasMemory: false });
 t.setCollapsed(true, true);
-wrap = chatPanel.querySelector(".welcome-float");
+wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.classList.contains("collapsed"), true, "setCollapsed(true) collapses wrapper");
 assertEqual(store["oi_welcome_collapsed"], "1", "collapse with persist writes storage");
 t.setCollapsed(false, false);
-wrap = chatPanel.querySelector(".welcome-float");
+wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.classList.contains("collapsed"), false, "setCollapsed(false) expands wrapper");
 assertEqual(store["oi_welcome_collapsed"], "1", "manual expand does NOT clear persisted collapse");
 assertMatch(t.panelElement().className, /welcome-emphasis/, "re-expanded fresh-user panel gets emphasis back");
@@ -444,7 +449,7 @@ assertEqual(t.tourHidden(), false, "tour not active initially");
 tourMaskEls = [{ className: "onboarding-mask-piece" }];
 t.refreshTourHidden();
 assertEqual(t.tourHidden(), true, "tour active -> hidden state true");
-wrap = chatPanel.querySelector(".welcome-float");
+wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.classList.contains("tour-hidden"), true, "wrapper carries tour-hidden class");
 tourMaskEls = [];
 t.refreshTourHidden();
@@ -471,12 +476,12 @@ delete store["oi_welcome_collapsed"];
 delete store["oi_welcome_dot_pos"];
 t.resetCollapsed();
 t.renderPanel("report", { offers: [], hasMemory: false });
-wrap = chatPanel.querySelector(".welcome-float");
+wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.style.left, undefined, "no persisted position -> no inline left");
 assertEqual(wrap.style.top, undefined, "no persisted position -> no inline top");
 store["oi_welcome_dot_pos"] = JSON.stringify({ left: 40, top: 30 });
 t.renderPanel("report", { offers: [], hasMemory: false });
-wrap = chatPanel.querySelector(".welcome-float");
+wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.style.left, "40px", "persisted left applied on re-render");
 assertEqual(wrap.style.top, "30px", "persisted top applied on re-render");
 

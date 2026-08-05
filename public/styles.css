@@ -1499,6 +1499,7 @@ body.dashboard-mode .main-grid.dashboard-page {
   height: auto;
   min-height: 0;
   overflow: hidden;
+  position: relative; /* 欢迎气泡 absolute 挂载点：右下角即聊天面板右下角，拖拽范围 = 整个页面 */
 }
 
 .insight-panel,
@@ -14077,8 +14078,14 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   width: 350px;
   max-width: calc(100% - 28px);
   max-height: calc(100% - 135px); /* 不超过聊天区可视高度，内容超出时容器内滚动 */
-  overflow-y: auto;
   z-index: 1100; /* 顶层：盖过报告 deep-window（1000），仍低于全屏抽屉遮罩（1300） */
+}
+/* 滚动只发生在展开态；收起态 overflow 必须保持 visible —— 圆钮 hover 放大时不允许出现滚动条。
+   展开态 overflow-x 必须显式 hidden：CSS 规范会把 visible 与 auto 混用时的 visible 强制为
+   auto，1px 的内容溢出（边框/圆钮放大）会在底部渲染水平滚动条。 */
+.welcome-float:not(.collapsed) {
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .welcome-float.tour-hidden { display: none; }
 .welcome-float .welcome-float-dot { display: none; }
