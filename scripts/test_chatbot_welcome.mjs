@@ -509,4 +509,28 @@ t.renderPanel("report", { offers: [], hasMemory: false });
 assertEqual(t.panelElement().innerHTML.includes("welcome-desc"), false, "panel no longer renders welcome-desc");
 assertEqual(t.panelElement().innerHTML.includes("查商户"), false, "panel no longer renders useless hello body copy");
 
+// ── 用例 36：模式焦点栏（mode-report / mode-chat 类随渲染与模式切换维护）──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+delete store["oi_welcome_dot_pos"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+wrap = grid.querySelector(".welcome-float");
+assertEqual(wrap.classList.contains("mode-report"), true, "render in report mode -> wrap carries mode-report");
+assertEqual(wrap.classList.contains("mode-chat"), false, "render in report mode -> no mode-chat");
+assertEqual(t.modeClass(), "report", "modeClass reports report");
+assertMatch(t.panelElement().innerHTML, /welcome-col report/, "left column carries report class");
+assertMatch(t.panelElement().innerHTML, /welcome-col right chat/, "right column carries chat class");
+welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
+assertEqual(wrap.classList.contains("mode-chat"), true, "mode-switched chat -> wrap carries mode-chat");
+assertEqual(wrap.classList.contains("mode-report"), false, "mode-switched chat -> mode-report removed");
+assertEqual(t.modeClass(), "chat", "modeClass reports chat");
+welcome.notify("mode-switched", { mode: "report", hasMemory: false });
+assertEqual(wrap.classList.contains("mode-report"), true, "switch back to report -> mode-report restored");
+assertEqual(wrap.classList.contains("mode-chat"), false, "switch back to report -> mode-chat removed");
+t.renderPanel("chat", { offers: [], hasMemory: false });
+wrap = grid.querySelector(".welcome-float");
+assertEqual(wrap.classList.contains("mode-chat"), true, "re-render with chat mode -> mode-chat set");
+assertEqual(t.modeClass(), "chat", "modeClass reports chat after re-render");
+
 console.log("PASS: welcome logic");

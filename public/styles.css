@@ -14030,6 +14030,13 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   padding: 10px;
   background: linear-gradient(180deg, rgba(156, 199, 255, 0.05) 0%, rgba(156, 199, 255, 0.02) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  /* 模式焦点栏：焦点/退暗状态切换时平滑迁移，见下方「模式焦点栏」一节 */
+  transition:
+    opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1),
+    filter 0.4s cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 0.4s cubic-bezier(0.32, 0.72, 0, 1),
+    background 0.4s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.4s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .welcome-col.right {
   border-color: rgba(155, 123, 255, 0.32);
@@ -14069,6 +14076,62 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   box-shadow: 0 4px 14px rgba(110, 168, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .welcome-note { font-size: 10px; color: #7b87a3; margin-top: 7px; letter-spacing: 0.01em; }
+
+/* ── 模式焦点栏（wrap 上的 mode-report / mode-chat 类，由 chatbot_welcome.js 维护）──
+   当前模式对应的栏「点亮」：语义色描边 + 背景提亮 + tag 实心 + 标题上色；
+   对侧栏整体「退暗」：降饱和 + 降透明度（hover 时恢复可读性）。
+   视觉重心随模式切换迁移——把「你现在在流程哪一步」编码进结构。
+   语义色沿用项目词汇：冰蓝 #6ea8ff = Report（①先获取数据），紫 #9b7bff = Chat（③再深度分析）。 */
+.welcome-float.mode-report .welcome-col.report,
+.welcome-float.mode-chat .welcome-col.chat {
+  border-color: rgba(110, 168, 255, 0.55);
+  background: linear-gradient(180deg, rgba(110, 168, 255, 0.14) 0%, rgba(110, 168, 255, 0.05) 100%);
+  box-shadow: 0 0 18px rgba(110, 168, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.welcome-float.mode-chat .welcome-col.chat {
+  border-color: rgba(155, 123, 255, 0.55);
+  background: linear-gradient(180deg, rgba(155, 123, 255, 0.16) 0%, rgba(155, 123, 255, 0.06) 100%);
+  box-shadow: 0 0 18px rgba(155, 123, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+/* 焦点栏标题着色（与 tag 同色系） */
+.welcome-float.mode-report .welcome-col.report .welcome-col-title { color: #cfe0fa; }
+.welcome-float.mode-chat .welcome-col.chat .welcome-col-title { color: #e3dcff; }
+/* Chat 焦点时其 ghost 紫 tag 升级为实心（与 Report 实心蓝 tag 对仗） */
+.welcome-float.mode-chat .welcome-col.chat .welcome-col-tag.alt {
+  background: linear-gradient(135deg, #9b7bff, #8a6bff);
+  color: #0b0e14; border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 10px rgba(155, 123, 255, 0.45);
+}
+/* 非当前模式栏：退暗（hover 恢复） */
+.welcome-float.mode-report .welcome-col.chat,
+.welcome-float.mode-chat .welcome-col.report {
+  opacity: 0.68;
+  filter: saturate(0.45);
+}
+.welcome-float.mode-report .welcome-col.chat:hover,
+.welcome-float.mode-chat .welcome-col.report:hover {
+  opacity: 0.92;
+  filter: saturate(0.75);
+}
+/* 浅色控制室：同一套焦点词汇（白底提亮 + 语义色描边/标题/实心 tag） */
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report,
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat {
+  border-color: rgba(26, 86, 168, 0.38);
+  background: linear-gradient(180deg, #ffffff 0%, #eaf2ff 100%);
+  box-shadow: 0 0 16px rgba(26, 86, 168, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat {
+  border-color: rgba(124, 92, 255, 0.4);
+  background: linear-gradient(180deg, #ffffff 0%, #f3eeff 100%);
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report .welcome-col-title { color: #1a4fa0; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat .welcome-col-title { color: #5d43c4; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat .welcome-col-tag.alt {
+  background: linear-gradient(135deg, #8a6bff, #6d4ff0);
+  color: #ffffff; border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 10px rgba(124, 92, 255, 0.25);
+}
 
 /* ── 悬浮气泡容器（方案 C：聊天面板右下角）── */
 .welcome-float {

@@ -295,7 +295,9 @@
     var isRight = kind === "chat";
     var titleKey = isRight ? "colRightTitle" : "colLeftTitle";
     var tagKey = isRight ? "colRightTag" : "colLeftTag";
-    var html = '<div class="welcome-col' + (isRight ? " right" : "") + '">' +
+    // 栏标识类（report/chat）+ 布局类（right）：CSS 用 .welcome-float.mode-* 选择器
+    // 对当前模式对应栏做焦点强调（见 styles.css 模式焦点栏一节）
+    var html = '<div class="welcome-col' + (isRight ? " right chat" : " report") + '">' +
       '<div class="welcome-col-title"><span>' + escapeHtml(currentCopy(titleKey)) + '</span>' +
       '<span class="welcome-col-tag' + (isRight ? " alt" : "") + '">' + escapeHtml(currentCopy(tagKey)) + '</span></div>' +
       chipsHtml(examples, kind, merchant);
@@ -321,6 +323,7 @@
     var wrap = makeEl("welcome-float", "");
     if (_collapsed) wrap.classList.add("collapsed");
     if (_tourHidden) wrap.classList.add("tour-hidden");
+    _applyModeClass(wrap, mode);
     var panel = makeEl("welcome-panel", panelHtml);
     if (emphasis) panel.classList.add("welcome-emphasis");
     var dot = makeEl("welcome-float-dot", "🤖");
@@ -341,6 +344,14 @@
     _bindTourObserver();
     _applyTourHidden();
     return true;
+  }
+  // 模式感知焦点栏：wrap 上的 mode-report / mode-chat 类驱动 CSS 强调
+  // （Report Mode → 左栏「① 先获取数据」点亮；Chat Mode → 右栏「③ 再深度分析」点亮，
+  //   对侧栏退暗）。渲染时按传入模式设置，mode-switched 通知时切换。
+  function _applyModeClass(wrap, mode) {
+    if (!wrap || !wrap.classList) return;
+    wrap.classList.toggle("mode-report", mode !== "chat");
+    wrap.classList.toggle("mode-chat", mode === "chat");
   }
   function _clearWelcome(container) {
     if (!container) return;
@@ -741,6 +752,7 @@
       if (payload.hasMemory !== undefined) _hasMemory = !!payload.hasMemory;
       var mode = payload.mode === "chat" ? "chat" : "report";
       _mode = mode;
+      _applyModeClass(_wrapEl, mode); // 焦点栏随模式切换
       _refreshProgress();
       // Chat Mode → 聊天区顶部渲染提醒卡片；Report Mode → 移除
       _syncChatReminder(mode);
@@ -807,6 +819,9 @@
       showTipbar: function (key) { _showTipbar(key); },
       clearTipbar: function () { _clearTipbar(); },
       lastMode: function () { return _mode; },
+      modeClass: function () { // 当前 wrap 的模式焦点类（供测试断言）
+        return _wrapEl ? (_wrapEl.classList.contains("mode-chat") ? "chat" : "report") : null;
+      },
       panelTipActive: function () { return !_panelTipShown; },
       hasMemory: function () { return _hasMemory; },
       tipFromExampleActive: function () { return _tipFromExample; },
