@@ -18,7 +18,7 @@
   // ── 双语文案（键集 zh/en 必须一一对应）──
   var WELCOME_COPY = {
     zh: {
-      helloTitle: "我是你的运营分析助手",
+      helloTitle: "我是你的Chatbot使用助手",
       flow1Title: "Report 提问",
       flow1Sub: "获取数据",
       flow2Title: "面板最小化",
@@ -30,7 +30,7 @@
       colRightTitle: "再深度分析",
       colRightTag: "CHAT",
       colRightNote: "必须先拖入记忆栏，Chat 才有数据可答",
-      tipReport: "发送后，报告生成时可点 ─ 最小化，拖入记忆栏——Chat 分析必须先有记忆栏数据",
+      tipReport: "发送后，报告生成时可点“加入对话”按钮，放入记忆栏——Chat 分析必须先有记忆栏数据",
       chatHelloTitle: "记忆栏已就绪，开始分析吧",
       chatHelloBody: "先拖入 1 份报告，再点下面的示例，我会基于它给出建议",
       chatEmptyMemory: "请先拖入报告到记忆栏",
@@ -49,7 +49,7 @@
       memoryHint: "将面板拖入此处作为上下文"
     },
     en: {
-      helloTitle: "I'm your operations analysis assistant",
+      helloTitle: "I'm your Chatbot usage assistant",
       flow1Title: "Ask in Report Mode",
       flow1Sub: "Get data",
       flow2Title: "Minimize the panel",
@@ -61,7 +61,7 @@
       colRightTitle: "Then analyze deeply",
       colRightTag: "CHAT",
       colRightNote: "Drag reports into memory first — Chat only answers with data in memory",
-      tipReport: "After sending, click – to minimize, then drag into the memory bar — Chat analysis needs that data first",
+      tipReport: "After sending, click the “Add to chat” button once the report is ready — it drops into the memory bar, which Chat analysis needs first",
       chatHelloTitle: "Memory ready — start analyzing",
       chatHelloBody: "Drag in a report first, then pick an example — I'll analyze based on it",
       chatEmptyMemory: "Drag a report into the memory bar first",
@@ -170,8 +170,7 @@
         var icon = s.state === "done" ? "✓" : String(i + 1);
         return '<div class="' + cls + '"><span class="welcome-progress-num">' + escapeHtml(icon) + '</span>' +
           '<span class="welcome-progress-label">' + escapeHtml(currentCopy(s.key)) + '</span></div>';
-      }).join("") +
-      '<div class="welcome-progress-advanced">' + escapeHtml(currentCopy("progressAdvanced")) + '</div></div>';
+      }).join("") + '</div>';
   }
 
   // ── 动态商户名：取 commission 最高的商户 ──
@@ -323,6 +322,8 @@
     var wrap = makeEl("welcome-float", "");
     if (_collapsed) wrap.classList.add("collapsed");
     if (_tourHidden) wrap.classList.add("tour-hidden");
+    // 语言 class：驱动 CSS 宽度自适应（英文文案长，面板加宽，见 styles.css .welcome-lang-en）
+    wrap.classList.add(currentLanguage() === "en" ? "welcome-lang-en" : "welcome-lang-zh");
     _applyModeClass(wrap, mode);
     var panel = makeEl("welcome-panel", panelHtml);
     if (emphasis) panel.classList.add("welcome-emphasis");

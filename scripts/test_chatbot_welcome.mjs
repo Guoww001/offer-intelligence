@@ -280,6 +280,20 @@ fireLangObserver();
 assertEqual(t.lastMode(), "report", "lang observer should re-render the bubble, keeping _mode");
 assertTruthy(welcome.isRendered("report"), "bubble remains after language re-render");
 
+// ── 用例 13b：语言 class 驱动宽度（welcome-lang-zh/en 跟随语言切换）──
+let wrapLang = t.wrapElement();
+assertTruthy(wrapLang && wrapLang.classList.contains("welcome-lang-zh"), "zh render -> welcome-lang-zh on wrapper");
+assertEqual(wrapLang.classList.contains("welcome-lang-en"), false, "zh render must not carry welcome-lang-en");
+sandbox.document.documentElement.lang = "en";
+fireLangObserver();
+wrapLang = t.wrapElement();
+assertTruthy(wrapLang && wrapLang.classList.contains("welcome-lang-en"), "lang observer re-render in en -> welcome-lang-en");
+assertEqual(wrapLang.classList.contains("welcome-lang-zh"), false, "en render must not carry welcome-lang-zh");
+sandbox.document.documentElement.lang = "zh-Hans";
+fireLangObserver();
+wrapLang = t.wrapElement();
+assertTruthy(wrapLang && wrapLang.classList.contains("welcome-lang-zh"), "back to zh -> welcome-lang-zh restored");
+
 // ── 用例 14：拦截路径提示条也随手动输入消失（M2 修复）──
 t.handleChipClick("chat", "根据记忆栏的报告，给我分析建议"); // 无记忆 → 拦截
 assertEqual(t.tipActive(), true, "blocked chat example should show empty-memory tipbar");
@@ -465,6 +479,13 @@ assertEqual(progNoReport.includes("③"), false, "step labels drop circled ③ n
 assertEqual(progNoReport.includes("在 Report 提问"), true, "step 1 label fully present (no ellipsis truncation)");
 assertEqual(progNoReport.includes("点「加入对话」"), true, "step 2 label fully present");
 assertEqual(progNoReport.includes("在 Chat 对话"), true, "step 3 label fully present");
+assertEqual(progNoReport.includes("welcome-progress-advanced"), false, "advanced hint row removed from progress");
+
+// ── 用例 31b：文案更新（helloTitle；progressAdvanced 键保留保证 zh/en 键集一致）──
+assertEqual(t.copy.zh.helloTitle, "我是你的Chatbot使用助手", "zh hello title updated");
+assertEqual(t.copy.en.helloTitle, "I'm your Chatbot usage assistant", "en hello title updated");
+assertEqual(t.copy.zh.progressAdvanced === undefined, false, "zh progressAdvanced key kept");
+assertEqual(t.copy.en.progressAdvanced === undefined, false, "en progressAdvanced key kept");
 assertEqual(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }).includes("✓"), true, "chatActive renders done checkmarks");
 // 列标题同样无序号
 assertMatch(t.panelElement().innerHTML, /先获取数据/, "column title drops circled numeral, keeps text");
