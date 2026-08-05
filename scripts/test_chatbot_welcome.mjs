@@ -35,6 +35,11 @@ const localStorageStub = {
 function makeElement(className) {
   const el = { ...elementStub, className: className || "", children: [], parentNode: null };
   const set = new Set();
+  const listeners = {};
+  el.addEventListener = (type, handler) => { listeners[type] = handler; };
+  el._dispatch = (type, event) => {
+    if (listeners[type]) listeners[type](event || {});
+  };
   el.classList = {
     add(cls) { set.add(cls); el.className = [...set].join(" "); },
     remove(cls) { set.delete(cls); el.className = [...set].join(" "); },
@@ -131,6 +136,7 @@ sandbox.window.document = sandbox.document;
 // 流程引导测试：.deep-window.minimized 查询映射 + 事件派发记录 + CustomEvent
 let minimizedPanels = [];
 let dispatchedEvents = [];
+let dispatchedEventDetails = [];
 const documentWithFlow = {
   ...sandbox.document,
   querySelectorAll(sel) {
@@ -138,11 +144,24 @@ const documentWithFlow = {
     if (sel === ".onboarding-mask-piece, .onboarding-popover") return tourMaskEls;
     return [];
   },
-  dispatchEvent(evt) { dispatchedEvents.push(evt && evt.type); return true; }
+  dispatchEvent(evt) {
+    dispatchedEvents.push(evt && evt.type);
+    dispatchedEventDetails.push(evt && evt.detail);
+    return true;
+  }
 };
 sandbox.document = documentWithFlow;
 sandbox.window.document = documentWithFlow;
-sandbox.CustomEvent = class { constructor(type) { this.type = type; } };
+sandbox.CustomEvent = class {
+  constructor(type, init) {
+    this.type = type;
+    this.detail = init && init.detail;
+  }
+};
+const tourEvents = [];
+sandbox.window.ONBOARDING_TOUR = {
+  notify(eventName) { tourEvents.push(eventName); }
+};
 
 runScript("public/chatbot_welcome.js", sandbox);
 const welcome = sandbox.window.CHATBOT_WELCOME;
@@ -321,6 +340,10 @@ welcome.notify("mode-switched", { mode: "chat", hasMemory: false });
 assertEqual(t.chatReminderActive(), true, "re-entering Chat Mode should re-render the reminder card");
 fireLangObserver();
 assertEqual(t.chatReminderActive(), true, "lang switch keeps the reminder card in Chat Mode");
+assertMatch(t.chatReminderHtml(), /chat-reminder-kicker/, "Chat Mode reminder should have a mode kicker");
+assertMatch(t.chatReminderHtml(), /chat-reminder-title/, "Chat Mode reminder should have a card title");
+assertMatch(t.chatReminderHtml(), /chat-reminder-body/, "Chat Mode reminder should have explanatory body copy");
+assertMatch(t.chatReminderHtml(), /chat-reminder-reminder/, "Chat Mode reminder should have a bottom action reminder");
 
 // ── 用例 17：流程状态机 flowStage（8 种布尔组合）──
 assertEqual(t.flowStage({ hasReport: false, hasMemory: false, isChat: false }), "noReport", "all false -> noReport");
@@ -339,7 +362,7 @@ assertEqual(t.flowStage({ hasReport: true, hasAddedToChat: false, hasChatSent: t
 assertEqual(t.flowStage({ hasReport: true, hasPill: true, hasMemory: false, isChat: false }), "reportReady", "hasPill alone does not change stage");
 
 // ── 用例 18：新增文案键存在（zh/en 键集一致性由用例 2 兜底）──
-for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressAdvanced", "minimizedTip", "goReport", "newBadge", "collapse", "showGuide"]) {
+for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressAdvanced", "completionPrompt", "completionConfirm", "completionLater", "minimizedTip", "goReport", "chatReminderKicker", "chatReminderTitle", "chatReminderBody", "chatReminderReminder", "newBadge", "collapse", "showGuide"]) {
   assertTruthy(t.copy.zh[key], `zh missing ${key}`);
   assertTruthy(t.copy.en[key], `en missing ${key}`);
 }
@@ -350,6 +373,9 @@ assertMatch(t.progressHtml({ hasReport: true, hasMemory: false, isChat: false })
 assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, isChat: false }), /data-stage="memoryReady"/, "memoryReady progress stage");
 assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /data-stage="chatActive"/, "chatActive progress stage");
 assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /welcome-progress-step done/, "chatActive renders done steps");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /welcome-progress-confirmation/, "chatActive renders completion confirmation area");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /welcome-progress-confirm-yes/, "completion area renders confirm action");
+assertMatch(t.progressHtml({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), /welcome-progress-confirm-later/, "completion area renders defer action");
 
 // ── 用例 20：notify 状态事件 ──
 welcome.notify("panel-minimized", {});
@@ -469,7 +495,7 @@ assertEqual(t.isCollapsed(), false, "chat-add leaves bubble expanded");
 assertEqual(t.flowState().hasReport, true, "chat-add still sets hasReport");
 assertEqual(t.flowState().hasMemory, true, "chat-add still sets hasMemory");
 
-// ── 用例 30：Tour 激活时隐藏气泡 ──
+// ── 用例 30：Tour 激活时保持助手面板可见并持续高光 ──
 delete store["oi_onboarding_done"];
 delete store["oi_welcome_collapsed"];
 t.resetCollapsed();
@@ -477,13 +503,25 @@ t.renderPanel("report", { offers: [], hasMemory: false });
 assertEqual(t.tourHidden(), false, "tour not active initially");
 tourMaskEls = [{ className: "onboarding-mask-piece" }];
 t.refreshTourHidden();
-assertEqual(t.tourHidden(), true, "tour active -> hidden state true");
+assertEqual(t.tourHidden(), true, "tour active -> state true");
 wrap = grid.querySelector(".welcome-float");
-assertEqual(wrap.classList.contains("tour-hidden"), true, "wrapper carries tour-hidden class");
+assertEqual(wrap.classList.contains("tour-hidden"), false, "tour active must not hide the assistant panel");
+assertEqual(wrap.classList.contains("onboarding-tour-active"), true, "tour active adds persistent assistant highlight class");
 tourMaskEls = [];
 t.refreshTourHidden();
 assertEqual(t.tourHidden(), false, "tour ended -> hidden state false");
 assertEqual(wrap.classList.contains("tour-hidden"), false, "wrapper removes tour-hidden class");
+assertEqual(wrap.classList.contains("onboarding-tour-active"), false, "tour ended removes persistent assistant highlight class");
+
+// ── 用例 30b：Tour 准备阶段收起到助手图标，打开后面板保持高光 ──
+t.prepareForTour();
+assertEqual(t.isCollapsed(), true, "prepareForTour should collapse to the assistant icon");
+assertEqual(wrap.classList.contains("onboarding-tour-active"), true, "prepareForTour should highlight the assistant group");
+t.setCollapsed(false, false);
+assertEqual(t.isCollapsed(), false, "opening the assistant should expand the panel");
+assertEqual(wrap.classList.contains("onboarding-tour-active"), true, "expanded panel keeps the persistent highlight");
+t.endTour();
+assertEqual(wrap.classList.contains("onboarding-tour-active"), false, "endTour should remove the persistent highlight");
 
 // ── 用例 31：三步进度垂直渲染（无 → 箭头、无 ①②③ 序号字符，每步文案完整可见）──
 const progNoReport = t.progressHtml({ hasReport: false, hasMemory: false, isChat: false });
@@ -575,6 +613,29 @@ wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.classList.contains("mode-chat"), true, "re-render with chat mode -> mode-chat set");
 assertEqual(t.modeClass(), "chat", "modeClass reports chat after re-render");
 
+// ── 用例 36b：助手面板分区请求模式切换 ──
+dispatchedEvents = [];
+dispatchedEventDetails = [];
+t.requestMode("report");
+assertEqual(dispatchedEvents.at(-1), "chatbot-mode-requested", "Report region should request a mode switch");
+assertEqual(dispatchedEventDetails.at(-1).mode, "report", "Report region should request Report Mode");
+t.requestMode("chat");
+assertEqual(dispatchedEvents.at(-1), "chatbot-mode-requested", "Chat region should request a mode switch");
+assertEqual(dispatchedEventDetails.at(-1).mode, "chat", "Chat region should request Chat Mode");
+t.requestMode("unknown");
+assertEqual(dispatchedEvents.length, 2, "invalid mode should not dispatch a navigation request");
+const reportRegion = { classList: { contains: (name) => name === "report" } };
+const chatRegion = { classList: { contains: (name) => name === "chat" } };
+const regionTarget = (region) => ({
+  closest(selector) { return selector === ".welcome-col" ? region : null; }
+});
+dispatchedEvents = [];
+dispatchedEventDetails = [];
+t.panelElement()._dispatch("click", { target: regionTarget(reportRegion) });
+assertEqual(dispatchedEventDetails.at(-1).mode, "report", "clicking Report region should request Report Mode");
+t.panelElement()._dispatch("click", { target: regionTarget(chatRegion) });
+assertEqual(dispatchedEventDetails.at(-1).mode, "chat", "clicking Chat region should request Chat Mode");
+
 // ── 用例 37：展开态面板头部拖拽（byDot=false：按 wrap 尺寸 clamp，共用持久化键）──
 delete store["oi_onboarding_done"];
 delete store["oi_welcome_collapsed"];
@@ -609,5 +670,43 @@ t.setCollapsed(false, false);
 t.panelPointerDown({ clientX: 100, clientY: 100, pointerId: 10 });
 t.dotPointerUp();
 assertEqual(t.isCollapsed(), false, "panel head click without move does nothing (stays expanded)");
+
+// ── 用例 37b：引导期间仅在第二步授权后允许移动，且拖拽事件持续通知 Tour ──
+delete store["oi_welcome_dot_pos"];
+t.renderPanel("report", { offers: [], hasMemory: false });
+wrap = grid.querySelector(".welcome-float");
+t.prepareForTour();
+t.setCollapsed(false, false);
+assertEqual(wrap.classList.contains("onboarding-tour-drag-enabled"), false, "tour panel drag is locked by default");
+const lockedTourLeft = wrap.style.left;
+t.panelPointerDown({ clientX: 200, clientY: 100, pointerId: 11 });
+t.dotPointerMove({ clientX: 260, clientY: 130, pointerId: 11 });
+t.dotPointerUp();
+assertEqual(wrap.style.left, lockedTourLeft, "locked tour panel should ignore drag");
+t.setTourDragEnabled(true);
+assertEqual(wrap.classList.contains("onboarding-tour-drag-enabled"), true, "tour step should expose drag affordance");
+wrap.style.left = "0px";
+wrap.style.top = "0px";
+t.panelPointerDown({ clientX: 200, clientY: 100, pointerId: 12 });
+t.dotPointerMove({ clientX: 260, clientY: 130, pointerId: 12 });
+t.dotPointerUp();
+assertEqual(wrap.style.left, "60px", "authorized tour panel drag should move the panel");
+assertEqual(tourEvents.includes("assistant-panel-drag"), true, "panel movement should notify Tour continuously");
+assertEqual(tourEvents.includes("assistant-panel-drag-end"), true, "panel release should notify Tour");
+t.setTourDragEnabled(false);
+t.endTour();
+
+// ── 用例 35：三步完成确认后重置引导状态，但保留记忆栏数据 ──
+welcome.notify("chat-sent", { mode: "report" });
+welcome.notify("chat-add", { hasMemory: true });
+welcome.notify("chat-sent", { mode: "chat" });
+assertEqual(t.flowStage({ hasReport: true, hasMemory: true, hasAddedToChat: true, hasChatSent: true, isChat: true }), "chatActive", "completed flow should be confirmable");
+welcome.notify("flow-complete-confirmed");
+assertEqual(t.flowState().hasReport, false, "completion confirmation resets Report step");
+assertEqual(t.flowState().hasAddedToChat, false, "completion confirmation resets Add to chat step");
+assertEqual(t.flowState().hasChatSent, false, "completion confirmation resets Chat step");
+assertEqual(t.flowState().hasMemory, true, "completion confirmation keeps memory data state");
+assertEqual(t.flowStage(t.flowState()), "noReport", "reset flow returns to noReport stage");
+assertEqual(t.progressHtml({ hasReport: false, hasMemory: true, hasAddedToChat: false, hasChatSent: false, isChat: true }).includes("welcome-progress-confirmation"), false, "reset flow hides completion confirmation");
 
 console.log("PASS: welcome logic");

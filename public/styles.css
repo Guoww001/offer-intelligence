@@ -1533,6 +1533,15 @@ body.dashboard-mode[data-dash-theme="light"] .report-mode-guide {
   .report-mode-guide h3 {
     font-size: 14px;
   }
+
+  .chat-reminder {
+    gap: 10px;
+    padding: 12px 13px;
+  }
+
+  .chat-reminder-title {
+    font-size: 14px;
+  }
 }
 
 .chat-log::-webkit-scrollbar {
@@ -1600,24 +1609,20 @@ body.dashboard-mode[data-dash-theme="light"] .report-mode-guide {
   top: -16px; /* 抵消 .chat-log padding-top:16px，卡片贴到聊天区最顶 */
   z-index: 5;
   display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 12px;
-  padding: 10px 14px;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
   border-radius: 12px;
   background:
-    radial-gradient(ellipse 90% 140% at 6% 0%, rgba(29, 111, 214, 0.06) 0%, transparent 70%),
-    linear-gradient(135deg, #ffffff 0%, #f1f6fe 100%);
-  border: 1px solid rgba(29, 111, 214, 0.18);
-  color: #24406e;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
+    radial-gradient(ellipse 90% 140% at 6% 0%, rgba(124, 92, 255, 0.08) 0%, transparent 70%),
+    linear-gradient(135deg, #ffffff 0%, #f5f1ff 100%);
+  border: 1px solid rgba(124, 92, 255, 0.24);
+  border-left: 4px solid #7c5cff;
+  color: #4a3a93;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 2px 10px rgba(37, 48, 56, 0.06);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+    0 8px 24px rgba(76, 57, 150, 0.10);
   animation: chatReminderIn 0.45s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .chat-reminder::before {
@@ -1627,14 +1632,58 @@ body.dashboard-mode[data-dash-theme="light"] .report-mode-guide {
   left: 10px;
   right: 10px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(29, 111, 214, 0.35), transparent);
+  background: linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.48), transparent);
 }
-.chat-reminder-icon {
-  font-size: 13px;
+.chat-reminder-mark {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(124, 92, 255, 0.12);
+  color: #6247d5;
+  font-size: 14px;
   line-height: 1;
 }
-.chat-reminder-text {
-  flex: 1;
+.chat-reminder-content {
+  min-width: 0;
+}
+.chat-reminder-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: #694fd5;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+.chat-reminder-title {
+  margin: 0;
+  color: #34216f;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.chat-reminder-body,
+.chat-reminder-reminder {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.chat-reminder-body {
+  color: #5d4d95;
+}
+.chat-reminder-reminder {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 9px;
+  color: #5a3fc5;
+}
+.chat-reminder-reminder strong {
+  font-weight: 700;
 }
 
 @keyframes chatReminderIn {
@@ -11777,6 +11826,99 @@ body.dashboard-mode .quick-actions button:active {
   transform: translateY(0) scale(0.97);
 }
 
+/* ── 新手引导入口注意力提示：页面就绪后播放一次 2 秒暖橙脉冲 ── */
+body.dashboard-mode .quick-actions .dash-tour-btn.onboarding-tour-btn-attention {
+  position: relative;
+  isolation: isolate;
+  border-color: rgba(255, 191, 145, 0.82);
+  background: linear-gradient(135deg, rgba(229, 112, 61, 0.94), rgba(179, 72, 52, 0.94));
+  color: #fff8f1;
+  box-shadow:
+    0 0 0 3px rgba(255, 157, 92, 0.14),
+    0 0 24px rgba(255, 157, 92, 0.38),
+    0 6px 18px rgba(130, 52, 32, 0.24);
+}
+body.dashboard-mode .quick-actions .dash-tour-btn.onboarding-tour-btn-attention::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border: 1px solid rgba(255, 157, 92, 0.65);
+  border-radius: inherit;
+  box-shadow: 0 0 20px rgba(255, 157, 92, 0.34);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.9);
+}
+body.dashboard-mode[data-dash-theme="light"] .quick-actions .dash-tour-btn.onboarding-tour-btn-attention {
+  border-color: rgba(181, 83, 48, 0.62);
+  background: linear-gradient(135deg, #e87858, #c95f46);
+  color: #fffaf6;
+  box-shadow:
+    0 0 0 3px rgba(214, 108, 62, 0.12),
+    0 0 24px rgba(214, 108, 62, 0.26),
+    0 6px 18px rgba(100, 57, 39, 0.16);
+}
+body.dashboard-mode[data-dash-theme="light"] .quick-actions .dash-tour-btn.onboarding-tour-btn-attention::after {
+  border-color: rgba(181, 83, 48, 0.56);
+  box-shadow: 0 0 20px rgba(214, 108, 62, 0.24);
+}
+@media (prefers-reduced-motion: no-preference) {
+  body.dashboard-mode .quick-actions .dash-tour-btn.onboarding-tour-btn-attention {
+    animation: onboardingTourButtonAttention 2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  body.dashboard-mode .quick-actions .dash-tour-btn.onboarding-tour-btn-attention::after {
+    animation: onboardingTourButtonHalo 2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+@keyframes onboardingTourButtonAttention {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  14% {
+    transform: translateY(-1px) scale(1.025);
+  }
+  30%, 47% {
+    transform: translateY(-2px) scale(1.045);
+  }
+  64% {
+    transform: translateY(-1px) scale(1.018);
+  }
+  82% {
+    transform: translateY(0) scale(1.008);
+  }
+}
+@keyframes onboardingTourButtonHalo {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  14% {
+    opacity: 0.68;
+    transform: scale(1);
+  }
+  30%, 47% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  64% {
+    opacity: 0.58;
+    transform: scale(1.015);
+  }
+  82% {
+    opacity: 0.26;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.dashboard-mode .quick-actions .dash-tour-btn.onboarding-tour-btn-attention {
+    transform: none;
+  }
+  body.dashboard-mode .quick-actions .dash-tour-btn.onboarding-tour-btn-attention::after {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+}
+
 /* ── 布局与双面板 ───────────────────────────────────── */
 body.dashboard-mode .main-grid.dashboard-page {
   gap: 16px;
@@ -12219,19 +12361,36 @@ body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-memory-bar.drop-highl
   color: #9cc7ff;
 }
 
-/* ── Chat Mode 提醒卡片（深色控制室）── */
+/* ── Chat Mode 提醒卡片（深色控制室，紫色主题）── */
 body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder {
   background:
-    radial-gradient(ellipse 90% 140% at 6% 0%, rgba(156, 199, 255, 0.10) 0%, transparent 70%),
-    linear-gradient(180deg, rgba(21, 33, 63, 0.92) 0%, rgba(15, 25, 54, 0.92) 100%);
-  border-color: rgba(156, 199, 255, 0.18);
-  color: #bcd8ff;
+    radial-gradient(ellipse 90% 140% at 6% 0%, rgba(155, 123, 255, 0.16) 0%, transparent 70%),
+    linear-gradient(135deg, rgba(42, 34, 82, 0.96) 0%, rgba(27, 24, 59, 0.96) 100%);
+  border-color: rgba(155, 123, 255, 0.28);
+  border-left-color: #9b7bff;
+  color: #e7e2ff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 4px 14px rgba(2, 8, 25, 0.3);
+    0 10px 28px rgba(20, 13, 58, 0.26);
 }
 body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder::before {
-  background: linear-gradient(90deg, transparent, rgba(156, 199, 255, 0.5), transparent);
+  background: linear-gradient(90deg, transparent, rgba(155, 123, 255, 0.65), transparent);
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder-mark {
+  background: rgba(155, 123, 255, 0.16);
+  color: #cfc4ff;
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder-kicker {
+  color: #c8baff;
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder-title {
+  color: #f0ecff;
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder-body {
+  color: #d3ccef;
+}
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-reminder-reminder {
+  color: #d7cdff;
 }
 
 /* ── 滚动条 ─────────────────────────────────────────── */
@@ -12731,19 +12890,37 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .c
   color: #1a4fa0;
 }
 
-/* ── Chat Mode 提醒卡片（浅色控制室）── */
+/* ── Chat Mode 提醒卡片（浅色控制室，紫色主题）── */
 body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder {
   background:
-    radial-gradient(ellipse 90% 140% at 6% 0%, rgba(76, 130, 205, 0.07) 0%, transparent 70%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(245, 249, 255, 0.94) 100%);
-  border-color: rgba(23, 55, 112, 0.12);
-  color: #1a4fa0;
+    radial-gradient(ellipse 90% 140% at 6% 0%, rgba(124, 92, 255, 0.09) 0%, transparent 70%),
+    linear-gradient(135deg, #ffffff 0%, #f5f1ff 100%);
+  border-color: rgba(124, 92, 255, 0.24);
+  border-left-color: #7c5cff;
+  color: #4a3a93;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 2px 10px rgba(23, 55, 112, 0.08);
+    0 8px 24px rgba(76, 57, 150, 0.10);
 }
 body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder::before {
-  background: linear-gradient(90deg, transparent, rgba(76, 130, 205, 0.4), transparent);
+  background: linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.48), transparent);
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder-mark {
+  background: rgba(124, 92, 255, 0.12);
+  color: #6247d5;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder-kicker {
+  color: #694fd5;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder-title {
+  color: #34216f;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder-body {
+  color: #5d4d95;
+}
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder-reminder {
+  color: #5a3fc5;
+}
 }
 
 /* ── 滚动条 ─────────────────────────────────────────── */
@@ -13859,9 +14036,9 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
    引擎内联定位 left/top/width/height 保持原样；装饰层只挂在 ::after 伪元素（transform 不干扰定位）。 */
 .onboarding-mask-piece {
   position: fixed;
-  background: rgba(6, 8, 15, 0.66);
-  -webkit-backdrop-filter: blur(3px) saturate(1.2);
-  backdrop-filter: blur(3px) saturate(1.2);
+  background: rgba(6, 8, 15, 0.48);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   z-index: 50000;
   pointer-events: auto;
   transition: opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1);
@@ -13870,13 +14047,13 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   position: fixed;
   z-index: 50001;
   pointer-events: none;
-  border: 1.5px solid rgba(150, 178, 255, 0.85);
+  border: 1.5px solid rgba(255, 157, 92, 0.85);
   border-radius: 14px;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.07),        /* 外发丝 hairline */
-    0 0 0 5px rgba(109, 140, 255, 0.16),        /* 柔和扩散环 */
-    0 0 34px rgba(109, 140, 255, 0.42),         /* 主辉光 */
-    inset 0 0 16px rgba(109, 140, 255, 0.12);   /* 内辉光 */
+    0 0 0 5px rgba(255, 157, 92, 0.16),         /* 柔和扩散环 */
+    0 0 34px rgba(255, 157, 92, 0.42),          /* 主辉光 */
+    inset 0 0 16px rgba(255, 157, 92, 0.12);    /* 内辉光 */
   box-sizing: border-box;
   transition: left 0.16s cubic-bezier(0.22, 1, 0.36, 1), top 0.16s cubic-bezier(0.22, 1, 0.36, 1),
               width 0.16s cubic-bezier(0.22, 1, 0.36, 1), height 0.16s cubic-bezier(0.22, 1, 0.36, 1);
@@ -13887,7 +14064,7 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   position: absolute;
   inset: -14px;
   border-radius: 26px;
-  background: radial-gradient(ellipse at center, rgba(109, 140, 255, 0.26) 0%, rgba(109, 140, 255, 0) 70%);
+  background: radial-gradient(ellipse at center, rgba(255, 157, 92, 0.26) 0%, rgba(255, 157, 92, 0) 70%);
   animation: onboarding-glow-breathe 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 @keyframes onboarding-glow-breathe {
@@ -14228,6 +14405,7 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 .welcome-col {
   flex: 1; border: 1px solid rgba(156, 199, 255, 0.10); border-radius: 12px;
   padding: 12px;
+  cursor: pointer;
   background: linear-gradient(180deg, rgba(156, 199, 255, 0.05) 0%, rgba(156, 199, 255, 0.02) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   /* 模式焦点栏：焦点/退暗状态切换时平滑迁移，见下方「模式焦点栏」一节 */
@@ -14378,13 +14556,13 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-c
 
 .welcome-float-dot {
   width: 44px; height: 44px; margin-left: auto; border-radius: 50%;
-  border: 1px solid rgba(110, 168, 255, 0.45);
-  background: linear-gradient(135deg, #6ea8ff 0%, #9b7bff 100%);
+  border: 1px solid rgba(255, 157, 92, 0.45);
+  background: linear-gradient(135deg, #ffb27f 0%, #e87858 100%);
   color: #0b0e14; font-size: 18px; cursor: grab;
   display: flex; align-items: center; justify-content: center;
   touch-action: none; user-select: none; /* 可拖拽：禁止触摸滚动与文本选择 */
   box-shadow:
-    0 0 0 4px rgba(110, 168, 255, 0.12),
+    0 0 0 4px rgba(255, 157, 92, 0.12),
     0 8px 20px rgba(2, 8, 25, 0.35);
   /* 边框发亮由 welcomeDotGlow 呼吸动画接管 box-shadow；transition 只留 transform，
      hover 放大不受无限动画影响（动画永不碰 transform） */
@@ -14397,17 +14575,17 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-c
   transition: none;
   animation: none; /* 动画停止后阴影回落到下方提升值 */
   box-shadow:
-    0 0 0 6px rgba(110, 168, 255, 0.22),
+    0 0 0 6px rgba(255, 157, 92, 0.22),
     0 14px 32px rgba(2, 8, 25, 0.45);
 }
 .welcome-float-dot:hover {
   transform: translateY(-2px) scale(1.05);
 }
 .welcome-float-dot:focus-visible {
-  outline: 2px solid rgba(110, 168, 255, 0.8);
+  outline: 2px solid rgba(255, 157, 92, 0.8);
   outline-offset: 2px;
 }
-/* 边框发亮：冰蓝光边（1px 贴边）+ 外光呼吸，与展开面板 welcomePanelGlow 同语言——
+/* 边框发亮：暖橙光边（1px 贴边）+ 外光呼吸，与展开面板 welcomePanelGlow 同语言——
    只动画 box-shadow，永不碰 transform（避免锁定 hover 位移）；4s 节奏与面板同拍。
    reduce-motion 下回落到上方的静态光圈。 */
 @media (prefers-reduced-motion: no-preference) {
@@ -14416,16 +14594,16 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-c
 @keyframes welcomeDotGlow {
   0%, 100% {
     box-shadow:
-      0 0 0 4px rgba(110, 168, 255, 0.12),
-      0 0 0 1px rgba(110, 168, 255, 0.35),
-      0 0 12px rgba(110, 168, 255, 0.30),
+      0 0 0 4px rgba(255, 157, 92, 0.12),
+      0 0 0 1px rgba(255, 157, 92, 0.35),
+      0 0 12px rgba(255, 157, 92, 0.30),
       0 8px 20px rgba(2, 8, 25, 0.35);
   }
   50% {
     box-shadow:
-      0 0 0 6px rgba(110, 168, 255, 0.22),
-      0 0 0 1px rgba(110, 168, 255, 0.65),
-      0 0 24px rgba(110, 168, 255, 0.55),
+      0 0 0 6px rgba(255, 157, 92, 0.22),
+      0 0 0 1px rgba(255, 157, 92, 0.65),
+      0 0 24px rgba(255, 157, 92, 0.55),
       0 8px 20px rgba(2, 8, 25, 0.35);
   }
 }
@@ -14624,10 +14802,10 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-new-badge {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 10px rgba(26, 86, 168, 0.18);
 }
 body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
-  border-color: rgba(26, 86, 168, 0.4);
-  box-shadow: 0 0 0 4px rgba(26, 86, 168, 0.1), 0 8px 20px rgba(31, 61, 124, 0.16);
+  border-color: rgba(181, 83, 48, 0.4);
+  box-shadow: 0 0 0 4px rgba(214, 108, 62, 0.1), 0 8px 20px rgba(100, 57, 39, 0.16);
 }
-/* 浅色圆钮同样边框发亮：同 4s 呼吸节奏，蓝光弱化一档适配白昼玻璃 */
+/* 浅色圆钮同样边框发亮：同 4s 呼吸节奏，橙光弱化一档适配白昼玻璃 */
 @media (prefers-reduced-motion: no-preference) {
   body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
     animation: welcomeDotGlowLight 4s ease-in-out infinite;
@@ -14636,17 +14814,17 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
 @keyframes welcomeDotGlowLight {
   0%, 100% {
     box-shadow:
-      0 0 0 4px rgba(26, 86, 168, 0.10),
-      0 0 0 1px rgba(26, 86, 168, 0.28),
-      0 0 12px rgba(26, 86, 168, 0.20),
-      0 8px 20px rgba(31, 61, 124, 0.16);
+      0 0 0 4px rgba(214, 108, 62, 0.10),
+      0 0 0 1px rgba(214, 108, 62, 0.28),
+      0 0 12px rgba(214, 108, 62, 0.20),
+      0 8px 20px rgba(100, 57, 39, 0.16);
   }
   50% {
     box-shadow:
-      0 0 0 6px rgba(26, 86, 168, 0.18),
-      0 0 0 1px rgba(26, 86, 168, 0.50),
-      0 0 22px rgba(26, 86, 168, 0.38),
-      0 8px 20px rgba(31, 61, 124, 0.16);
+      0 0 0 6px rgba(214, 108, 62, 0.18),
+      0 0 0 1px rgba(214, 108, 62, 0.50),
+      0 0 22px rgba(214, 108, 62, 0.38),
+      0 8px 20px rgba(100, 57, 39, 0.16);
   }
 }
 body.dashboard-mode[data-dash-theme="light"] .welcome-float.dragging .welcome-float-dot {
@@ -14664,9 +14842,9 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tipbar {
 body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close { color: #7a86a3; }
 body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #16294f; }
 
-/* ── 欢迎助手独立暖色外壳 ────────────────────────────────────────────────
-   工作区使用冷蓝/紫色时，助手面板改用暖赭石与纸张色，形成清晰的前后景层次。
-   变量同时服务深浅主题和柔光动画，避免面板跟随主题融入背景。 */
+/* ── 欢迎助手独立模式色外壳 ─────────────────────────────────────────────
+   Report Mode 保持现有橙色；Chat Mode 通过 mode-chat 切换到紫色，
+   变量同时服务深浅主题和柔光动画，让面板与当前工作流保持一致。 */
 .welcome-panel {
   --welcome-shell-top: #3b2a25;
   --welcome-shell-bottom: #251c1d;
@@ -14945,6 +15123,56 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 8px rgba(110, 168, 255, 0.4);
 }
 .welcome-progress-label { white-space: normal; /* 垂直列表：每步完整显示，不截断 */ }
+.welcome-progress-confirmation {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 191, 145, 0.18);
+}
+.welcome-progress-confirmation-text {
+  color: #ffe8d7;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.welcome-progress-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.welcome-progress-confirm-yes,
+.welcome-progress-confirm-later {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.welcome-progress-confirm-yes {
+  border: 1px solid rgba(255, 191, 145, 0.64);
+  background: linear-gradient(135deg, rgba(229, 112, 61, 0.94), rgba(179, 72, 52, 0.94));
+  color: #fff8f1;
+  box-shadow: 0 4px 12px rgba(130, 52, 32, 0.24);
+}
+.welcome-progress-confirm-later {
+  border: 1px solid rgba(255, 191, 145, 0.24);
+  background: rgba(255, 191, 145, 0.08);
+  color: #e9cbbb;
+}
+.welcome-progress-confirm-yes:hover,
+.welcome-progress-confirm-later:hover {
+  transform: translateY(-1px);
+}
+.welcome-progress-confirm-yes:hover {
+  background: linear-gradient(135deg, rgba(239, 127, 72, 0.98), rgba(193, 79, 58, 0.98));
+}
+.welcome-progress-confirm-later:hover {
+  background: rgba(255, 191, 145, 0.14);
+  border-color: rgba(255, 191, 145, 0.42);
+}
 .deep-window-chat-add {
   /* 主 CTA：来源色实心药丸（账本美学下唯一强色块）+ 常亮柔光 + 低幅呼吸。
      颜色走 .deep-window 作用域变量 —— 浅色 Chat 蓝白字、Report 橙深字，
@@ -15015,14 +15243,14 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
 .deep-window.minimized .deep-window-chat-add { display: none; }
 .chat-reminder-action {
   margin-left: auto; flex-shrink: 0;
-  border: 1px solid rgba(110, 168, 255, 0.42);
-  background: linear-gradient(180deg, rgba(110, 168, 255, 0.20) 0%, rgba(110, 168, 255, 0.08) 100%);
-  color: #dceaff; border-radius: 999px; padding: 3px 10px;
+  border: 1px solid rgba(155, 123, 255, 0.42);
+  background: linear-gradient(180deg, rgba(155, 123, 255, 0.20) 0%, rgba(155, 123, 255, 0.08) 100%);
+  color: #f0ecff; border-radius: 999px; padding: 3px 10px;
   font-size: 10.5px; font-weight: 650; cursor: pointer; font-family: inherit;
 }
 .chat-reminder-action:hover {
-  background: linear-gradient(180deg, rgba(110, 168, 255, 0.30) 0%, rgba(110, 168, 255, 0.12) 100%);
-  border-color: rgba(110, 168, 255, 0.65);
+  background: linear-gradient(180deg, rgba(155, 123, 255, 0.30) 0%, rgba(155, 123, 255, 0.12) 100%);
+  border-color: rgba(155, 123, 255, 0.65);
 }
 .chat-memory-starter {
   margin: 0 0 8px; padding: 10px 12px;
@@ -15055,11 +15283,214 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-progress-num {
   background: rgba(76, 130, 205, 0.10); color: #7a86a3;
   border-color: rgba(26, 86, 168, 0.16);
 }
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-confirmation {
+  border-top-color: rgba(181, 83, 48, 0.18);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-confirmation-text {
+  color: #5b3328;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-confirm-yes {
+  border-color: rgba(181, 83, 48, 0.48);
+  background: linear-gradient(135deg, #d66c3e, #b55330);
+  color: #fffaf6;
+  box-shadow: 0 4px 12px rgba(139, 67, 41, 0.16);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-confirm-later {
+  border-color: rgba(181, 83, 48, 0.22);
+  background: rgba(181, 83, 48, 0.07);
+  color: #8a4d38;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-confirm-yes:hover {
+  background: linear-gradient(135deg, #e17a4b, #c15e38);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-progress-confirm-later:hover {
+  background: rgba(181, 83, 48, 0.12);
+  border-color: rgba(181, 83, 48, 0.36);
+}
 body.dashboard-mode[data-dash-theme="light"] .chat-reminder-action {
-  background: linear-gradient(180deg, #ffffff 0%, #eaf2ff 100%);
-  border-color: rgba(26, 86, 168, 0.28); color: #1a4fa0;
+  background: linear-gradient(180deg, #ffffff 0%, #f0ebff 100%);
+  border-color: rgba(124, 92, 255, 0.30); color: #5a3fc5;
 }
 body.dashboard-mode[data-dash-theme="light"] .chat-memory-starter {
   background: linear-gradient(180deg, rgba(124, 92, 255, 0.08) 0%, rgba(124, 92, 255, 0.03) 100%);
   border-color: rgba(124, 92, 255, 0.24); color: #3c2f7d;
+}
+
+/* ── 新手引导中的助手面板：始终可见并保持高光 ── */
+.welcome-float.onboarding-tour-active {
+  z-index: 50001;
+}
+.welcome-float.onboarding-tour-active .welcome-panel {
+  outline: 2px solid rgba(150, 178, 255, 0.82);
+  outline-offset: 5px;
+  box-shadow:
+    0 0 0 1px rgba(150, 178, 255, 0.58),
+    0 0 0 7px rgba(150, 178, 255, 0.12),
+    0 0 32px rgba(110, 168, 255, 0.42),
+    0 22px 52px rgba(2, 8, 25, 0.46);
+}
+.welcome-float.onboarding-tour-active .welcome-float-dot {
+  outline: 2px solid rgba(255, 157, 92, 0.9);
+  outline-offset: 5px;
+  box-shadow:
+    0 0 0 8px rgba(255, 157, 92, 0.18),
+    0 0 26px rgba(255, 157, 92, 0.52),
+    0 10px 24px rgba(2, 8, 25, 0.42);
+}
+.welcome-float.onboarding-tour-drag-enabled .welcome-head {
+  cursor: grab;
+  user-select: none;
+}
+.welcome-float.onboarding-tour-drag-enabled.dragging .welcome-head {
+  cursor: grabbing;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.onboarding-tour-active .welcome-panel {
+  outline-color: rgba(54, 105, 204, 0.72);
+  box-shadow:
+    0 0 0 1px rgba(54, 105, 204, 0.42),
+    0 0 0 7px rgba(54, 105, 204, 0.10),
+    0 0 32px rgba(54, 105, 204, 0.24),
+    0 22px 52px rgba(60, 77, 126, 0.20);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.onboarding-tour-active .welcome-float-dot {
+  outline-color: rgba(181, 83, 48, 0.76);
+  box-shadow:
+    0 0 0 8px rgba(214, 108, 62, 0.14),
+    0 0 26px rgba(214, 108, 62, 0.30),
+    0 10px 24px rgba(100, 57, 39, 0.20);
+}
+
+/* ── Chat Mode：助手面板与圆形图标切换为现有紫色语义 ─────────────── */
+.welcome-float.mode-chat .welcome-panel {
+  --welcome-shell-top: #2f265b;
+  --welcome-shell-bottom: #1f183f;
+  --welcome-shell-glow: rgba(155, 123, 255, 0.18);
+  --welcome-shell-glow-strong: rgba(155, 123, 255, 0.32);
+  --welcome-shell-line: rgba(193, 175, 255, 0.54);
+  --welcome-shell-line-strong: rgba(216, 205, 255, 0.80);
+  --welcome-shell-shadow: rgba(17, 10, 43, 0.36);
+  --welcome-shell-text: #f2eeff;
+}
+.welcome-float.mode-chat .welcome-panel::after {
+  background: linear-gradient(135deg, var(--welcome-shell-line-strong) 0%, rgba(124, 92, 255, 0.78) 100%);
+}
+.welcome-float.mode-chat .welcome-panel.welcome-emphasis {
+  background:
+    radial-gradient(ellipse 90% 68% at 10% 0%, var(--welcome-shell-glow-strong) 0%, transparent 62%),
+    linear-gradient(145deg, #46358a 0%, #282053 100%);
+}
+.welcome-float.mode-chat .welcome-avatar {
+  background: linear-gradient(135deg, #b59cff 0%, #8066ff 100%);
+  box-shadow:
+    0 0 0 1px rgba(216, 205, 255, 0.48),
+    0 0 0 4px rgba(155, 123, 255, 0.14),
+    0 0 18px rgba(155, 123, 255, 0.42);
+}
+.welcome-float.mode-chat .welcome-new-badge {
+  background: linear-gradient(135deg, #b59cff, #8066ff);
+  color: #17102f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 0 10px rgba(155, 123, 255, 0.30);
+}
+.welcome-float.mode-chat .welcome-collapse-btn {
+  border-color: rgba(193, 175, 255, 0.24);
+  background: rgba(155, 123, 255, 0.11);
+  color: #ded6ff;
+}
+.welcome-float.mode-chat .welcome-collapse-btn:hover {
+  background: rgba(155, 123, 255, 0.20);
+  border-color: rgba(216, 205, 255, 0.56);
+}
+.welcome-float.mode-chat .welcome-panel-tip {
+  background: rgba(155, 123, 255, 0.11);
+  border-color: rgba(155, 123, 255, 0.38);
+  color: #f0ecff;
+}
+.welcome-float.mode-chat .welcome-float-dot {
+  --welcome-dot-ring: rgba(193, 175, 255, 0.54);
+  --welcome-dot-ring-soft: rgba(155, 123, 255, 0.16);
+  --welcome-dot-ring-strong: rgba(155, 123, 255, 0.26);
+  --welcome-dot-glow: rgba(155, 123, 255, 0.38);
+  border-color: var(--welcome-dot-ring);
+  background: linear-gradient(135deg, #b59cff 0%, #8066ff 100%);
+  box-shadow: 0 0 0 4px rgba(155, 123, 255, 0.14), 0 8px 20px rgba(17, 10, 43, 0.34);
+}
+.welcome-float.mode-chat.onboarding-tour-active .welcome-panel {
+  outline-color: rgba(193, 175, 255, 0.86);
+  box-shadow:
+    0 0 0 1px rgba(193, 175, 255, 0.62),
+    0 0 0 7px rgba(155, 123, 255, 0.14),
+    0 0 32px rgba(155, 123, 255, 0.44),
+    0 22px 52px rgba(17, 10, 43, 0.46);
+}
+.welcome-float.mode-chat.onboarding-tour-active .welcome-float-dot {
+  outline-color: rgba(193, 175, 255, 0.92);
+  box-shadow:
+    0 0 0 8px rgba(155, 123, 255, 0.20),
+    0 0 26px rgba(155, 123, 255, 0.56),
+    0 10px 24px rgba(17, 10, 43, 0.44);
+}
+
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-panel {
+  --welcome-shell-top: #fbf9ff;
+  --welcome-shell-bottom: #ece7ff;
+  --welcome-shell-glow: rgba(124, 92, 255, 0.14);
+  --welcome-shell-glow-strong: rgba(124, 92, 255, 0.24);
+  --welcome-shell-line: rgba(109, 79, 220, 0.34);
+  --welcome-shell-line-strong: rgba(109, 79, 220, 0.56);
+  --welcome-shell-shadow: rgba(76, 57, 150, 0.16);
+  --welcome-shell-text: #31245f;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-panel.welcome-emphasis {
+  background:
+    radial-gradient(ellipse 90% 68% at 10% 0%, var(--welcome-shell-glow-strong) 0%, transparent 62%),
+    linear-gradient(145deg, #ffffff 0%, #eeeaff 100%);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-panel::after {
+  background: linear-gradient(135deg, var(--welcome-shell-line-strong) 0%, rgba(124, 92, 255, 0.72) 100%);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-avatar {
+  background: linear-gradient(135deg, #947cff 0%, #6d4ff0 100%);
+  box-shadow:
+    0 0 0 1px rgba(109, 79, 220, 0.38),
+    0 0 0 4px rgba(124, 92, 255, 0.11),
+    0 0 18px rgba(124, 92, 255, 0.26);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-new-badge {
+  background: linear-gradient(135deg, #8a6bff, #6d4ff0);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.36), 0 0 10px rgba(124, 92, 255, 0.24);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-collapse-btn {
+  border-color: rgba(109, 79, 220, 0.24);
+  background: rgba(124, 92, 255, 0.09);
+  color: #6247c9;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-collapse-btn:hover {
+  background: rgba(124, 92, 255, 0.16);
+  border-color: rgba(109, 79, 220, 0.46);
+  color: #49329f;
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-float-dot {
+  --welcome-dot-ring: rgba(109, 79, 220, 0.42);
+  --welcome-dot-ring-soft: rgba(124, 92, 255, 0.12);
+  --welcome-dot-ring-strong: rgba(124, 92, 255, 0.20);
+  --welcome-dot-glow: rgba(124, 92, 255, 0.28);
+  border-color: var(--welcome-dot-ring);
+  background: linear-gradient(135deg, #947cff 0%, #6d4ff0 100%);
+  box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.11), 0 8px 20px rgba(76, 57, 150, 0.18);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat.onboarding-tour-active .welcome-panel {
+  outline-color: rgba(109, 79, 220, 0.78);
+  box-shadow:
+    0 0 0 1px rgba(109, 79, 220, 0.48),
+    0 0 0 7px rgba(124, 92, 255, 0.12),
+    0 0 32px rgba(124, 92, 255, 0.28),
+    0 22px 52px rgba(76, 57, 150, 0.20);
+}
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat.onboarding-tour-active .welcome-float-dot {
+  outline-color: rgba(109, 79, 220, 0.84);
+  box-shadow:
+    0 0 0 8px rgba(124, 92, 255, 0.16),
+    0 0 26px rgba(124, 92, 255, 0.38),
+    0 10px 24px rgba(76, 57, 150, 0.22);
 }
