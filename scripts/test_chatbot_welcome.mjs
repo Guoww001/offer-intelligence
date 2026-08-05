@@ -456,13 +456,19 @@ t.refreshTourHidden();
 assertEqual(t.tourHidden(), false, "tour ended -> hidden state false");
 assertEqual(wrap.classList.contains("tour-hidden"), false, "wrapper removes tour-hidden class");
 
-// ── 用例 31：三步进度垂直渲染（去掉 → 箭头，每步文案完整可见）──
+// ── 用例 31：三步进度垂直渲染（无 → 箭头、无 ①②③ 序号字符，每步文案完整可见）──
 const progNoReport = t.progressHtml({ hasReport: false, hasMemory: false, isChat: false });
 assertEqual(progNoReport.includes("welcome-progress-arrow"), false, "vertical progress removes arrow separators");
-assertEqual(progNoReport.includes("① 在 Report 提问"), true, "step 1 label fully present (no ellipsis truncation)");
-assertEqual(progNoReport.includes("② 点「加入对话」"), true, "step 2 label fully present");
-assertEqual(progNoReport.includes("③ 在 Chat 对话"), true, "step 3 label fully present");
+assertEqual(progNoReport.includes("①"), false, "step labels drop circled ① numerals");
+assertEqual(progNoReport.includes("②"), false, "step labels drop circled ② numerals");
+assertEqual(progNoReport.includes("③"), false, "step labels drop circled ③ numerals");
+assertEqual(progNoReport.includes("在 Report 提问"), true, "step 1 label fully present (no ellipsis truncation)");
+assertEqual(progNoReport.includes("点「加入对话」"), true, "step 2 label fully present");
+assertEqual(progNoReport.includes("在 Chat 对话"), true, "step 3 label fully present");
 assertEqual(t.progressHtml({ hasReport: true, hasMemory: true, isChat: true }).includes("✓"), true, "chatActive renders done checkmarks");
+// 列标题同样无序号
+assertMatch(t.panelElement().innerHTML, /先获取数据/, "column title drops circled numeral, keeps text");
+assertMatch(t.panelElement().innerHTML, /再深度分析/, "right column title drops circled numeral");
 
 // ── 用例 32：拖拽位置 clamp 纯函数 ──
 assertEqual(JSON.stringify(t.clampDotPos(10, 10, 800, 600, 350, 300)), JSON.stringify({ left: 10, top: 10 }), "in-bounds position unchanged");
@@ -532,5 +538,40 @@ t.renderPanel("chat", { offers: [], hasMemory: false });
 wrap = grid.querySelector(".welcome-float");
 assertEqual(wrap.classList.contains("mode-chat"), true, "re-render with chat mode -> mode-chat set");
 assertEqual(t.modeClass(), "chat", "modeClass reports chat after re-render");
+
+// ── 用例 37：展开态面板头部拖拽（byDot=false：按 wrap 尺寸 clamp，共用持久化键）──
+delete store["oi_onboarding_done"];
+delete store["oi_welcome_collapsed"];
+delete store["oi_welcome_dot_pos"];
+t.resetCollapsed();
+t.renderPanel("report", { offers: [], hasMemory: false });
+wrap = grid.querySelector(".welcome-float");
+assertEqual(t.isCollapsed(), false, "expanded panel before drag");
+t.panelPointerDown({ clientX: 200, clientY: 100, pointerId: 7 });
+t.dotPointerMove({ clientX: 260, clientY: 130, pointerId: 7 }); // 位移 66px > 阈值
+t.dotPointerUp();
+assertEqual(wrap.style.left, "60px", "panel drag moves wrap left (0 + 60)");
+assertEqual(wrap.style.top, "30px", "panel drag moves wrap top (0 + 30)");
+assertEqual(t.isCollapsed(), false, "panel drag keeps panel expanded");
+const panelDragPos = JSON.parse(store["oi_welcome_dot_pos"]);
+assertEqual(panelDragPos.left, 60, "panel drag persists shared dot pos left");
+assertEqual(panelDragPos.top, 30, "panel drag persists shared dot pos top");
+// 边界 clamp：超出容器 → 按 wrap 尺寸拉回
+t.panelPointerDown({ clientX: 300, clientY: 300, pointerId: 8 });
+t.dotPointerMove({ clientX: 5000, clientY: 5000, pointerId: 8 });
+t.dotPointerUp();
+assertEqual(wrap.style.left, "1000px", "panel drag clamps to container right edge (1200-200)");
+assertEqual(wrap.style.top, "700px", "panel drag clamps to container bottom edge (800-100)");
+// 收起态：面板拖拽入口无效（圆钮专用）
+t.setCollapsed(true, true);
+t.panelPointerDown({ clientX: 100, clientY: 100, pointerId: 9 });
+t.dotPointerMove({ clientX: 160, clientY: 160, pointerId: 9 });
+t.dotPointerUp();
+assertEqual(wrap.style.left, "1000px", "panel drag ignored while collapsed (dot-only drag)");
+// 头部未移动 → 无副作用（不展开不收起）
+t.setCollapsed(false, false);
+t.panelPointerDown({ clientX: 100, clientY: 100, pointerId: 10 });
+t.dotPointerUp();
+assertEqual(t.isCollapsed(), false, "panel head click without move does nothing (stays expanded)");
 
 console.log("PASS: welcome logic");

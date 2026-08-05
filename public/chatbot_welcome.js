@@ -25,9 +25,9 @@
       flow2Sub: "拖入记忆栏",
       flow3Title: "Chat 对话",
       flow3Sub: "深度分析",
-      colLeftTitle: "① 先获取数据",
+      colLeftTitle: "先获取数据",
       colLeftTag: "REPORT",
-      colRightTitle: "③ 再深度分析",
+      colRightTitle: "再深度分析",
       colRightTag: "CHAT",
       colRightNote: "必须先拖入记忆栏，Chat 才有数据可答",
       tipReport: "发送后，报告生成时可点 ─ 最小化，拖入记忆栏——Chat 分析必须先有记忆栏数据",
@@ -35,9 +35,9 @@
       chatHelloBody: "先拖入 1 份报告，再点下面的示例，我会基于它给出建议",
       chatEmptyMemory: "请先拖入报告到记忆栏",
       panelTip: "点「加入对话」一键带进对话；或点 ─ 最小化后拖入记忆栏（高级用法）",
-      progressStep1: "① 在 Report 提问",
-      progressStep2: "② 点「加入对话」",
-      progressStep3: "③ 在 Chat 对话",
+      progressStep1: "在 Report 提问",
+      progressStep2: "点「加入对话」",
+      progressStep3: "在 Chat 对话",
       progressAdvanced: "高级用法：最小化后拖入记忆栏",
       minimizedTip: "已最小化：切到 Chat Mode，把药丸拖到记忆栏",
       goReport: "去生成报告",
@@ -56,9 +56,9 @@
       flow2Sub: "Drag into memory",
       flow3Title: "Chat in Chat Mode",
       flow3Sub: "Deep analysis",
-      colLeftTitle: "① Fetch data first",
+      colLeftTitle: "Fetch data first",
       colLeftTag: "REPORT",
-      colRightTitle: "③ Then analyze deeply",
+      colRightTitle: "Then analyze deeply",
       colRightTag: "CHAT",
       colRightNote: "Drag reports into memory first — Chat only answers with data in memory",
       tipReport: "After sending, click – to minimize, then drag into the memory bar — Chat analysis needs that data first",
@@ -66,9 +66,9 @@
       chatHelloBody: "Drag in a report first, then pick an example — I'll analyze based on it",
       chatEmptyMemory: "Drag a report into the memory bar first",
       panelTip: "Click “Add to chat” to start instantly, or click – to minimize and drag into the memory bar (advanced)",
-      progressStep1: "① Ask in Report Mode",
-      progressStep2: "② Click Add to chat",
-      progressStep3: "③ Chat in Chat Mode",
+      progressStep1: "Ask in Report Mode",
+      progressStep2: "Click Add to chat",
+      progressStep3: "Chat in Chat Mode",
       progressAdvanced: "Advanced: minimize, then drag into the memory bar",
       minimizedTip: "Minimized: switch to Chat Mode and drag the pill into the memory bar",
       goReport: "Go generate a report",
@@ -339,6 +339,7 @@
     _mode = mode;
     if (opts.hasMemory !== undefined) _hasMemory = !!opts.hasMemory;
     _bindPanel(panel);
+    _bindPanelDrag(panel);
     _bindBubbleControls(panel, dot);
     _bindLangObserver();
     _bindTourObserver();
@@ -390,8 +391,13 @@
       }
     } catch (e) {}
   }
-  // ── 圆钮自由拖拽：pointer 事件 + capture，拖动整个气泡组（wrap），
-  //    按圆钮自身位置 clamp（圆钮可自由拖到面板任意位置），位置持久化 ──
+  // ── 气泡组自由拖拽：pointer 事件 + capture，拖动整个气泡组（wrap）。
+  //    两种拖拽入口共用一套状态机（_drag.byDot 区分 clamp 基准）：
+  //      byDot=true  收起态圆钮 —— 按圆钮自身位置 clamp（圆钮可自由拖到面板任意位置），
+  //                   未移动视为点击展开；
+  //      byDot=false 展开态面板头部手柄 —— 按 wrap 自身尺寸 clamp（面板必须完整留在容器内），
+  //                   未移动视为普通点击（无副作用）。
+  //    位置共用持久化键 oi_welcome_dot_pos：展开拖走后收起，圆钮出现在面板新位置。──
   var DOT_DRAG_THRESHOLD = 4; // px：累计位移超过阈值视为拖拽（不触发展开），否则视为点击展开
   function clampDotPos(left, top, contW, contH, dotW, dotH) {
     return {
@@ -425,28 +431,50 @@
       }
     } catch (e) {}
   }
-  function _dotPointerDown(e) {
-    var dot = _dotEl, wrap = _wrapEl;
-    if (!dot || !wrap || !_collapsed || _tourHidden) { _drag = null; return; }
+  function _startDrag(e, byDot) {
+    var wrap = _wrapEl, dot = _dotEl;
+    if (!wrap || _tourHidden) { _drag = null; return; }
+    if (byDot && !_collapsed) { _drag = null; return; }  // 圆钮只在收起态可拖
+    if (!byDot && _collapsed) { _drag = null; return; }  // 面板只在展开态可拖
     var container = containerFor();
     if (!container) return;
     try {
       var wrapRect = wrap.getBoundingClientRect();
       var contRect = container.getBoundingClientRect();
-      var dotRect = dot.getBoundingClientRect();
-      _drag = {
+      var drag = {
         startX: e.clientX, startY: e.clientY,
         origLeft: wrapRect.left - contRect.left,
         origTop: wrapRect.top - contRect.top,
-        dotOffLeft: dotRect.left - wrapRect.left,
-        dotOffTop: dotRect.top - wrapRect.top,
-        dotW: dotRect.width, dotH: dotRect.height,
         contW: contRect.width, contH: contRect.height,
+        byDot: byDot,
         moved: false, pointerId: e.pointerId || 0
       };
-      if (dot.setPointerCapture) { try { dot.setPointerCapture(_drag.pointerId); } catch (err) {} }
+      if (byDot && dot) {
+        var dotRect = dot.getBoundingClientRect();
+        drag.dotOffLeft = dotRect.left - wrapRect.left;
+        drag.dotOffTop = dotRect.top - wrapRect.top;
+        drag.dotW = dotRect.width; drag.dotH = dotRect.height;
+      } else {
+        drag.wrapW = wrapRect.width; drag.wrapH = wrapRect.height;
+      }
+      _drag = drag;
+      // capture 必须设在 pointerdown 实际触发的元素上（圆钮 / 面板头部手柄）：
+      // capture 会把后续 move/up 全部路由到该元素，而 move/up 监听器也绑在它上面；
+      // 若设在 wrap 上，事件被劫持到 wrap，head/dot 上的监听器收不到，拖拽会卡死。
+      var captureEl = byDot ? dot : (e.currentTarget || wrap);
+      if (captureEl && captureEl.setPointerCapture) {
+        try { captureEl.setPointerCapture(_drag.pointerId); } catch (err) {}
+      }
       if (wrap.classList) wrap.classList.add("dragging");
     } catch (err) { _drag = null; }
+  }
+  function _dotPointerDown(e) { _startDrag(e, true); }
+  function _panelPointerDown(e) {
+    // 头部手柄：排除 ✕ 收起按钮按下（按钮仍是点击语义）
+    try {
+      if (e.target && e.target.closest && e.target.closest(".welcome-collapse-btn")) { _drag = null; return; }
+    } catch (err) {}
+    _startDrag(e, false);
   }
   function _dotPointerMove(e) {
     if (!_drag) return;
@@ -454,12 +482,19 @@
     var dy = e.clientY - _drag.startY;
     if (Math.abs(dx) + Math.abs(dy) > DOT_DRAG_THRESHOLD) _drag.moved = true;
     if (!_drag.moved || !_wrapEl) return;
-    // 按圆钮自身位置 clamp（圆钮可自由拖到面板任意位置），wrap 跟随其内部偏移
-    var dotLeft = _drag.origLeft + _drag.dotOffLeft + dx;
-    var dotTop = _drag.origTop + _drag.dotOffTop + dy;
-    var pos = clampDotPos(dotLeft, dotTop, _drag.contW, _drag.contH, _drag.dotW, _drag.dotH);
-    _wrapEl.style.left = (pos.left - _drag.dotOffLeft) + "px";
-    _wrapEl.style.top = (pos.top - _drag.dotOffTop) + "px";
+    if (_drag.byDot) {
+      // 按圆钮自身位置 clamp（圆钮可自由拖到面板任意位置），wrap 跟随其内部偏移
+      var dotLeft = _drag.origLeft + _drag.dotOffLeft + dx;
+      var dotTop = _drag.origTop + _drag.dotOffTop + dy;
+      var pos = clampDotPos(dotLeft, dotTop, _drag.contW, _drag.contH, _drag.dotW, _drag.dotH);
+      _wrapEl.style.left = (pos.left - _drag.dotOffLeft) + "px";
+      _wrapEl.style.top = (pos.top - _drag.dotOffTop) + "px";
+    } else {
+      // 按 wrap 自身尺寸 clamp：展开面板必须完整留在容器内
+      var p = clampDotPos(_drag.origLeft + dx, _drag.origTop + dy, _drag.contW, _drag.contH, _drag.wrapW, _drag.wrapH);
+      _wrapEl.style.left = p.left + "px";
+      _wrapEl.style.top = p.top + "px";
+    }
     _pinPosition(_wrapEl);
   }
   // 圆钮拖到边缘后展开时，把 wrap 拉回面板内，保证展开面板完整可见（不持久化）。
@@ -485,11 +520,16 @@
   function _dotPointerUp() {
     if (!_drag) return;
     var moved = _drag.moved;
+    var byDot = _drag.byDot;
     if (!moved) {
-      setCollapsed(false, false); // 未移动 → 视为点击展开
-      _ensureWrapInside();        // 展开后拉回面板内（用展开后高度）
+      if (byDot) {
+        setCollapsed(false, false); // 圆钮未移动 → 视为点击展开
+        _ensureWrapInside();        // 展开后拉回面板内（用展开后高度）
+      }
+      // 面板头部未移动 → 普通点击，无副作用
     } else {
-      _suppressDotClick = true;   // 拖拽后的 click 不再触发展开
+      // 圆钮拖拽后的 click 不再触发展开；面板拖拽的 click 派发到头部（非圆钮），无需抑制
+      if (byDot) _suppressDotClick = true;
       if (_wrapEl) {
         try {
           storageSet("oi_welcome_dot_pos", JSON.stringify({
@@ -499,8 +539,9 @@
         } catch (err) {}
       }
     }
-    if (_dotEl && _dotEl.releasePointerCapture) {
-      try { _dotEl.releasePointerCapture(_drag.pointerId || 0); } catch (err) {}
+    var captureEl = byDot ? _dotEl : _wrapEl;
+    if (captureEl && captureEl.releasePointerCapture) {
+      try { captureEl.releasePointerCapture(_drag.pointerId || 0); } catch (err) {}
     }
     if (_wrapEl && _wrapEl.classList) _wrapEl.classList.remove("dragging");
     _drag = null;
@@ -510,6 +551,20 @@
       dot.addEventListener("pointerdown", _dotPointerDown);
       dot.addEventListener("pointermove", _dotPointerMove);
       dot.addEventListener("pointerup", function (e) {
+        if (_drag) _drag.pointerId = e.pointerId || _drag.pointerId;
+        _dotPointerUp();
+      });
+    } catch (e) {}
+  }
+  // 展开态：面板头部（头像/标题区）作为拖拽手柄，拖动整个气泡组。
+  // 监听器绑在每次新建的 panel 头部上，panel 重建时随之销毁。
+  function _bindPanelDrag(panel) {
+    try {
+      var head = panel.querySelector(".welcome-head");
+      if (!head || !head.addEventListener) return;
+      head.addEventListener("pointerdown", _panelPointerDown);
+      head.addEventListener("pointermove", _dotPointerMove);
+      head.addEventListener("pointerup", function (e) {
         if (_drag) _drag.pointerId = e.pointerId || _drag.pointerId;
         _dotPointerUp();
       });
@@ -807,6 +862,7 @@
       dotPointerDown: _dotPointerDown,
       dotPointerMove: _dotPointerMove,
       dotPointerUp: _dotPointerUp,
+      panelPointerDown: _panelPointerDown,
       tipStateFor: tipStateFor,
       fillAllowedFor: fillAllowedFor,
       shouldClearTipOnInput: shouldClearTipOnInput,

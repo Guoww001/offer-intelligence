@@ -13969,7 +13969,7 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
     linear-gradient(180deg, #15213f 0%, #0f1936 100%);
   border: 1px solid rgba(156, 199, 255, 0.14);
   border-radius: 16px;
-  padding: 14px 14px 13px;
+  padding: 16px 16px 15px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 16px 36px rgba(2, 8, 25, 0.28),
@@ -13992,18 +13992,23 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.welcome-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 11px; }
+.welcome-head {
+  display: flex; gap: 11px; align-items: flex-start; margin-bottom: 14px;
+  /* 展开态拖拽手柄：整个头部（头像/标题区）可拖动气泡组；✕ 按钮仍为点击语义 */
+  cursor: grab; touch-action: none; user-select: none;
+}
+.welcome-float.dragging .welcome-head { cursor: grabbing; }
 /* 信号徽章：渐变核心 + 双环光晕 */
 .welcome-avatar {
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
   background: linear-gradient(135deg, #6ea8ff 0%, #9b7bff 100%);
-  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  display: flex; align-items: center; justify-content: center; font-size: 17px;
   box-shadow:
     0 0 0 1px rgba(110, 168, 255, 0.35),
     0 0 0 4px rgba(110, 168, 255, 0.10),
     0 0 18px rgba(110, 168, 255, 0.45);
 }
-.welcome-hello { font-size: 13px; font-weight: 650; letter-spacing: -0.01em; color: #eef2f8; }
+.welcome-hello { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; color: #eef2f8; }
 .welcome-flow { display: flex; align-items: center; gap: 5px; margin-bottom: 12px; }
 .welcome-flow-step {
   flex: 1; display: flex; gap: 6px; align-items: flex-start;
@@ -14024,10 +14029,10 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
 .welcome-flow-txt { font-size: 10.5px; color: #93a1bb; line-height: 1.35; }
 .welcome-flow-arrow { color: #5d6b84; font-size: 12px; flex-shrink: 0; }
 
-.welcome-cols { display: flex; gap: 10px; align-items: stretch; }
+.welcome-cols { display: flex; gap: 12px; align-items: stretch; }
 .welcome-col {
-  flex: 1; border: 1px solid rgba(156, 199, 255, 0.10); border-radius: 11px;
-  padding: 10px;
+  flex: 1; border: 1px solid rgba(156, 199, 255, 0.10); border-radius: 12px;
+  padding: 12px;
   background: linear-gradient(180deg, rgba(156, 199, 255, 0.05) 0%, rgba(156, 199, 255, 0.02) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   /* 模式焦点栏：焦点/退暗状态切换时平滑迁移，见下方「模式焦点栏」一节 */
@@ -14043,11 +14048,11 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   background: linear-gradient(180deg, rgba(155, 123, 255, 0.10) 0%, rgba(155, 123, 255, 0.04) 100%);
 }
 .welcome-col-title {
-  font-size: 11px; font-weight: 650; color: #9aa7bd; letter-spacing: 0.01em;
-  display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
+  font-size: 12.5px; font-weight: 650; color: #9aa7bd; letter-spacing: 0.01em;
+  display: flex; align-items: center; gap: 6px; margin-bottom: 9px;
 }
 .welcome-col-tag {
-  font-size: 8.5px; padding: 1px 7px; border-radius: 999px; letter-spacing: 0.08em;
+  font-size: 9.5px; padding: 2px 8px; border-radius: 999px; letter-spacing: 0.08em;
   background: linear-gradient(135deg, #6ea8ff, #5a9cff); color: #0b0e14; font-weight: 800;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
@@ -14056,9 +14061,9 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   border: 1px solid rgba(155, 123, 255, 0.38);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-.welcome-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.welcome-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .welcome-chip {
-  font-size: 11px; padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; padding: 6px 12px; border-radius: 999px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.03) 100%);
   border: 1px solid rgba(255, 255, 255, 0.10);
   color: #eef2f8; cursor: pointer; font-family: inherit;
@@ -14075,38 +14080,47 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   background: linear-gradient(180deg, rgba(110, 168, 255, 0.14) 0%, rgba(110, 168, 255, 0.06) 100%);
   box-shadow: 0 4px 14px rgba(110, 168, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-.welcome-note { font-size: 10px; color: #7b87a3; margin-top: 7px; letter-spacing: 0.01em; }
+.welcome-note { font-size: 11px; color: #7b87a3; margin-top: 9px; letter-spacing: 0.01em; }
 
 /* ── 模式焦点栏（wrap 上的 mode-report / mode-chat 类，由 chatbot_welcome.js 维护）──
    当前模式对应的栏「点亮」：语义色描边 + 背景提亮 + tag 实心 + 标题上色；
    对侧栏整体「退暗」：降饱和 + 降透明度（hover 时恢复可读性）。
    视觉重心随模式切换迁移——把「你现在在流程哪一步」编码进结构。
    语义色沿用项目词汇：冰蓝 #6ea8ff = Report（①先获取数据），紫 #9b7bff = Chat（③再深度分析）。 */
-.welcome-float.mode-report .welcome-col.report,
-.welcome-float.mode-chat .welcome-col.chat {
-  border-color: rgba(110, 168, 255, 0.55);
-  background: linear-gradient(180deg, rgba(110, 168, 255, 0.14) 0%, rgba(110, 168, 255, 0.05) 100%);
-  box-shadow: 0 0 18px rgba(110, 168, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+.welcome-float.mode-report .welcome-col.report {
+  border-color: rgba(255, 157, 92, 0.6);
+  background: linear-gradient(180deg, rgba(255, 157, 92, 0.16) 0%, rgba(255, 157, 92, 0.06) 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 157, 92, 0.35),
+    0 0 26px rgba(255, 157, 92, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 .welcome-float.mode-chat .welcome-col.chat {
-  border-color: rgba(155, 123, 255, 0.55);
-  background: linear-gradient(180deg, rgba(155, 123, 255, 0.16) 0%, rgba(155, 123, 255, 0.06) 100%);
-  box-shadow: 0 0 18px rgba(155, 123, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-color: rgba(155, 123, 255, 0.6);
+  background: linear-gradient(180deg, rgba(155, 123, 255, 0.17) 0%, rgba(155, 123, 255, 0.07) 100%);
+  box-shadow:
+    0 0 0 1px rgba(155, 123, 255, 0.32),
+    0 0 26px rgba(155, 123, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 /* 焦点栏标题着色（与 tag 同色系） */
-.welcome-float.mode-report .welcome-col.report .welcome-col-title { color: #cfe0fa; }
+.welcome-float.mode-report .welcome-col.report .welcome-col-title { color: #ffd9b8; }
 .welcome-float.mode-chat .welcome-col.chat .welcome-col-title { color: #e3dcff; }
-/* Chat 焦点时其 ghost 紫 tag 升级为实心（与 Report 实心蓝 tag 对仗） */
+/* 焦点栏 tag 实心化：Report 橙 / Chat 紫（对仗） */
+.welcome-float.mode-report .welcome-col.report .welcome-col-tag {
+  background: linear-gradient(135deg, #ff9d5c, #ff8a4d);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 10px rgba(255, 157, 92, 0.5);
+}
 .welcome-float.mode-chat .welcome-col.chat .welcome-col-tag.alt {
   background: linear-gradient(135deg, #9b7bff, #8a6bff);
   color: #0b0e14; border-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 10px rgba(155, 123, 255, 0.45);
 }
-/* 非当前模式栏：退暗（hover 恢复） */
+/* 非当前模式栏：退暗（hover 恢复）——与焦点栏形成强对比 */
 .welcome-float.mode-report .welcome-col.chat,
 .welcome-float.mode-chat .welcome-col.report {
-  opacity: 0.68;
-  filter: saturate(0.45);
+  opacity: 0.58;
+  filter: saturate(0.35);
 }
 .welcome-float.mode-report .welcome-col.chat:hover,
 .welcome-float.mode-chat .welcome-col.report:hover {
@@ -14114,19 +14128,23 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .m
   filter: saturate(0.75);
 }
 /* 浅色控制室：同一套焦点词汇（白底提亮 + 语义色描边/标题/实心 tag） */
-body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report,
-body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat {
-  border-color: rgba(26, 86, 168, 0.38);
-  background: linear-gradient(180deg, #ffffff 0%, #eaf2ff 100%);
-  box-shadow: 0 0 16px rgba(26, 86, 168, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report {
+  border-color: rgba(214, 108, 32, 0.42);
+  background: linear-gradient(180deg, #ffffff 0%, #fff3e8 100%);
+  box-shadow: 0 0 18px rgba(214, 108, 32, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat {
   border-color: rgba(124, 92, 255, 0.4);
   background: linear-gradient(180deg, #ffffff 0%, #f3eeff 100%);
-  box-shadow: 0 0 16px rgba(124, 92, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 18px rgba(124, 92, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
-body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report .welcome-col-title { color: #1a4fa0; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report .welcome-col-title { color: #c2531e; }
 body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat .welcome-col-title { color: #5d43c4; }
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-report .welcome-col.report .welcome-col-tag {
+  background: linear-gradient(135deg, #ff9d5c, #f0803a);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 10px rgba(214, 108, 32, 0.28);
+}
 body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-col.chat .welcome-col-tag.alt {
   background: linear-gradient(135deg, #8a6bff, #6d4ff0);
   color: #ffffff; border-color: transparent;
@@ -14154,6 +14172,12 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-c
 .welcome-float .welcome-float-dot { display: none; }
 .welcome-float.collapsed .welcome-panel { display: none; }
 .welcome-float.collapsed .welcome-float-dot { display: flex; }
+/* 面板拖动中：阴影提升（与圆钮 dragging 反馈同语言） */
+.welcome-float.dragging .welcome-panel {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 20px 48px rgba(2, 8, 25, 0.42);
+}
 
 .welcome-float-dot {
   width: 44px; height: 44px; margin-left: auto; border-radius: 50%;
@@ -14327,6 +14351,9 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float-dot {
   border-color: rgba(26, 86, 168, 0.4);
   box-shadow: 0 0 0 4px rgba(26, 86, 168, 0.1), 0 8px 20px rgba(31, 61, 124, 0.16);
 }
+body.dashboard-mode[data-dash-theme="light"] .welcome-float.dragging .welcome-panel {
+  box-shadow: 0 20px 48px rgba(31, 61, 124, 0.22);
+}
 body.dashboard-mode[data-dash-theme="light"] .welcome-tipbar {
   background: rgba(26, 86, 168, 0.06);
   border-color: rgba(26, 86, 168, 0.24);
@@ -14373,23 +14400,23 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
 
 /* ── Chatbot 流程引导（Flow Onboarding）── */
 .welcome-progress {
-  display: flex; flex-direction: column; align-items: stretch; gap: 5px;
-  margin-bottom: 12px; padding: 9px 10px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 7px;
+  margin-bottom: 14px; padding: 10px 12px;
   background: linear-gradient(180deg, rgba(156, 199, 255, 0.06) 0%, rgba(156, 199, 255, 0.02) 100%);
   border: 1px solid rgba(156, 199, 255, 0.10);
   border-radius: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .welcome-progress-step {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 10.5px; color: #7b87a3; min-width: 0;
+  display: flex; align-items: center; gap: 9px;
+  font-size: 12px; color: #7b87a3; min-width: 0;
 }
 .welcome-progress-step.active { color: #eef2f8; }
 .welcome-progress-step.done { color: #9fc5ff; }
 .welcome-progress-num {
-  width: 17px; height: 17px; border-radius: 50%; flex-shrink: 0;
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 9.5px; font-weight: 700;
+  font-size: 11px; font-weight: 700;
   background: rgba(156, 199, 255, 0.12); color: #9aa7bd;
   border: 1px solid rgba(156, 199, 255, 0.18);
 }
@@ -14404,7 +14431,7 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-tip-close:hover { color: #
 }
 .welcome-progress-label { white-space: normal; /* 垂直列表：每步完整显示，不截断 */ }
 .welcome-progress-advanced {
-  width: 100%; margin-top: 5px; font-size: 9.5px; color: #7b87a3;
+  width: 100%; margin-top: 8px; font-size: 10.5px; color: #7b87a3;
 }
 .deep-window-chat-add {
   /* 主 CTA：实心品牌渐变 + 深色文字 + 蓝色光晕——在白玻璃头部上从 Export 等
