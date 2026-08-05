@@ -83,7 +83,12 @@ def main():
             "route": "search",
             "q": text,
             "limit": limit,
+            "results": [
+                {"merchantId": "42", "merchantName": "Public Merchant"},
+                {"merchantId": "99", "merchantName": "Private Merchant"},
+            ],
         }
+        module.read_static_merchant_ids = lambda: ["42"]
         module.product_keywords_payload = lambda: {"route": "ui-keywords"}
         module.publishers_payload = lambda force_refresh=False: {
             "route": "ui-publishers",
@@ -164,6 +169,35 @@ def main():
         search = request(module.app, "search", "action=status&q=coffee&limit=5")
         assert_equal(search["status"], 200, "search response code")
         assert b'"route":"search"' in search["body"], search["body"]
+
+        ui_status = request(module.app, "ui-status", "month=202607", token="")
+        assert_equal(ui_status["status"], 200, "UI status response code")
+        assert b'"month":"202607"' in ui_status["body"], ui_status["body"]
+
+        ui_merchant = request(
+            module.app,
+            "ui-merchant",
+            "merchantId=42&limit=7&months=3&minimal=1",
+            token="",
+        )
+        assert_equal(ui_merchant["status"], 200, "UI merchant response code")
+        assert b'"merchantId":"42"' in ui_merchant["body"], ui_merchant["body"]
+        assert b'"minimal":true' in ui_merchant["body"], ui_merchant["body"]
+
+        hidden_ui_merchant = request(module.app, "ui-merchant", "merchantId=99", token="")
+        assert_equal(hidden_ui_merchant["status"], 404, "hidden UI merchant response code")
+
+        invalid_ui_merchant = request(module.app, "ui-merchant", "merchantId=abc", token="")
+        assert_equal(invalid_ui_merchant["status"], 400, "invalid UI merchant response code")
+
+        ui_search = request(module.app, "ui-search", "q=coffee&limit=5", token="")
+        assert_equal(ui_search["status"], 200, "UI search response code")
+        assert b'"merchantId":"42"' in ui_search["body"], ui_search["body"]
+        assert b'"merchantId":"99"' not in ui_search["body"], ui_search["body"]
+
+        short_ui_search = request(module.app, "ui-search", "q=c", token="")
+        assert_equal(short_ui_search["status"], 200, "short UI search response code")
+        assert b'"results":[]' in short_ui_search["body"], short_ui_search["body"]
 
         keywords = request(module.app, "ui-keywords", token="")
         assert_equal(keywords["status"], 200, "UI keywords response code")
@@ -311,6 +345,9 @@ def main():
 
         ui_unauthorized = request(module.app, "ui-keywords", token="")
         assert_equal(ui_unauthorized["status"], 401, "missing UI session response code")
+
+        ui_status_unauthorized = request(module.app, "ui-status", token="")
+        assert_equal(ui_status_unauthorized["status"], 401, "missing UI status session response code")
 
         session, _ = auth.create_session("admin")
         ui_authenticated = request(

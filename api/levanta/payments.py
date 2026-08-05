@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 
 from auth import require_auth
-from server import (
+from levanta_payments import (
     fetch_invoice_items_for_marketplaces,
     is_trackable_payment_record,
     marketplaces_from_query,
