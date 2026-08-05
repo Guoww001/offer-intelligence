@@ -134,7 +134,8 @@ def main():
             "ok": True,
             "route": "ui-monthly-new-merchant-upsert",
             "merchantId": body.get("merchantId"),
-            "merchantName": body.get("merchantName"),
+            "isPriority": body.get("isPriority"),
+            "gmvMonthlyTarget": body.get("gmvMonthlyTarget"),
             "updatedBy": updated_by,
         }
         module.delete_monthly_new_merchant = lambda record_id, deleted_by: {
@@ -269,13 +270,16 @@ def main():
             body={
                 "action": "upsert",
                 "reportMonth": "2026-07",
-                "merchantName": "July Merchant",
+                "merchantId": "398751",
+                "isPriority": True,
+                "gmvMonthlyTarget": 50000,
             },
         )
         assert_equal(monthly_new_upsert["status"], 200, "monthly new merchant upsert response code")
         assert b'"route":"ui-monthly-new-merchant-upsert"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
-        assert b'"merchantId":null' in monthly_new_upsert["body"], monthly_new_upsert["body"]
-        assert b'"merchantName":"July Merchant"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"merchantId":"398751"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"isPriority":true' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"gmvMonthlyTarget":50000' in monthly_new_upsert["body"], monthly_new_upsert["body"]
 
         monthly_new_delete = request(
             module.app,
