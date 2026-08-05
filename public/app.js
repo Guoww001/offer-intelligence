@@ -930,7 +930,13 @@
       "report.helpClose": "使用说明",
       "report.langBtn.zh": "中文",
       "report.langBtn.en": "English",
-      "tour.button": "🎓 新手引导"
+      "tour.button": "🎓 新手引导",
+      "deep.chatAdd": "加入对话",
+      "deep.chatAdded": "已加入",
+      "chat.addedMessage": "报告「{title}」已加入对话，试试问：",
+      "chat.goReport": "去生成报告",
+      "chat.starterAsk": "根据记忆栏的报告，给我分析建议",
+      "chat.starterPlan": "总结记忆栏的数据，分析下个月的运营方向"
     }
   };
 
@@ -9557,6 +9563,7 @@ Full flow (working with Report Mode):
       '<div class="deep-window-actions">' +
         '<button class="deep-window-stop hidden" type="button">' + t("deep.stop", "Stop") + '</button>' +
         '<button class="deep-window-export" type="button">' + t("deep.export", "Export") + '</button>' +
+        '<button class="deep-window-chat-add hidden" type="button">' + t("deep.chatAdd", "Add to chat") + '</button>' +
         '<button class="deep-window-minimize" type="button" aria-label="Minimize" title="Minimize">─</button>' +
         '<button class="deep-window-close" type="button" aria-label="Close">✕</button>' +
       '</div></div>' +
@@ -9633,6 +9640,9 @@ Full flow (working with Report Mode):
     });
     el.querySelector(".deep-window-export").addEventListener("click", function () {
       window.print();
+    });
+    el.querySelector(".deep-window-chat-add").addEventListener("click", function () {
+      _addToChat(panel);
     });
     el.querySelector(".deep-window-stop").addEventListener("click", function () {
       _cancelDeepPanel(panel.id);
@@ -9807,6 +9817,9 @@ Full flow (working with Report Mode):
       var minBtn = el.querySelector(".deep-window-minimize");
       if (minBtn) { minBtn.textContent = "▢"; minBtn.title = "Expand"; }
       _bringPanelToFront(p);
+      if (window.CHATBOT_WELCOME) {
+        window.CHATBOT_WELCOME.notify("panel-minimized", { panelEl: el });
+      }
     }
 
     // primary: transitionend 事件
@@ -9889,6 +9902,9 @@ Full flow (working with Report Mode):
       var minBtn = el.querySelector(".deep-window-minimize");
       if (minBtn) { minBtn.textContent = "─"; minBtn.title = "Minimize"; }
       _bringPanelToFront(p);
+      if (window.CHATBOT_WELCOME) {
+        window.CHATBOT_WELCOME.notify("panel-expanded", { panelEl: el });
+      }
     }
 
     function _onExpEnd(e) {
@@ -9948,6 +9964,20 @@ Full flow (working with Report Mode):
     el.querySelector(".deep-window-stop")?.classList.add("hidden");
     el.querySelector(".deep-window-close")?.classList.remove("hidden");
     el.querySelector(".deep-window-export")?.classList.remove("hidden");
+
+    // 「加入对话」按钮状态：仅内容态可见；已加入 → 禁用 + 「已加入」
+    var chatAddBtn = el.querySelector(".deep-window-chat-add");
+    if (chatAddBtn) {
+      if (panel.state === "content") {
+        chatAddBtn.classList.remove("hidden");
+        chatAddBtn.disabled = !!panel._addedToMemory;
+        chatAddBtn.textContent = panel._addedToMemory
+          ? t("deep.chatAdded", "Added")
+          : t("deep.chatAdd", "Add to chat");
+      } else {
+        chatAddBtn.classList.add("hidden");
+      }
+    }
 
     _bringPanelToFront(panel);
   }
@@ -10017,6 +10047,7 @@ Full flow (working with Report Mode):
     panel.el.querySelector(".deep-window-stop")?.classList.toggle("hidden", !reasoning);
     panel.el.querySelector(".deep-window-close")?.classList.toggle("hidden", !!reasoning);
     panel.el.querySelector(".deep-window-export")?.classList.toggle("hidden", !!reasoning);
+    panel.el.querySelector(".deep-window-chat-add")?.classList.add("hidden");
     panel.el.classList.toggle("generating", !!reasoning);
   }
 
@@ -10064,6 +10095,7 @@ Full flow (working with Report Mode):
     panel.el.querySelector(".deep-window-stop")?.classList.add("hidden");
     panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+    panel.el.querySelector(".deep-window-chat-add")?.classList.remove("hidden");
     panel.el.classList.remove("generating");
 
     // 欢迎屏：会话内首次报告生成 → 面板顶部提示「最小化拖入记忆栏」
@@ -10085,6 +10117,7 @@ Full flow (working with Report Mode):
     panel.el.querySelector(".deep-window-stop")?.classList.add("hidden");
     panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+    panel.el.querySelector(".deep-window-chat-add")?.classList.add("hidden");
     panel.el.classList.remove("generating");
   }
 
@@ -10189,6 +10222,7 @@ Full flow (working with Report Mode):
     panel.el.querySelector(".deep-window-stop")?.classList.add("hidden");
     panel.el.querySelector(".deep-window-close")?.classList.remove("hidden");
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+    panel.el.querySelector(".deep-window-chat-add")?.classList.remove("hidden");
     panel.el.classList.remove("generating");
 
     // Watch context panel for async trend chart updates (only for Report Mode)
@@ -10456,6 +10490,36 @@ Full flow (working with Report Mode):
     if (chatLogChat) chatLogChat.classList.toggle("hidden", !isChat);
   }
 
+  // ── 模式切换公共函数（一键「加入对话」与顶部按钮共用）──
+  function _switchToChatMode() {
+    state.deepMode = false;
+    if (els.modeFastBtn) els.modeFastBtn.classList.add("active");
+    if (els.modeDeepBtn) els.modeDeepBtn.classList.remove("active");
+    if (els.chatInput) els.chatInput.placeholder = t("chat.placeholder", "Ask about EPC, tiers, AOV, conversion, unpaid offers...");
+    _syncChatLogVisibility();
+    _renderMemoryBar();
+    if (window.CHATBOT_WELCOME) {
+      window.CHATBOT_WELCOME.notify("mode-switched", {
+        mode: "chat",
+        hasMemory: !!(state.reportMemory && state.reportMemory.length)
+      });
+    }
+  }
+  function _switchToReportMode() {
+    state.deepMode = true;
+    if (els.modeDeepBtn) els.modeDeepBtn.classList.add("active");
+    if (els.modeFastBtn) els.modeFastBtn.classList.remove("active");
+    if (els.chatInput) els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
+    _syncChatLogVisibility();
+    _renderMemoryBar();
+    if (window.CHATBOT_WELCOME) {
+      window.CHATBOT_WELCOME.notify("mode-switched", {
+        mode: "report",
+        hasMemory: !!(state.reportMemory && state.reportMemory.length)
+      });
+    }
+  }
+
   function _renderMemoryBar() {
     var bar = els.chatMemoryBar;
     var chips = els.chatMemoryChips;
@@ -10553,6 +10617,60 @@ Full flow (working with Report Mode):
     if (window.CHATBOT_WELCOME) {
       window.CHATBOT_WELCOME.notify("memory-added", { hasMemory: true });
     }
+  }
+
+  // ── 一键加入对话：报告浮窗「加入对话」→ 记忆 + 自动切 Chat + 注入引导消息 ──
+  function _addToChat(panel) {
+    if (!panel || panel.state === "loading" || panel._addedToMemory) return;
+    panel._addedToMemory = true;
+    _addMemoryFromPanel(panel);
+    var btn = panel.el && panel.el.querySelector(".deep-window-chat-add");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t("deep.chatAdded", "Added");
+    }
+    _switchToChatMode();
+    _injectChatStarter(panel.title || panel.prompt || "Report");
+    if (window.ONBOARDING_TOUR) window.ONBOARDING_TOUR.notify("chat-add");
+    if (window.CHATBOT_WELCOME) {
+      window.CHATBOT_WELCOME.notify("chat-add", {
+        hasMemory: true,
+        title: panel.title || panel.prompt || ""
+      });
+    }
+  }
+  function _injectChatStarter(title) {
+    try {
+      var log = els.chatLogChat;
+      if (!log || log.querySelector(".chat-memory-starter")) return;
+      var starter = document.createElement("div");
+      starter.className = "chat-memory-starter";
+      var p = document.createElement("p");
+      p.textContent = t("chat.addedMessage", "Report “{title}” added to chat — try asking:").replace("{title}", title);
+      starter.appendChild(p);
+      var wrap = document.createElement("div");
+      wrap.className = "chat-memory-starter-chips";
+      var chips = [
+        t("chat.starterAsk", "Analyze the report and give me suggestions"),
+        t("chat.starterPlan", "Summarize the data and plan next month's direction")
+      ];
+      chips.forEach(function (text) {
+        var chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "welcome-chip";
+        chip.textContent = text;
+        chip.addEventListener("click", function () {
+          if (window.CHATBOT_WELCOME && window.CHATBOT_WELCOME.fillInput) {
+            window.CHATBOT_WELCOME.fillInput(text);
+          }
+        });
+        wrap.appendChild(chip);
+      });
+      starter.appendChild(wrap);
+      var reminder = log.querySelector(".chat-reminder");
+      if (reminder && reminder.nextSibling) log.insertBefore(starter, reminder.nextSibling);
+      else log.insertBefore(starter, log.firstChild || null);
+    } catch (e) {}
   }
 
   function _updateMemoryContext() {
@@ -19802,34 +19920,12 @@ var _NUMERIC_COL_PATTERNS = [
     });
 
     // 模式切换
-    els.modeFastBtn?.addEventListener("click", () => {
-      state.deepMode = false;
-      els.modeFastBtn.classList.add("active");
-      els.modeDeepBtn.classList.remove("active");
-      els.chatInput.placeholder = t("chat.placeholder", "Ask about EPC, tiers, AOV, conversion, unpaid offers...");
-      _syncChatLogVisibility();
-      _renderMemoryBar();
-      if (window.CHATBOT_WELCOME) {
-        window.CHATBOT_WELCOME.notify("mode-switched", {
-          mode: "chat",
-          hasMemory: !!(state.reportMemory && state.reportMemory.length)
-        });
-      }
-    });
+    els.modeFastBtn?.addEventListener("click", _switchToChatMode);
+    els.modeDeepBtn?.addEventListener("click", _switchToReportMode);
 
-    els.modeDeepBtn?.addEventListener("click", () => {
-      state.deepMode = true;
-      els.modeDeepBtn.classList.add("active");
-      els.modeFastBtn.classList.remove("active");
-      els.chatInput.placeholder = t("deep.placeholder", "View analysis results in Deep Window…");
-      _syncChatLogVisibility();
-      _renderMemoryBar();
-      if (window.CHATBOT_WELCOME) {
-        window.CHATBOT_WELCOME.notify("mode-switched", {
-          mode: "report",
-          hasMemory: !!(state.reportMemory && state.reportMemory.length)
-        });
-      }
+    // 空记忆 Chat 提醒卡片「去生成报告」→ 切回 Report Mode（填入示例由欢迎屏负责）
+    document.addEventListener("chatbot-go-report", function () {
+      _switchToReportMode();
     });
 
     // Report Mode 使用说明书展开/收起
@@ -19940,6 +20036,8 @@ var _NUMERIC_COL_PATTERNS = [
   if (window.__OFFER_INTELLIGENCE_TEST__) {
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
       setLanguage: function(lang) { state.language = lang; },
+      switchToChatMode: _switchToChatMode,
+      switchToReportMode: _switchToReportMode,
       categoryForPrompt,
       detectTrendEntityType,
       reportModeHelpMarkdown: () => REPORT_MODE_HELP_MD,
