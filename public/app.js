@@ -173,6 +173,7 @@
   const dbMerchantLoading = new Set();
   const dbSearchCache = new Map();
   const dbSearchLoading = new Set();
+  let dashboardCategorySearchOptions = new Map();
   let paymentRecords = visiblePaymentRecords(withPendingPaymentPlaceholders((data.paymentRecords || []).map(normalizePaymentRecord)));
   const paymentRecordsByMerchant = new Map();
   rebuildPaymentIndex();
@@ -190,6 +191,8 @@
     descending: true,
     categoryReportTiers: STANDARD_CATEGORY_REPORT_TIERS.slice(),
     categoryReportSearch: "",
+    categoryReportSearchDraft: "",
+    categoryReportSelection: null,
     categoryReportSort: "revenue",
     categoryReportDirection: "desc",
     categoryReportFocusKey: "",
@@ -370,6 +373,12 @@
     dashboardCategoryReportSubtitle: document.getElementById("dashboardCategoryReportSubtitle"),
     dashboardCategoryReportBody: document.getElementById("dashboardCategoryReportBody"),
     dashboardCategorySearch: document.getElementById("dashboardCategorySearch"),
+    dashboardCategoryOptions: document.getElementById("dashboardCategoryOptions"),
+    dashboardCategorySearchStatus: document.getElementById("dashboardCategorySearchStatus"),
+    categoryStartDate: document.getElementById("categoryStartDate"),
+    categoryEndDate: document.getElementById("categoryEndDate"),
+    categoryDateApply: document.getElementById("categoryDateApply"),
+    categoryDateStatus: document.getElementById("categoryDateStatus"),
     table: document.getElementById("offerRows"),
     tableCount: document.getElementById("tableCount"),
     chatLog: document.getElementById("chatLog"),
@@ -714,7 +723,7 @@
       "publishers.earnedCommission": "AFF 实际佣金",
       "publishers.portfolioShare": "销售额占比",
       "publishers.allTiers": "全部 Tier",
-      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；EPC = 销售额 ÷ 点击量；Conversion = 订单数 ÷ 点击量。AFF 实际佣金 = ALL 实际佣金 × 75%；AFF 佣金率 = AFF 实际佣金 ÷ 销售额。",
+      "publishers.portfolioMethod": "AOV = 销售额 ÷ 订单数；AFF EPC = 销售额 × AFF 佣金率 ÷ 点击量；Conversion = 订单数 ÷ 点击量。AFF 实际佣金 = ALL 实际佣金 × 75%；AFF 佣金率 = AFF 实际佣金 ÷ 销售额。",
       "publishers.weightedCommission": "AFF 加权佣金率",
       "publishers.weightedBySales": "按商家销售额加权",
       "publishers.commissionProfile": "AFF 佣金概况",
@@ -10929,6 +10938,16 @@ var _NUMERIC_COL_PATTERNS = [
     return new Set(normalizeCategoryReportTiers(state.categoryReportTiers));
   }
 
+  function categoryReportDependencyTiers() {
+    const dependencies = new Set();
+    normalizeCategoryReportTiers(state.categoryReportTiers)
+      .filter((tierName) => STANDARD_CATEGORY_REPORT_TIERS.includes(tierName))
+      .forEach((tierName) => {
+        tierReportDependencyTiers(tierName).forEach((dependencyTier) => dependencies.add(dependencyTier));
+      });
+    return Array.from(dependencies);
+  }
+
   function renderDashboardCategoryTierPicker() {
     if (!els.dashboardCategoryTierPicker) return;
     const options = [
@@ -10984,7 +11003,7 @@ var _NUMERIC_COL_PATTERNS = [
     syncDashboardCategoryTierControls();
     state.categoryReportFocusKey = "";
     state.expandedCategoryKey = null;
-    renderDashboardCategoryReport();
+    ensureDashboardCategoryReportData();
   }
 
   function dashboardCategoryReportRows() {
@@ -10994,6 +11013,87 @@ var _NUMERIC_COL_PATTERNS = [
         ? sheet.rows.map((row) => ({ ...row, __tierName: tierName }))
         : [];
     });
+  }
+
+  function dashboardCategorySearchEntries(rows = dashboardCategoryReportRows()) {
+    const categoryEntries = new Map();
+    const merchantEntries = new Map();
+    (rows || []).forEach((row) => {
+      const category = tierRowCategory(row);
+      if (category && !categoryEntries.has(normalize(category))) {
+        categoryEntries.set(normalize(category), {
+          type: "category",
+          value: category,
+          category
+        });
+      }
+      const merchantId = tierRowMerchantId(row);
+      const merchantName = tierRowMerchantName(row);
+      if (!merchantId && !merchantName) return;
+      const merchantKey = merchantId ? `id:${merchantId}` : `name:${normalize(merchantName)}`;
+      if (merchantEntries.has(merchantKey)) return;
+      const label = merchantName || merchantId;
+      merchantEntries.set(merchantKey, {
+        type: "merchant",
+        value: merchantId ? `${label} · ${merchantId}` : `${label} · merchant`,
+        merchantId,
+        merchantName: label
+      });
+    });
+    const byValue = (a, b) => String(a.value).localeCompare(String(b.value), undefined, { numeric: true, sensitivity: "base" });
+    return [
+      ...Array.from(categoryEntries.values()).sort(byValue),
+      ...Array.from(merchantEntries.values()).sort(byValue)
+    ];
+  }
+
+  function refreshDashboardCategorySearchOptions(rows = dashboardCategoryReportRows()) {
+    const entries = dashboardCategorySearchEntries(rows);
+    dashboardCategorySearchOptions = new Map(entries.map((entry) => [normalize(entry.value), entry]));
+    if (els.dashboardCategoryOptions) {
+      els.dashboardCategoryOptions.innerHTML = entries.map((entry) => (
+        `<option value="${escapeHtml(entry.value)}" label="${entry.type === "category" ? "Category" : "Merchant"}"></option>`
+      )).join("");
+    }
+  }
+
+  function setDashboardCategorySearchStatus(message, isError = false) {
+    if (!els.dashboardCategorySearchStatus) return;
+    els.dashboardCategorySearchStatus.textContent = message;
+    els.dashboardCategorySearchStatus.classList.toggle("error", isError);
+  }
+
+  function applyDashboardCategorySelection() {
+    const value = String(els.dashboardCategorySearch?.value || "").trim();
+    state.categoryReportSearchDraft = value;
+    if (!value) {
+      state.categoryReportSelection = null;
+      state.categoryReportSearch = "";
+      state.categoryReportFocusKey = "";
+      state.expandedCategoryKey = null;
+      setDashboardCategorySearchStatus("Showing all categories and merchants.");
+      renderDashboardCategoryReport();
+      return true;
+    }
+    const selection = dashboardCategorySearchOptions.get(normalize(value));
+    if (!selection) {
+      setDashboardCategorySearchStatus("Select a category or merchant from the suggestions.", true);
+      return false;
+    }
+    state.categoryReportSelection = { ...selection };
+    state.categoryReportSearch = selection.type === "category"
+      ? selection.category
+      : (selection.merchantId || selection.merchantName);
+    state.categoryReportSearchDraft = selection.value;
+    state.categoryReportFocusKey = "";
+    state.expandedCategoryKey = null;
+    setDashboardCategorySearchStatus(
+      selection.type === "category"
+        ? `Showing category: ${selection.category}`
+        : `Showing merchant: ${selection.merchantName}`
+    );
+    renderDashboardCategoryReport();
+    return true;
   }
 
   function tierBreakdownText(group) {
@@ -11202,12 +11302,28 @@ var _NUMERIC_COL_PATTERNS = [
     return String(a.category || "").localeCompare(String(b.category || ""), undefined, { numeric: true, sensitivity: "base" });
   }
 
-  function filterDashboardCategoryReportGroups(groups) {
+  function filterDashboardCategoryReportGroups(groups, selection = state.categoryReportSelection) {
+    if (selection && selection.type === "category") {
+      const selectedCategory = categoryReportKey(selection.category);
+      return groups
+        .filter((group) => categoryReportKey(group.category) === selectedCategory)
+        .sort(compareDashboardCategoryReportGroups);
+    }
+    if (selection && selection.type === "merchant") {
+      const merchantId = String(selection.merchantId || "").trim();
+      const merchantName = normalize(selection.merchantName);
+      return groups
+        .filter((group) => (group.rows || []).some((row) => (
+          (merchantId && tierRowMerchantId(row) === merchantId)
+          || (merchantName && normalize(tierRowMerchantName(row)) === merchantName)
+        )))
+        .sort(compareDashboardCategoryReportGroups);
+    }
     const search = normalize(state.categoryReportSearch);
     const filtered = search
       ? groups.filter((group) => {
         const category = normalize(group.category);
-        const merchants = normalize(`${group.previewMerchants || ""} ${group.topMerchant || ""} ${(group.rows || []).slice(0, 24).map((row) => `${tierRowMerchantName(row)} ${tierRowMerchantId(row)}`).join(" ")}`);
+        const merchants = normalize(`${group.previewMerchants || ""} ${group.topMerchant || ""} ${(group.rows || []).map((row) => `${tierRowMerchantName(row)} ${tierRowMerchantId(row)}`).join(" ")}`);
         return category.includes(search) || merchants.includes(search);
       })
       : groups.slice();
@@ -11618,6 +11734,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function renderDashboardCategoryReport() {
     if (!els.dashboardCategoryReportBody) return;
+    els.dashboardCategoryReportBody.setAttribute("aria-busy", "false");
     const rows = dashboardCategoryReportRows();
     const allGroups = tierCategorySummaryRows(null, rows);
     const filteredGroups = filterDashboardCategoryReportGroups(allGroups);
@@ -11635,7 +11752,7 @@ var _NUMERIC_COL_PATTERNS = [
       const tierText = selectedTiers.length ? selectedTiers.join(", ") : "No tiers selected";
       els.dashboardCategoryReportSubtitle.textContent = `${tierText} / ${rows.length.toLocaleString()} rows / ${groups.length.toLocaleString()} of ${allGroups.length.toLocaleString()} categories`;
     }
-    if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearch;
+    if (els.dashboardCategorySearch) els.dashboardCategorySearch.value = state.categoryReportSearchDraft;
     const prevScrollEl = els.dashboardCategoryReportBody.querySelector(".table-wrap");
     const prevTableScroll = prevScrollEl ? prevScrollEl.scrollTop : 0;
     const prevDocScroll = window.scrollY;
@@ -12396,7 +12513,7 @@ var _NUMERIC_COL_PATTERNS = [
           category: merchant.category || "Uncategorized",
           tier: merchant.tier || "Unknown",
           aov: metric.aov == null ? "" : metric.aov,
-          epc: _publisherMetricEpc(metric),
+          affEpc: _publisherMetricAffEpc(metric),
           conversion: _publisherMetricConversionRate(metric),
           affCommissionRate: _publisherMetricAffCommissionRate(metric) ?? "",
           orders: metric.orders || 0,
@@ -12418,7 +12535,7 @@ var _NUMERIC_COL_PATTERNS = [
           ["Category", function (row) { return row.category; }],
           ["Tier", function (row) { return row.tier; }],
           ["AOV", function (row) { return row.aov; }],
-          ["EPC", function (row) { return row.epc; }],
+          ["AFF EPC", function (row) { return row.affEpc; }],
           ["Conversion", function (row) { return row.conversion; }],
           ["AFF Commission Rate", function (row) { return row.affCommissionRate; }],
           ["Orders", function (row) { return row.orders; }],
@@ -12777,9 +12894,13 @@ var _NUMERIC_COL_PATTERNS = [
     return merchant.total || null;
   }
 
-  function _publisherMetricEpc(metric) {
+  function _publisherMetricAffEpc(metric) {
     var clicks = Number((metric || {}).clicks || 0);
-    return clicks > 0 ? Number((metric || {}).sales || 0) / clicks : 0;
+    var sales = Number((metric || {}).sales || 0);
+    var affCommissionRate = _publisherMetricAffCommissionRate(metric);
+    return clicks > 0 && affCommissionRate != null
+      ? sales * (affCommissionRate / 100) / clicks
+      : 0;
   }
 
   function _publisherMetricConversionRate(metric) {
@@ -13231,7 +13352,7 @@ var _NUMERIC_COL_PATTERNS = [
           escapeHtml(merchant.tier || "Unknown") +
         '</span></td>' +
         '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(metric.aov)) + '</td>' +
-        '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricEpc(metric))) + '</td>' +
+        '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricAffEpc(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(_publisherMetricAffCommissionRate(metric))) + '</td>' +
         '<td class="publisher-numeric">' + number(metric.orders).toLocaleString() + '</td>' +
@@ -14718,6 +14839,104 @@ var _NUMERIC_COL_PATTERNS = [
     return startDate === endDate ? startDate : `${startDate} – ${endDate}`;
   }
 
+  function renderDashboardCategoryReportPending(message, isError = false) {
+    if (!els.dashboardCategoryReportBody) return;
+    const selectedTiers = normalizeCategoryReportTiers(state.categoryReportTiers).map(categoryReportTierLabel);
+    if (els.dashboardCategoryReportSubtitle) {
+      els.dashboardCategoryReportSubtitle.textContent = `${selectedTiers.join(", ") || "No tiers selected"} / ${tierReportRangeLabel(state.tierReport.startDate, state.tierReport.endDate)}`;
+    }
+    els.dashboardCategoryReportBody.setAttribute("aria-busy", isError ? "false" : "true");
+    els.dashboardCategoryReportBody.innerHTML = `<div class="category-report-state${isError ? " error" : ""}" role="${isError ? "alert" : "status"}">
+      <span class="category-report-state-mark" aria-hidden="true"></span>
+      <div>
+        <h4>${isError ? "Category data could not be loaded" : "Updating category data"}</h4>
+        <p>${escapeHtml(message)}</p>
+      </div>
+    </div>`;
+  }
+
+  function syncDashboardCategoryReportControls() {
+    if (!els.categoryStartDate || !els.categoryEndDate || !els.categoryDateApply || !els.categoryDateStatus) return;
+    const dependencies = categoryReportDependencyTiers();
+    const liveTierCount = normalizeCategoryReportTiers(state.categoryReportTiers)
+      .filter((tierName) => STANDARD_CATEGORY_REPORT_TIERS.includes(tierName)).length;
+    const keys = dependencies.map((tierName) => tierReportKey(tierName));
+    const loading = keys.some((key) => state.tierReport.loadingKeys.has(key));
+    const error = keys.map((key) => state.tierReport.errors.get(key)).find(Boolean) || "";
+    const ready = dependencies.length > 0 && keys.every((key) => state.tierReport.payloads.has(key));
+    els.categoryStartDate.value = state.tierReport.startDate;
+    els.categoryEndDate.value = state.tierReport.endDate;
+    els.categoryStartDate.disabled = !liveTierCount || loading;
+    els.categoryEndDate.disabled = !liveTierCount || loading;
+    els.categoryDateApply.disabled = !liveTierCount || loading;
+    els.categoryDateStatus.classList.toggle("loading", loading);
+    els.categoryDateStatus.classList.toggle("error", Boolean(error));
+    if (!liveTierCount) {
+      els.categoryDateStatus.textContent = "Date range is available for Tier 1–4.";
+    } else if (loading) {
+      els.categoryDateStatus.textContent = "Loading selected tiers from YeahPromos DB…";
+    } else if (error) {
+      els.categoryDateStatus.textContent = `${error} Apply again to retry.`;
+    } else if (ready) {
+      els.categoryDateStatus.textContent = `${tierReportRangeLabel(state.tierReport.startDate, state.tierReport.endDate)} · YeahPromos DB`;
+    } else {
+      els.categoryDateStatus.textContent = "Choose one date or an inclusive range.";
+    }
+  }
+
+  function ensureDashboardCategoryReportData({ retry = false } = {}) {
+    const dependencies = categoryReportDependencyTiers();
+    if (retry) dependencies.forEach((tierName) => state.tierReport.errors.delete(tierReportKey(tierName)));
+    if (!dependencies.length) {
+      refreshDashboardCategorySearchOptions();
+      renderDashboardCategoryReport();
+      syncDashboardCategoryReportControls();
+      return;
+    }
+    const missing = dependencies.filter((tierName) => !state.tierReport.payloads.has(tierReportKey(tierName)));
+    if (missing.length) {
+      const failedTier = missing.find((tierName) => state.tierReport.errors.has(tierReportKey(tierName)));
+      const error = failedTier ? state.tierReport.errors.get(tierReportKey(failedTier)) : "";
+      renderDashboardCategoryReportPending(
+        error
+          ? `Could not load ${categoryReportTierLabel(failedTier)}: ${error}`
+          : `Loading ${missing.map(categoryReportTierLabel).join(", ")} for the selected date range…`,
+        Boolean(error)
+      );
+      missing.forEach((tierName) => {
+        const key = tierReportKey(tierName);
+        if (!state.tierReport.loadingKeys.has(key) && !state.tierReport.errors.has(key)) {
+          loadTierReport(tierName, state.tierReport.startDate, state.tierReport.endDate);
+        }
+      });
+      syncDashboardCategoryReportControls();
+      return;
+    }
+    dependencies.forEach((tierName) => {
+      const key = tierReportKey(tierName);
+      activateTierReportPayload(tierName, key, state.tierReport.payloads.get(key));
+    });
+    refreshDashboardCategorySearchOptions();
+    renderDashboardCategoryReport();
+    syncDashboardCategoryReportControls();
+  }
+
+  function applyCategoryReportDateRange() {
+    const range = tierReportRange(els.categoryStartDate.value, els.categoryEndDate.value);
+    if (!range.ok) {
+      els.categoryDateStatus.textContent = range.error;
+      els.categoryDateStatus.classList.add("error");
+      return;
+    }
+    state.tierReport.startDate = range.startDate;
+    state.tierReport.endDate = range.endDate;
+    state.categoryReportFocusKey = "";
+    state.expandedCategoryKey = null;
+    els.categoryStartDate.value = range.startDate;
+    els.categoryEndDate.value = range.endDate;
+    ensureDashboardCategoryReportData({ retry: true });
+  }
+
   function cacheOriginalTierSheetRowsForTier(tierName, rows) {
     Array.from(originalTierSheetRowIndex.entries()).forEach(([key, value]) => {
       if (value && value.sourceTier === tierName) originalTierSheetRowIndex.delete(key);
@@ -14789,6 +15008,13 @@ var _NUMERIC_COL_PATTERNS = [
         && tierReportDependencyTiers(selectedTier).includes(tierName)
       ) {
         renderTierPage(selectedTier);
+      }
+      if (
+        state.page === "category"
+        && key === tierReportKey(tierName)
+        && categoryReportDependencyTiers().includes(tierName)
+      ) {
+        ensureDashboardCategoryReportData();
       }
     }
   }
@@ -17112,6 +17338,8 @@ var _NUMERIC_COL_PATTERNS = [
         rows
       },
       recentMonths: {
+        aggregation: "calendar_month",
+        cumulative: false,
         window: {
           startMonth: recentAggregate[0]?.month || trendMonth,
           endMonth: trendMonth,
@@ -17679,7 +17907,7 @@ var _NUMERIC_COL_PATTERNS = [
       return `${prefix} ${metric.label.toLowerCase()}`;
     }
     const tier = state.targetFilters.tier;
-    return tier === "all" ? `${metric.label} across the six-month window ending at the selected month` : `${tier} ${metric.label.toLowerCase()} trajectory from the tier snapshot`;
+    return tier === "all" ? `Independent monthly ${metric.label.toLowerCase()} across the six-month window ending at the selected month` : `${tier} independent monthly ${metric.label.toLowerCase()} from the tier snapshot`;
   }
 
   function targetTrendViewTabsHtml() {
@@ -17795,8 +18023,8 @@ var _NUMERIC_COL_PATTERNS = [
     const gridTicks = [0, 0.25, 0.5, 0.75, 1];
     const dailyStep = points.length > 1 ? innerWidth / (points.length - 1) : innerWidth;
     const dailyBarWidth = Math.max(5, Math.min(18, dailyStep * 0.58));
-    // Gradient area fill for monthly trend charts
-    var gradientId = "trendGradient";
+    // Soft area fill for monthly trend charts.
+    var gradientId = "targetTrendAreaGradient";
     var trendAreaPath = "";
     if (!isDaily) {
       var validForArea = points.filter(function(p) { return p.hasValue; });
@@ -17808,8 +18036,8 @@ var _NUMERIC_COL_PATTERNS = [
           + " L" + validForArea[validForArea.length - 1].x.toFixed(2) + "," + bottomY.toFixed(2) + " Z";
       }
     }
-    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(viewLabel)} ${escapeHtml(metric.label)} trend" data-trend-aggregation="${isDaily ? "daily-independent" : "monthly"}">
-      ${!isDaily ? `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2468f2" stop-opacity="0.35"/><stop offset="100%" stop-color="#2468f2" stop-opacity="0"/></linearGradient></defs>` : ""}
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(viewLabel)} ${escapeHtml(metric.label)} trend" data-trend-aggregation="${isDaily ? "daily-independent" : "monthly-independent"}">
+      ${!isDaily ? `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5f8ff5" stop-opacity="0.18"/><stop offset="55%" stop-color="#8fb1f7" stop-opacity="0.08"/><stop offset="100%" stop-color="#dce8ff" stop-opacity="0.02"/></linearGradient></defs>` : ""}
       ${gridTicks.map((ratio) => {
         const y = pad.top + innerHeight - ratio * innerHeight;
         const value = min + ratio * range;
@@ -17819,7 +18047,8 @@ var _NUMERIC_COL_PATTERNS = [
       ${isDaily ? "" : `<polyline points="${polyline}" class="trend-line"></polyline>`}
       ${points.map((point, index) => {
         const lastPointIndex = points.length - 1;
-        const showAxisLabel = index === 0 ||
+        const showAxisLabel = !isDaily ||
+          index === 0 ||
           index === lastPointIndex ||
           (index % labelEvery === 0 && lastPointIndex - index >= Math.max(2, labelEvery - 1));
         const tooltipWidth = 156;
@@ -17827,18 +18056,18 @@ var _NUMERIC_COL_PATTERNS = [
         const tooltipX = Math.max(4, Math.min(width - tooltipWidth - 4, point.x - tooltipWidth / 2));
         const tooltipY = point.y < pad.top + tooltipHeight + 8 ? point.y + 12 : point.y - tooltipHeight - 12;
         const tooltipValue = point.hasValue ? formatTargetMetricValue(metric.key, point.value) : "Pending";
-        return `<g class="target-trend-point ${escapeHtml(point.state || "")}${point.selected ? " selected" : ""}" tabindex="0" role="img" aria-label="${escapeHtml(point.detail || point.label)}">
+        return `<g class="target-trend-point ${escapeHtml(point.state || "")}${point.selected ? " selected" : ""}" tabindex="0" focusable="true" role="img" aria-label="${escapeHtml(point.detail || point.label)}">
           <title>${escapeHtml(point.detail || point.label)}</title>
           ${isDaily
             ? `<rect x="${(point.x - dailyBarWidth / 2).toFixed(2)}" y="${point.hasValue ? point.y.toFixed(2) : (height - pad.bottom - 4).toFixed(2)}" width="${dailyBarWidth.toFixed(2)}" height="${point.hasValue ? Math.max(4, height - pad.bottom - point.y).toFixed(2) : "4"}" rx="2.5" class="target-daily-bar ${point.hasValue ? "" : "muted"} ${escapeHtml(point.state || "")}"></rect>`
             : `<circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${point.selected ? "6" : "4.5"}" class="trend-dot ${point.hasValue ? "" : "muted"} ${escapeHtml(point.state || "")}"></circle>`}
           ${point.hasValue && (point.selected || (viewLabel === "Day" && index === points.length - 1)) ? `<text x="${point.x.toFixed(2)}" y="${Math.max(18, point.y - 14).toFixed(2)}" text-anchor="middle" class="trend-value-label">${escapeHtml(formatTargetMetricValue(metric.key, point.value))}</text>` : ""}
           ${showAxisLabel ? `<text x="${point.x.toFixed(2)}" y="${height - 12}" text-anchor="middle" class="trend-month">${escapeHtml(point.shortLabel || point.label)}</text>` : ""}
-          ${isDaily ? `<g class="target-trend-tooltip" transform="translate(${tooltipX.toFixed(2)} ${tooltipY.toFixed(2)})" aria-hidden="true">
+          <g class="target-trend-tooltip" transform="translate(${tooltipX.toFixed(2)} ${tooltipY.toFixed(2)})" aria-hidden="true">
             <rect width="${tooltipWidth}" height="${tooltipHeight}" rx="7"></rect>
             <text x="11" y="18" class="target-trend-tooltip-date">${escapeHtml(point.label)}</text>
             <text x="11" y="36" class="target-trend-tooltip-value">${escapeHtml(tooltipValue)}</text>
-          </g>` : ""}
+          </g>
         </g>`;
       }).join("")}
     </svg>`;
@@ -18189,7 +18418,27 @@ var _NUMERIC_COL_PATTERNS = [
     });
   }
 
+  function handleTargetTrendActivate(event) {
+    const point = event.target.closest(".target-trend-point");
+    if (!point || !els.sheetPageNotes.contains(point)) return;
+    point.classList.add("is-hovered");
+  }
+
+  function handleTargetTrendDeactivate(event) {
+    const point = event.target.closest(".target-trend-point");
+    if (!point || !els.sheetPageNotes.contains(point)) return;
+    if (event.relatedTarget && point.contains(event.relatedTarget)) return;
+    point.classList.remove("is-hovered");
+  }
+
   function handleTargetReportClick(event) {
+    const trendPoint = event.target.closest(".target-trend-point");
+    if (trendPoint) {
+      const wasActive = trendPoint.classList.contains("is-hovered");
+      trendPoint.closest(".target-trend-plot")?.querySelectorAll(".target-trend-point.is-hovered").forEach((point) => point.classList.remove("is-hovered"));
+      if (!wasActive) trendPoint.classList.add("is-hovered");
+      return;
+    }
     const cancelButton = event.target.closest("[data-target-edit-cancel]");
     if (cancelButton) {
       state.targetEditingKey = "";
@@ -18827,7 +19076,7 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublishersPage();
     }
     if (isSheets) renderSheetPage();
-    if (isCategory) renderDashboardCategoryReport();
+    if (isCategory) ensureDashboardCategoryReportData();
     if (isTier) renderTierPage(state.selectedTierPage);
     if (isMonthlyNewMerchants) {
       renderMonthlyNewMerchantsPage();
@@ -18856,6 +19105,7 @@ var _NUMERIC_COL_PATTERNS = [
     setDatasetStamp();
     setPaymentStamp("saved", isoDate(PAYMENT_TODAY));
     renderDashboardCategoryTierPicker();
+    syncDashboardCategoryReportControls();
     updateReportsNavState();
     updatePageModeClass();
     syncMobileNavigationMode();
@@ -18938,10 +19188,25 @@ var _NUMERIC_COL_PATTERNS = [
       }
     });
     els.dashboardCategorySearch.addEventListener("input", () => {
-      state.categoryReportSearch = els.dashboardCategorySearch.value;
-      state.categoryReportFocusKey = "";
-      state.expandedCategoryKey = null;
-      renderDashboardCategoryReport();
+      state.categoryReportSearchDraft = els.dashboardCategorySearch.value;
+      setDashboardCategorySearchStatus(
+        state.categoryReportSearchDraft
+          ? "Choose a suggestion or press Enter to update the report."
+          : "Clear the field and press Enter to show all categories."
+      );
+    });
+    els.dashboardCategorySearch.addEventListener("change", applyDashboardCategorySelection);
+    els.dashboardCategorySearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyDashboardCategorySelection();
+      }
+    });
+    els.categoryDateApply.addEventListener("click", applyCategoryReportDateRange);
+    [els.categoryStartDate, els.categoryEndDate].forEach((input) => {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") applyCategoryReportDateRange();
+      });
     });
     els.dashboardCategoryReportBody.addEventListener("click", handleDashboardCategoryReportClick);
     els.dashboardCategoryReportBody.addEventListener("keydown", handleDashboardCategoryReportKeydown);
@@ -19102,6 +19367,10 @@ var _NUMERIC_COL_PATTERNS = [
     });
     els.sheetPageNotes.addEventListener("click", handleTargetReportClick);
     els.sheetPageNotes.addEventListener("submit", handleTargetReportSubmit);
+    els.sheetPageNotes.addEventListener("pointerover", handleTargetTrendActivate);
+    els.sheetPageNotes.addEventListener("pointerout", handleTargetTrendDeactivate);
+    els.sheetPageNotes.addEventListener("focusin", handleTargetTrendActivate);
+    els.sheetPageNotes.addEventListener("focusout", handleTargetTrendDeactivate);
     if (els.sheetGridHead) els.sheetGridHead.addEventListener("click", handleReportSortClick);
     els.tierSheetHead.addEventListener("click", handleReportSortClick);
     els.publishersTableHead.addEventListener("click", handleReportSortClick);
@@ -19719,6 +19988,9 @@ var _NUMERIC_COL_PATTERNS = [
       dashboardCategoryGroups,
       dashboardCategoryFocusedGroups,
       dashboardCategoryPieHtml,
+      dashboardCategorySearchEntries,
+      filterDashboardCategoryReportGroups,
+      categoryReportDependencyTiers,
       setCategoryReportFocusKey: (key) => { state.categoryReportFocusKey = String(key || ""); },
       categoryReportFocusKey: () => state.categoryReportFocusKey,
       tierSheetRowsForDisplay: (sheetName) => tierSheetRowsForDisplay(sheetByName(sheetName)),
@@ -19771,7 +20043,8 @@ var _NUMERIC_COL_PATTERNS = [
       publisherManagerMatches: _publisherManagerMatches,
       publishersForManager: _publishersForManager,
       publisherTierOptions: _publisherTierOptions,
-      publisherMetricEpc: _publisherMetricEpc,
+      publisherMetricAffEpc: _publisherMetricAffEpc,
+      publisherMetricEpc: _publisherMetricAffEpc,
       publisherMetricConversionRate: _publisherMetricConversionRate,
       publisherMetricAffCommission: _publisherMetricAffCommission,
       publisherMetricAffCommissionRate: _publisherMetricAffCommissionRate,

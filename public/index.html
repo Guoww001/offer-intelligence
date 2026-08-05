@@ -619,7 +619,7 @@
                         <th data-i18n="label.Category">Category</th>
                         <th>Tier</th>
                         <th class="publisher-numeric">AOV</th>
-                        <th class="publisher-numeric">EPC</th>
+                        <th class="publisher-numeric">AFF EPC</th>
                         <th class="publisher-numeric" data-i18n="publishers.conversion">Conversion</th>
                         <th class="publisher-numeric" data-i18n="publishers.commissionRate">AFF commission rate</th>
                         <th class="publisher-numeric" data-i18n="publishers.orders">Orders</th>
@@ -631,7 +631,7 @@
                     <tbody id="publisherPortfolioRows"></tbody>
                   </table>
                 </div>
-                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders; EPC = Sales ÷ Clicks; Conversion = Orders ÷ Clicks. AFF earned commission = ALL earned commission × 75%; AFF commission rate = AFF earned commission ÷ Sales.</p>
+                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders; AFF EPC = Sales × AFF commission rate ÷ Clicks; Conversion = Orders ÷ Clicks. AFF earned commission = ALL earned commission × 75%; AFF commission rate = AFF earned commission ÷ Sales.</p>
               </section>
             </div>
           </section>
@@ -882,10 +882,22 @@
               <div class="dashboard-category-tier-picker" id="dashboardCategoryTierPicker" aria-label="Category report tier selection"></div>
             </div>
             <div class="dashboard-category-controls" aria-label="Category report controls">
-              <label>
-                <span>Category</span>
-                <input id="dashboardCategorySearch" type="search" placeholder="Search category or merchant" />
+              <label class="dashboard-category-search-field">
+                <span>Category / merchant</span>
+                <input id="dashboardCategorySearch" type="search" list="dashboardCategoryOptions" placeholder="Select category or merchant" autocomplete="off" />
+                <datalist id="dashboardCategoryOptions"></datalist>
+                <small class="dashboard-category-search-status" id="dashboardCategorySearchStatus" aria-live="polite">Choose a suggestion to update the report.</small>
               </label>
+              <div class="tier-date-range-field dashboard-category-date-field">
+                <span>Date / range</span>
+                <div class="tier-date-range-controls">
+                  <input id="categoryStartDate" type="date" aria-label="Category report start date" />
+                  <span class="tier-date-range-separator" aria-hidden="true">–</span>
+                  <input id="categoryEndDate" type="date" aria-label="Category report end date" />
+                  <button class="secondary-button tier-date-apply" id="categoryDateApply" type="button">Apply</button>
+                </div>
+                <small class="tier-date-status" id="categoryDateStatus" aria-live="polite"></small>
+              </div>
             </div>
             <div id="dashboardCategoryReportBody"></div>
           </section>

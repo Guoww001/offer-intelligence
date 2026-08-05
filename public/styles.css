@@ -3994,6 +3994,12 @@ body.dashboard-mode .insight-panel {
   height: 230px;
 }
 
+.target-trend-plot .trend-area {
+  fill: url(#targetTrendAreaGradient);
+  opacity: 0.92;
+  pointer-events: none;
+}
+
 .trend-axis {
   stroke: #dde5ef;
   stroke-width: 1.2;
@@ -4028,11 +4034,13 @@ body.dashboard-mode .insight-panel {
 }
 
 .target-trend-point {
+  cursor: pointer;
   outline: none;
 }
 
 .target-trend-point:focus .trend-dot,
 .target-trend-point:hover .trend-dot,
+.target-trend-point.is-hovered .trend-dot,
 .target-trend-point.selected .trend-dot {
   fill: #2468f2;
   filter: drop-shadow(0 5px 9px rgba(36, 104, 242, 0.28));
@@ -4066,6 +4074,7 @@ body.dashboard-mode .insight-panel {
 }
 
 .target-trend-point:hover .target-daily-bar,
+.target-trend-point.is-hovered .target-daily-bar,
 .target-trend-point:focus .target-daily-bar {
   fill: #2468f2;
   filter: drop-shadow(0 5px 8px rgba(36, 104, 242, 0.24));
@@ -4091,6 +4100,7 @@ body.dashboard-mode .insight-panel {
 }
 
 .target-trend-point:hover .target-trend-tooltip,
+.target-trend-point.is-hovered .target-trend-tooltip,
 .target-trend-point:focus .target-trend-tooltip {
   visibility: visible;
   opacity: 1;
@@ -4532,7 +4542,7 @@ body.dashboard-mode .insight-panel {
 
 .dashboard-category-controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr);
+  grid-template-columns: minmax(260px, 420px) minmax(360px, 1fr);
   gap: 10px;
   padding: 0 14px;
   align-items: end;
@@ -4562,6 +4572,45 @@ body.dashboard-mode .insight-panel {
 .dashboard-category-controls select:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 3px rgba(23, 123, 115, 0.13);
+}
+
+.dashboard-category-search-field,
+.dashboard-category-controls .dashboard-category-date-field {
+  display: grid;
+  grid-template-rows: auto 34px minmax(14px, auto);
+  gap: 6px;
+  align-content: end;
+}
+
+.dashboard-category-search-field {
+  max-width: 420px;
+}
+
+.dashboard-category-search-status {
+  min-height: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.dashboard-category-search-status.error {
+  color: var(--rose);
+}
+
+.dashboard-category-controls .dashboard-category-date-field {
+  grid-column: auto;
+}
+
+.dashboard-category-date-field .tier-date-range-controls {
+  grid-template-columns: minmax(132px, 1fr) auto minmax(132px, 1fr) auto;
+  min-height: 34px;
+}
+
+.dashboard-category-date-field .tier-date-apply {
+  min-height: 34px;
+  padding: 6px 14px;
+  white-space: nowrap;
 }
 
 .dashboard-category-report-totals {
@@ -5497,6 +5546,55 @@ th {
   gap: 14px;
   min-width: 0;
   position: relative;
+}
+
+.category-report-state {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(80, 101, 116, 0.14);
+  border-radius: 9px;
+  display: flex;
+  gap: 14px;
+  margin: 0 18px 18px;
+  min-height: 120px;
+  padding: 18px;
+}
+
+.category-report-state-mark {
+  animation: categoryStatePulse 1.15s ease-in-out infinite alternate;
+  background: linear-gradient(135deg, rgba(47, 128, 255, 0.92), rgba(23, 185, 120, 0.78));
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(47, 128, 255, 0.2);
+  flex: 0 0 42px;
+  height: 42px;
+}
+
+.category-report-state.error .category-report-state-mark {
+  animation: none;
+  background: rgba(220, 53, 69, 0.82);
+  box-shadow: 0 10px 28px rgba(220, 53, 69, 0.16);
+}
+
+.category-report-state h4 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.category-report-state p {
+  color: var(--muted);
+  margin: 0;
+}
+
+@keyframes categoryStatePulse {
+  from {
+    opacity: 0.58;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 #dashboardCategoryReportBody.category-report-refreshing .dashboard-category-report-totals,
@@ -7064,6 +7162,14 @@ td strong {
   .dashboard-category-controls {
     grid-template-columns: 1fr;
     min-width: 0;
+  }
+
+  .dashboard-category-search-field {
+    max-width: none;
+  }
+
+  .dashboard-category-controls .dashboard-category-date-field {
+    grid-column: 1 / -1;
   }
 
   .dashboard-category-controls > *,
@@ -8724,6 +8830,17 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
 
   .tier-sheet-filters .tier-date-apply {
     grid-column: 1 / -1;
+  }
+
+  .dashboard-category-date-field .tier-date-apply {
+    grid-column: 1 / -1;
+  }
+
+  .category-report-state {
+    align-items: flex-start;
+    margin: 0 12px 14px;
+    min-height: 0;
+    padding: 14px;
   }
 }
 

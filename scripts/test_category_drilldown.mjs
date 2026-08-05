@@ -85,7 +85,27 @@ const hooks = sandbox.window.OFFER_INTELLIGENCE_TEST_HOOKS;
 assertTruthy(hooks, "app should expose test hooks in test mode");
 assertTruthy(hooks.dashboardCategoryFocusedGroups, "category focus helper should be exposed");
 assertTruthy(hooks.dashboardCategoryPieHtml, "category pie renderer should be exposed");
+assertTruthy(hooks.dashboardCategorySearchEntries, "category selection options should be exposed");
+assertTruthy(hooks.filterDashboardCategoryReportGroups, "category selection filter should be exposed");
 assertTruthy(hooks.setCategoryReportFocusKey, "category focus setter should be exposed");
+assertEqual(
+  Array.from(hooks.categoryReportDependencyTiers()).join(","),
+  "Tier 1,Tier 2,Tier 3,Tier 4",
+  "category page should request live DB payloads for all selected standard tiers"
+);
+
+const selectionEntries = hooks.dashboardCategorySearchEntries([
+  { Category: "Electronics", "Merchant ID": "101", "Merchant Name": "Northwind Audio" },
+  { Category: "Home & Kitchen", "Merchant ID": "202", "Merchant Name": "Cedar Home" }
+]);
+assertTruthy(
+  selectionEntries.find((entry) => entry.type === "category" && entry.value === "Electronics"),
+  "category options should include exact categories"
+);
+assertTruthy(
+  selectionEntries.find((entry) => entry.type === "merchant" && entry.value === "Cedar Home · 202"),
+  "merchant options should include a stable Merchant ID"
+);
 
 const categories = [
   "Electronics",
@@ -111,6 +131,31 @@ const categories = [
   tierBreakdown: { "Tier 1": 20 - index },
   rows: [{ "Merchant Name": `${category} leader`, "Merchant ID": String(index + 1) }]
 }));
+
+const merchantDeepInCategory = {
+  ...categories[0],
+  rows: Array.from({ length: 30 }, (_, index) => ({
+    "Merchant Name": index === 29 ? "Deep Merchant" : `Merchant ${index + 1}`,
+    "Merchant ID": index === 29 ? "999" : String(index + 1)
+  }))
+};
+assertEqual(
+  hooks.filterDashboardCategoryReportGroups([merchantDeepInCategory, categories[1]], {
+    type: "merchant",
+    merchantId: "999",
+    merchantName: "Deep Merchant"
+  }).length,
+  1,
+  "merchant selection should search every merchant row, not only preview rows"
+);
+assertEqual(
+  hooks.filterDashboardCategoryReportGroups(categories, {
+    type: "category",
+    category: "Home & Kitchen"
+  })[0].category,
+  "Home & Kitchen",
+  "category selection should apply an exact category match"
+);
 
 hooks.setCategoryReportFocusKey("");
 assertEqual(hooks.dashboardCategoryFocusedGroups(categories).length, 9, "overview should keep every category");

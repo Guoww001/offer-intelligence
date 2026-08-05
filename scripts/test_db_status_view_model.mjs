@@ -121,6 +121,8 @@ const sampleStatus = {
     ]
   },
   recentMonths: {
+    aggregation: "calendar_month",
+    cumulative: false,
     window: { startMonth: "2026-05", endMonth: "2026-07", throughDate: "2026-07-08", months: 3 },
     aggregateOrders: [
       { month: "2026-05", orders: 69922, revenue: 11233862.95, activeBrands: 1241, aggregateRows: 31218 },
@@ -143,6 +145,9 @@ assertEqual(model.observedThrough, "2026-07-06", "observed through date");
 assertEqual(model.latestDataDate, "2026-07-07", "latest aggregate data date should be preserved separately");
 assertEqual(model.expectedCompleteThrough, "2026-07-06", "expected complete through date");
 assertEqual(model.delayWindowText, "Jul 7-Jul 8", "delay window label");
+const independentMonthlyRows = hooks.dbMonthlyTrendRows(sampleStatus);
+assertEqual(independentMonthlyRows.map((row) => row.revenue).join(","), "11233862.95,10877607.62,2407355.03", "monthly revenue should keep each calendar month's independent total without accumulation");
+assertEqual(independentMonthlyRows.map((row) => row.orders).join(","), "69922,58328,13946", "monthly orders should keep each calendar month's independent total without accumulation");
 assertEqual(model.coverageCards[0].value, "6,279 / 6,279", "offer coverage card");
 assertEqual(model.latestCards[0].label, "Offer aggregate", "aggregate freshness should be the first latest-date card");
 
@@ -204,8 +209,17 @@ hooks.setTargetFilters({ month: "July 2026", tier: "all" });
 hooks.setTargetTrendView("month");
 const monthlyTargetTrend = hooks.targetTrendPlotHtml(hooks.targetRecords());
 assertMatch(monthlyTargetTrend, /Monthly Revenue trend/, "monthly trend plot should use monthly aria labeling");
+assertMatch(monthlyTargetTrend, /data-trend-aggregation="monthly-independent"/, "monthly trend should explicitly declare independent calendar-month aggregation");
 assertMatch(monthlyTargetTrend, /July 2026: .*production database/, "selected month should use the database total");
 assertMatch(monthlyTargetTrend, /May 2026/, "monthly trend should retain historical context before the selected month");
+assertEqual((monthlyTargetTrend.match(/class="trend-month"/g) || []).length, monthlyRows.length, "monthly trend should label every month, including the month before the selected month");
+assertMatch(monthlyTargetTrend, /id="targetTrendAreaGradient"/, "monthly trend should use the soft area gradient");
+assertMatch(monthlyTargetTrend, /target-trend-tooltip/, "monthly trend points should render hover and keyboard-focus tooltips");
+assertMatch(monthlyTargetTrend, /focusable="true"/, "monthly trend points should remain keyboard focusable across SVG implementations");
+
+const trendStyles = fs.readFileSync("public/styles.css", "utf8");
+assertMatch(trendStyles, /\.target-trend-plot \.trend-area\s*\{[^}]*fill:\s*url\(#targetTrendAreaGradient\)/s, "monthly trend area should use the scoped light gradient instead of the SVG black default");
+assertMatch(trendStyles, /\.target-trend-point\.is-hovered \.target-trend-tooltip/, "pointer events should explicitly reveal the corresponding trend tooltip");
 
 hooks.setTargetTrendView("day");
 const dailyTargetTrend = hooks.targetTrendPlotHtml(hooks.targetRecords());
