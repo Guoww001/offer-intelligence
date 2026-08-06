@@ -2093,7 +2093,7 @@ def _monthly_new_merchant_source_datetime_expr(column: str) -> str:
     text = f"TRIM(CAST({qualified('a', column)} AS CHAR))"
     return (
         "CASE "
-        f"WHEN {text} REGEXP '^[0-9]{{8}}$' THEN STR_TO_DATE({text}, '%Y%m%d') "
+        f"WHEN {text} REGEXP '^[0-9]{{8}}$' THEN STR_TO_DATE({text}, '%%Y%%m%%d') "
         f"WHEN {text} REGEXP '^[0-9]{{13}}$' THEN FROM_UNIXTIME(CAST({text} AS UNSIGNED) / 1000) "
         f"WHEN {text} REGEXP '^[0-9]{{10}}$' THEN FROM_UNIXTIME(CAST({text} AS UNSIGNED)) "
         f"ELSE CAST(NULLIF({text}, '') AS DATETIME) END"
