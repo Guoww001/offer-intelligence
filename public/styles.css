@@ -15413,6 +15413,31 @@ body.dashboard-mode[data-dash-theme="light"] .welcome-float.onboarding-tour-acti
   border-color: var(--welcome-dot-ring);
   background: linear-gradient(135deg, #b59cff 0%, #8066ff 100%);
   box-shadow: 0 0 0 4px rgba(155, 123, 255, 0.14), 0 8px 20px rgba(17, 10, 43, 0.34);
+  animation-name: welcomeDotGlowPurple;
+}
+.welcome-float.mode-chat.dragging .welcome-float-dot {
+  box-shadow:
+    0 0 0 6px rgba(155, 123, 255, 0.26),
+    0 14px 32px rgba(17, 10, 43, 0.45);
+}
+.welcome-float.mode-chat .welcome-float-dot:focus-visible {
+  outline-color: rgba(193, 175, 255, 0.92);
+}
+@keyframes welcomeDotGlowPurple {
+  0%, 100% {
+    box-shadow:
+      0 0 0 4px var(--welcome-dot-ring-soft),
+      0 0 0 1px var(--welcome-dot-ring),
+      0 0 14px var(--welcome-dot-glow),
+      0 8px 20px rgba(17, 10, 43, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px var(--welcome-dot-ring-strong),
+      0 0 0 1px var(--welcome-dot-ring),
+      0 0 26px rgba(155, 123, 255, 0.55),
+      0 8px 20px rgba(17, 10, 43, 0.28);
+  }
 }
 .welcome-float.mode-chat.onboarding-tour-active .welcome-panel {
   outline-color: rgba(193, 175, 255, 0.86);
