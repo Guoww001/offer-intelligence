@@ -7,10 +7,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import offer_db
+from scripts import build_db_static_snapshot
 
 
 def assert_equal(actual, expected, label):
     if actual != expected:
+        raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
+
+
+def assert_close(actual, expected, label):
+    if abs(float(actual) - float(expected)) > 0.000001:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
@@ -67,6 +73,35 @@ def test_date_ranges():
     )
 
 
+def test_commission_epc_formula():
+    revenue = 4528.59
+    clicks = 5521
+    assert_close(
+        offer_db.commission_epc(revenue, 0.10, clicks),
+        revenue * 0.10 / clicks,
+        "decimal all commission EPC",
+    )
+    assert_close(
+        offer_db.commission_epc(revenue, 7.5, clicks),
+        revenue * 0.075 / clicks,
+        "percentage AFF commission EPC",
+    )
+    assert_equal(offer_db.commission_epc(revenue, 10, 0), 0.0, "zero-click EPC")
+
+
+def test_static_snapshot_epc_formula():
+    offer = build_db_static_snapshot.offer_from_rows(
+        {"merchantId": "362653", "merchantName": "Shokz Official", "commissionRate": 10},
+        {"revenue": 4528.59, "clicks": 5521, "payout": 452.859, "affiliatePayout": 339.64425},
+        "Tier 1",
+        {},
+        [],
+    )
+    assert_close(offer["allEpc"], 4528.59 * 0.10 / 5521, "snapshot all EPC")
+    assert_close(offer["affEpc"], 4528.59 * 0.075 / 5521, "snapshot AFF EPC")
+    assert_equal(offer["epc"], offer["affEpc"], "snapshot legacy EPC")
+
+
 def test_report_payload():
     base_rows = [
         {
@@ -76,6 +111,7 @@ def test_report_payload():
             "Network": "Archer",
             "Agency": "Bluefocus",
             "BD": "Bryan",
+            "Commission Rate": 10,
             "COUNTRY": "UK",
         },
         {
@@ -85,6 +121,7 @@ def test_report_payload():
             "Network": "Levanta",
             "Agency": None,
             "BD": None,
+            "Commission Rate": 10,
         },
     ]
     order_rows = [
@@ -145,8 +182,12 @@ def test_report_payload():
     assert_equal(payload["rows"][0]["BD"], "Bryan", "Tier 1 BD")
     assert_equal(payload["rows"][1]["BD"], "", "missing BD stays blank")
     assert_equal(payload["rows"][0]["COUNTRY"], "UK", "compact country metadata")
-    assert_equal(payload["rows"][0]["Backend EPC"], "8.0", "order EPC")
+    assert_equal(payload["rows"][0]["Backend EPC"], "0.6", "legacy EPC should use AFF commission")
+    assert_equal(payload["rows"][0]["EPC(All)"], "0.8", "all EPC")
+    assert_equal(payload["rows"][0]["EPC(Aff)"], "0.6", "AFF EPC")
     assert_equal(payload["rows"][1]["Clicks"], "50.0", "tracked click fallback")
+    assert_equal(payload["rows"][1]["EPC(All)"], "0.25", "tracked-click all EPC")
+    assert_equal(payload["rows"][1]["EPC(Aff)"], "0.2", "tracked-click AFF EPC")
     assert_equal(payload["rows"][1]["Conversion Rate"], "0.1", "tracked conversion")
 
     amazon_calls = [(sql, params) for sql, params in calls if "cnpscy_amazon_" in sql]
@@ -187,6 +228,8 @@ def test_frontend_contract():
 
 def main():
     test_date_ranges()
+    test_commission_epc_formula()
+    test_static_snapshot_epc_formula()
     test_report_payload()
     test_frontend_contract()
     print("Tier report date-range checks passed")

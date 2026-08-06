@@ -569,6 +569,29 @@ def clean_decimal(value: Any, places: int = 6) -> float:
     return round(to_float(value), places)
 
 
+def commission_rate_ratio(value: Any) -> float:
+    """Normalize a commission rate stored as either 10 or 0.10."""
+    rate = to_float(value)
+    if rate <= 0:
+        return 0.0
+    return rate / 100 if rate > 1 else rate
+
+
+def commission_rate_from_amount(revenue: Any, commission: Any) -> float:
+    revenue_value = to_float(revenue)
+    if revenue_value <= 0:
+        return 0.0
+    return max(0.0, to_float(commission) / revenue_value)
+
+
+def commission_epc(revenue: Any, commission_rate: Any, clicks: Any) -> float:
+    """Return revenue x commission rate / clicks using a decimal rate."""
+    clicks_value = to_float(clicks)
+    if clicks_value <= 0:
+        return 0.0
+    return to_float(revenue) * commission_rate_ratio(commission_rate) / clicks_value
+
+
 def read_static_merchant_ids() -> list[str]:
     """? db_offers_cache.json ? static_merchant_ids.json ???? merchant ID ???"""
     ids = []
@@ -927,7 +950,11 @@ def daily_status_trend(
             "directSales": values.get("directSales", 0),
             "haloSales": values.get("haloSales", 0),
         }
-        row["epc"] = round(to_float(revenue) / to_float(clicks), 6) if to_float(clicks) else 0
+        all_rate = commission_rate_from_amount(revenue, row["payout"])
+        aff_rate = commission_rate_from_amount(revenue, row["affiliatePayout"])
+        row["allEpc"] = round(commission_epc(revenue, all_rate, clicks), 6)
+        row["affEpc"] = round(commission_epc(revenue, aff_rate, clicks), 6)
+        row["epc"] = row["affEpc"]
         row["aov"] = round(to_float(revenue) / to_float(orders), 6) if to_float(orders) else 0
         row["conversionRate"] = round(to_float(orders) / to_float(clicks), 6) if to_float(clicks) else 0
         rows.append(row)
@@ -1433,7 +1460,11 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
         clicks = to_float(row.get("clicks"))
         orders = to_float(row.get("orders"))
         revenue = to_float(row.get("revenue"))
-        row["epc"] = round(revenue / clicks, 6) if clicks else 0
+        all_rate = commission_rate_from_amount(revenue, row.get("payout"))
+        aff_rate = commission_rate_from_amount(revenue, row.get("affiliatePayout"))
+        row["allEpc"] = round(commission_epc(revenue, all_rate, clicks), 6)
+        row["affEpc"] = round(commission_epc(revenue, aff_rate, clicks), 6)
+        row["epc"] = row["affEpc"]
         row["aov"] = round(revenue / orders, 6) if orders else 0
         row["conversionRate"] = round(orders / clicks, 6) if clicks else 0
     return sorted(by_month.values(), key=lambda row: row.get("month") or "", reverse=True)
@@ -2927,6 +2958,8 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             o["orders"] = metrics.get("orders")
             o["salesAmount"] = metrics.get("revenue")
             o["epc"] = metrics.get("epc")
+            o["allEpc"] = metrics.get("allEpc")
+            o["affEpc"] = metrics.get("affEpc")
             o["aov"] = metrics.get("aov")
             o["conversionRate"] = metrics.get("conversionRate")
             o["payout"] = metrics.get("payout")
@@ -3237,6 +3270,8 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             ("orders", "Order count"),
             ("salesAmount", "Revenue"),
             ("epc", "Backend EPC"),
+            ("allEpc", "EPC(All)"),
+            ("affEpc", "EPC(Aff)"),
             ("aov", "AOV"),
             ("conversionRate", "Conversion"),
             ("clicks", "Clicks"),
@@ -3332,11 +3367,22 @@ def merge_tier_report_metrics(
         clicks = order_clicks if order_clicks > 0 else tracked_clicks
         orders = to_float(order.get("orders"))
         revenue = to_float(order.get("revenue"))
+        all_commission = to_float(order.get("payout"))
+        aff_commission = to_float(order.get("affiliatePayout"))
+        all_rate = commission_rate_from_amount(revenue, all_commission)
+        aff_rate = commission_rate_from_amount(revenue, aff_commission)
+        if not all_rate and row.get("Commission Rate") not in (None, ""):
+            all_rate = commission_rate_ratio(row.get("Commission Rate"))
+        all_epc = commission_epc(revenue, all_rate, clicks)
+        aff_epc = commission_epc(revenue, aff_rate, clicks)
 
         row.update({
             "Order count": clean_decimal(orders, 0),
             "Revenue": clean_decimal(revenue, 2),
-            "Backend EPC": clean_decimal(revenue / clicks if clicks else 0, 6),
+            # Generic/legacy EPC is publisher-facing, so it aliases EPC(Aff).
+            "Backend EPC": clean_decimal(aff_epc, 6),
+            "EPC(All)": clean_decimal(all_epc, 6),
+            "EPC(Aff)": clean_decimal(aff_epc, 6),
             "AOV": clean_decimal(revenue / orders if orders else 0, 6),
             "Conversion Rate": clean_decimal(orders / clicks if clicks else 0, 8),
             "Clicks": clean_decimal(clicks, 0),
@@ -3426,6 +3472,8 @@ def tier_report_metrics_map(
         "Order count": "orders",
         "Revenue": "revenue",
         "Backend EPC": "epc",
+        "EPC(All)": "allEpc",
+        "EPC(Aff)": "affEpc",
         "AOV": "aov",
         "Conversion Rate": "conversionRate",
         "Clicks": "clicks",
@@ -3821,6 +3869,8 @@ def _publisher_metric_bucket() -> dict[str, Any]:
         "affCommission": 0.0,
         "aov": None,
         "epc": 0.0,
+        "allEpc": 0.0,
+        "affEpc": 0.0,
         "conversionRate": 0.0,
         "effectiveCommissionRate": None,
     }
@@ -3840,11 +3890,16 @@ def _finalize_publisher_metric(metric: dict[str, Any]) -> None:
     clicks = int(metric.get("clicks") or 0)
     orders = int(metric.get("orders") or 0)
     sales = float(metric.get("sales") or 0)
-    commission = float(metric.get("allCommission") or 0)
+    all_commission = float(metric.get("allCommission") or 0)
+    aff_commission = float(metric.get("affCommission") or 0)
     metric["aov"] = sales / orders if orders > 0 else None
-    metric["epc"] = sales / clicks if clicks > 0 else 0.0
+    all_rate = commission_rate_from_amount(sales, all_commission)
+    aff_rate = commission_rate_from_amount(sales, aff_commission)
+    metric["allEpc"] = commission_epc(sales, all_rate, clicks)
+    metric["affEpc"] = commission_epc(sales, aff_rate, clicks)
+    metric["epc"] = metric["affEpc"]
     metric["conversionRate"] = orders / clicks if clicks > 0 else 0.0
-    metric["effectiveCommissionRate"] = commission / sales * 100 if sales > 0 else None
+    metric["effectiveCommissionRate"] = all_commission / sales * 100 if sales > 0 else None
 
 
 def publisher_portfolios_from_rows(
