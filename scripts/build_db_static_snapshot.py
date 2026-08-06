@@ -11,7 +11,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from offer_db import db_connection, fetch_all, fetch_one, q, table_columns, utc_now_iso  # noqa: E402
+from offer_db import (  # noqa: E402
+    commission_epc,
+    commission_rate_from_amount,
+    db_connection,
+    fetch_all,
+    fetch_one,
+    q,
+    table_columns,
+    utc_now_iso,
+)
 
 
 TIER_ORDER = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
@@ -165,6 +174,11 @@ def offer_from_rows(base, metrics, tier, visual, products):
     merchant_id = str(value(base, "merchantId")).strip()
     brand = value(base, "merchantName", "brand", default="")
     revenue = value(metrics, "salesAmount", "revenue", default=0)
+    clicks = value(metrics, "clicks", default=0)
+    payout = value(metrics, "payout", default=0)
+    affiliate_payout = value(metrics, "affiliatePayout", default=0)
+    all_epc = commission_epc(revenue, commission_rate_from_amount(revenue, payout), clicks)
+    aff_epc = commission_epc(revenue, commission_rate_from_amount(revenue, affiliate_payout), clicks)
     top_asins = [value(product, "asin") for product in products if value(product, "asin")]
     return compact(
         {
@@ -174,10 +188,15 @@ def offer_from_rows(base, metrics, tier, visual, products):
             "tier": tier or value(base, "tier", default="Unknown"),
             "network": value(base, "network", "agency", default="Unknown"),
             "category": value(base, "category", "mainCategory", default="Uncategorized"),
-            "clicks": value(metrics, "clicks", default=0),
+            "clicks": clicks,
             "orders": value(metrics, "orders", default=0),
             "salesAmount": revenue,
-            "epc": value(metrics, "epc", default=0),
+            "payout": payout,
+            "affiliatePayout": affiliate_payout,
+            "affCommission": affiliate_payout,
+            "epc": aff_epc,
+            "allEpc": all_epc,
+            "affEpc": aff_epc,
             "aov": value(metrics, "aov", default=0),
             "conversionRate": value(metrics, "conversionRate", default=0),
             "commissionRate": value(base, "commissionRate", default=None),
@@ -197,7 +216,10 @@ def offer_from_rows(base, metrics, tier, visual, products):
 
 
 def build_sheet_payload(offers, generated_at):
-    headers = ["Merchant ID", "Merchant Name", "Network", "Category", "Clicks", "Order count", "Revenue", "Backend EPC"]
+    headers = [
+        "Merchant ID", "Merchant Name", "Network", "Category", "Clicks",
+        "Order count", "Revenue", "Backend EPC", "EPC(All)", "EPC(Aff)",
+    ]
     sheets = []
     for tier in TIER_ORDER:
         rows = []
@@ -214,6 +236,8 @@ def build_sheet_payload(offers, generated_at):
                     "Order count": offer.get("orders", ""),
                     "Revenue": offer.get("salesAmount", ""),
                     "Backend EPC": offer.get("epc", ""),
+                    "EPC(All)": offer.get("allEpc", ""),
+                    "EPC(Aff)": offer.get("affEpc", offer.get("epc", "")),
                     "visualStatusColor": offer.get("visualStatusColor", ""),
                     "visualStatusCode": offer.get("visualStatusCode", ""),
                     "visualStatusReason": offer.get("visualStatusReason", ""),

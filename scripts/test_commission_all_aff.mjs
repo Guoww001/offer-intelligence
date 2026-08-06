@@ -100,9 +100,19 @@ assertEqual(hooks.offerAffCommission(shokz), shokz.affCommission, "Shokz Aff Com
 assertNotEqual(shokz.payout, shokz.affCommission, "Shokz payout should differ from affCommission to keep All/Aff discriminable");
 
 // 用例 2：EPC 计算
-const epcFixture = { payout: 100, affCommission: 80, clicks: 200 };
-assertEqual(hooks.offerAllEpc(epcFixture), 0.5, "All EPC = payout / clicks");
-assertEqual(hooks.offerAffEpc(epcFixture), 0.4, "Aff EPC = affCommission / clicks");
+const epcFixture = { salesAmount: 1000, payout: 200, affCommission: 150, clicks: 100 };
+assertEqual(
+  hooks.commissionEpcFromTotals(1000, 150, 100),
+  1.5,
+  "aggregate EPC = revenue x commission rate / clicks"
+);
+assertEqual(hooks.offerAllEpc(epcFixture), 2, "All EPC = revenue x ALL commission rate / clicks");
+assertEqual(hooks.offerAffEpc(epcFixture), 1.5, "Aff EPC = revenue x AFF commission rate / clicks");
+assertEqual(
+  hooks.offerAllEpc({ salesAmount: 1000, commissionRate: 20, clicks: 100 }),
+  2,
+  "All EPC should fall back to the configured ALL commission rate"
+);
 
 // 用例 3：缺失 / 零点击
 assertEqual(hooks.offerAllEpc({ clicks: 0 }), null, "zero clicks should make All EPC null");
