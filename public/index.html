@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260805-assistant-tour5" />
+    <link rel="stylesheet" href="./styles.css?v=20260806-answer-feedback1" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -308,6 +308,28 @@
                 <span class="mode-help-icon">📖</span>
                 <span data-i18n="report.helpBtn">Help</span>
               </button>
+              <div class="chat-logs-control">
+                <button class="mode-btn mode-logs" id="chatLogsButton" type="button" aria-haspopup="menu" aria-expanded="false" title="Download logs">
+                  <span class="mode-logs-icon" aria-hidden="true">↓</span>
+                  <span data-i18n="chat.logs">Logs</span>
+                </button>
+                <div class="chat-logs-menu hidden" id="chatLogsMenu" role="menu">
+                  <div class="chat-log-group" role="group" aria-label="提问记录">
+                    <span class="chat-log-group-title">提问记录</span>
+                    <div class="chat-log-group-actions">
+                      <button type="button" role="menuitem" data-chat-log-kind="questions" data-chat-log-format="csv">CSV</button>
+                      <button type="button" role="menuitem" data-chat-log-kind="questions" data-chat-log-format="jsonl">JSONL</button>
+                    </div>
+                  </div>
+                  <div class="chat-log-group" role="group" aria-label="不满意反馈">
+                    <span class="chat-log-group-title">不满意反馈</span>
+                    <div class="chat-log-group-actions">
+                      <button type="button" role="menuitem" data-chat-log-kind="feedback" data-chat-log-format="csv">CSV</button>
+                      <button type="button" role="menuitem" data-chat-log-kind="feedback" data-chat-log-format="jsonl">JSONL</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="report-help-panel hidden" id="reportHelpPanel">
               <div class="report-help-toolbar">
@@ -1057,12 +1079,50 @@
       </div>
     </div>
 
+    <div
+      class="answer-feedback-dialog hidden"
+      id="answerFeedbackDialog"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="answerFeedbackTitle"
+    >
+      <div class="answer-feedback-card">
+        <div class="answer-feedback-header">
+          <div>
+            <h3 id="answerFeedbackTitle">哪里不满意？</h3>
+            <p id="answerFeedbackSubtitle">请选择一个主要原因，也可以补充说明。</p>
+          </div>
+          <button id="answerFeedbackClose" type="button" aria-label="关闭反馈窗口">×</button>
+        </div>
+        <form id="answerFeedbackForm">
+          <fieldset class="answer-feedback-reasons">
+            <legend id="answerFeedbackReasonLegend">主要原因</legend>
+            <label><input type="radio" name="answerFeedbackReason" value="inaccurate" required /><span data-feedback-reason-label="inaccurate">回答不准确</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="not_answered" /><span data-feedback-reason-label="not_answered">没有回答问题</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="incomplete_data" /><span data-feedback-reason-label="incomplete_data">数据不完整</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="unclear" /><span data-feedback-reason-label="unclear">内容难以理解</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="other" /><span data-feedback-reason-label="other">其他</span></label>
+          </fieldset>
+          <label class="answer-feedback-detail" for="answerFeedbackDetail">
+            <span id="answerFeedbackDetailLabel">补充说明（可选）</span>
+            <textarea id="answerFeedbackDetail" rows="4" maxlength="4000" placeholder="请告诉我们哪里需要改进"></textarea>
+          </label>
+          <p class="answer-feedback-error hidden" id="answerFeedbackError" role="alert"></p>
+          <div class="answer-feedback-actions">
+            <button class="secondary-button" id="answerFeedbackCancel" type="button">取消</button>
+            <button id="answerFeedbackSubmit" type="submit">提交反馈</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
-    <script src="./onboarding_tour.js?v=20260805-assistant-tour2"></script>
+    <script src="./onboarding_tour.js?v=20260806-chat-mode-glow3"></script>
     <script src="./chatbot_welcome.js?v=20260805-assistant-tour5"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260804-welcome9"></script>
+    <script src="./auth.js?v=20260806-answer-feedback7"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。

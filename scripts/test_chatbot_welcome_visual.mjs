@@ -5,6 +5,8 @@ function assert(condition, message) {
 }
 
 const css = fs.readFileSync("public/styles.css", "utf8").replace(/\r\n/g, "\n");
+const onboardingJs = fs.readFileSync("public/onboarding_tour.js", "utf8").replace(/\r\n/g, "\n");
+const html = fs.readFileSync("public/index.html", "utf8").replace(/\r\n/g, "\n");
 
 assert(css.includes("--welcome-shell-top"), "welcome panel should define an independent shell palette");
 assert(css.includes("#3b2a25"), "dark welcome panel should use a warm espresso shell color");
@@ -111,6 +113,26 @@ assert(
   "Chat Mode assistant icon should use purple fill and glow"
 );
 assert(
+  css.includes("animation: welcomeDotGlowPurple 4s cubic-bezier(0.45, 0, 0.55, 1) infinite;") &&
+    css.includes('body.dashboard-mode[data-dash-theme="light"] .welcome-float.mode-chat .welcome-float-dot'),
+  "Chat Mode assistant icon should keep the purple glow animation while idle"
+);
+assert(
+  onboardingJs.includes('classList.toggle("onboarding-highlight-chat"') &&
+    onboardingJs.includes('closest(".welcome-float.mode-chat")'),
+  "onboarding highlight should follow the active Chat Mode"
+);
+assert(
+  css.includes(".onboarding-highlight-chat") &&
+    css.includes("rgba(155, 123, 255, 0.26)"),
+  "Chat Mode onboarding highlight should use purple glow"
+);
+assert(
+  html.includes("onboarding_tour.js?v=20260806-chat-mode-glow3") &&
+    !html.includes("onboarding_tour.js?v=20260805-assistant-tour2"),
+  "onboarding tour script should invalidate the old cached version"
+);
+assert(
   css.includes(".welcome-float.mode-chat .welcome-panel.welcome-emphasis") &&
     css.includes(".welcome-float.mode-chat .welcome-avatar"),
   "Chat Mode emphasis state should keep inner assistant accents purple"
@@ -118,6 +140,22 @@ assert(
 assert(
   css.includes(".welcome-col {") && css.includes("cursor: pointer;"),
   "Report and Chat regions should expose a clickable affordance"
+);
+assert(
+  css.includes(".welcome-progress-step.active") &&
+    css.includes("background: linear-gradient(90deg, rgba(110, 168, 255, 0.24)") &&
+    css.includes("border-left: 3px solid #6ea8ff"),
+  "Current onboarding step should use a darker highlighted card"
+);
+assert(
+  css.includes(".welcome-progress-step.done") &&
+    css.includes("background: linear-gradient(90deg, rgba(110, 168, 255, 0.16)"),
+  "Completed onboarding step should remain visually weaker than the current step"
+);
+assert(
+  css.includes('body.dashboard-mode[data-dash-theme="light"] .welcome-progress-step.active') &&
+    css.includes("rgba(26, 86, 168, 0.22)"),
+  "Current onboarding step should remain visibly highlighted in light theme"
 );
 
 console.log("PASS: Chatbot 使用助手面板视觉样式检查通过");

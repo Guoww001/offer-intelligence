@@ -180,7 +180,10 @@ assertTruthy(helpMd && helpMd.length > 200, "Report Mode help markdown should be
 assertMatch(helpMd, /Report Mode 使用说明/, "help markdown should have a main title");
 assertMatch(helpMd, /趋势分析/, "help markdown should document trend analysis");
 assertMatch(helpMd, /支付查询/, "help markdown should document payment queries");
-assertMatch(helpMd, /推荐与排行/, "help markdown should document recommendations");
+assertNotMatch(helpMd, /^### 5\. 对比分析$/m, "help markdown should omit comparison analysis from supported query types");
+assertNotMatch(helpMd, /^### 6\. 推荐与排行$/m, "help markdown should omit recommendations from supported query types");
+assertNotMatch(helpMd, /^### 7\. 关键词搜索$/m, "help markdown should omit keyword search from supported query types");
+assertNotMatch(helpMd, /^### 9\. 分层管理$/m, "help markdown should omit tier management from supported query types");
 assertMatch(helpMd, /标准提问模板/, "help markdown should include a standard question template section");
 const helpHtml = hooks.renderReportModeHelp();
 assertMatch(helpHtml, /<h1>/, "help markdown should render an h1");
@@ -206,7 +209,10 @@ assertTruthy(helpMdEn && helpMdEn.length > 200, "English help markdown should be
 assertMatch(helpMdEn, /Report Mode User Guide/, "English help should have a main title");
 assertMatch(helpMdEn, /Trend Analysis/i, "English help should document trend analysis");
 assertMatch(helpMdEn, /Payment Queries/i, "English help should document payment queries");
-assertMatch(helpMdEn, /Recommendations & Rankings/, "English help should document recommendations");
+assertNotMatch(helpMdEn, /^### 1\.5 Comparison Analysis$/m, "English help should omit comparison analysis from supported query types");
+assertNotMatch(helpMdEn, /^### 1\.6 Recommendations & Rankings$/m, "English help should omit recommendations from supported query types");
+assertNotMatch(helpMdEn, /^### 1\.7 Keyword Search$/m, "English help should omit keyword search from supported query types");
+assertNotMatch(helpMdEn, /^### 1\.9 Tier Management$/m, "English help should omit tier management from supported query types");
 assertMatch(helpMdEn, /Standard Question Template/, "English help should include a standard question template section");
 const helpHtmlEn = hooks.renderReportModeHelp(null, "en");
 assertMatch(helpHtmlEn, /<h1>/, "English help should render an h1");
