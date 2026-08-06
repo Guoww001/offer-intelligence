@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260806-answer-feedback1" />
+    <link rel="stylesheet" href="./styles.css?v=20260806-answer-feedback2" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -1087,11 +1087,15 @@
       aria-hidden="true"
       aria-labelledby="answerFeedbackTitle"
     >
-      <div class="answer-feedback-card">
+      <div class="answer-feedback-card-shell">
+        <div class="answer-feedback-card">
         <div class="answer-feedback-header">
-          <div>
-            <h3 id="answerFeedbackTitle">哪里不满意？</h3>
-            <p id="answerFeedbackSubtitle">请选择一个主要原因，也可以补充说明。</p>
+          <div class="answer-feedback-heading">
+            <span class="answer-feedback-mood" aria-hidden="true">😡</span>
+            <div>
+              <h3 id="answerFeedbackTitle">哪里不满意？</h3>
+              <p id="answerFeedbackSubtitle">请选择一个主要原因，也可以补充说明。</p>
+            </div>
           </div>
           <button id="answerFeedbackClose" type="button" aria-label="关闭反馈窗口">×</button>
         </div>
@@ -1114,6 +1118,7 @@
             <button id="answerFeedbackSubmit" type="submit">提交反馈</button>
           </div>
         </form>
+        </div>
       </div>
     </div>
 
@@ -1122,7 +1127,7 @@
     <script src="./chatbot_welcome.js?v=20260805-assistant-tour5"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260806-answer-feedback7"></script>
+    <script src="./auth.js?v=20260806-answer-feedback9"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。
