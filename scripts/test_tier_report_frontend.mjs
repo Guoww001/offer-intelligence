@@ -148,7 +148,8 @@ const unorderedTierHeaders = [
   "Conversion Rate",
   "Merchant ID",
   "AOV",
-  "Commission Rate",
+  "ALL Commission",
+  "AFF Commission",
   "Brand",
   "Category",
   "DPV",
@@ -160,7 +161,8 @@ const expectedDefaultTierHeaders = [
   "Merchant Name",
   "Brand",
   "Network",
-  "Commission Rate",
+  "ALL Commission",
+  "AFF Commission",
   "Category",
   "Clicks",
   "DPV",
@@ -230,16 +232,19 @@ assertEqual(
 );
 
 const exportRows = [{
-  "Commission Rate": "27.0",
+  "ALL Commission": "27.0",
+  "AFF Commission": "20.25",
   "Conversion Rate": "0.125",
   Clicks: "18.0",
   ATC: "0.0",
   DPV: "14.0",
   Revenue: "154.489751"
 }];
-const exportHeaders = ["Commission Rate", "Conversion Rate", "Clicks", "ATC", "DPV", "Revenue"];
+const exportHeaders = ["ALL Commission", "AFF Commission", "Conversion Rate", "Clicks", "ATC", "DPV", "Revenue"];
 const exportColumns = hooks.tierSheetExportColumns(exportRows, exportHeaders);
 const percentageHeaders = [
+  "ALL Commission",
+  "AFF Commission",
   "Commission Rate",
   "Conversion",
   "Conversion Rate",
@@ -256,13 +261,15 @@ assertEqual(
 );
 const exportWorksheet = hooks.worksheetXml(exportRows, { columns: exportColumns });
 const exportStyles = hooks.stylesXml();
-assertEqual(exportWorksheet.includes('r="A2" s="1"'), true, "Commission Rate should use percentage style");
-assertEqual(exportWorksheet.includes('r="B2" s="1"'), true, "Conversion Rate should use percentage style");
-assertEqual(exportWorksheet.includes('r="C2" s="2"'), true, "Clicks should use integer style");
-assertEqual(exportWorksheet.includes('r="D2" s="2"'), true, "ATC should use integer style");
-assertEqual(exportWorksheet.includes('r="E2" s="2"'), true, "DPV should use integer style");
-assertEqual(exportWorksheet.includes('r="F2" s='), false, "Revenue should keep the default style");
+assertEqual(exportWorksheet.includes('r="A2" s="1"'), true, "ALL Commission should use percentage style");
+assertEqual(exportWorksheet.includes('r="B2" s="1"'), true, "AFF Commission should use percentage style");
+assertEqual(exportWorksheet.includes('r="C2" s="1"'), true, "Conversion Rate should use percentage style");
+assertEqual(exportWorksheet.includes('r="D2" s="2"'), true, "Clicks should use integer style");
+assertEqual(exportWorksheet.includes('r="E2" s="2"'), true, "ATC should use integer style");
+assertEqual(exportWorksheet.includes('r="F2" s="2"'), true, "DPV should use integer style");
+assertEqual(exportWorksheet.includes('r="G2" s='), false, "Revenue should keep the default style");
 assertEqual(exportWorksheet.includes('<v>0.27</v>'), true, "whole-number percentage should be normalized to a fraction");
+assertEqual(exportWorksheet.includes('<v>0.2025</v>'), true, "AFF commission percentage should be normalized to a fraction");
 assertEqual(exportWorksheet.includes('<v>0.125</v>'), true, "fractional percentage should remain a fraction");
 assertEqual(exportWorksheet.includes('<v>18</v>'), true, "Clicks should be exported as an integer");
 assertEqual(exportWorksheet.includes('<v>0</v>'), true, "ATC should be exported as an integer");
