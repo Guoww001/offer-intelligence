@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from offer_db import (  # noqa: E402
-    commission_epc,
+    DEFAULT_AFF_PROPORTION,
+    commission_amount_epc,
     commission_rate_from_amount,
     db_connection,
     fetch_all,
@@ -177,8 +178,12 @@ def offer_from_rows(base, metrics, tier, visual, products):
     clicks = value(metrics, "clicks", default=0)
     payout = value(metrics, "payout", default=0)
     affiliate_payout = value(metrics, "affiliatePayout", default=0)
-    all_epc = commission_epc(revenue, commission_rate_from_amount(revenue, payout), clicks)
-    aff_epc = commission_epc(revenue, commission_rate_from_amount(revenue, affiliate_payout), clicks)
+    all_epc = commission_amount_epc(payout, clicks)
+    aff_epc = commission_amount_epc(affiliate_payout, clicks)
+    all_commission_rate = value(base, "commissionRate", default=None)
+    aff_commission_rate = commission_rate_from_amount(revenue, affiliate_payout) * 100 if revenue else None
+    if aff_commission_rate is None and all_commission_rate not in (None, ""):
+        aff_commission_rate = float(all_commission_rate) * DEFAULT_AFF_PROPORTION
     top_asins = [value(product, "asin") for product in products if value(product, "asin")]
     return compact(
         {
@@ -200,6 +205,8 @@ def offer_from_rows(base, metrics, tier, visual, products):
             "aov": value(metrics, "aov", default=0),
             "conversionRate": value(metrics, "conversionRate", default=0),
             "commissionRate": value(base, "commissionRate", default=None),
+            "allCommissionRate": all_commission_rate,
+            "affCommissionRate": aff_commission_rate,
             "paymentCycle": value(base, "paymentCycle", default=None),
             "dpv": value(metrics, "dpv", default=None),
             "atc": value(metrics, "atc", default=None),
@@ -217,7 +224,7 @@ def offer_from_rows(base, metrics, tier, visual, products):
 
 def build_sheet_payload(offers, generated_at):
     headers = [
-        "Merchant ID", "Merchant Name", "Network", "Category", "Clicks",
+        "Merchant ID", "Merchant Name", "Network", "ALL Commission", "AFF Commission", "Category", "Clicks",
         "Order count", "Revenue", "Backend EPC", "EPC(All)", "EPC(Aff)",
     ]
     sheets = []
@@ -231,6 +238,8 @@ def build_sheet_payload(offers, generated_at):
                     "Merchant ID": offer.get("merchantId", ""),
                     "Merchant Name": offer.get("brand", ""),
                     "Network": offer.get("network", ""),
+                    "ALL Commission": offer.get("allCommissionRate", offer.get("commissionRate", "")),
+                    "AFF Commission": offer.get("affCommissionRate", ""),
                     "Category": offer.get("category", ""),
                     "Clicks": offer.get("clicks", ""),
                     "Order count": offer.get("orders", ""),

@@ -74,19 +74,18 @@ def test_date_ranges():
 
 
 def test_commission_epc_formula():
-    revenue = 4528.59
     clicks = 5521
     assert_close(
-        offer_db.commission_epc(revenue, 0.10, clicks),
-        revenue * 0.10 / clicks,
-        "decimal all commission EPC",
+        offer_db.commission_amount_epc(452.93, clicks),
+        452.93 / clicks,
+        "ALL commission amount EPC",
     )
     assert_close(
-        offer_db.commission_epc(revenue, 7.5, clicks),
-        revenue * 0.075 / clicks,
-        "percentage AFF commission EPC",
+        offer_db.commission_amount_epc(339.6975, clicks),
+        339.6975 / clicks,
+        "AFF commission amount EPC",
     )
-    assert_equal(offer_db.commission_epc(revenue, 10, 0), 0.0, "zero-click EPC")
+    assert_equal(offer_db.commission_amount_epc(452.93, 0), 0.0, "zero-click EPC")
 
 
 def test_static_snapshot_epc_formula():
@@ -97,8 +96,10 @@ def test_static_snapshot_epc_formula():
         {},
         [],
     )
-    assert_close(offer["allEpc"], 4528.59 * 0.10 / 5521, "snapshot all EPC")
-    assert_close(offer["affEpc"], 4528.59 * 0.075 / 5521, "snapshot AFF EPC")
+    assert_close(offer["allEpc"], 452.859 / 5521, "snapshot all EPC")
+    assert_close(offer["affEpc"], 339.64425 / 5521, "snapshot AFF EPC")
+    assert_equal(offer["allCommissionRate"], 10, "snapshot ALL commission rate")
+    assert_close(offer["affCommissionRate"], 7.5, "snapshot AFF commission rate")
     assert_equal(offer["epc"], offer["affEpc"], "snapshot legacy EPC")
 
 
@@ -111,7 +112,7 @@ def test_report_payload():
             "Network": "Archer",
             "Agency": "Bluefocus",
             "BD": "Bryan",
-            "Commission Rate": 10,
+            "ALL Commission": 10,
             "COUNTRY": "UK",
         },
         {
@@ -121,12 +122,12 @@ def test_report_payload():
             "Network": "Levanta",
             "Agency": None,
             "BD": None,
-            "Commission Rate": 10,
+            "ALL Commission": 10,
         },
     ]
     order_rows = [
-        {"merchantId": "101", "orders": 2, "revenue": 80, "payout": 8, "affiliatePayout": 6, "dpv": 20, "atc": 5, "orderClicks": 10},
-        {"merchantId": "202", "orders": 5, "revenue": 125, "payout": 12.5, "affiliatePayout": 10, "dpv": 40, "atc": 9, "orderClicks": 0},
+        {"merchantId": "101", "orders": 2, "revenue": 80, "payout": 8, "affiliatePayout": 6, "affProportion": 75, "dpv": 20, "atc": 5, "orderClicks": 10},
+        {"merchantId": "202", "orders": 5, "revenue": 125, "payout": 12.5, "affiliatePayout": 10, "affProportion": 80, "dpv": 40, "atc": 9, "orderClicks": 0},
     ]
     click_rows = [
         {"merchantId": "101", "trackedClicks": 100},
@@ -175,6 +176,10 @@ def test_report_payload():
     assert_equal(payload["compact"], True, "compact payload flag")
     assert "May Revenue" not in payload["headers"], payload["headers"]
     assert "June Revenue" not in payload["headers"], payload["headers"]
+    assert "Commission Rate" not in payload["headers"], payload["headers"]
+    assert_equal(payload["rows"][0]["ALL Commission"], "10.0", "ALL commission rate")
+    assert_equal(payload["rows"][0]["AFF Commission"], "7.5", "AFF commission rate")
+    assert_equal(payload["rows"][1]["AFF Commission"], "8.0", "merchant AFF proportion")
     assert_equal(payload["rows"][0]["Clicks"], "10.0", "order click source")
     assert_equal(payload["rows"][0]["Revenue"], "80.0", "order revenue")
     assert_equal(payload["rows"][0]["Agency"], "Bluefocus", "sheet agency")
@@ -224,6 +229,8 @@ def test_frontend_contract():
     for removed in ("May Revenue", "June Revenue"):
         assert removed not in app, f"{removed} still present in app.js"
         assert removed not in backend, f"{removed} still present in offer_db.py"
+    assert "commission_amount_epc(all_commission, clicks)" in backend
+    assert "commission_amount_epc(aff_commission, clicks)" in backend
 
 
 def main():

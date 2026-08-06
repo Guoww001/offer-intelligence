@@ -78,7 +78,7 @@
   const REMOVED_TIER_REVENUE_HEADERS = new Set(["May", "June"].map((month) => `${month} Revenue`));
   const LIVE_TIER_METRIC_HEADERS = new Set([
     "Order count", "Revenue", "Backend EPC", "EPC(All)", "EPC(Aff)", "AOV", "Conversion", "Conversion Rate",
-    "Clicks", "DPV", "ATC", "Payout", "Affiliate Payout"
+    "Clicks", "DPV", "ATC", "Payout", "Affiliate Payout", "ALL Commission", "AFF Commission"
   ]);
   const TIER_INTEGER_METRIC_HEADERS = new Set([
     "clicks", "total clicks", "dpv", "atc", "order count", "orders",
@@ -90,7 +90,8 @@
     "Merchant Name",
     "Brand",
     "Network",
-    "Commission Rate",
+    "ALL Commission",
+    "AFF Commission",
     "Category",
     "Clicks",
     "DPV",
@@ -103,6 +104,8 @@
   ];
   const DEFAULT_TIER_COLUMN_ALIASES = {
     "Network": ["Network", "Agency"],
+    "ALL Commission": ["ALL Commission", "Commission Rate"],
+    "AFF Commission": ["AFF Commission"],
     "Conversion Rate": ["Conversion Rate", "Conversion", "CVR"],
     "EPC(All)": ["EPC(All)", "All EPC"],
     "EPC(Aff)": ["EPC(Aff)", "Aff EPC", "Backend EPC", "EPC"]
@@ -3808,7 +3811,7 @@ Full flow (working with Report Mode):
 
   function isRateColumn(header) {
     const lower = String(header || "").toLowerCase();
-    return /(commission rate|success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b)/.test(lower) && !/count/.test(lower);
+    return /(all commission|aff commission|commission rate|success rate|conversion rate|completion rate|avg conversion|\bconversion\b|\bcvr\b)/.test(lower) && !/count/.test(lower);
   }
 
   function percentageNumberForHeader(header, value) {
@@ -3831,7 +3834,7 @@ Full flow (working with Report Mode):
     const text = String(value ?? "");
     if (text.includes("%")) return text;
     const percentage = percentageNumberForHeader(header, text);
-    const minimumFractionDigits = /commission rate/i.test(String(header || "")) ? 2 : 0;
+    const minimumFractionDigits = /(all commission|aff commission|commission rate)/i.test(String(header || "")) ? 2 : 0;
     return percentage === null ? text : formatPercentNumber(percentage, minimumFractionDigits);
   }
 
@@ -16428,7 +16431,10 @@ var _NUMERIC_COL_PATTERNS = [
   function selectedHeadersForTierSheet(sheetName, headers) {
     const saved = state.tierVisibleColumns[sheetName];
     if (!Array.isArray(saved)) return [];
-    const selected = saved.filter((header) => headers.includes(header));
+    const migratedSaved = saved.flatMap((header) => header === "Commission Rate"
+      ? ["ALL Commission", "AFF Commission"]
+      : [header]);
+    const selected = migratedSaved.filter((header) => headers.includes(header));
     const legacyIndex = selected.indexOf("Backend EPC");
     if (legacyIndex >= 0 && headers.includes("EPC(All)") && headers.includes("EPC(Aff)")) {
       selected.splice(legacyIndex, 1, "EPC(All)", "EPC(Aff)");
