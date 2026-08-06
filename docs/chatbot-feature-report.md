@@ -276,6 +276,7 @@ _provider()        → 读取 OI_LLM_PROVIDER (deepseek/claude)
 _model_name()      → 读取对应模型名
 _api_key()         → 读取对应 API Key
 _default_timeout() → OI_LLM_TIMEOUT (默认 15s)
+stream_timeout()   -> OI_LLM_STREAM_TIMEOUT (default 50s, max 50s)
 call_llm()         → 统一调用入口 (OpenAI 兼容 / Anthropic SDK)
 ```
 
@@ -301,8 +302,8 @@ call_llm()         → 统一调用入口 (OpenAI 兼容 / Anthropic SDK)
 ### 8.4 api/chat/ — Vercel Serverless
 
 ```
-api/chat/classify.py  ← class handler: do_POST → classify_intent()
-api/chat/analyze.py   ← class handler: do_POST → generate_analysis_text()
+api/chat/actions.py   -> class handler: trusted route header -> classify/analyze
+api/chat/stream.py    -> class handler: SSE stream (50s graceful deadline)
 ```
 
 ---
@@ -319,6 +320,7 @@ api/chat/analyze.py   ← class handler: do_POST → generate_analysis_text()
 | `OI_LLM_MODEL_DEEPSEEK` | DeepSeek 模型 | `deepseek-chat` |
 | `OI_LLM_MODEL_CLAUDE` | Claude 模型 | `claude-haiku-3-5-latest` |
 | `OI_LLM_TIMEOUT` | API 超时（秒） | `15` |
+| `OI_LLM_STREAM_TIMEOUT` | SSE streaming timeout in seconds (bounded to 5-50) | `50` |
 | `OI_LLM_TWO_STAGE` | 启用两阶段分类 | 关闭 |
 
 ### 功能开关
@@ -428,8 +430,8 @@ node --check public/app.js
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_zh_chatbot.mjs
 python -m py_compile llm_classify.py
-python -m py_compile api/chat/classify.py
-python -m py_compile api/chat/analyze.py
+python -m py_compile api/chat/actions.py
+python -m py_compile api/chat/stream.py
 ```
 
 ---
@@ -459,8 +461,8 @@ llm_classify.py               ← 意图分类 + 分析文字生成编排层
 server.py                     ← 本地服务器（/api/chat/* 路由）
 auth.py                       ← 认证 + llmEnabled 状态
 api/chat/
-├── classify.py               ← /api/chat/classify Vercel handler
-└── analyze.py                ← /api/chat/analyze Vercel handler
+|-- actions.py                -> /api/chat/classify + /api/chat/analyze Vercel handler
+`-- stream.py                 -> /api/chat/stream Vercel SSE handler
 skills/
 ├── __init__.py               ← Skill 自动注册
 ├── base.py                   ← IntentSkill / AnalysisSkill 基类 + SkillRegistry

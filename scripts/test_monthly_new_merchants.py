@@ -134,6 +134,12 @@ def main():
     assert "STR_TO_DATE" in source_date_sql
     assert "FROM_UNIXTIME" in source_date_sql
     assert "CAST(NULLIF" in source_date_sql
+    assert "'%%Y%%m%%d'" in source_date_sql
+    bound_source_date_sql = (
+        f"{source_date_sql} >= %s AND {source_date_sql} < %s"
+        % ("2026-08-01", "2026-09-01")
+    )
+    assert "'%Y%m%d'" in bound_source_date_sql
 
     original_source_info = offer_db._monthly_new_merchant_source_column_info
     original_table_columns = offer_db.table_columns

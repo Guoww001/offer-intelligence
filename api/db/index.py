@@ -4,6 +4,7 @@ import json
 
 from auth import _read_json_body, require_auth, session_payload
 from offer_db import (
+    DIGITS_RE,
     add_merchant_to_tier1,
     delete_monthly_new_merchant,
     first_query_value,
@@ -16,6 +17,7 @@ from offer_db import (
     product_keywords_payload,
     publisher_portfolio_payload,
     publishers_payload,
+    read_static_merchant_ids,
     require_db_token,
     search_payload,
     send_db_error,
@@ -100,6 +102,58 @@ def handle_search(target, query):
     limit = int_query_value(query, "limit", 25, 1, 50)
     try:
         send_json(target, 200, search_payload(text, limit=limit))
+    except Exception as error:
+        send_db_error(target, error)
+
+
+def handle_ui_status(target, query):
+    try:
+        send_json(target, 200, status_payload(month=first_query_value(query, "month")))
+    except Exception as error:
+        send_db_error(target, error)
+
+
+def handle_ui_merchant(target, query):
+    merchant_id = first_query_value(query, "merchantId")
+    if not merchant_id:
+        send_json(target, 400, {"ok": False, "error": "merchantId is required"})
+        return
+    if not DIGITS_RE.match(merchant_id):
+        send_json(target, 400, {"ok": False, "error": "merchantId must be numeric"})
+        return
+    if merchant_id not in set(read_static_merchant_ids()):
+        send_json(target, 404, {"ok": False, "error": "merchantId is not in the public snapshot"})
+        return
+    limit = int_query_value(query, "limit", 20, 1, 50)
+    months = int_query_value(query, "months", 12, 1, 24)
+    minimal = first_query_value(query, "minimal", "").lower() in {"1", "true", "yes"}
+    try:
+        send_json(
+            target,
+            200,
+            merchant_payload(merchant_id, product_limit=limit, months=months, minimal=minimal),
+        )
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except Exception as error:
+        send_db_error(target, error)
+
+
+def handle_ui_search(target, query):
+    text = first_query_value(query, "q")
+    limit = int_query_value(query, "limit", 15, 1, 25)
+    if len(text) < 2:
+        send_json(target, 200, {"ok": True, "query": text, "results": []})
+        return
+    try:
+        public_ids = set(read_static_merchant_ids())
+        payload = search_payload(text, limit=max(50, limit * 4))
+        payload["results"] = [
+            row
+            for row in payload.get("results", [])
+            if str(row.get("merchantId") or "") in public_ids
+        ][:limit]
+        send_json(target, 200, payload)
     except Exception as error:
         send_db_error(target, error)
 
@@ -332,9 +386,24 @@ def app(environ, start_response):
             handle_ui_monthly_new_merchants(target, query, method)
     elif method != "GET":
         send_json(target, 405, {"ok": False, "error": "Method not allowed"})
-    elif route in {"ui-keywords", "ui-offers", "ui-tier-sheet", "ui-tier-summary", "ui-publishers"}:
+    elif route in {
+        "ui-status",
+        "ui-merchant",
+        "ui-search",
+        "ui-keywords",
+        "ui-offers",
+        "ui-tier-sheet",
+        "ui-tier-summary",
+        "ui-publishers",
+    }:
         if require_auth(target):
-            if route == "ui-keywords":
+            if route == "ui-status":
+                handle_ui_status(target, query)
+            elif route == "ui-merchant":
+                handle_ui_merchant(target, query)
+            elif route == "ui-search":
+                handle_ui_search(target, query)
+            elif route == "ui-keywords":
                 handle_ui_keywords(target)
             elif route == "ui-publishers":
                 handle_ui_publishers(target, query)

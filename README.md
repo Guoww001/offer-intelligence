@@ -276,13 +276,19 @@ node --check public/tier2_recommendation_rules.js
 python scripts/test_auth_helpers.py
 python scripts/test_vercel_function_budget.py
 python scripts/test_vercel_db_wsgi.py
+python scripts/test_vercel_auth_routes.py
+python scripts/test_vercel_chat_routes.py
+python scripts/test_vercel_payment_packaging.py
+python scripts/test_llm_stream_timeout.py
+# after `vercel build --prod`
+python scripts/test_vercel_build_output.py
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_tier2_recommendation_rules.mjs
 node scripts/test_sheet_categories.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
-python -m py_compile auth.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/db/index.py scripts/validate_db_migration.py
+python -m py_compile auth.py server.py offer_db.py levanta_payments.py api/auth/index.py api/chat/actions.py api/chat/stream.py api/db/index.py api/levanta/payments.py api/tier_moves.py scripts/validate_db_migration.py
 ```
 
 ## Security

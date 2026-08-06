@@ -77,7 +77,7 @@
   const STANDARD_CATEGORY_REPORT_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4"];
   const REMOVED_TIER_REVENUE_HEADERS = new Set(["May", "June"].map((month) => `${month} Revenue`));
   const LIVE_TIER_METRIC_HEADERS = new Set([
-    "Order count", "Revenue", "Backend EPC", "AOV", "Conversion", "Conversion Rate",
+    "Order count", "Revenue", "Backend EPC", "EPC(All)", "EPC(Aff)", "AOV", "Conversion", "Conversion Rate",
     "Clicks", "DPV", "ATC", "Payout", "Affiliate Payout"
   ]);
   const TIER_INTEGER_METRIC_HEADERS = new Set([
@@ -97,11 +97,15 @@
     "ATC",
     "AOV",
     "Conversion Rate",
-    "Revenue"
+    "Revenue",
+    "EPC(All)",
+    "EPC(Aff)"
   ];
   const DEFAULT_TIER_COLUMN_ALIASES = {
     "Network": ["Network", "Agency"],
-    "Conversion Rate": ["Conversion Rate", "Conversion", "CVR"]
+    "Conversion Rate": ["Conversion Rate", "Conversion", "CVR"],
+    "EPC(All)": ["EPC(All)", "All EPC"],
+    "EPC(Aff)": ["EPC(Aff)", "Aff EPC", "Backend EPC", "EPC"]
   };
   const TIER_TABLE_PAGE_SIZE = 500;
   const CATEGORY_REPORT_TIER_OPTIONS = [...STANDARD_CATEGORY_REPORT_TIERS, "BLACK TIER"];
@@ -1419,18 +1423,42 @@
     return isAvailable(offer && offer.affCommission) ? Number(offer.affCommission) : null;
   }
 
+  function normalizedCommissionRate(value) {
+    if (!isAvailable(value)) return null;
+    const rate = Number(String(value).replace(/%$/, "").trim());
+    if (!Number.isFinite(rate) || rate < 0) return null;
+    return Math.abs(rate) <= 1 ? rate : rate / 100;
+  }
+
+  function commissionEpcFromTotals(revenue, commission, clicks) {
+    const revenueValue = Number(revenue);
+    const commissionValue = Number(commission);
+    const clicksValue = Number(clicks);
+    if (!(revenueValue > 0) || !Number.isFinite(commissionValue) || !(clicksValue > 0)) return 0;
+    const commissionRate = commissionValue / revenueValue;
+    return revenueValue * commissionRate / clicksValue;
+  }
+
   function offerAllEpc(offer) {
     const clicks = Number(offer && offer.clicks);
     if (!(clicks > 0)) return null;
+    if (isAvailable(offer && offer.allEpc)) return Number(offer.allEpc);
+    const revenue = Number(offer && offer.salesAmount);
     const all = offerAllCommission(offer);
-    return all === null ? null : all / clicks;
+    const rate = revenue > 0 && all !== null
+      ? all / revenue
+      : normalizedCommissionRate(offer && offer.commissionRate);
+    return revenue > 0 && rate !== null ? revenue * rate / clicks : null;
   }
 
   function offerAffEpc(offer) {
     const clicks = Number(offer && offer.clicks);
     if (!(clicks > 0)) return null;
+    if (isAvailable(offer && offer.affEpc)) return Number(offer.affEpc);
+    const revenue = Number(offer && offer.salesAmount);
     const aff = offerAffCommission(offer);
-    return aff === null ? null : aff / clicks;
+    const rate = revenue > 0 && aff !== null ? aff / revenue : null;
+    return revenue > 0 && rate !== null ? revenue * rate / clicks : null;
   }
 
   let merchantCardSeq = 0; // 聊天区概览卡片容器唯一 id 计数器
@@ -5601,7 +5629,7 @@ Full flow (working with Report Mode):
         totalClicks += Number(o.clicks || 0);
         totalOrders += Number(o.orders || 0);
       }
-      var avgEpc = totalClicks > 0 ? totalRevenue / totalClicks : 0;
+      var avgEpc = commissionEpcFromTotals(totalRevenue, totalCommission, totalClicks);
       var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
       var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
       var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
@@ -5677,7 +5705,7 @@ Full flow (working with Report Mode):
         totalClicks += Number(o.clicks || 0);
         totalOrders += Number(o.orders || 0);
       }
-      var avgEpc = totalClicks > 0 ? totalRevenue / totalClicks : 0;
+      var avgEpc = commissionEpcFromTotals(totalRevenue, totalCommission, totalClicks);
       var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
       var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
       var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
@@ -6443,11 +6471,12 @@ Full flow (working with Report Mode):
         var row = merchantMonths[m];
         var monthKey = row.month;
         if (!monthMap[monthKey]) {
-          monthMap[monthKey] = { month: monthKey, revenue: 0, orders: 0, clicks: 0, affiliatePayout: 0 };
+          monthMap[monthKey] = { month: monthKey, revenue: 0, orders: 0, clicks: 0, payout: 0, affiliatePayout: 0 };
         }
         monthMap[monthKey].revenue += Number(row.revenue) || 0;
         monthMap[monthKey].orders += Number(row.orders) || 0;
         monthMap[monthKey].clicks += Number(row.clicks) || 0;
+        monthMap[monthKey].payout += Number(row.payout) || 0;
         monthMap[monthKey].affiliatePayout += Number(row.affiliatePayout || row.affCommission) || 0;
       }
     }
@@ -6459,7 +6488,9 @@ Full flow (working with Report Mode):
     // Compute weighted rates for each month
     for (var i = 0; i < result.length; i++) {
       var entry = result[i];
-      entry.epc = entry.clicks > 0 ? entry.revenue / entry.clicks : 0;
+      entry.allEpc = commissionEpcFromTotals(entry.revenue, entry.payout, entry.clicks);
+      entry.affEpc = commissionEpcFromTotals(entry.revenue, entry.affiliatePayout, entry.clicks);
+      entry.epc = entry.affEpc;
       entry.aov = entry.orders > 0 ? entry.revenue / entry.orders : 0;
     }
 
@@ -6544,15 +6575,17 @@ Full flow (working with Report Mode):
         || Number(o.dpv)
         || Number(o.atc)
         || 0;
+      var totalPayout = Number(o.payout) || 0;
       var totalCommission = Number(o.affCommission || o.affiliatePayout) || 0;
 
       for (var j = 0; j < months.length; j++) {
         if (!monthMap[months[j]]) {
-          monthMap[months[j]] = { month: months[j], revenue: 0, orders: 0, clicks: 0, affiliatePayout: 0 };
+          monthMap[months[j]] = { month: months[j], revenue: 0, orders: 0, clicks: 0, payout: 0, affiliatePayout: 0 };
         }
         monthMap[months[j]].revenue += totalRevenue / n;
         monthMap[months[j]].orders += totalOrders / n;
         monthMap[months[j]].clicks += totalClicks / n;
+        monthMap[months[j]].payout += totalPayout / n;
         monthMap[months[j]].affiliatePayout += totalCommission / n;
       }
     }
@@ -6567,11 +6600,15 @@ Full flow (working with Report Mode):
     var metricRows = [];
     for (var i = 0; i < monthKeys.length; i++) {
       var m = monthMap[monthKeys[i]];
+      var allEpc = commissionEpcFromTotals(m.revenue, m.payout, m.clicks);
+      var affEpc = commissionEpcFromTotals(m.revenue, m.affiliatePayout, m.clicks);
       metricRows.push({
         month: m.month,
         revenue: Math.round(m.revenue * 100) / 100,
         orders: Math.round(m.orders),
-        epc: m.clicks > 0 ? Math.round((m.revenue / m.clicks) * 10000) / 10000 : 0,
+        epc: Math.round(affEpc * 10000) / 10000,
+        allEpc: Math.round(allEpc * 10000) / 10000,
+        affEpc: Math.round(affEpc * 10000) / 10000,
         aov: m.orders > 0 ? Math.round((m.revenue / m.orders) * 100) / 100 : 0,
         clicks: Math.round(m.clicks),
         affiliatePayout: Math.round(m.affiliatePayout * 100) / 100
@@ -16391,7 +16428,12 @@ var _NUMERIC_COL_PATTERNS = [
   function selectedHeadersForTierSheet(sheetName, headers) {
     const saved = state.tierVisibleColumns[sheetName];
     if (!Array.isArray(saved)) return [];
-    return saved.filter((header) => headers.includes(header));
+    const selected = saved.filter((header) => headers.includes(header));
+    const legacyIndex = selected.indexOf("Backend EPC");
+    if (legacyIndex >= 0 && headers.includes("EPC(All)") && headers.includes("EPC(Aff)")) {
+      selected.splice(legacyIndex, 1, "EPC(All)", "EPC(Aff)");
+    }
+    return Array.from(new Set(selected));
   }
 
   function defaultTierHeadersForSheet(sheet, headers) {
@@ -16493,7 +16535,8 @@ var _NUMERIC_COL_PATTERNS = [
       else if (header === "DPV") row[header] = number(offer.dpv).toLocaleString();
       else if (header === "ATC") row[header] = number(offer.atc).toLocaleString();
       else if (header === "Order count") row[header] = number(offer.orders).toLocaleString();
-      else if (header === "Backend EPC" || header === "EPC") row[header] = shortEpc(offer.epc);
+      else if (header === "EPC(All)" || header === "All EPC") row[header] = shortEpc(offerAllEpc(offer));
+      else if (header === "EPC(Aff)" || header === "Aff EPC" || header === "Backend EPC" || header === "EPC") row[header] = shortEpc(offerAffEpc(offer));
       else if (header === "Revenue") row[header] = shortMoney(offer.salesAmount);
       else if (header === "Completion Rate") row[header] = shortPct(offer.completionRate);
       else if (header === "Payment Cycle") row[header] = offer.paymentCycle ? `${offer.paymentCycle}` : "";
@@ -16774,7 +16817,7 @@ var _NUMERIC_COL_PATTERNS = [
       .filter((row) => !search || normalize(Object.values(row).join(" ")).includes(search))
       .filter((row) => state.tierSheetFilters.network === "all" || String(rowValue(row, ["Network", "Agency"])) === state.tierSheetFilters.network)
       .filter((row) => state.tierSheetFilters.country === "all" || String(rowValue(row, ["COUNTRY", "Country"])) === state.tierSheetFilters.country)
-      .filter((row) => parseSheetNumber(rowValue(row, ["Backend EPC", "EPC"])) >= minEpc)
+      .filter((row) => parseSheetNumber(rowValue(row, ["EPC(Aff)", "Aff EPC", "Backend EPC", "EPC", "EPC(All)", "All EPC"])) >= minEpc)
       .filter((row) => parseSheetNumber(rowValue(row, ["Revenue", "Sales Amount", "Sales"])) >= minRevenue);
   }
 
@@ -16827,7 +16870,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function tierRowEpc(row) {
-    return tierRowNumber(row, ["Backend EPC", "EPC"]);
+    return tierRowNumber(row, ["EPC(Aff)", "Aff EPC", "Backend EPC", "EPC", "EPC(All)", "All EPC"]);
   }
 
   function compareTierCategorySummaryRows(a, b) {
@@ -20511,6 +20554,7 @@ var _NUMERIC_COL_PATTERNS = [
         _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
       offerAllCommission,
       offerAffCommission,
+      commissionEpcFromTotals,
       offerAllEpc,
       offerAffEpc,
       money,

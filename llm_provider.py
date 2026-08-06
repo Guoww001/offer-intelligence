@@ -15,12 +15,16 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import Any, Generator
 
 DEFAULT_PROVIDER = "deepseek"
 DEFAULT_MODEL_DEEPSEEK = "deepseek-chat"
 DEFAULT_MODEL_CLAUDE = "claude-haiku-3-5-latest"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEFAULT_STREAM_TIMEOUT = 50.0
+MIN_STREAM_TIMEOUT = 5.0
+MAX_STREAM_TIMEOUT = 50.0
 
 
 def _provider() -> str:
@@ -47,6 +51,17 @@ def _default_timeout() -> float:
         return float(os.environ.get("OI_LLM_TIMEOUT", "15").strip())
     except ValueError:
         return 15.0
+
+
+def stream_timeout() -> float:
+    """Return a bounded streaming deadline that stays below Vercel's 60s cap."""
+    try:
+        value = float(
+            os.environ.get("OI_LLM_STREAM_TIMEOUT", str(DEFAULT_STREAM_TIMEOUT)).strip()
+        )
+    except ValueError:
+        value = DEFAULT_STREAM_TIMEOUT
+    return min(MAX_STREAM_TIMEOUT, max(MIN_STREAM_TIMEOUT, value))
 
 
 def _classify_claude(prompt: str, system_prompt: str, timeout: float) -> str | None:
@@ -190,7 +205,8 @@ def stream_chat(
         user_message: The user's prompt text.
         system_prompt: System-level instructions for the model.
         max_tokens: Maximum output tokens.
-        timeout: API call timeout in seconds.  Defaults to 60 for streaming.
+        timeout: API call timeout in seconds. Defaults to a bounded 50-second
+            deadline so the handler can finish before Vercel's 60-second cap.
         temperature: Sampling temperature.
         history: Optional list of {role, content} dicts for conversation context.
     """
@@ -201,7 +217,9 @@ def stream_chat(
         return
 
     if timeout is None:
-        timeout = 60.0
+        timeout = stream_timeout()
+
+    deadline = time.monotonic() + timeout
 
     history_count = len(history) if history else 0
     print(
@@ -215,7 +233,12 @@ def stream_chat(
         if provider == "deepseek":
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=timeout)
+            client = OpenAI(
+                api_key=api_key,
+                base_url=DEEPSEEK_BASE_URL,
+                timeout=timeout,
+                max_retries=0,
+            )
             messages = [{"role": "system", "content": system_prompt}]
             if history:
                 for msg in history:
@@ -230,12 +253,18 @@ def stream_chat(
                 messages=messages,
             )
             for chunk in response:
+                if time.monotonic() >= deadline:
+                    print(
+                        f"[llm_provider] stream {provider}: deadline reached after {timeout}s",
+                        file=sys.stderr,
+                    )
+                    return
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         else:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+            client = anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=0)
             messages = []
             if history:
                 for msg in history:
@@ -250,6 +279,12 @@ def stream_chat(
                 messages=messages,
             ) as stream:
                 for text in stream.text_stream:
+                    if time.monotonic() >= deadline:
+                        print(
+                            f"[llm_provider] stream {provider}: deadline reached after {timeout}s",
+                            file=sys.stderr,
+                        )
+                        return
                     yield text
 
         print(f"[llm_provider] ← stream {provider} complete", file=sys.stderr)
