@@ -12,6 +12,7 @@ const styles = fs.readFileSync("public/styles.css", "utf8");
 assertMatch(app, /function createChatQuestionEventId\s*\(/, "应生成稳定提问 UUID");
 assertMatch(app, /eventId:\s*questionEventId/, "创建提问日志应提交浏览器 UUID");
 assertMatch(app, /function attachAnswerFeedbackButton\s*\(/, "应能附加不满意按钮");
+assertMatch(app, /context\.language === "zh" \? "👎踩" : "👎Dislike"/, "中英文反馈按钮应显示为对应的👎短标签");
 assertMatch(app, /function sendAnswerFeedback\s*\(/, "应有反馈提交函数");
 assertMatch(app, /operation=feedback/, "反馈应复用 stream 端点");
 assertMatch(app, /fullResponse/, "Chat 反馈应保留原始 Markdown 回答");
@@ -44,7 +45,10 @@ assertMatch(styles, /\.answer-feedback-button\s*\{/, "应提供低调反馈按�
 assertMatch(styles, /\.answer-feedback-button:focus-visible/, "反馈按钮应有键盘焦点样式");
 assertMatch(styles, /\.answer-feedback-dialog\s*\{/, "应提供反馈对话框布局");
 assertMatch(styles, /data-dash-theme="light"[\s\S]+\.answer-feedback-card/, "反馈对话框应支持浅色主题");
-assertMatch(html, /styles\.css\?v=20260806-answer-feedback/, "反馈样式应提升缓存版本");
+assertMatch(html, /class="answer-feedback-mood"[^>]*>😡<\/span>/, "反馈面板应显示愤怒表情");
+assertMatch(styles, /\.answer-feedback-mood\s*\{/, "愤怒表情应有专属样式");
+assertMatch(html, /styles\.css\?v=20260806-answer-feedback2/, "反馈样式应提升缓存版本");
+assertMatch(html, /auth\.js\?v=20260806-answer-feedback9/, "反馈脚本应提升缓存版本");
 
 const storageValues = new Map();
 const requests = [];

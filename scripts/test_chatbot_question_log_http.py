@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -123,6 +124,30 @@ def main():
         question_http.handle_chatbot_question_logs(complete_target, "POST")
     assert_equal(complete_target.status, 200, "complete HTTP status")
     assert_equal(calls[-1][0], "complete", "complete dispatch")
+
+    def unexpected_write(_payload):
+        raise AssertionError("question log writes must be skipped when disabled")
+
+    previous_logging_flag = os.environ.get("OI_CHATBOT_QUESTION_LOGGING")
+    try:
+        for disabled_value in ("0", "false", "off", "no"):
+            os.environ["OI_CHATBOT_QUESTION_LOGGING"] = disabled_value
+            disabled_create = FakeTarget(body={"action": "create"})
+            with with_patches(require_auth=allow_auth, create_question_log=unexpected_write):
+                question_http.handle_chatbot_question_logs(disabled_create, "POST")
+            assert_equal(disabled_create.status, 200, f"disabled create status ({disabled_value})")
+            assert_equal(disabled_create.json_body(), {"ok": True, "disabled": True}, f"disabled create response ({disabled_value})")
+
+            disabled_complete = FakeTarget(body={"action": "complete", "recordId": "record-1"})
+            with with_patches(require_auth=allow_auth, complete_question_log=unexpected_write):
+                question_http.handle_chatbot_question_logs(disabled_complete, "POST")
+            assert_equal(disabled_complete.status, 200, f"disabled complete status ({disabled_value})")
+            assert_equal(disabled_complete.json_body(), {"ok": True, "disabled": True}, f"disabled complete response ({disabled_value})")
+    finally:
+        if previous_logging_flag is None:
+            os.environ.pop("OI_CHATBOT_QUESTION_LOGGING", None)
+        else:
+            os.environ["OI_CHATBOT_QUESTION_LOGGING"] = previous_logging_flag
 
     malformed = FakeTarget(body=None, content_length=5)
     malformed.rfile = BytesIO(b"{bad}")

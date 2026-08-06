@@ -566,6 +566,7 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - 首次新手引导（`onboarding_tour.js`）为 5 步：布局介绍 → Report 提问 → 等待报告 → 点「加入对话」→ Chat 提问。最小化 + 拖拽保留为高级用法（见 Chat Mode 使用说明）。
 
 ## 17. 提问日志与导出
+- 本地可在 `.env` 中设置 `OI_CHATBOT_QUESTION_LOGGING=0`（也支持 `false`、`no`、`off`）关闭提问日志的 MySQL 写入；未设置时默认开启。关闭开关只影响提问日志 POST，回答流程继续执行，已有日志仍可只读导出。
 
 - `applyPrompt()` 在用户提交时异步调用现有 `POST /api/chat/stream?operation=questions` 创建日志，回答结束后再异步更新为 `success` 或 `failed`；日志失败不阻断原有问答。
 - 日志只保存提问及分析字段，不保存助手回答。字段包括匿名浏览器会话 ID、`report` / `chat` 模式、语言、意图、状态与时间戳。

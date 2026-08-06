@@ -891,6 +891,8 @@
       return;
     }
     if (eventName === "report-ready") {
+      // 报告已真正生成：作为 Report 提问事件缺少 mode 时的兜底，推进核心三步的第一步。
+      _hasReport = true;
       _refreshProgress();
       if (_panelTipShown || !payload.panelEl) return;
       _panelTipShown = true;

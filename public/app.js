@@ -1233,7 +1233,7 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "answer-feedback-button";
-    button.textContent = context.language === "zh" ? "不满意" : "Not satisfied";
+    button.textContent = context.language === "zh" ? "👎踩" : "👎Dislike";
     const contextId = `answer-feedback-${++answerFeedbackContextCounter}`;
     button.dataset.answerFeedbackContext = contextId;
     answerFeedbackContexts.set(contextId, context);

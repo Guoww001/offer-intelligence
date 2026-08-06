@@ -390,7 +390,7 @@ minimizedPanels = [];
 
 // ── 用例 21：notify("chat-add") ──
 welcome.notify("chat-add", { hasMemory: true });
-assertEqual(t.flowState().hasReport, false, "chat-add does not complete Report step");
+assertEqual(t.flowState().hasReport, true, "chat-add preserves the completed Report step");
 assertEqual(t.flowState().hasMemory, true, "chat-add sets hasMemory");
 assertEqual(t.flowState().hasAddedToChat, true, "chat-add sets hasAddedToChat");
 assertEqual(t.flowState().hasChatSent, false, "chat-add does not complete Chat step");
@@ -708,5 +708,10 @@ assertEqual(t.flowState().hasChatSent, false, "completion confirmation resets Ch
 assertEqual(t.flowState().hasMemory, true, "completion confirmation keeps memory data state");
 assertEqual(t.flowStage(t.flowState()), "noReport", "reset flow returns to noReport stage");
 assertEqual(t.progressHtml({ hasReport: false, hasMemory: true, hasAddedToChat: false, hasChatSent: false, isChat: true }).includes("welcome-progress-confirmation"), false, "reset flow hides completion confirmation");
+
+// ── 用例 33：报告真正生成后，即使发送事件缺少模式也必须推进第一步 ──
+welcome.notify("report-ready", { panelEl: elementStub });
+assertEqual(t.flowState().hasReport, true, "report-ready should complete Report step as a fallback");
+assertEqual(t.flowStage(t.flowState()), "reportReady", "report-ready should advance to reportReady");
 
 console.log("PASS: welcome logic");

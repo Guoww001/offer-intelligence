@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from urllib.parse import parse_qs, urlparse
 
 from auth import _read_json_body, require_auth, send_json
@@ -16,6 +17,12 @@ from offer_db import public_error_payload
 
 
 MAX_REQUEST_BODY_BYTES = 20_480
+QUESTION_LOGGING_DISABLED_VALUES = {"0", "false", "no", "off"}
+
+
+def question_logging_enabled() -> bool:
+    value = os.environ.get("OI_CHATBOT_QUESTION_LOGGING", "1").strip().lower()
+    return value not in QUESTION_LOGGING_DISABLED_VALUES
 
 
 def _send_attachment(target, body: bytes, content_type: str, filename: str) -> None:
@@ -52,13 +59,18 @@ def _handle_post(target) -> None:
         return
 
     action = str(body.get("action") or "").strip().lower()
+    if action not in {"create", "complete"}:
+        send_json(target, 400, {"ok": False, "error": "action must be create or complete"})
+        return
+    if not question_logging_enabled():
+        send_json(target, 200, {"ok": True, "disabled": True})
+        return
+
     try:
         if action == "create":
             result = create_question_log(body)
         elif action == "complete":
             result = complete_question_log(body)
-        else:
-            raise QuestionLogValidationError("action must be create or complete")
     except QuestionLogValidationError as error:
         send_json(target, 400, {"ok": False, "error": str(error)})
         return
