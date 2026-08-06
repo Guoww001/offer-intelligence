@@ -1,6 +1,6 @@
 # Chatbot 完整档案
 
-> 更新日期：2026-07-13 · 分支：`main`
+> 更新日期：2026-08-06 · 分支：`main`
 
 ## 1. 概述
 
@@ -562,3 +562,20 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - 报告生成完成后，Deep Window 头部出现「加入对话」按钮：点击后报告自动加入记忆栏、自动切换到 Chat Mode，并在聊天区顶部注入引导消息（含 2 个示例 chips）。同一报告重复点击会变为「已加入」并禁用。
 - 欢迎屏（`chatbot_welcome.js`）维护流程状态机 `noReport → reportReady → memoryReady → chatActive`，以 3 步进度条展示「① 在 Report 提问 → ② 点「加入对话」→ ③ 在 Chat 对话」，并在关键时刻就地提示：报告完成提示点「加入对话」；最小化后提示切 Chat Mode 拖入记忆栏；Chat Mode 空记忆时提醒卡片提供「去生成报告」按钮。
 - 首次新手引导（`onboarding_tour.js`）为 5 步：布局介绍 → Report 提问 → 等待报告 → 点「加入对话」→ Chat 提问。最小化 + 拖拽保留为高级用法（见 Chat Mode 使用说明）。
+
+## 17. 提问日志与导出
+
+- `applyPrompt()` 在用户提交时异步调用现有 `POST /api/chat/stream?operation=questions` 创建日志，回答结束后再异步更新为 `success` 或 `failed`；日志失败不阻断原有问答。
+- 日志只保存提问及分析字段，不保存助手回答。字段包括匿名浏览器会话 ID、`report` / `chat` 模式、语言、意图、状态与时间戳。
+- MySQL 表为 `cnpscy_oi_chatbot_question_logs`，定义位于 `chatbot_question_logs.py`，建表入口位于 `scripts/ensure_oi_schema.py`。
+- Chatbot 模式栏右侧的低调「日志 / Logs」菜单可通过带会话认证的 `GET /api/chat/stream?operation=questions&format=csv|jsonl` 导出全部记录。
+- 不新增独立 API 端点：本地 `server.py` 与 Vercel 现有 `api/chat/stream.py` 根据 `operation=questions` 分流，共享日志 HTTP 处理位于 `chatbot_question_log_http.py`。
+
+### 17.1 不满意反馈
+
+- 每条成功回答仅提供一个低调的“不满意”按钮；Chat Mode 位于该回答底部，Report Mode 位于对应 Deep Window 底部。成功提交后按钮变为“已反馈”并禁用。
+- 反馈必须单选一个原因（回答不准确、没有回答问题、数据不完整、内容难以理解、其他），补充说明可选。提交失败时保留表单并允许重试。
+- Chat Mode 保存该次回答的原始 Markdown；Report Mode 在点击按钮时保存对应报告窗口当前可见文本。回答上限为 256 KB UTF-8，超出时安全截断并记录 `answerTruncated`。
+- 反馈表为 `cnpscy_oi_chatbot_answer_feedback`，通过 `questionEventId` 与提问日志一对一关联，并继续区分 `report` / `chat` 模式。
+- 不满意反馈使用现有 `POST /api/chat/stream?operation=feedback` 写入；「日志 / Logs」菜单内与提问记录分组展示，分别通过 `GET /api/chat/stream?operation=feedback&format=csv|jsonl` 独立导出。
+- 共享领域与 HTTP 处理分别位于 `chatbot_answer_feedback.py`、`chatbot_answer_feedback_http.py`；没有新增 Vercel 路由文件。

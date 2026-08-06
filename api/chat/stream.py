@@ -1,21 +1,42 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import sys
+from urllib.parse import parse_qs, urlparse
 
 from auth import _read_json_body, require_auth
+from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
+from chatbot_question_log_http import handle_chatbot_question_logs
 from llm_provider import stream_chat
 
 
 class handler(BaseHTTPRequestHandler):
+    def _operation(self):
+        return str((parse_qs(urlparse(self.path).query).get("operation") or [""])[0]).strip().lower()
+
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def do_GET(self):
+        if self._operation() == "feedback":
+            handle_chatbot_answer_feedback(self, "GET")
+            return
+        if self._operation() == "questions":
+            handle_chatbot_question_logs(self, "GET")
+            return
+        self._send_json(405, {"ok": False, "error": "Method not allowed"})
+
     def do_POST(self):
         """SSE streaming endpoint for Chat Mode LLM conversation."""
+        if self._operation() == "feedback":
+            handle_chatbot_answer_feedback(self, "POST")
+            return
+        if self._operation() == "questions":
+            handle_chatbot_question_logs(self, "POST")
+            return
         if not require_auth(self):
             return
 

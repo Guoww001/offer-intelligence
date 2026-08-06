@@ -105,3 +105,50 @@ CREATE TABLE IF NOT EXISTS oi_merchant_category (
   PRIMARY KEY (merchantId, categoryId),
   KEY idx_category (categoryId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Anonymous chatbot question history for usage analysis and export.
+CREATE TABLE IF NOT EXISTS oi_chatbot_question_logs (
+  recordId BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  eventId CHAR(36) NOT NULL,
+  anonymousSessionId VARCHAR(64) NOT NULL,
+  mode VARCHAR(16) NOT NULL,
+  prompt TEXT NOT NULL,
+  language VARCHAR(8) NOT NULL,
+  intent VARCHAR(64) NOT NULL DEFAULT 'unknown',
+  status VARCHAR(16) NOT NULL DEFAULT 'submitted',
+  submittedAt DATETIME(6) NOT NULL,
+  completedAt DATETIME(6) DEFAULT NULL,
+  updatedAt DATETIME(6) NOT NULL,
+  PRIMARY KEY (recordId),
+  UNIQUE KEY uq_chatbot_question_event (eventId),
+  KEY idx_chatbot_question_submitted (submittedAt, recordId),
+  KEY idx_chatbot_question_mode (mode, submittedAt),
+  KEY idx_chatbot_question_session (anonymousSessionId, submittedAt),
+  KEY idx_chatbot_question_intent (intent, submittedAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Explicit dissatisfaction feedback linked one-to-one with a successful question log.
+CREATE TABLE IF NOT EXISTS oi_chatbot_answer_feedback (
+  feedbackId BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  feedbackEventId CHAR(36) NOT NULL,
+  questionEventId CHAR(36) NOT NULL,
+  anonymousSessionId VARCHAR(64) NOT NULL,
+  mode VARCHAR(16) NOT NULL,
+  prompt TEXT NOT NULL,
+  language VARCHAR(8) NOT NULL,
+  answer MEDIUMTEXT NOT NULL,
+  answerTruncated TINYINT(1) NOT NULL DEFAULT 0,
+  reasonCode VARCHAR(32) NOT NULL,
+  reasonDetail TEXT NOT NULL,
+  submittedAt DATETIME(6) NOT NULL,
+  PRIMARY KEY (feedbackId),
+  UNIQUE KEY uq_chatbot_feedback_event (feedbackEventId),
+  UNIQUE KEY uq_chatbot_feedback_question (questionEventId),
+  KEY idx_chatbot_feedback_submitted (submittedAt, feedbackId),
+  KEY idx_chatbot_feedback_mode (mode, submittedAt),
+  KEY idx_chatbot_feedback_reason (reasonCode, submittedAt),
+  KEY idx_chatbot_feedback_session (anonymousSessionId, submittedAt),
+  CONSTRAINT fk_chatbot_feedback_question
+    FOREIGN KEY (questionEventId) REFERENCES oi_chatbot_question_logs (eventId)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

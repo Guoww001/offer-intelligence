@@ -328,6 +328,11 @@
 
   function _positionHighlight(el) {
     var rect = el.getBoundingClientRect();
+    var isChatMode = false;
+    try {
+      isChatMode = !!(el && el.closest && el.closest(".welcome-float.mode-chat"));
+    } catch (e) {}
+    _highlightEl.classList.toggle("onboarding-highlight-chat", isChatMode);
     _highlightEl.style.display = "block";
     _highlightEl.style.left = (rect.left - 6) + "px";
     _highlightEl.style.top = (rect.top - 6) + "px";
@@ -832,6 +837,10 @@
       if (!step) return;
       for (var i = 0; i < muts.length; i++) {
         var t = muts[i].target;
+        if (t && t.matches && t.matches(".welcome-float") && _targetEl && t.contains && t.contains(_targetEl)) {
+          _positionHighlight(_targetEl);
+          continue;
+        }
         if (!t || !t.matches || !t.matches(".deep-window")) continue;
         var panels = document.querySelectorAll(".deep-window");
         var latestPanel = panels && panels.length ? panels[panels.length - 1] : null;

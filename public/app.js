@@ -69,6 +69,11 @@
   const MAX_RECOMMENDATION_EXPORT = 1000;
   const AUTO_PAYMENT_SYNC_KEY = "offerPaymentLastAutoSync";
   const AUTO_PAYMENT_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+  const CHAT_QUESTION_SESSION_KEY = "oiChatbotQuestionSessionId.v1";
+  var chatQuestionPageSessionId = "";
+  var activeAnswerFeedback = null;
+  var answerFeedbackContextCounter = 0;
+  var answerFeedbackContexts = new Map();
   const STANDARD_CATEGORY_REPORT_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4"];
   const REMOVED_TIER_REVENUE_HEADERS = new Set(["May", "June"].map((month) => `${month} Revenue`));
   const LIVE_TIER_METRIC_HEADERS = new Set([
@@ -383,6 +388,15 @@
     chatForm: document.getElementById("chatForm"),
     chatInput: document.getElementById("chatInput"),
     reportHelpBtn: document.getElementById("reportHelpBtn"),
+    chatLogsButton: document.getElementById("chatLogsButton"),
+    chatLogsMenu: document.getElementById("chatLogsMenu"),
+    answerFeedbackDialog: document.getElementById("answerFeedbackDialog"),
+    answerFeedbackForm: document.getElementById("answerFeedbackForm"),
+    answerFeedbackDetail: document.getElementById("answerFeedbackDetail"),
+    answerFeedbackError: document.getElementById("answerFeedbackError"),
+    answerFeedbackCancel: document.getElementById("answerFeedbackCancel"),
+    answerFeedbackClose: document.getElementById("answerFeedbackClose"),
+    answerFeedbackSubmit: document.getElementById("answerFeedbackSubmit"),
     reportHelpPanel: document.getElementById("reportHelpPanel"),
     reportHelpContent: document.getElementById("reportHelpContent"),
     reportHelpLangBtn: document.getElementById("reportHelpLangBtn"),
@@ -908,6 +922,7 @@
       "deep.stop": "停止",
       "deep.stopAborted": "分析已取消。",
       "report.helpBtn": "使用说明",
+      "chat.logs": "日志",
       "report.helpOpen": "收起使用说明",
       "report.helpClose": "使用说明",
       "report.langBtn.zh": "中文",
@@ -942,6 +957,281 @@
   function responseLanguageFor(prompt = state.currentQuery) {
     if (chatbotI18n.responseLanguage) return chatbotI18n.responseLanguage(prompt, state.language);
     return state.language === "zh" ? "zh" : "en";
+  }
+
+  function createChatQuestionSessionId() {
+    const cryptoApi = window.crypto;
+    if (cryptoApi && typeof cryptoApi.randomUUID === "function") return cryptoApi.randomUUID();
+    if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 15) | 64;
+      bytes[8] = (bytes[8] & 63) | 128;
+      const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+      return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+    }
+    return `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`.slice(0, 64);
+  }
+
+  function getChatQuestionSessionId() {
+    if (chatQuestionPageSessionId) return chatQuestionPageSessionId;
+    try {
+      const saved = String(localStorage.getItem(CHAT_QUESTION_SESSION_KEY) || "").trim();
+      if (/^[A-Za-z0-9._:-]{16,64}$/.test(saved)) {
+        chatQuestionPageSessionId = saved;
+        return saved;
+      }
+      chatQuestionPageSessionId = createChatQuestionSessionId();
+      localStorage.setItem(CHAT_QUESTION_SESSION_KEY, chatQuestionPageSessionId);
+    } catch (error) {
+      chatQuestionPageSessionId = createChatQuestionSessionId();
+    }
+    return chatQuestionPageSessionId;
+  }
+
+  function createChatQuestionEventId() {
+    const cryptoApi = window.crypto;
+    if (cryptoApi && typeof cryptoApi.randomUUID === "function") return cryptoApi.randomUUID();
+    const bytes = new Uint8Array(16);
+    if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+      cryptoApi.getRandomValues(bytes);
+    } else {
+      for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+    return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+  }
+
+  function detectQuestionLogIntent(prompt) {
+    try {
+      const detected = chatbotI18n.detectIntent ? chatbotI18n.detectIntent(prompt) : "unknown";
+      const normalized = String(detected || "unknown").trim().toLowerCase();
+      return /^[a-z][a-z0-9_-]{0,63}$/.test(normalized) ? normalized : "unknown";
+    } catch (error) {
+      return "unknown";
+    }
+  }
+
+  async function beginQuestionLog(prompt, mode, language, intent, eventId) {
+    const questionEventId = eventId || createChatQuestionEventId();
+    try {
+      const response = await fetch("/api/chat/stream?operation=questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          eventId: questionEventId,
+          sessionId: getChatQuestionSessionId(),
+          mode,
+          prompt,
+          language,
+          intent: intent || "unknown"
+        })
+      });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      return payload && payload.recordId ? payload : null;
+    } catch (error) {
+      console.warn("[chat-question-log] create failed:", error);
+      return null;
+    }
+  }
+
+  function completeQuestionLog(startPromise, status, intent) {
+    return Promise.resolve(startPromise).then(async function (started) {
+      if (!started || !started.recordId) return null;
+      try {
+        const response = await fetch("/api/chat/stream?operation=questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "complete",
+            recordId: started.recordId,
+            sessionId: getChatQuestionSessionId(),
+            status,
+            intent: intent || "unknown"
+          })
+        });
+        if (!response.ok) {
+          console.warn("[chat-question-log] completion failed: HTTP " + response.status);
+          return null;
+        }
+        return started;
+      } catch (error) {
+        console.warn("[chat-question-log] completion failed:", error);
+        return null;
+      }
+    }).catch(function (error) {
+      console.warn("[chat-question-log] lifecycle failed:", error);
+      return null;
+    });
+  }
+
+  async function ensureQuestionLogSuccess(context) {
+    let started = await Promise.resolve(context.questionPromise);
+    if (started && started.recordId) return started;
+    const startPromise = beginQuestionLog(
+      context.prompt,
+      context.mode,
+      context.language,
+      context.intent || "unknown",
+      context.questionEventId
+    );
+    context.questionPromise = completeQuestionLog(startPromise, "success", context.intent || "unknown");
+    started = await context.questionPromise;
+    return started && started.recordId ? started : null;
+  }
+
+  async function sendAnswerFeedback(context, reasonCode, reasonDetail) {
+    const started = await ensureQuestionLogSuccess(context);
+    if (!started || !started.recordId) {
+      throw new Error(context.language === "zh" ? "提问记录尚未保存，请稍后重试。" : "The question record is not ready. Please retry.");
+    }
+    const answer = String(
+      Object.prototype.hasOwnProperty.call(context, "answerSnapshot")
+        ? context.answerSnapshot
+        : (context.getAnswer ? context.getAnswer() : context.answer || "")
+    );
+    if (!answer.trim()) {
+      throw new Error(context.language === "zh" ? "当前回答为空，无法提交反馈。" : "This answer is empty and cannot be submitted.");
+    }
+    context.feedbackEventId = context.feedbackEventId || createChatQuestionEventId();
+    const response = await fetch("/api/chat/stream?operation=feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedbackEventId: context.feedbackEventId,
+        questionEventId: started.recordId,
+        sessionId: getChatQuestionSessionId(),
+        mode: context.mode,
+        prompt: context.prompt,
+        answer,
+        language: context.language,
+        reasonCode,
+        reasonDetail: reasonDetail || ""
+      })
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (error) { payload = null; }
+    if (response.status === 409 && payload && payload.code === "feedback_already_exists") {
+      return { ok: true, alreadyExists: true };
+    }
+    if (!response.ok || !payload || payload.ok === false) {
+      throw new Error((payload && payload.error) || `HTTP ${response.status}`);
+    }
+    return payload;
+  }
+
+  function closeAnswerFeedbackDialog() {
+    if (!els.answerFeedbackDialog) return;
+    els.answerFeedbackDialog.classList.add("hidden");
+    els.answerFeedbackDialog.setAttribute("aria-hidden", "true");
+    const trigger = activeAnswerFeedback && activeAnswerFeedback.button;
+    activeAnswerFeedback = null;
+    if (trigger && trigger.focus) trigger.focus();
+  }
+
+  function openAnswerFeedbackDialog(context, button) {
+    if (!els.answerFeedbackDialog || !els.answerFeedbackForm) return;
+    activeAnswerFeedback = { context, button };
+    if (!Object.prototype.hasOwnProperty.call(context, "answerSnapshot")) {
+      context.answerSnapshot = String(context.getAnswer ? context.getAnswer() : context.answer || "");
+    }
+    const isZh = context.language === "zh";
+    const copy = isZh ? {
+      title: "哪里不满意？",
+      subtitle: "请选择一个主要原因，也可以补充说明。",
+      legend: "主要原因",
+      detail: "补充说明（可选）",
+      placeholder: "请告诉我们哪里需要改进",
+      cancel: "取消",
+      submit: "提交反馈",
+      reasons: {
+        inaccurate: "回答不准确",
+        not_answered: "没有回答问题",
+        incomplete_data: "数据不完整",
+        unclear: "内容难以理解",
+        other: "其他"
+      }
+    } : {
+      title: "What went wrong?",
+      subtitle: "Choose one main reason and optionally add details.",
+      legend: "Main reason",
+      detail: "Additional details (optional)",
+      placeholder: "Tell us what could be improved",
+      cancel: "Cancel",
+      submit: "Submit feedback",
+      reasons: {
+        inaccurate: "The answer is inaccurate",
+        not_answered: "It did not answer the question",
+        incomplete_data: "The data is incomplete",
+        unclear: "The content is hard to understand",
+        other: "Other"
+      }
+    };
+    const setText = function (selector, value) {
+      const node = els.answerFeedbackDialog.querySelector(selector);
+      if (node) node.textContent = value;
+    };
+    setText("#answerFeedbackTitle", copy.title);
+    setText("#answerFeedbackSubtitle", copy.subtitle);
+    setText("#answerFeedbackReasonLegend", copy.legend);
+    setText("#answerFeedbackDetailLabel", copy.detail);
+    setText("#answerFeedbackCancel", copy.cancel);
+    setText("#answerFeedbackSubmit", copy.submit);
+    if (els.answerFeedbackClose) {
+      els.answerFeedbackClose.setAttribute("aria-label", isZh ? "关闭反馈窗口" : "Close feedback dialog");
+    }
+    els.answerFeedbackDialog.querySelectorAll("[data-feedback-reason-label]").forEach(function (node) {
+      node.textContent = copy.reasons[node.dataset.feedbackReasonLabel] || node.textContent;
+    });
+    if (els.answerFeedbackDetail) els.answerFeedbackDetail.placeholder = copy.placeholder;
+    els.answerFeedbackForm.reset();
+    if (els.answerFeedbackSubmit) els.answerFeedbackSubmit.disabled = false;
+    if (els.answerFeedbackError) {
+      els.answerFeedbackError.textContent = "";
+      els.answerFeedbackError.classList.add("hidden");
+    }
+    els.answerFeedbackDialog.classList.remove("hidden");
+    els.answerFeedbackDialog.setAttribute("aria-hidden", "false");
+    const firstReason = els.answerFeedbackForm.querySelector('input[name="answerFeedbackReason"]');
+    if (firstReason && firstReason.focus) firstReason.focus();
+  }
+
+  function trapAnswerFeedbackFocus(event) {
+    if (!els.answerFeedbackDialog || els.answerFeedbackDialog.classList.contains("hidden")) return false;
+    const focusable = Array.from(els.answerFeedbackDialog.querySelectorAll(
+      'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )).filter(function (node) { return !node.hidden; });
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
+
+  function attachAnswerFeedbackButton(host, context) {
+    if (!host || !context || host.querySelector?.(".answer-feedback-button")) return null;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "answer-feedback-button";
+    button.textContent = context.language === "zh" ? "不满意" : "Not satisfied";
+    const contextId = `answer-feedback-${++answerFeedbackContextCounter}`;
+    button.dataset.answerFeedbackContext = contextId;
+    answerFeedbackContexts.set(contextId, context);
+    host.appendChild(button);
+    return button;
   }
 
   function chatCopy(language) {
@@ -1856,45 +2146,13 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 支持的时间范围：近 N 个月 / 最近一个季度 / 今年以来 / 过去半年。
 支持的指标：revenue、orders、clicks、epc、aov、conversionRate、commission、dpv、atc。
 
-### 5. 对比分析
-
-| 标准提问 | 说明 |
-| --- | --- |
-| 对比 Shokz 和 Soundcore | 商户对比 |
-| 分析 Tier 1 和 Tier 2 的 Beauty 表现 | 多 Tier + 品类 |
-
-### 6. 推荐与排行
-
-| 标准提问 | 说明 |
-| --- | --- |
-| 推荐 5 个 Beauty offer | 品类 Top N 推荐 |
-| Tier 2 高 EPC 的商户 | 指标筛选推荐 |
-| 哪个商户 EPC 最高 | Top 指标查询 |
-| 推荐品类 | 品类排行 |
-| EPC 大于 1 的商户 | 指标阈值筛选 |
-| 高 AOV、低转化、有折扣、有 ASIN、跟踪问题 | 特殊条件筛选 |
-
-### 7. 关键词搜索
-
-| 标准提问 | 说明 |
-| --- | --- |
-| headphones | 产品关键词搜索 |
-| 搜索 降噪耳机 | 中文关键词搜索 |
-
-### 8. 支付查询
+### 5. 支付查询
 
 | 标准提问 | 说明 |
 | --- | --- |
 | 四月未付款有哪些 | 指定月未付款 |
 | 逾期商户 | 逾期记录 |
 | 付款周期超过 90 天的商户 | 付款周期筛选 |
-
-### 9. 分层管理
-
-| 标准提问 | 说明 |
-| --- | --- |
-| 哪些 Tier 2 要升 Tier 1 | 升级建议 |
-| Tier 3 降级名单 | 降级建议 |
 
 ## 二、标准提问模板
 
@@ -1904,13 +2162,11 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 - 分析 Shokz 近三个月 revenue 趋势
 - Beauty 类别的趋势
 - Tier 2 这个季度订单趋势
-- 推荐 5 个高 EPC 的 Tier 2 商户
-- 对比 Shokz 和 Soundcore
 
 ## 三、通用参数
 
 - **实体**：商户名 / 品牌 / 商户 ID / ASIN / 品类名 / Tier（Tier 1-4、BLACK TIER）
-- **动作词**：分析 / 评估 / 诊断 / 怎么样 / 表现 / 趋势 / 推荐 / 排行 / 对比
+- **动作词**：分析 / 评估 / 诊断 / 怎么样 / 表现 / 趋势
 - **时间范围**：近 N 个月 / 最近一个季度 / 今年以来 / 过去半年
 - **指标**：revenue / orders / clicks / epc / aov / conversionRate / commission / dpv / atc
 - **数量**：Top N / 前 N 个 / 5 个
@@ -2017,45 +2273,13 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 Supported time ranges: last N months / last quarter / this year / past six months.
 Supported metrics: revenue, orders, clicks, epc, aov, conversionRate, commission, dpv, atc.
 
-### 1.5 Comparison Analysis
-
-| Standard question | Description |
-| --- | --- |
-| Compare Shokz and Soundcore | Merchant comparison |
-| Analyze Beauty performance for Tier 1 and Tier 2 | Multi-tier + category |
-
-### 1.6 Recommendations & Rankings
-
-| Standard question | Description |
-| --- | --- |
-| Recommend 5 Beauty offers | Top-N category recommendation |
-| Tier 2 merchants with high EPC | Metric-filtered recommendation |
-| Which merchant has the highest EPC | Top metric query |
-| Recommend categories | Category ranking |
-| Merchants with EPC greater than 1 | Metric threshold filter |
-| High AOV, low conversion, discounted, has ASIN, tracking issues | Special condition filters |
-
-### 1.7 Keyword Search
-
-| Standard question | Description |
-| --- | --- |
-| headphones | Product keyword search |
-| Search noise-cancelling earbuds | English keyword search |
-
-### 1.8 Payment Queries
+### 1.5 Payment Queries
 
 | Standard question | Description |
 | --- | --- |
 | Which April payments are unpaid | Unpaid payments in a given month |
 | Overdue merchants | Overdue records |
 | Merchants with a payment cycle over 90 days | Payment cycle filter |
-
-### 1.9 Tier Management
-
-| Standard question | Description |
-| --- | --- |
-| Which Tier 2 merchants should move up to Tier 1 | Upgrade suggestions |
-| Tier 3 downgrade list | Downgrade suggestions |
 
 ## 2. Standard Question Template
 
@@ -2065,13 +2289,11 @@ Examples:
 - Analyze Shokz revenue trend for the last 3 months
 - Beauty category trend
 - Tier 2 order trend this quarter
-- Recommend 5 high-EPC Tier 2 merchants
-- Compare Shokz and Soundcore
 
 ## 3. Common Parameters
 
 - **Entity**: merchant name / brand / merchant ID / ASIN / category name / tier (Tier 1-4, BLACK TIER)
-- **Action**: analyze / evaluate / diagnose / performance / trend / recommend / rank / compare
+- **Action**: analyze / evaluate / diagnose / performance / trend
 - **Time range**: last N months / last quarter / this year / past six months
 - **Metrics**: revenue / orders / clicks / epc / aov / conversionRate / commission / dpv / atc
 - **Quantity**: Top N / first N / 5 offers
@@ -2197,6 +2419,28 @@ Full flow (working with Report Mode):
     panel.classList.toggle("hidden", !willShow);
     btn.classList.toggle("active", willShow);
     btn.setAttribute("aria-expanded", willShow ? "true" : "false");
+  }
+
+  function setChatLogsMenuOpen(open) {
+    if (!els.chatLogsButton || !els.chatLogsMenu) return;
+    els.chatLogsMenu.classList.toggle("hidden", !open);
+    els.chatLogsButton.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function downloadChatLogs(kind, format) {
+    const safeFormat = format === "jsonl" ? "jsonl" : "csv";
+    const safeKind = kind === "feedback" ? "feedback" : "questions";
+    const link = document.createElement("a");
+    link.href = `/api/chat/stream?operation=${safeKind}&format=${safeFormat}`;
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setChatLogsMenuOpen(false);
+  }
+
+  function downloadChatQuestionLogs(format) {
+    downloadChatLogs("questions", format);
   }
 
   function escapeRegExp(value) {
@@ -9563,6 +9807,7 @@ Full flow (working with Report Mode):
           '<div class="deep-report-summary"></div>' +
           '<div class="deep-report-sections"></div>' +
         '</div>' +
+        '<div class="deep-window-feedback"></div>' +
         '<div class="deep-window-error hidden"><p></p></div>' +
       '</div>';
   }
@@ -9601,7 +9846,8 @@ Full flow (working with Report Mode):
       errorEl: div.querySelector(".deep-window-error"),
       titleEl: div.querySelector(".deep-window-title"),
       summaryEl: div.querySelector(".deep-report-summary"),
-      sectionsEl: div.querySelector(".deep-report-sections")
+      sectionsEl: div.querySelector(".deep-report-sections"),
+      feedbackEl: div.querySelector(".deep-window-feedback")
     };
 
     _bindPanelEvents(panel);
@@ -10758,6 +11004,10 @@ var _NUMERIC_COL_PATTERNS = [
     const language = responseLanguageFor(prompt);
     var panel = null;
     var isDeep = state.deepMode;
+    var questionLogIntent = detectQuestionLogIntent(prompt);
+    var questionLogContext = { mode: isDeep ? "report" : "chat" };
+    var questionEventId = createChatQuestionEventId();
+    var questionLogPromise = beginQuestionLog(prompt, questionLogContext.mode, language, questionLogIntent, questionEventId);
 
     // ════════════════════════════════════════
     // Chat Mode: 流式 LLM 回答（独立聊天区）
@@ -10808,6 +11058,7 @@ var _NUMERIC_COL_PATTERNS = [
           _failMsg.textContent = language === "zh" ? "请求失败，请稍后重试。" : "Request failed, please retry.";
           _chatLog.appendChild(_failMsg);
           _chatLog.scrollTop = _chatLog.scrollHeight;
+          completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
           return;
         }
 
@@ -10824,6 +11075,7 @@ var _NUMERIC_COL_PATTERNS = [
 
         var tokenCount = 0;
         var fullResponse = "";
+        var streamHadError = false;
         var streamStartTime = Date.now();
 
         var thinkingZh = ["思考中", "分析中", "处理中", "生成中", "整合中"];
@@ -10866,6 +11118,7 @@ var _NUMERIC_COL_PATTERNS = [
                   tokenCount++;
                   _chatLog.scrollTop = _chatLog.scrollHeight;
                 }
+                if (parsed.error) streamHadError = true;
               } catch (e) { /* skip malformed SSE */ }
             }
           }
@@ -10916,6 +11169,23 @@ var _NUMERIC_COL_PATTERNS = [
           statusBar.appendChild(viewBtn);
         }
         _chatLog.scrollTop = _chatLog.scrollHeight;
+        var chatAnswerSucceeded = fullResponse.trim() && !streamHadError;
+        var chatQuestionCompletion = completeQuestionLog(
+          questionLogPromise,
+          chatAnswerSucceeded ? "success" : "failed",
+          questionLogIntent
+        );
+        if (chatAnswerSucceeded) {
+          attachAnswerFeedbackButton(statusBar, {
+            questionPromise: chatQuestionCompletion,
+            questionEventId,
+            mode: "chat",
+            prompt,
+            language,
+            intent: questionLogIntent,
+            getAnswer: function () { return fullResponse; }
+          });
+        }
       } catch (error) {
         loadingMsg.remove();
         console.error("[chat-stream] fetch error:", error);
@@ -10925,6 +11195,7 @@ var _NUMERIC_COL_PATTERNS = [
           + " (" + (error.message || "") + ")";
         _chatLog.appendChild(_errMsg);
         _chatLog.scrollTop = _chatLog.scrollHeight;
+        completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
       }
       return;
     }
@@ -10954,12 +11225,14 @@ var _NUMERIC_COL_PATTERNS = [
       const result = await classifyWithLLM(prompt, collectCategories());
       loadingMsg.remove();
       state.llmClassifyResult = result;
+      if (result && result.intent) questionLogIntent = String(result.intent).trim().toLowerCase() || questionLogIntent;
     } else {
       state.llmClassifyResult = null;
     }
     state.reportMemoryContext = null;
 
     const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
+    var reportSucceeded = false;
     try {
       var html = answerPrompt(prompt);
       var addedMsg;
@@ -10972,6 +11245,7 @@ var _NUMERIC_COL_PATTERNS = [
         addedMsg = addMessage("assistant", html);
       }
       if (addedMsg) enhanceMerchantCards(addedMsg);
+      reportSucceeded = true;
     } catch (error) {
       console.error("[analysis] answerPrompt error:", error);
       var errMsg = (language === "zh"
@@ -10982,6 +11256,24 @@ var _NUMERIC_COL_PATTERNS = [
       } else {
         addMessage("assistant", errMsg);
       }
+    }
+    var reportQuestionCompletion = completeQuestionLog(
+      questionLogPromise,
+      reportSucceeded ? "success" : "failed",
+      questionLogIntent
+    );
+    if (reportSucceeded && panel && panel.feedbackEl) {
+      attachAnswerFeedbackButton(panel.feedbackEl, {
+        questionPromise: reportQuestionCompletion,
+        questionEventId,
+        mode: "report",
+        prompt,
+        language,
+        intent: questionLogIntent,
+        getAnswer: function () {
+          return String(panel.contentEl?.innerText || panel.contentEl?.textContent || "").trim();
+        }
+      });
     }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
     else loadDbSearchInsight(prompt);
@@ -19132,6 +19424,15 @@ var _NUMERIC_COL_PATTERNS = [
     els.chatModeToggle = document.getElementById("chatModeToggle");
     els.modeFastBtn = els.chatModeToggle?.querySelector('[data-mode="fast"]');
     els.modeDeepBtn = els.chatModeToggle?.querySelector('[data-mode="deep"]');
+    els.chatLogsButton = document.getElementById("chatLogsButton");
+    els.chatLogsMenu = document.getElementById("chatLogsMenu");
+    els.answerFeedbackDialog = document.getElementById("answerFeedbackDialog");
+    els.answerFeedbackForm = document.getElementById("answerFeedbackForm");
+    els.answerFeedbackDetail = document.getElementById("answerFeedbackDetail");
+    els.answerFeedbackError = document.getElementById("answerFeedbackError");
+    els.answerFeedbackCancel = document.getElementById("answerFeedbackCancel");
+    els.answerFeedbackClose = document.getElementById("answerFeedbackClose");
+    els.answerFeedbackSubmit = document.getElementById("answerFeedbackSubmit");
 
     els.chatMemoryBar = document.getElementById("chatMemoryBar");
     els.chatMemoryChips = document.getElementById("chatMemoryChips");
@@ -19851,10 +20152,81 @@ var _NUMERIC_COL_PATTERNS = [
     // Report Mode 使用说明书展开/收起
     els.reportHelpBtn?.addEventListener("click", toggleReportHelp);
     els.reportHelpLangBtn?.addEventListener("click", toggleReportHelpLang);
+    els.chatLogsButton?.addEventListener("click", function (event) {
+      event.stopPropagation();
+      setChatLogsMenuOpen(els.chatLogsMenu?.classList.contains("hidden"));
+    });
+    els.chatLogsMenu?.addEventListener("click", function (event) {
+      const item = event.target.closest("[data-chat-log-format]");
+      if (item) downloadChatLogs(item.dataset.chatLogKind, item.dataset.chatLogFormat);
+    });
+    document.addEventListener("click", function (event) {
+      if (!event.target.closest(".chat-logs-control")) setChatLogsMenuOpen(false);
+    });
+    document.addEventListener("click", function (event) {
+      const button = event.target.closest(".answer-feedback-button[data-answer-feedback-context]");
+      if (!button || button.disabled) return;
+      const context = answerFeedbackContexts.get(button.dataset.answerFeedbackContext);
+      if (context) openAnswerFeedbackDialog(context, button);
+    });
+    els.answerFeedbackClose?.addEventListener("click", closeAnswerFeedbackDialog);
+    els.answerFeedbackCancel?.addEventListener("click", closeAnswerFeedbackDialog);
+    els.answerFeedbackDialog?.addEventListener("click", function (event) {
+      if (event.target === els.answerFeedbackDialog) closeAnswerFeedbackDialog();
+    });
+    els.answerFeedbackForm?.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      if (!activeAnswerFeedback) return;
+      const submission = activeAnswerFeedback;
+      const selected = els.answerFeedbackForm.querySelector('input[name="answerFeedbackReason"]:checked');
+      const language = submission.context.language;
+      if (!selected) {
+        els.answerFeedbackError.textContent = language === "zh" ? "请选择一个不满意原因。" : "Please select a reason.";
+        els.answerFeedbackError.classList.remove("hidden");
+        return;
+      }
+      const detail = String(els.answerFeedbackDetail?.value || "").trim();
+      if (new TextEncoder().encode(detail).length > 4096) {
+        els.answerFeedbackError.textContent = language === "zh" ? "补充说明过长，请精简后重试。" : "The details are too long. Please shorten them.";
+        els.answerFeedbackError.classList.remove("hidden");
+        return;
+      }
+      els.answerFeedbackError.classList.add("hidden");
+      els.answerFeedbackSubmit.disabled = true;
+      els.answerFeedbackSubmit.textContent = language === "zh" ? "提交中…" : "Submitting…";
+      try {
+        await sendAnswerFeedback(submission.context, selected.value, detail);
+        const button = submission.button;
+        button.disabled = true;
+        button.dataset.feedbackSubmitted = "true";
+        button.textContent = language === "zh" ? "已反馈" : "Feedback sent";
+        if (activeAnswerFeedback === submission) closeAnswerFeedbackDialog();
+      } catch (error) {
+        if (activeAnswerFeedback === submission) {
+          els.answerFeedbackError.textContent = (language === "zh" ? "提交失败，请重试：" : "Submission failed. Please retry: ") + (error.message || "unknown");
+          els.answerFeedbackError.classList.remove("hidden");
+        }
+      } finally {
+        if (activeAnswerFeedback === submission) {
+          els.answerFeedbackSubmit.disabled = false;
+          els.answerFeedbackSubmit.textContent = language === "zh" ? "提交反馈" : "Submit feedback";
+        }
+      }
+    });
 
     // Escape 最小化最上层非推理中的面板
     document.addEventListener("keydown", function (e) {
+      if (e.key === "Tab" && trapAnswerFeedbackFocus(e)) return;
       if (e.key === "Escape") {
+        if (els.answerFeedbackDialog && !els.answerFeedbackDialog.classList.contains("hidden")) {
+          closeAnswerFeedbackDialog();
+          return;
+        }
+        if (els.chatLogsMenu && !els.chatLogsMenu.classList.contains("hidden")) {
+          setChatLogsMenuOpen(false);
+          els.chatLogsButton?.focus();
+          return;
+        }
         for (var i = _deepPanels.length - 1; i >= 0; i--) {
           var p = _deepPanels[i];
           if (!p.minimized && !p.abortController) {
@@ -19952,6 +20324,14 @@ var _NUMERIC_COL_PATTERNS = [
       setLanguage: function(lang) { state.language = lang; },
       switchToChatMode: _switchToChatMode,
       switchToReportMode: _switchToReportMode,
+      createChatQuestionSessionId,
+      createChatQuestionEventId,
+      getChatQuestionSessionId,
+      resetChatQuestionSessionForTest: function () { chatQuestionPageSessionId = ""; },
+      detectQuestionLogIntent,
+      beginQuestionLog,
+      completeQuestionLog,
+      sendAnswerFeedback,
       categoryForPrompt,
       detectTrendEntityType,
       reportModeHelpMarkdown: () => REPORT_MODE_HELP_MD,

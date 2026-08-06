@@ -37,6 +37,8 @@ _load_dotenv()
 
 from api.tier_moves import handle_tier_moves
 from auth import handle_auth_login, handle_auth_logout, handle_auth_options, handle_auth_session, require_auth, session_payload, _read_json_body
+from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
+from chatbot_question_log_http import handle_chatbot_question_logs
 from offer_db import (
     add_merchant_to_tier1,
     chatbot_offers_payload,
@@ -841,6 +843,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        operation = str((parse_qs(parsed.query).get("operation") or [""])[0]).strip().lower()
+        if parsed.path == "/api/chat/stream" and operation == "feedback":
+            handle_chatbot_answer_feedback(self, "GET")
+            return
+        if parsed.path == "/api/chat/stream" and operation == "questions":
+            handle_chatbot_question_logs(self, "GET")
+            return
         if parsed.path == "/api/auth/session":
             handle_auth_session(self)
             return
@@ -879,6 +888,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        operation = str((parse_qs(parsed.query).get("operation") or [""])[0]).strip().lower()
         if parsed.path == "/api/auth/login":
             handle_auth_login(self)
             return
@@ -909,6 +919,12 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_llm_analyze()
             return
         if parsed.path == "/api/chat/stream":
+            if operation == "feedback":
+                handle_chatbot_answer_feedback(self, "POST")
+                return
+            if operation == "questions":
+                handle_chatbot_question_logs(self, "POST")
+                return
             if not require_auth(self):
                 return
             self.handle_chat_stream()
