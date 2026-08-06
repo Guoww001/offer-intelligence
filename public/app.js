@@ -12441,6 +12441,22 @@ var _NUMERIC_COL_PATTERNS = [
     return headers.map((header) => [header, (row) => row && row[header] != null ? row[header] : ""]);
   }
 
+  function tierSheetExportFormat(header) {
+    const normalizedHeader = String(header || "").trim().toLowerCase();
+    if (isRateColumn(header)) return "percentage";
+    if (TIER_INTEGER_METRIC_HEADERS.has(normalizedHeader)) return "integer";
+    return "";
+  }
+
+  function tierSheetExportColumns(rows, preferredHeaders = []) {
+    return objectExportColumns(rows, preferredHeaders).map(([header, getter, width]) => [
+      header,
+      getter,
+      width,
+      tierSheetExportFormat(header)
+    ]);
+  }
+
   function gridRowsForExport(grid) {
     const maxCols = grid.reduce((max, row) => Math.max(max, row.length), 0);
     const headers = Array.from({ length: maxCols }, (_, index) => columnLabel(index));
@@ -12475,7 +12491,12 @@ var _NUMERIC_COL_PATTERNS = [
     const rowXml = sheetRows.map((row, rowIndex) => {
       const cells = row.map((value, colIndex) => {
         const ref = `${columnName(colIndex)}${rowIndex + 1}`;
-        if (typeof value === "number" && Number.isFinite(value)) return `<c r="${ref}"><v>${value}</v></c>`;
+        const columnFormat = columns[colIndex] ? columns[colIndex][3] : "";
+        const styleId = columnFormat === "percentage" ? 1 : columnFormat === "integer" ? 2 : 0;
+        const style = styleId ? ` s="${styleId}"` : "";
+        const formattedNumber = rowIndex > 0 ? exportNumberForFormat(value, columnFormat) : null;
+        if (formattedNumber !== null) return `<c r="${ref}"${style}><v>${formattedNumber}</v></c>`;
+        if (typeof value === "number" && Number.isFinite(value)) return `<c r="${ref}"${style}><v>${value}</v></c>`;
         return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
       }).join("");
       return `<row r="${rowIndex + 1}">${cells}</row>`;
@@ -12486,6 +12507,20 @@ var _NUMERIC_COL_PATTERNS = [
   <cols>${widths}</cols>
   <sheetData>${rowXml}</sheetData>
 </worksheet>`;
+  }
+
+  function exportNumberForFormat(value, format) {
+    if (format !== "percentage" && format !== "integer") return null;
+    const text = String(value ?? "").trim();
+    if (!text) return null;
+    const cleaned = text.replace(/[$,%]/g, "").replace(/,/g, "").trim();
+    if (!/^-?\d+(?:\.\d+)?$/.test(cleaned)) return null;
+    const raw = Number(cleaned);
+    if (!Number.isFinite(raw)) return null;
+    if (format === "percentage") {
+      return Math.abs(raw) <= 1 && !text.includes("%") ? raw : raw / 100;
+    }
+    return Math.round(raw);
   }
 
   function workbookXml(sheetName = "Recommendations") {
@@ -12538,7 +12573,11 @@ var _NUMERIC_COL_PATTERNS = [
   <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
   <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellXfs>
+  <cellXfs count="3">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+    <xf numFmtId="10" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>
+    <xf numFmtId="1" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>
+  </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
   }
@@ -12737,27 +12776,30 @@ var _NUMERIC_COL_PATTERNS = [
       const categoryHeaders = tierCategorySummaryExportHeaders();
       const offerListRows = tierOfferListExportRows(sheet, rows);
       const offerListHeaders = tierOfferListExportHeaders();
+      const tierColumns = tierSheetExportColumns(rows, headers);
+      const categoryColumns = tierSheetExportColumns(categoryRows, categoryHeaders);
+      const offerListColumns = tierSheetExportColumns(offerListRows, offerListHeaders);
       downloadRowsAsXlsx(rows, {
         downloadType: "sheet",
         filePrefix: "tier_records",
         exportScope: state.selectedTierPage,
         sheetName: state.selectedTierPage,
-        downloadColumns: objectExportColumns(rows, headers),
+        downloadColumns: tierColumns,
         sheets: [
           {
             sheetName: state.selectedTierPage,
             rows,
-            columns: objectExportColumns(rows, headers)
+            columns: tierColumns
           },
           {
             sheetName: "Category Summary",
             rows: categoryRows,
-            columns: objectExportColumns(categoryRows, categoryHeaders)
+            columns: categoryColumns
           },
           {
             sheetName: "Offer List",
             rows: offerListRows,
-            columns: objectExportColumns(offerListRows, offerListHeaders)
+            columns: offerListColumns
           }
         ]
       });
@@ -20371,6 +20413,9 @@ var _NUMERIC_COL_PATTERNS = [
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       reportHelpMarkdown: (en) => (en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD),
       formatSheetCell,
+      tierSheetExportColumns,
+      worksheetXml,
+      stylesXml,
       formatTierSheetCell: (sheetName, row, header) => formatTierSheetCell(
         sheetByName(sheetName) || { name: sheetName },
         row || {},
