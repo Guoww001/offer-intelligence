@@ -42,6 +42,42 @@
       ]
     },
     {
+      "src": "^/api/ui/db/status/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-status"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/merchant/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-merchant"
+        }
+      ]
+    },
+    {
+      "src": "^/api/ui/db/search/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-search"
+        }
+      ]
+    },
+    {
       "src": "^/api/ui/db/keywords/?$",
       "dest": "/api/db/index",
       "transforms": [
@@ -124,12 +160,93 @@
           "args": "ui-publishers"
         }
       ]
+    },
+    {
+      "src": "^/api/auth/login/?$",
+      "dest": "/api/auth/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-auth-route" },
+          "args": "login"
+        }
+      ]
+    },
+    {
+      "src": "^/api/auth/logout/?$",
+      "dest": "/api/auth/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-auth-route" },
+          "args": "logout"
+        }
+      ]
+    },
+    {
+      "src": "^/api/auth/session/?$",
+      "dest": "/api/auth/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-auth-route" },
+          "args": "session"
+        }
+      ]
+    },
+    {
+      "src": "^/api/chat/classify/?$",
+      "dest": "/api/chat/actions",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-chat-route" },
+          "args": "classify"
+        }
+      ]
+    },
+    {
+      "src": "^/api/chat/analyze/?$",
+      "dest": "/api/chat/actions",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-chat-route" },
+          "args": "analyze"
+        }
+      ]
     }
   ],
   "functions": {
-    "api/**/*.py": {
+    "api/auth/index.py": {
+      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "maxDuration": 60
+    },
+    "api/chat/actions.py": {
+      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "maxDuration": 60
+    },
+    "api/chat/stream.py": {
+      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "maxDuration": 60
+    },
+    "api/db/index.py": {
+      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "includeFiles": "protected_data/**",
-      "excludeFiles": "{scripts/**,.git/**}",
+      "maxDuration": 60
+    },
+    "api/levanta/payments.py": {
+      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/db_keywords_cache.json,protected_data/db_publishers_cache.json,*.md,*.txt,*.yml,init.sh,server.py}",
+      "includeFiles": "protected_data/db_offers_cache.json",
+      "maxDuration": 60
+    },
+    "api/tier_moves.py": {
+      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "maxDuration": 60
     }
   }

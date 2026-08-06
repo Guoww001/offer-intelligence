@@ -59,7 +59,7 @@ node scripts/test_category_trend.mjs
 node scripts/test_tier_visual_status.mjs
 node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
-python -m py_compile auth.py server.py offer_db.py api/auth/login.py api/auth/session.py api/auth/logout.py api/db/status.py api/db/merchant.py api/db/search.py scripts/validate_db_migration.py
+python -m py_compile auth.py server.py offer_db.py levanta_payments.py api/auth/index.py api/chat/actions.py api/chat/stream.py api/db/index.py api/levanta/payments.py api/tier_moves.py scripts/validate_db_migration.py
 ```
 
 ## Architecture
@@ -69,7 +69,7 @@ python -m py_compile auth.py server.py offer_db.py api/auth/login.py api/auth/se
 The codebase runs as a single `python server.py` process locally, but on Vercel each file under `api/` is deployed as a separate serverless function. This means:
 
 - **`server.py`** is the monolith that handles all routes locally. It imports from `auth.py`, `offer_db.py`, `api/tier_moves.py`, etc.
-- **`api/**/*.py`** files each export a `handler` class (extending `BaseHTTPRequestHandler`) that Vercel invokes independently. These files re-import shared logic from the root modules.
+- **`api/**/*.py`** files are Vercel Function entrypoints. Consolidated Auth and non-streaming Chat entries export a `handler` class, while the consolidated DB entry exports a WSGI `app`; `vercel.json` preserves public routes with trusted request-header transforms.
 - Code shared between local and serverless paths lives in root-level `.py` files (`auth.py`, `offer_db.py`).
 
 ### Request flow (local)
