@@ -742,6 +742,11 @@
       "publishers.sales": "销售额",
       "publishers.commission": "佣金",
       "publishers.publisherCount": "媒体数量",
+      "publishers.associatedPublishers": "关联媒体",
+      "publishers.merchantMatchKicker": "商家关联结果",
+      "publishers.merchantMatches": "匹配商家",
+      "publishers.merchantNoMatch": "未找到匹配商家",
+      "publishers.merchantMatchHint": "结果已按当前页面筛选条件更新，可点击媒体继续查看画像。",
       "publishers.marketSummary": "概览",
       "publishers.market": "市场",
       "publishers.exportPage": "导出当前页",
@@ -13742,6 +13747,7 @@ var _NUMERIC_COL_PATTERNS = [
   var _publisherPortfolioRequestVersion = 0;
   var _activePublisherPortfolioRows = [];
   var _activePublisherPortfolioSalesTotal = 0;
+  var _publisherMerchantSearchTimer = null;
 
   function _publisherManagerMatches(pub, managerQuery) {
     var manager = String(managerQuery || "").toLowerCase().trim();
@@ -13855,6 +13861,33 @@ var _NUMERIC_COL_PATTERNS = [
     return null;
   }
 
+  function _publisherMerchantMatches(data, query) {
+    var normalizedQuery = String(query || "").toLowerCase().trim();
+    if (!normalizedQuery) return [];
+    var nameMap = (data || {}).merchantNameMap || {};
+    return Object.keys(nameMap).filter(function (merchantId) {
+      var merchantName = String(nameMap[merchantId] || "").toLowerCase();
+      return String(merchantId).toLowerCase().indexOf(normalizedQuery) !== -1 ||
+        merchantName.indexOf(normalizedQuery) !== -1;
+    }).map(function (merchantId) {
+      return {
+        merchantId: String(merchantId),
+        merchantName: String(nameMap[merchantId] || merchantId),
+      };
+    });
+  }
+
+  function _publisherMerchantAssociationSummary(data, publishers, query) {
+    var merchants = _publisherMerchantMatches(data, query);
+    return {
+      query: String(query || "").trim(),
+      merchantCount: merchants.length,
+      publisherCount: (publishers || []).length,
+      merchants: merchants,
+      publishers: (publishers || []).slice(),
+    };
+  }
+
   function _setSelectedPublisher(pub) {
     state.publisherSelectedId = pub ? String(pub.userId) : "";
     state.publisherPortfolioSearch = "";
@@ -13918,7 +13951,11 @@ var _NUMERIC_COL_PATTERNS = [
     var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
     var siteSearch = (state.publisherSiteSearch || "").toLowerCase().trim();
     var trackSearch = (state.publisherTrackSearch || "").toLowerCase().trim();
-    var nameMap = data.merchantNameMap || {};
+    var matchingMerchantIds = merchantSearch
+      ? new Set(_publisherMerchantMatches(data, merchantSearch).map(function (merchant) {
+          return merchant.merchantId;
+        }))
+      : null;
 
     return data.publishers.filter(function (pub) {
       // 市场筛选
@@ -13927,24 +13964,12 @@ var _NUMERIC_COL_PATTERNS = [
       if (network !== "all" && (!pub.networks || pub.networks.indexOf(network) === -1)) return false;
       // 链接类型筛选
       if (linkType !== "all" && (!pub.linkTypes || !pub.linkTypes[linkType])) return false;
-      // 商家搜索（匹配商家名称和 ID）
+      // 商家搜索（只匹配商家名称和 ID）
       if (merchantSearch) {
-        var matched = false;
         var mIds = pub.merchantIds || [];
-        for (var i = 0; i < mIds.length; i++) {
-          var mid = String(mIds[i]);
-          var mName = (nameMap[mid] || "").toLowerCase();
-          if (mid.indexOf(merchantSearch) !== -1 || mName.indexOf(merchantSearch) !== -1) {
-            matched = true;
-            break;
-          }
-        }
-        // 也搜索 publisher 本身名称/ID
-        if (!matched) {
-          var name = (pub.userName || "").toLowerCase();
-          var id = String(pub.userId);
-          if (name.indexOf(merchantSearch) !== -1 || id.indexOf(merchantSearch) !== -1) matched = true;
-        }
+        var matched = mIds.some(function (merchantId) {
+          return matchingMerchantIds.has(String(merchantId));
+        });
         if (!matched) return false;
       }
       // 商品搜索（publisher 名称/ID）
@@ -14533,6 +14558,57 @@ var _NUMERIC_COL_PATTERNS = [
     _renderPublisherCategoryAffinity(summary);
     _renderPublisherAffinitySignals(summary);
     _renderPublisherPortfolioTable(globalRows, summary);
+  }
+
+  function _renderPublisherMerchantAssociation(data, publishers) {
+    if (!els.publisherAffinityEmpty) return;
+    var query = String(state.publisherMerchantSearch || "").trim();
+    if (!query) {
+      els.publisherAffinityEmpty.innerHTML =
+        '<span class="publisher-affinity-empty-index">02</span>' +
+        '<div><strong>' + escapeHtml(t("publishers.affinityEmptyTitle", "Select a publisher to build an affinity profile")) + '</strong>' +
+        '<p>' + escapeHtml(t("publishers.affinityEmptyBody", "Merchant activity is used to calculate category, AOV, and commission preferences.")) + '</p></div>';
+      return;
+    }
+
+    var summary = _publisherMerchantAssociationSummary(data, publishers, query);
+    var matchedMerchantText = summary.merchants.map(function (merchant) {
+      return merchant.merchantName + " · ID " + merchant.merchantId;
+    }).join(" / ");
+    var visiblePublishers = summary.publishers.slice().sort(function (a, b) {
+      return Number(((b || {}).total || {}).sales || 0) - Number(((a || {}).total || {}).sales || 0);
+    }).slice(0, 8);
+    var publisherChips = visiblePublishers.map(function (publisher) {
+      return '<button type="button" class="publisher-merchant-match-chip" data-publisher-id="' +
+        escapeHtml(String(publisher.userId)) + '">' +
+        escapeHtml(publisher.userName || String(publisher.userId)) +
+        '<small>ID ' + escapeHtml(String(publisher.userId)) + '</small></button>';
+    }).join("");
+    var remainingCount = Math.max(0, summary.publisherCount - visiblePublishers.length);
+    if (remainingCount > 0) {
+      publisherChips += '<span class="publisher-merchant-match-more">+' + number(remainingCount) + '</span>';
+    }
+
+    var matchTitle = summary.merchantCount
+      ? t("publishers.merchantMatches", "Matched merchants") + " · " + number(summary.merchantCount)
+      : t("publishers.merchantNoMatch", "No matching merchant");
+    els.publisherAffinityEmpty.innerHTML =
+      '<span class="publisher-affinity-empty-index">02</span>' +
+      '<div class="publisher-merchant-match-result">' +
+        '<span class="publisher-merchant-match-kicker">' +
+          escapeHtml(t("publishers.merchantMatchKicker", "Merchant associations")) +
+        '</span>' +
+        '<div class="publisher-merchant-match-heading">' +
+          '<strong class="publisher-merchant-match-count">' + number(summary.publisherCount) + '</strong>' +
+          '<span>' + escapeHtml(t("publishers.associatedPublishers", "Associated publishers")) + '</span>' +
+        '</div>' +
+        '<p class="publisher-merchant-match-title">' + escapeHtml(matchTitle) + '</p>' +
+        (matchedMerchantText
+          ? '<p class="publisher-merchant-match-merchants">' + escapeHtml(matchedMerchantText) + '</p>'
+          : '<p class="publisher-merchant-match-merchants">“' + escapeHtml(query) + '”</p>') +
+        '<p>' + escapeHtml(t("publishers.merchantMatchHint", "Results reflect the current page filters. Select a publisher to open its profile.")) + '</p>' +
+        (publisherChips ? '<div class="publisher-merchant-match-list">' + publisherChips + '</div>' : '') +
+      '</div>';
   }
 
   function _setPublisherFocusMode(focused) {
@@ -15189,6 +15265,7 @@ var _NUMERIC_COL_PATTERNS = [
         _publisherPortfolioRequestVersion++;
         _setPublisherFocusMode(false);
         renderPublisherAffinity(null, []);
+        _renderPublisherMerchantAssociation(data, filtered);
         var agg = aggregatePublisherMetrics(filtered, market);
 
         // 市场聚合概览
@@ -20594,10 +20671,34 @@ var _NUMERIC_COL_PATTERNS = [
       _hideManagerDropdown();
       renderPublishersPage();
     });
-    // 文本输入框仅同步 state，不触发渲染（点击搜索按钮才渲染）
+    // 商家搜索即时返回关联媒体；短延迟避免连续输入时反复重绘大表。
     els.publisherMerchantSearch.addEventListener("input", function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+      if (state.publisherSelectedId) _setSelectedPublisher(null);
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = setTimeout(function () {
+        _publisherMerchantSearchTimer = null;
+        renderPublishersPage();
+      }, 180);
     });
+    els.publisherMerchantSearch.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = null;
+      state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+      renderPublishersPage();
+    });
+    if (els.publisherAffinityEmpty) {
+      els.publisherAffinityEmpty.addEventListener("click", function (event) {
+        var option = event.target.closest("[data-publisher-id]");
+        if (!option) return;
+        var publisher = _publisherById(_publishersCache, option.getAttribute("data-publisher-id"));
+        if (!publisher) return;
+        _setSelectedPublisher(publisher);
+        renderPublishersPage();
+      });
+    }
     if (els.publisherProductSearch) {
       els.publisherProductSearch.addEventListener("input", function () {
         state.publisherProductSearch = els.publisherProductSearch.value;
@@ -20641,6 +20742,8 @@ var _NUMERIC_COL_PATTERNS = [
       });
     }
     els.publisherSearchBtn.addEventListener("click", function () {
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = null;
       renderPublishersPage();
     });
     // 日期快捷按钮
@@ -20679,6 +20782,8 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublishersPage();
     });
     els.publisherResetBtn.addEventListener("click", function () {
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = null;
       state.publisherMarket = "all";
       state.publisherNetwork = "all";
       state.publisherLinkType = "all";
@@ -21153,6 +21258,9 @@ var _NUMERIC_COL_PATTERNS = [
       dbDailyTrendChartHtml,
       publisherManagerMatches: _publisherManagerMatches,
       publishersForManager: _publishersForManager,
+      filteredPublishers: getFilteredPublishers,
+      publisherMerchantMatches: _publisherMerchantMatches,
+      publisherMerchantAssociationSummary: _publisherMerchantAssociationSummary,
       publisherTierOptions: _publisherTierOptions,
       publisherMetricAffEpc: _publisherMetricAffEpc,
       publisherMetricEpc: _publisherMetricAffEpc,
