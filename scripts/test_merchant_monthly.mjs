@@ -88,6 +88,10 @@ assertEqual(hooks.offerAffEpc(merged), 960 / 2400, "Aff EPC should be affiliateP
 assertEqual(hooks.offerAllCommission(merged), 1440, "All Commission should be payout on merged offer");
 assertEqual(hooks.offerAffCommission(merged), 960, "Aff Commission should be affCommission on merged offer");
 
+const cachedEpcOffer = hooks.mergeMonthIntoOffer({ ...base, allEpc: 0.072, affEpc: 0.054 }, aug);
+assertEqual(hooks.offerAllEpc(cachedEpcOffer), 1440 / 2400, "monthly merge should override cached All EPC with monthly payout/clicks");
+assertEqual(hooks.offerAffEpc(cachedEpcOffer), 960 / 2400, "monthly merge should override cached Aff EPC with monthly affiliatePayout/clicks");
+
 // ── 用例 3：月份格式化 ──
 assertEqual(hooks.formatMonthLabel("2026-08", "zh"), "2026年8月", "zh month label format");
 assertEqual(hooks.formatMonthLabel("2026-08", "en"), "Aug 2026", "en month label format");

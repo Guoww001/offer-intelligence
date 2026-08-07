@@ -1480,6 +1480,13 @@
   let merchantCardSeq = 0; // 聊天区概览卡片容器唯一 id 计数器
 
   function mergeMonthIntoOffer(offer, row) {
+    const clicks = Number(row.clicks);
+    const allEpc = Number.isFinite(Number(row.payout)) && clicks > 0
+      ? Number(row.payout) / clicks
+      : null;
+    const affEpc = Number.isFinite(Number(row.affiliatePayout)) && clicks > 0
+      ? Number(row.affiliatePayout) / clicks
+      : null;
     return Object.assign({}, offer, {
       salesAmount: row.revenue,            // Revenue made
       aov: row.aov,
@@ -1488,6 +1495,8 @@
       affCommission: row.affiliatePayout,  // Aff Commission（映射后 offerAffEpc/offerAffCommission 直接复用）
       orders: row.orders,
       clicks: row.clicks,
+      allEpc,
+      affEpc,
       dpv: row.dpv,
       atc: row.atc
     });
