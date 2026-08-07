@@ -1,6 +1,6 @@
 # Offer Intelligence
 
-![CI](https://github.com/bryansaputra68YP/offer-intelligence/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Yeahpromos/offer-intelligence/actions/workflows/ci.yml/badge.svg)
 
 Internal YeahPromos Amazon offer intelligence dashboard for offer ranking, category analysis, Tier 2 publisher strategy, payment follow-up, and chatbot-based lookup.
 
