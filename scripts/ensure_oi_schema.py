@@ -21,6 +21,7 @@ from offer_db import (
     MERCHANT_AOV_ESTIMATES_TABLE_DDL,
     MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE,
     MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL,
+    MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS,
     MONTHLY_NEW_MERCHANTS_TABLE_DDL,
 )
 from chatbot_answer_feedback import CHATBOT_ANSWER_FEEDBACK_TABLE_DDL
@@ -30,13 +31,6 @@ PAYMENT_RECORD_COLUMN_MIGRATIONS = {
     "paymentMadeDate": (
         "ALTER TABLE cnpscy_oi_payment_records "
         "ADD COLUMN paymentMadeDate VARCHAR(16) DEFAULT NULL AFTER rawStatus"
-    ),
-}
-
-MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS = {
-    "isPriority": (
-        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
-        "ADD COLUMN isPriority TINYINT(1) NOT NULL DEFAULT 0 AFTER businessManager"
     ),
 }
 

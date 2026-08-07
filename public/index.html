@@ -816,6 +816,10 @@
                 <span data-i18n="label.Month">Month</span>
                 <input id="monthlyNewMerchantsMonth" type="month" aria-label="Monthly new merchant report month" />
               </label>
+              <button class="monthly-new-merchants-import" id="monthlyNewMerchantImport" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+                <span data-i18n="monthlyNewMerchants.import">Import table</span>
+              </button>
               <button class="monthly-new-merchants-add" id="monthlyNewMerchantAdd" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 <span data-i18n="monthlyNewMerchants.add">Add merchant</span>
@@ -845,11 +849,16 @@
                 <thead>
                   <tr>
                     <th class="monthly-new-merchant-priority-column" data-i18n="monthlyNewMerchants.priority">Priority</th>
-                    <th data-i18n="label.Merchant">Merchant</th>
-                    <th data-i18n="label.Merchant ID">Merchant ID</th>
+                    <th data-i18n="monthlyNewMerchants.brand">Brand</th>
+                    <th data-i18n="monthlyNewMerchants.program">Program</th>
+                    <th data-i18n="monthlyNewMerchants.platform">Platform</th>
+                    <th data-i18n="monthlyNewMerchants.gmvRequirement">GMV need to be reached</th>
+                    <th data-i18n="monthlyNewMerchants.pastMonthPurchase">Past month purchase</th>
+                    <th data-i18n="monthlyNewMerchants.independentWebsites">Independent websites</th>
+                    <th data-i18n="monthlyNewMerchants.reviewSummary">Reviews numbers</th>
+                    <th class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.ourCommission">Our commission</th>
+                    <th class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.presetCommission">Preset commission</th>
                     <th data-i18n="monthlyNewMerchants.bd">BD</th>
-                    <th class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.gmvTarget">Monthly GMV target</th>
-                    <th data-i18n="monthlyNewMerchants.reward">Reward when achieved</th>
                     <th data-i18n="monthlyNewMerchants.updated">Updated</th>
                     <th data-i18n="monthlyNewMerchants.actions">Actions</th>
                   </tr>
@@ -896,7 +905,19 @@
                     <input id="monthlyNewMerchantManager" name="businessManager" maxlength="128" />
                   </label>
                   <label>
-                    <span data-i18n="monthlyNewMerchants.gmvTarget">Monthly GMV target</span>
+                    <span data-i18n="monthlyNewMerchants.program">Program</span>
+                    <input id="monthlyNewMerchantProgram" name="program" maxlength="128" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.platform">Platform</span>
+                    <input id="monthlyNewMerchantPlatform" name="platform" maxlength="128" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.gmvRequirement">GMV need to be reached</span>
+                    <input id="monthlyNewMerchantGmvRequirement" name="gmvRequirement" maxlength="255" placeholder="$ 100,000.00 or Make Money" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.gmvTarget">Numeric GMV target</span>
                     <input
                       id="monthlyNewMerchantGmvTarget"
                       name="gmvMonthlyTarget"
@@ -907,6 +928,26 @@
                       step="0.01"
                       placeholder="0.00"
                     />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.pastMonthPurchase">Past month purchase</span>
+                    <input id="monthlyNewMerchantPastMonthPurchase" name="pastMonthPurchase" maxlength="255" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.independentWebsites">Independent websites</span>
+                    <input id="monthlyNewMerchantIndependentWebsites" name="independentWebsites" maxlength="255" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.reviewSummary">Reviews numbers</span>
+                    <input id="monthlyNewMerchantReviewSummary" name="reviewSummary" maxlength="255" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.ourCommission">Our commission (%)</span>
+                    <input id="monthlyNewMerchantOurCommission" name="ourCommission" type="number" inputmode="decimal" min="0" max="100" step="0.01" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.presetCommission">Preset commission (%)</span>
+                    <input id="monthlyNewMerchantPresetCommission" name="presetCommission" type="number" inputmode="decimal" min="0" max="100" step="0.01" />
                   </label>
                   <label class="monthly-new-merchant-priority-field">
                     <input id="monthlyNewMerchantPriority" name="isPriority" type="checkbox" />
@@ -936,6 +977,48 @@
               </footer>
             </form>
           </aside>
+        </div>
+
+        <div class="monthly-new-merchant-import-backdrop hidden" id="monthlyNewMerchantImportBackdrop" aria-hidden="true">
+          <section
+            class="monthly-new-merchant-import-dialog"
+            id="monthlyNewMerchantImportDialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="monthlyNewMerchantImportTitle"
+          >
+            <header class="monthly-new-merchant-import-header">
+              <div>
+                <h2 id="monthlyNewMerchantImportTitle" data-i18n="monthlyNewMerchants.importTitle">Import merchant table</h2>
+                <p data-i18n="monthlyNewMerchants.importSubtitle">Paste rows from Excel or Google Sheets, or upload CSV, TSV, XLS, or XLSX. Review issues before saving.</p>
+              </div>
+              <button class="monthly-new-merchant-drawer-close" id="monthlyNewMerchantImportClose" type="button" aria-label="Close import dialog">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              </button>
+            </header>
+            <div class="monthly-new-merchant-import-body">
+              <div class="monthly-new-merchant-import-actions">
+                <input id="monthlyNewMerchantImportFile" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden />
+                <button id="monthlyNewMerchantImportChoose" type="button" data-i18n="monthlyNewMerchants.chooseFile">Choose file</button>
+                <span id="monthlyNewMerchantImportFileName" data-i18n="monthlyNewMerchants.noFile">No file selected</span>
+                <button id="monthlyNewMerchantImportTemplate" type="button" data-i18n="monthlyNewMerchants.downloadTemplate">Download CSV template</button>
+              </div>
+              <label class="monthly-new-merchant-import-paste">
+                <span data-i18n="monthlyNewMerchants.pasteLabel">Paste a table including its header row</span>
+                <textarea id="monthlyNewMerchantImportPaste" rows="7" placeholder="Brand&#9;Program&#9;Platform&#9;GMV need to be reach&#9;..."></textarea>
+              </label>
+              <div class="monthly-new-merchant-import-preview-actions">
+                <button id="monthlyNewMerchantImportPreview" type="button" data-i18n="monthlyNewMerchants.preview">Preview pasted rows</button>
+                <p id="monthlyNewMerchantImportSummary" aria-live="polite"></p>
+              </div>
+              <div class="monthly-new-merchant-import-error hidden" id="monthlyNewMerchantImportError" role="alert"></div>
+              <div class="monthly-new-merchant-import-preview" id="monthlyNewMerchantImportPreviewTable"></div>
+            </div>
+            <footer class="monthly-new-merchant-drawer-footer">
+              <button class="monthly-new-merchant-cancel" id="monthlyNewMerchantImportCancel" type="button" data-i18n="action.cancel">Cancel</button>
+              <button class="monthly-new-merchant-save" id="monthlyNewMerchantImportSave" type="button" disabled data-i18n="monthlyNewMerchants.importValid">Import valid rows</button>
+            </footer>
+          </section>
         </div>
 
         <section class="sheet-page hidden" id="sheetPage" aria-label="All sheet tabs">

@@ -57,6 +57,14 @@ BASE_PAYLOAD = {
     "merchantId": "398751",
     "merchantName": "August Merchant",
     "businessManager": "Fiona",
+    "program": "Amazon",
+    "platform": "Levanta",
+    "gmvRequirement": "$ 125,000.50",
+    "pastMonthPurchase": "200+ bought in the past month",
+    "independentWebsites": "2,900,000 Monthly Views",
+    "reviewSummary": "4.8/5 from 15,000 ratings",
+    "ourCommission": "35%",
+    "presetCommission": "20",
     "isPriority": True,
     "gmvMonthlyTarget": "125000.50",
     "completionReward": "$2,500 bonus after reaching the target",
@@ -68,10 +76,29 @@ def main():
     assert "CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants" in ddl
     assert "merchantId       VARCHAR(64) DEFAULT NULL" in ddl
     assert "merchantName     VARCHAR(180) NOT NULL" in ddl
+    assert "program          VARCHAR(128) DEFAULT NULL" in ddl
+    assert "platform         VARCHAR(128) DEFAULT NULL" in ddl
+    assert "gmvRequirement   VARCHAR(255) DEFAULT NULL" in ddl
+    assert "pastMonthPurchase VARCHAR(255) DEFAULT NULL" in ddl
+    assert "independentWebsites VARCHAR(255) DEFAULT NULL" in ddl
+    assert "reviewSummary    VARCHAR(255) DEFAULT NULL" in ddl
+    assert "ourCommission    DECIMAL(7, 2) DEFAULT NULL" in ddl
+    assert "presetCommission DECIMAL(7, 2) DEFAULT NULL" in ddl
     assert "isPriority       TINYINT(1) NOT NULL DEFAULT 0" in ddl
     assert "gmvMonthlyTarget DECIMAL(18, 2) DEFAULT NULL" in ddl
     assert "completionReward VARCHAR(1000) DEFAULT NULL" in ddl
     assert "UNIQUE KEY uq_monthly_new_merchant_id (reportMonth, merchantId)" in ddl
+    assert {
+        "program",
+        "platform",
+        "gmvRequirement",
+        "pastMonthPurchase",
+        "independentWebsites",
+        "reviewSummary",
+        "ourCommission",
+        "presetCommission",
+        "isPriority",
+    }.issubset(offer_db.MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS)
 
     assert_equal(
         offer_db.normalize_monthly_new_merchant_month("2026-08"),
@@ -92,6 +119,17 @@ def main():
     )
     assert_equal(optional_values["merchantId"], "", "optional merchant ID")
     assert_equal(optional_values["businessManager"], "", "optional BD")
+    for field in (
+        "program",
+        "platform",
+        "gmvRequirement",
+        "pastMonthPurchase",
+        "independentWebsites",
+        "reviewSummary",
+    ):
+        assert_equal(optional_values[field], "", f"optional {field}")
+    assert_equal(optional_values["ourCommission"], None, "optional own commission")
+    assert_equal(optional_values["presetCommission"], None, "optional preset commission")
     assert_equal(optional_values["isPriority"], False, "optional priority")
     assert_equal(optional_values["gmvMonthlyTarget"], None, "optional GMV target")
     assert_equal(optional_values["completionReward"], "", "optional reward")
@@ -99,6 +137,11 @@ def main():
     full_values = offer_db._monthly_new_merchant_values(BASE_PAYLOAD, updated_by="admin")
     assert_equal(full_values["merchantName"], "August Merchant", "manual merchant name")
     assert_equal(full_values["businessManager"], "Fiona", "manual BD owner")
+    assert_equal(full_values["program"], "Amazon", "program")
+    assert_equal(full_values["platform"], "Levanta", "platform")
+    assert_equal(full_values["gmvRequirement"], "$ 125,000.50", "GMV requirement copy")
+    assert_equal(full_values["ourCommission"], Decimal("35.00"), "own commission")
+    assert_equal(full_values["presetCommission"], Decimal("20.00"), "preset commission")
     assert_equal(full_values["isPriority"], True, "priority normalization")
     assert_equal(full_values["gmvMonthlyTarget"], Decimal("125000.50"), "GMV normalization")
 
@@ -108,6 +151,8 @@ def main():
         ({**BASE_PAYLOAD, "isPriority": "sometimes"}, "invalid priority"),
         ({**BASE_PAYLOAD, "gmvMonthlyTarget": "-1"}, "negative GMV target"),
         ({**BASE_PAYLOAD, "gmvMonthlyTarget": "not-a-number"}, "invalid GMV target"),
+        ({**BASE_PAYLOAD, "ourCommission": "101%"}, "commission above 100"),
+        ({**BASE_PAYLOAD, "presetCommission": "not-a-percent"}, "invalid commission"),
     ]
     for payload, label in invalid_payloads:
         try:
@@ -145,6 +190,14 @@ def main():
             "merchantId": "398751",
             "merchantName": "August Merchant",
             "businessManager": "Fiona",
+            "program": "Amazon",
+            "platform": "Levanta",
+            "gmvRequirement": "$ 125,000.50",
+            "pastMonthPurchase": "200+ bought in the past month",
+            "independentWebsites": "2,900,000 Monthly Views",
+            "reviewSummary": "4.8/5 from 15,000 ratings",
+            "ourCommission": Decimal("35.00"),
+            "presetCommission": Decimal("20.00"),
             "isPriority": 1,
             "gmvMonthlyTarget": Decimal("125000.50"),
             "completionReward": "$2,500 bonus after reaching the target",
@@ -161,22 +214,35 @@ def main():
         assert_equal(created["record"]["recordId"], 41, "created record ID")
         assert_equal(created["record"]["isPriority"], True, "created priority")
         assert_equal(created["record"]["gmvMonthlyTarget"], 125000.5, "GMV JSON value")
+        assert_equal(created["record"]["ourCommission"], 35.0, "commission JSON value")
         assert_equal(active_connection.begun, True, "create transaction begun")
         assert_equal(active_connection.committed, True, "create committed")
         insert_sql, insert_params = next(
             item for item in active_connection.executed
             if "INSERT INTO cnpscy_oi_monthly_new_merchants" in item[0]
         )
+        assert "program" in insert_sql and "presetCommission" in insert_sql
         assert "isPriority" in insert_sql and "completionReward" in insert_sql
-        assert_equal(insert_params[4], 1, "stored priority")
-        assert_equal(insert_params[5], Decimal("125000.50"), "stored GMV target")
-        assert_equal(insert_params[7], "admin", "create actor")
+        assert_equal(insert_sql.count("%s"), len(insert_params), "insert placeholder count")
+        assert_equal(insert_params[10], Decimal("35.00"), "stored own commission")
+        assert_equal(insert_params[11], Decimal("20.00"), "stored preset commission")
+        assert_equal(insert_params[12], 1, "stored priority")
+        assert_equal(insert_params[13], Decimal("125000.50"), "stored GMV target")
+        assert_equal(insert_params[15], "admin", "create actor")
 
         updated_payload = {
             **BASE_PAYLOAD,
             "recordId": 41,
             "merchantId": "",
             "businessManager": "",
+            "program": "",
+            "platform": "",
+            "gmvRequirement": "",
+            "pastMonthPurchase": "",
+            "independentWebsites": "",
+            "reviewSummary": "",
+            "ourCommission": "",
+            "presetCommission": "",
             "isPriority": False,
             "gmvMonthlyTarget": "",
             "completionReward": "",
@@ -185,6 +251,14 @@ def main():
             **created_row,
             "merchantId": None,
             "businessManager": None,
+            "program": None,
+            "platform": None,
+            "gmvRequirement": None,
+            "pastMonthPurchase": None,
+            "independentWebsites": None,
+            "reviewSummary": None,
+            "ourCommission": None,
+            "presetCommission": None,
             "isPriority": 0,
             "gmvMonthlyTarget": None,
             "completionReward": None,
@@ -200,10 +274,13 @@ def main():
             item for item in active_connection.executed
             if "UPDATE cnpscy_oi_monthly_new_merchants" in item[0]
         )
+        assert "program" in update_sql and "presetCommission" in update_sql
         assert "isPriority" in update_sql and "updatedAt" in update_sql
+        assert_equal(update_sql.count("%s"), len(update_params), "update placeholder count")
         assert_equal(update_params[1], None, "cleared merchant ID")
-        assert_equal(update_params[4], 0, "cleared stored priority")
-        assert_equal(update_params[7], "editor", "update actor")
+        assert_equal(update_params[10], None, "cleared own commission")
+        assert_equal(update_params[12], 0, "cleared stored priority")
+        assert_equal(update_params[15], "editor", "update actor")
 
         active_connection = FakeConnection()
         fetch_one_responses[:] = [{"recordId": 99}]
@@ -244,6 +321,7 @@ def main():
         def fake_fetch_all(_conn, sql, params=()):
             assert "FROM cnpscy_oi_monthly_new_merchants" in sql
             assert "isPriority" in sql and "gmvMonthlyTarget" in sql
+            assert "program" in sql and "presetCommission" in sql
             assert_equal(params, ("2026-08",), "month query params")
             return records
 

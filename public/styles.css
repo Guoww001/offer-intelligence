@@ -142,6 +142,7 @@
 }
 
 .monthly-new-merchants-add,
+.monthly-new-merchants-import,
 .monthly-new-merchant-save {
   min-height: 42px;
   border: 1px solid #1768d5;
@@ -161,7 +162,23 @@
   padding: 0 17px;
 }
 
-.monthly-new-merchants-add svg {
+.monthly-new-merchants-import {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  border: 1px solid #b7c8cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #28566c;
+  font: 800 13px/1 inherit;
+  cursor: pointer;
+}
+
+.monthly-new-merchants-add svg,
+.monthly-new-merchants-import svg {
   width: 16px;
   height: 16px;
   fill: none;
@@ -174,6 +191,12 @@
 .monthly-new-merchant-save:hover {
   border-color: #0d58bd;
   background: #0d58bd;
+}
+
+.monthly-new-merchants-import:hover {
+  border-color: #1768d5;
+  background: #f3f7fd;
+  color: #1768d5;
 }
 
 .monthly-new-merchants-add:active,
@@ -251,7 +274,7 @@
 
 .monthly-new-merchants-table {
   width: 100%;
-  min-width: 1240px;
+  min-width: 2200px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 12px;
@@ -297,12 +320,17 @@
 
 .monthly-new-merchants-table th:nth-child(1) { width: 82px; }
 .monthly-new-merchants-table th:nth-child(2) { width: 190px; }
-.monthly-new-merchants-table th:nth-child(3) { width: 105px; }
-.monthly-new-merchants-table th:nth-child(4) { width: 115px; }
-.monthly-new-merchants-table th:nth-child(5) { width: 160px; }
-.monthly-new-merchants-table th:nth-child(6) { width: 250px; }
-.monthly-new-merchants-table th:nth-child(7) { width: 125px; }
-.monthly-new-merchants-table th:nth-child(8) { width: 135px; }
+.monthly-new-merchants-table th:nth-child(3) { width: 120px; }
+.monthly-new-merchants-table th:nth-child(4) { width: 120px; }
+.monthly-new-merchants-table th:nth-child(5) { width: 180px; }
+.monthly-new-merchants-table th:nth-child(6) { width: 220px; }
+.monthly-new-merchants-table th:nth-child(7) { width: 200px; }
+.monthly-new-merchants-table th:nth-child(8) { width: 185px; }
+.monthly-new-merchants-table th:nth-child(9) { width: 130px; }
+.monthly-new-merchants-table th:nth-child(10) { width: 145px; }
+.monthly-new-merchants-table th:nth-child(11) { width: 110px; }
+.monthly-new-merchants-table th:nth-child(12) { width: 125px; }
+.monthly-new-merchants-table th:nth-child(13) { width: 135px; }
 
 .monthly-new-merchant-priority-column,
 .monthly-new-merchant-priority-cell {
@@ -413,6 +441,7 @@
 
 .monthly-new-merchant-priority:disabled,
 .monthly-new-merchants-add:disabled,
+.monthly-new-merchants-import:disabled,
 .monthly-new-merchant-save:disabled,
 .monthly-new-merchant-actions button:disabled {
   cursor: wait;
@@ -446,6 +475,187 @@
   justify-content: flex-end;
   background: rgba(13, 35, 48, 0.34);
   backdrop-filter: blur(3px);
+}
+
+.monthly-new-merchant-import-backdrop {
+  position: fixed;
+  z-index: 1610;
+  inset: 0;
+  display: grid;
+  padding: 28px;
+  place-items: center;
+  background: rgba(13, 35, 48, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+.monthly-new-merchant-import-dialog {
+  display: flex;
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 56px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f8fafb;
+  box-shadow: 0 24px 70px rgba(10, 33, 46, 0.28);
+  animation: monthly-new-merchant-import-in 180ms ease-out;
+}
+
+@keyframes monthly-new-merchant-import-in {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.monthly-new-merchant-import-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+  border-bottom: 1px solid #dce5e9;
+  background: #fff;
+}
+
+.monthly-new-merchant-import-header h2 {
+  margin: 0;
+  color: #123246;
+  font-size: 22px;
+}
+
+.monthly-new-merchant-import-header p {
+  margin: 7px 0 0;
+  color: #70838e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.monthly-new-merchant-import-body {
+  display: grid;
+  min-height: 0;
+  gap: 14px;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.monthly-new-merchant-import-actions,
+.monthly-new-merchant-import-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.monthly-new-merchant-import-actions button,
+.monthly-new-merchant-import-preview-actions button {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #b9c9d0;
+  border-radius: 8px;
+  background: #fff;
+  color: #28566c;
+  font: 800 11px/1 inherit;
+  cursor: pointer;
+}
+
+.monthly-new-merchant-import-actions button:hover,
+.monthly-new-merchant-import-preview-actions button:hover {
+  border-color: #1768d5;
+  color: #1768d5;
+}
+
+.monthly-new-merchant-import-actions span,
+.monthly-new-merchant-import-preview-actions p {
+  margin: 0;
+  color: #6d818b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.monthly-new-merchant-import-actions span {
+  margin-right: auto;
+}
+
+.monthly-new-merchant-import-paste {
+  display: grid;
+  gap: 7px;
+  color: #506873;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.monthly-new-merchant-import-paste textarea {
+  width: 100%;
+  min-height: 132px;
+  padding: 11px 12px;
+  border: 1px solid #d4dee3;
+  border-radius: 8px;
+  background: #fff;
+  color: #183748;
+  font: 500 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  outline: none;
+  resize: vertical;
+}
+
+.monthly-new-merchant-import-paste textarea:focus {
+  border-color: #1768d5;
+  box-shadow: 0 0 0 3px rgba(23, 104, 213, 0.12);
+}
+
+.monthly-new-merchant-import-error {
+  padding: 10px 12px;
+  border: 1px solid #efc1c7;
+  border-radius: 8px;
+  background: #fff3f4;
+  color: #b5273b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.monthly-new-merchant-import-preview {
+  min-height: 120px;
+  overflow: auto;
+  border: 1px solid #dce5e9;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.monthly-new-merchant-import-preview table {
+  width: 100%;
+  min-width: 940px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.monthly-new-merchant-import-preview th,
+.monthly-new-merchant-import-preview td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #e8eef0;
+  color: #3e5967;
+  text-align: left;
+  vertical-align: top;
+}
+
+.monthly-new-merchant-import-preview th {
+  position: sticky;
+  top: 0;
+  background: #f3f6f7;
+  color: #5d727d;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.monthly-new-merchant-import-preview tr.has-error td {
+  background: #fff7f7;
+}
+
+.monthly-new-merchant-import-preview .import-status-ok {
+  color: #08715a;
+  font-weight: 800;
+}
+
+.monthly-new-merchant-import-preview .import-status-error {
+  color: #b5273b;
+  font-weight: 800;
 }
 
 .monthly-new-merchant-drawer {
