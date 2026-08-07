@@ -31,6 +31,13 @@ PAYMENT_RECORD_COLUMN_MIGRATIONS = {
     ),
 }
 
+MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS = {
+    "isPriority": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN isPriority TINYINT(1) NOT NULL DEFAULT 0 AFTER businessManager"
+    ),
+}
+
 OFFER_SHEET_METADATA_COLUMN_MIGRATIONS = {
     "agency": (
         "ALTER TABLE cnpscy_oi_offer_sheet_metadata "
@@ -106,6 +113,15 @@ def main():
             print("  created")
         else:
             print("[ddl] cnpscy_oi_monthly_new_merchants already exists, skipping")
+
+        for column, ddl in MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS.items():
+            if not column_exists(conn, "cnpscy_oi_monthly_new_merchants", column):
+                print(f"[ddl] ALTER TABLE cnpscy_oi_monthly_new_merchants ADD COLUMN {column} ...")
+                with conn.cursor() as cur:
+                    cur.execute(ddl)
+                print("  added")
+            else:
+                print(f"[ddl] cnpscy_oi_monthly_new_merchants.{column} already exists, skipping")
 
         if not table_exists(conn, MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE):
             print(f"[ddl] CREATE TABLE {MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE} ...")
