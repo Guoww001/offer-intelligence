@@ -139,6 +139,8 @@ def main():
             "ok": True,
             "route": "ui-monthly-new-merchant-upsert",
             "merchantId": body.get("merchantId"),
+            "merchantName": body.get("merchantName"),
+            "businessManager": body.get("businessManager"),
             "isPriority": body.get("isPriority"),
             "gmvMonthlyTarget": body.get("gmvMonthlyTarget"),
             "updatedBy": updated_by,
@@ -305,6 +307,8 @@ def main():
                 "action": "upsert",
                 "reportMonth": "2026-07",
                 "merchantId": "398751",
+                "merchantName": "July Merchant",
+                "businessManager": "Fiona",
                 "isPriority": True,
                 "gmvMonthlyTarget": 50000,
             },
@@ -312,6 +316,8 @@ def main():
         assert_equal(monthly_new_upsert["status"], 200, "monthly new merchant upsert response code")
         assert b'"route":"ui-monthly-new-merchant-upsert"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
         assert b'"merchantId":"398751"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"merchantName":"July Merchant"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
+        assert b'"businessManager":"Fiona"' in monthly_new_upsert["body"], monthly_new_upsert["body"]
         assert b'"isPriority":true' in monthly_new_upsert["body"], monthly_new_upsert["body"]
         assert b'"gmvMonthlyTarget":50000' in monthly_new_upsert["body"], monthly_new_upsert["body"]
 
