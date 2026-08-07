@@ -195,6 +195,31 @@ index.html
   └── GSAP CDN (async)
 ```
 
+### 5.3 Report Memory 推荐与 View 导出数据流
+
+Report Mode 的下载项在加入记忆栏时会被固定为独立的报告导出快照。Chat Mode 的推荐只从这个快照中选择商户，View 和 Excel 下载继续消费同一个推荐结果快照，数据流如下：
+
+```text
+Report Mode download item
+  -> _extractPanelMemory()
+  -> reportMemory.reportSnapshot
+  -> buildMemoryRecommendationResult()
+  -> selectedMerchantIds + filteredSheets
+  -> Chat View
+  -> registerReportRecommendationDownload()
+  -> createRecommendationWorkbook()
+```
+
+Chat Mode 的自然语言回复仍通过现有 `/api/chat/stream` 生成；View 中的导出列表来自前端保存的报告快照和本次推荐结果快照，不会从自由文本中解析商户名，也不会为了下载重新计算推荐。
+
+导出与候选范围规则如下：
+
+- 一次推荐只允许使用一个记忆中的 Tier 报告；明确指定 Tier 时只匹配该 Tier 的记忆报告。支持 Tier 1、Tier 2、Tier 3、Tier 4 和 BLACK TIER，不跨 Tier 或跨报告合并候选。
+- 推荐数量按唯一 Merchant ID 计数；同一 Merchant ID 在原始报告中的所有相关行仍保留在 `selectedRows` 和过滤后的工作表中，重复源行不会被压缩掉。
+- 请求数量大于实际匹配数时返回实际数量并标记 partial；没有匹配时返回 empty；有多个记忆报告无法唯一确定时返回 ambiguous；没有可用快照时返回 unavailable。后三种状态不注册下载按钮。
+- 下载是 View-only：Chat 回复下方不直接放 Excel 按钮，只有进入报告 View 后才由 `renderMemoryRecommendationDownloadCard()` 注册并展示下载项。
+- 过滤后的工作簿保留原报告的标签页顺序、字段、列顺序和加入记忆时的列显示状态；Category Summary 按过滤后的主工作表重建，固定说明类标签页保持原样。
+
 ---
 
 ## 6. 前端代码结构 (app.js)
@@ -216,9 +241,21 @@ index.html
 | 4100+–4385 | 聊天渲染 | `renderRecommendationStats()`, `renderMerchantStats()`, `renderASINStats()`, `renderPaymentStats()`, `renderCategoryStats()`, `renderKeywordStats()`, `renderContextPanel()` |
 | 4386–4700 | 消息构建 | `fieldRows()`, `merchantOverviewHtml()`, `resultTable()`, `keywordSearchAnswer()`, `recommendationBundleAnswer()` 等 |
 | 4701–5480 | DB 查询 + Dashboard | `dbMerchantProductRows()`, `dbMerchantInsightHtml()`, `dbLookupSkipPrompt()`, `dbSearchQueryForPrompt()`, `renderDashboardCategoryReport()` 等 |
-| 5481–5840 | 路由分发 | `answerPrompt()` — 按意图路由的主分发函数 |
-| 5840–5846 | 消息渲染 | `addMessage()` — 将 HTML 追加到聊天日志 |
-| 5848–5883 | 入口 | `applyPrompt()` — 主入口：LLM 分类 → answerPrompt → DB 补充 |
+| 9441–9899 | 路由分发 | `answerPrompt()` — 按意图路由的主分发函数 |
+| 9902–10000+ | 消息渲染 | `addMessage()` — 将 HTML 追加到聊天日志 |
+| 11166–11400+ | 入口 | `applyPrompt()` — 主入口：LLM 分类 → answerPrompt → DB 补充 |
+
+记忆推荐与 View 导出函数（以当前 `public/app.js` 为准）：
+
+| 函数 | 行号 | 用途 |
+|------|------|------|
+| `_extractPanelMemory()` | 10954 | 从 Report Mode 面板提取文本、HTML 和下载项，并写入 `reportSnapshot` |
+| `buildReportExportSnapshot()` | 12521 | 深拷贝原始下载项的行、工作表、列定义，并生成唯一 Merchant ID 的排序代表行 |
+| `filterReportWorkbookSnapshot()` | 12662 | 按选中的 Merchant ID 过滤原工作簿；保留重复行、重建 Category Summary |
+| `buildMemoryRecommendationResult()` | 12757 | 限定单个记忆 Tier，按指标/品类排序，返回 `selectedMerchantIds`、`selectedRows` 和 `filteredSheets` |
+| `registerReportRecommendationDownload()` | 12925 | 将 View 推荐结果注册为独立的多工作表下载项 |
+| `renderMemoryRecommendationDownloadCard()` | 12937 | ready 结果渲染 View-only 下载卡片；empty、ambiguous、unavailable 显示原因说明 |
+| `createRecommendationWorkbook()` | 13335 | 使用已注册的过滤快照生成 XLSX 工作簿 |
 
 ### 6.2 answerPrompt() 路由优先级
 
@@ -533,9 +570,16 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 | `renderContextPanel()` | 4405 | 上下文面板路由 |
 | `merchantOverviewHtml()` | 4469 | 商户概览卡片 |
 | `resultTable()` | 4485 | 通用结果表格 |
-| `answerPrompt()` | 5481 | 主路由分发 |
-| `addMessage()` | 5840 | 追加消息到聊天 |
-| `applyPrompt()` | 5848 | 聊天主入口 |
+| `answerPrompt()` | 9441 | 主路由分发 |
+| `addMessage()` | 9902 | 追加消息到聊天 |
+| `applyPrompt()` | 11166 | 聊天主入口 |
+| `_extractPanelMemory()` | 10954 | Report 面板 → 记忆报告快照 |
+| `buildReportExportSnapshot()` | 12521 | 保存可复用的报告导出快照 |
+| `filterReportWorkbookSnapshot()` | 12663 | 按 Merchant ID 过滤原报告工作簿 |
+| `buildMemoryRecommendationResult()` | 12758 | 从单个记忆 Tier 生成结构化推荐结果 |
+| `registerReportRecommendationDownload()` | 12926 | 注册 View 专属过滤下载项 |
+| `renderMemoryRecommendationDownloadCard()` | 12938 | 渲染 View-only 下载卡片 |
+| `createRecommendationWorkbook()` | 13336 | 生成推荐 XLSX |
 
 ---
 

@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260806-answer-feedback2" />
+    <link rel="stylesheet" href="./styles.css?v=20260807-user-guide1" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -308,6 +308,10 @@
                 <span class="mode-help-icon">📖</span>
                 <span data-i18n="report.helpBtn">Help</span>
               </button>
+              <button class="mode-btn mode-user-guide" id="userFlowGuideBtn" type="button" aria-expanded="false">
+                <span class="mode-help-icon" aria-hidden="true">i</span>
+                <span data-i18n="report.userFlowGuideBtn">User guide</span>
+              </button>
               <div class="chat-logs-control">
                 <button class="mode-btn mode-logs" id="chatLogsButton" type="button" aria-haspopup="menu" aria-expanded="false" title="Download logs">
                   <span class="mode-logs-icon" aria-hidden="true">↓</span>
@@ -336,6 +340,13 @@
                 <button class="report-help-lang-btn" id="reportHelpLangBtn" type="button" aria-label="Switch guide language">English</button>
               </div>
               <div class="chat-stream-text report-help-content" id="reportHelpContent"></div>
+            </div>
+            <div class="user-flow-guide-panel hidden" id="userFlowGuidePanel" aria-hidden="true">
+              <div class="user-flow-guide-toolbar">
+                <span class="user-flow-guide-label" data-i18n="report.userFlowGuideTitle">Chatbot User Guide</span>
+                <span class="user-flow-guide-status" id="userFlowGuideStatus" role="status" aria-live="polite"></span>
+              </div>
+              <div class="chat-stream-text user-flow-guide-content" id="userFlowGuideContent"></div>
             </div>
             <form class="chat-input" id="chatForm">
               <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
@@ -1122,12 +1133,30 @@
       </div>
     </div>
 
+    <div
+      class="user-flow-image-lightbox hidden"
+      id="userFlowImageLightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="userFlowImageLightboxCaption"
+      tabindex="-1"
+    >
+      <div class="user-flow-image-lightbox-card">
+        <button class="user-flow-image-lightbox-close" id="userFlowImageLightboxClose" type="button" aria-label="关闭示例图">×</button>
+        <figure class="user-flow-image-lightbox-figure">
+          <img id="userFlowImageLightboxImage" alt="" />
+          <figcaption id="userFlowImageLightboxCaption"></figcaption>
+        </figure>
+      </div>
+    </div>
+
     <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
     <script src="./onboarding_tour.js?v=20260806-chat-mode-glow3"></script>
     <script src="./chatbot_welcome.js?v=20260805-assistant-tour5"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260806-answer-feedback9"></script>
+    <script src="./auth.js?v=20260807-user-guide2"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。

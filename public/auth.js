@@ -1,5 +1,5 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260806-answer-feedback9";
+  const APP_SCRIPT = "./app.js?v=20260807-user-guide2";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 

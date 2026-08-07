@@ -395,6 +395,7 @@
     chatForm: document.getElementById("chatForm"),
     chatInput: document.getElementById("chatInput"),
     reportHelpBtn: document.getElementById("reportHelpBtn"),
+    userFlowGuideBtn: document.getElementById("userFlowGuideBtn"),
     chatLogsButton: document.getElementById("chatLogsButton"),
     chatLogsMenu: document.getElementById("chatLogsMenu"),
     answerFeedbackDialog: document.getElementById("answerFeedbackDialog"),
@@ -407,6 +408,13 @@
     reportHelpPanel: document.getElementById("reportHelpPanel"),
     reportHelpContent: document.getElementById("reportHelpContent"),
     reportHelpLangBtn: document.getElementById("reportHelpLangBtn"),
+    userFlowGuidePanel: document.getElementById("userFlowGuidePanel"),
+    userFlowGuideContent: document.getElementById("userFlowGuideContent"),
+    userFlowGuideStatus: document.getElementById("userFlowGuideStatus"),
+    userFlowImageLightbox: document.getElementById("userFlowImageLightbox"),
+    userFlowImageLightboxClose: document.getElementById("userFlowImageLightboxClose"),
+    userFlowImageLightboxImage: document.getElementById("userFlowImageLightboxImage"),
+    userFlowImageLightboxCaption: document.getElementById("userFlowImageLightboxCaption"),
     quickActions: document.getElementById("quickActions"),
     recBox: document.getElementById("recommendationBox"),
     stamp: document.getElementById("datasetStamp"),
@@ -929,6 +937,8 @@
       "deep.stop": "停止",
       "deep.stopAborted": "分析已取消。",
       "report.helpBtn": "使用说明",
+      "report.userFlowGuideBtn": "使用流程",
+      "report.userFlowGuideTitle": "Chatbot 使用流程",
       "chat.logs": "日志",
       "report.helpOpen": "收起使用说明",
       "report.helpClose": "使用说明",
@@ -1313,6 +1323,9 @@
 
   function rerenderForLanguage() {
     applyStaticLanguage();
+    if (els.userFlowGuidePanel && !els.userFlowGuidePanel.classList.contains("hidden")) {
+      loadUserFlowGuide();
+    }
     syncDashboardOptionLabels();
     updateQuickPromptLabels();
     _refreshChatStarterLanguage(); // 「已加入对话」示例 chips 跟随语言切换
@@ -1467,6 +1480,13 @@
   let merchantCardSeq = 0; // 聊天区概览卡片容器唯一 id 计数器
 
   function mergeMonthIntoOffer(offer, row) {
+    const clicks = Number(row.clicks);
+    const allEpc = Number.isFinite(Number(row.payout)) && clicks > 0
+      ? Number(row.payout) / clicks
+      : null;
+    const affEpc = Number.isFinite(Number(row.affiliatePayout)) && clicks > 0
+      ? Number(row.affiliatePayout) / clicks
+      : null;
     return Object.assign({}, offer, {
       salesAmount: row.revenue,            // Revenue made
       aov: row.aov,
@@ -1475,6 +1495,8 @@
       affCommission: row.affiliatePayout,  // Aff Commission（映射后 offerAffEpc/offerAffCommission 直接复用）
       orders: row.orders,
       clicks: row.clicks,
+      allEpc,
+      affEpc,
       dpv: row.dpv,
       atc: row.atc
     });
@@ -2154,15 +2176,14 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 | 标准提问 | 说明 |
 | --- | --- |
 | Beauty 品类 | 品类概览 |
-| Electronics offers | 品类下 offer 排行 |
-| 美妆类别的 offer | 中文品类别名 |
+| Electronics | 品类下 offer 排行 |
+| 美妆类别 | 中文品类别名 |
 
 ### 3. Tier 查询
 
 | 标准提问 | 说明 |
 | --- | --- |
 | Tier 2 | Tier 概览 |
-| Tier 1 和 Tier 2 对比 | 多 Tier 对比 |
 
 ### 4. 趋势分析
 公式：**实体 + 时间范围 + 指标 + 趋势**，支持商户 / 品类 / Tier 三类实体的月度趋势。
@@ -2172,10 +2193,6 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 | Shokz趋势分析 | 商户趋势 |
 | Beauty 类别的趋势 | 品类趋势 |
 | Tier 2 这个季度的订单趋势 | Tier 趋势 |
-| 最近半年 EPC 趋势 | 全站指标趋势 |
-
-支持的时间范围：近 N 个月 / 最近一个季度 / 今年以来 / 过去半年。
-支持的指标：revenue、orders、clicks、epc、aov、conversionRate、commission、dpv、atc。
 
 ### 5. 支付查询
 
@@ -2185,25 +2202,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 | 逾期商户 | 逾期记录 |
 | 付款周期超过 90 天的商户 | 付款周期筛选 |
 
-## 二、标准提问模板
-
-> 实体 + 动作词 + 范围 + 指标 + 时间
-
-示例：
-- 分析 Shokz 近三个月 revenue 趋势
-- Beauty 类别的趋势
-- Tier 2 这个季度订单趋势
-
-## 三、通用参数
-
-- **实体**：商户名 / 品牌 / 商户 ID / ASIN / 品类名 / Tier（Tier 1-4、BLACK TIER）
-- **动作词**：分析 / 评估 / 诊断 / 怎么样 / 表现 / 趋势
-- **时间范围**：近 N 个月 / 最近一个季度 / 今年以来 / 过去半年
-- **指标**：revenue / orders / clicks / epc / aov / conversionRate / commission / dpv / atc
-- **数量**：Top N / 前 N 个 / 5 个
-- **筛选**：EPC 大于 x / AOV 小于 y / 高转化 / 低转化 / 有折扣 / 有 ASIN / 跟踪问题 / 含 Tier 4 / 含黑名单
-
-## 四、交互说明
+## 二、交互说明
 
 - **Deep Window 浮窗**：提问后弹出报告浮窗，可拖动、最小化、关闭、导出 Excel。
 - **左栏 Context 面板**：同步显示当前查询的上下文、统计卡片、趋势图表。
@@ -2211,7 +2210,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 - **上下文追问**：商户分析后直接追问「它的 EPC」「订单量」即可，无需重复商户名。
 - **中英文切换**：右上角按钮切换界面语言，提问语言自动识别。
 
-## 五、注意事项
+## 三、注意事项
 
 - 数据来自数据库缓存（24h TTL），后台自动刷新。
 - 趋势分析至少需要 2 个月数据；未连接数据库时自动降级为估算（标注 ⚡）。
@@ -2222,14 +2221,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提问、逐步追问，适合开放式问题与多轮讨论。
 
-**使用前提：用数据，必须先拖入记忆栏。** Chat Mode 的对话依赖记忆栏中的数据上下文——没有报告在记忆栏里，AI 无法正确回答商户 / 品类的数据问题。
-
-完整流程（与 Report Mode 配合）：
-1. **Report Mode 提问**：输入商户名 / 品类名 / Tier 或「xx趋势分析」生成报告
-2. **最小化**：点浮窗头部「─」把报告缩成药丸框
-3. **切到 Chat Mode**：记忆栏出现在聊天区上方
-4. **拖入记忆栏**：把药丸框拖进「将面板拖入此处作为上下文」投放区
-5. **基于数据对话**：在输入框提问，AI 结合记忆栏中的报告回答
+**使用前提：用数据，必须先注入记忆栏。** Chat Mode 的对话依赖记忆栏中的数据上下文——没有报告在记忆栏里，AI 无法正确回答商户 / 品类的数据问题。
 
 ## 1. 基本用法
 
@@ -2281,15 +2273,14 @@ Type a merchant name / merchant ID / ASIN directly for an overview.
 | Standard question | Description |
 | --- | --- |
 | Beauty category | Category overview |
-| Electronics offers | Offer ranking within a category |
-| Skincare offers | English category alias |
+| Electronics | Offer ranking within a category |
+| Skincare | English category alias |
 
 ### 1.3 Tier Queries
 
 | Standard question | Description |
 | --- | --- |
 | Tier 2 | Tier overview |
-| Compare Tier 1 and Tier 2 | Multi-tier comparison |
 
 ### 1.4 Trend Analysis
 Formula: **entity + time range + metric + trend**, supporting monthly trends for merchants / categories / tiers.
@@ -2299,10 +2290,6 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 | Shokz trend analysis | Merchant trend |
 | Beauty category trend | Category trend |
 | Tier 2 order trend this quarter | Tier trend |
-| EPC trend over the last six months | Site-wide metric trend |
-
-Supported time ranges: last N months / last quarter / this year / past six months.
-Supported metrics: revenue, orders, clicks, epc, aov, conversionRate, commission, dpv, atc.
 
 ### 1.5 Payment Queries
 
@@ -2312,25 +2299,7 @@ Supported metrics: revenue, orders, clicks, epc, aov, conversionRate, commission
 | Overdue merchants | Overdue records |
 | Merchants with a payment cycle over 90 days | Payment cycle filter |
 
-## 2. Standard Question Template
-
-> Entity + action + scope + metric + time
-
-Examples:
-- Analyze Shokz revenue trend for the last 3 months
-- Beauty category trend
-- Tier 2 order trend this quarter
-
-## 3. Common Parameters
-
-- **Entity**: merchant name / brand / merchant ID / ASIN / category name / tier (Tier 1-4, BLACK TIER)
-- **Action**: analyze / evaluate / diagnose / performance / trend
-- **Time range**: last N months / last quarter / this year / past six months
-- **Metrics**: revenue / orders / clicks / epc / aov / conversionRate / commission / dpv / atc
-- **Quantity**: Top N / first N / 5 offers
-- **Filters**: EPC greater than x / AOV less than y / high conversion / low conversion / discounted / has ASIN / tracking issues / include Tier 4 / include blacklist
-
-## 4. Interactions
+## 2. Interactions
 
 - **Deep Window**: reports open in a draggable, minimizable, closable popup with Excel export.
 - **Context panel**: the left panel shows the current query context, stat cards, and trend charts.
@@ -2338,7 +2307,7 @@ Examples:
 - **Context follow-up**: after a merchant analysis, just ask "its EPC" or "order count" without repeating the merchant name.
 - **Language**: switch the UI language with the button at the top right; query language is auto-detected.
 
-## 5. Notes
+## 3. Notes
 
 - Data comes from the database cache (24h TTL) and refreshes in the background automatically.
 - Trend analysis needs at least 2 months of data; without a DB connection it degrades to an estimate (marked with ⚡).
@@ -2350,13 +2319,6 @@ Examples:
 Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig deeper in an open-ended, multi-turn discussion.
 
 **Prerequisite: to use data, you MUST drag a report into the memory bar first.** Chat Mode answers are grounded in the memory bar's context — without a report in memory, the AI cannot correctly answer data questions about merchants/categories.
-
-Full flow (working with Report Mode):
-1. **Ask in Report Mode**: type a merchant / category / tier or "xx trend analysis" to generate a report
-2. **Minimize**: click "–" in the panel header to shrink the report into a pill
-3. **Switch to Chat Mode**: the memory bar appears above the chat area
-4. **Drag into the memory bar**: drag the pill into the "drag the panel here as context" drop zone
-5. **Chat with data**: ask in the input box — the AI answers grounded in the report in memory
 
 ## 1. Basic Usage
 
@@ -2437,11 +2399,166 @@ Full flow (working with Report Mode):
   }
 
   // 展开/收起 Report Mode 使用说明书面板
+  var USER_FLOW_GUIDE_URL = "./chatbot-user-guide.md";
+  var USER_FLOW_GUIDE_URL_EN = "./chatbot-user-guide-en.md";
+  var userFlowGuideRequest = null;
+  var userFlowGuideRequestUrl = null;
+
+  function userFlowGuideUrl() {
+    return state.language === "zh" ? USER_FLOW_GUIDE_URL : USER_FLOW_GUIDE_URL_EN;
+  }
+
+  function hideUserFlowGuide() {
+    var panel = els.userFlowGuidePanel;
+    var btn = els.userFlowGuideBtn;
+    if (!panel || !btn) return;
+    panel.classList.add("hidden");
+    panel.setAttribute("aria-hidden", "true");
+    btn.classList.remove("active");
+    btn.setAttribute("aria-expanded", "false");
+  }
+
+  var userFlowImagePreviousFocus = null;
+
+  function enhanceUserFlowGuideImages(content) {
+    if (!content || !content.querySelectorAll) return;
+    Array.prototype.forEach.call(content.querySelectorAll("img"), function (image, index) {
+      image.classList.add("user-flow-guide-image");
+      image.setAttribute("tabindex", "0");
+      image.setAttribute("role", "button");
+      if (!image.getAttribute("aria-label")) {
+        image.setAttribute("aria-label", (image.alt || "使用流程示例图") + "，点击放大查看");
+      }
+      image.dataset.guideImageIndex = String(index + 1);
+    });
+  }
+
+  function openUserFlowImage(image) {
+    var lightbox = els.userFlowImageLightbox;
+    var preview = els.userFlowImageLightboxImage;
+    if (!lightbox || !preview || !image) return;
+    userFlowImagePreviousFocus = document.activeElement;
+    preview.src = image.currentSrc || image.src || image.getAttribute("src") || "";
+    preview.alt = image.alt || "使用流程示例图";
+    if (els.userFlowImageLightboxCaption) {
+      els.userFlowImageLightboxCaption.textContent = image.alt || "使用流程示例图";
+    }
+    lightbox.classList.remove("hidden");
+    lightbox.setAttribute("aria-hidden", "false");
+    document.body.classList.add("user-flow-lightbox-open");
+    if (els.userFlowImageLightboxClose) els.userFlowImageLightboxClose.focus();
+  }
+
+  function closeUserFlowImage() {
+    var lightbox = els.userFlowImageLightbox;
+    if (!lightbox) return;
+    lightbox.classList.add("hidden");
+    lightbox.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("user-flow-lightbox-open");
+    if (els.userFlowImageLightboxImage) {
+      els.userFlowImageLightboxImage.removeAttribute("src");
+      els.userFlowImageLightboxImage.alt = "";
+    }
+    if (userFlowImagePreviousFocus && typeof userFlowImagePreviousFocus.focus === "function") {
+      userFlowImagePreviousFocus.focus();
+    }
+    userFlowImagePreviousFocus = null;
+  }
+
+  function userFlowGuideImageFromEvent(event) {
+    var target = event && event.target;
+    return target && target.closest ? target.closest("img.user-flow-guide-image") : null;
+  }
+
+  function handleUserFlowGuideImageClick(event) {
+    var image = userFlowGuideImageFromEvent(event);
+    if (!image) return;
+    event.preventDefault();
+    openUserFlowImage(image);
+  }
+
+  function handleUserFlowGuideImageKeydown(event) {
+    if (!event || (event.key !== "Enter" && event.key !== " ")) return;
+    var image = userFlowGuideImageFromEvent(event);
+    if (!image) return;
+    event.preventDefault();
+    openUserFlowImage(image);
+  }
+
+  function handleUserFlowImageLightboxClick(event) {
+    if (event && event.target === els.userFlowImageLightbox) closeUserFlowImage();
+  }
+
+  function handleUserFlowImageDocumentKeydown(event) {
+    if (event.key === "Escape" && els.userFlowImageLightbox && !els.userFlowImageLightbox.classList.contains("hidden")) {
+      closeUserFlowImage();
+    }
+  }
+
+  function renderUserFlowGuideContent(markdown) {
+    var content = els.userFlowGuideContent;
+    if (!content) return;
+    content.innerHTML = markdownToHtml(markdown);
+    enhanceUserFlowGuideImages(content);
+    content.dataset.rendered = "1";
+    if (els.userFlowGuideStatus) els.userFlowGuideStatus.textContent = "";
+  }
+
+  function loadUserFlowGuide() {
+    var content = els.userFlowGuideContent;
+    if (!content) return Promise.resolve();
+    var guideUrl = userFlowGuideUrl();
+    if (userFlowGuideRequest && userFlowGuideRequestUrl === guideUrl) return userFlowGuideRequest;
+    if (els.userFlowGuideStatus) {
+      els.userFlowGuideStatus.textContent = state.language === "zh" ? "正在加载…" : "Loading…";
+    }
+    userFlowGuideRequestUrl = guideUrl;
+    userFlowGuideRequest = fetch(guideUrl, { cache: "no-store" })
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.text();
+      })
+      .then(function (markdown) {
+        if (guideUrl === userFlowGuideUrl()) renderUserFlowGuideContent(markdown);
+      })
+      .catch(function (error) {
+        if (guideUrl === userFlowGuideUrl() && els.userFlowGuideStatus) {
+          els.userFlowGuideStatus.textContent = state.language === "zh"
+            ? "使用流程加载失败，请刷新后重试。"
+            : "Unable to load the user guide. Please refresh and try again.";
+        }
+        console.warn("[user-flow-guide] load failed:", error);
+      })
+      .finally(function () {
+        if (userFlowGuideRequestUrl === guideUrl) {
+          userFlowGuideRequest = null;
+          userFlowGuideRequestUrl = null;
+        }
+      });
+    return userFlowGuideRequest;
+  }
+
+  function toggleUserFlowGuide() {
+    var panel = els.userFlowGuidePanel;
+    var btn = els.userFlowGuideBtn;
+    if (!panel || !btn) return;
+    var willShow = panel.classList.contains("hidden");
+    if (willShow) {
+      if (els.reportHelpPanel && !els.reportHelpPanel.classList.contains("hidden")) toggleReportHelp();
+      loadUserFlowGuide();
+    }
+    panel.classList.toggle("hidden", !willShow);
+    panel.setAttribute("aria-hidden", willShow ? "false" : "true");
+    btn.classList.toggle("active", willShow);
+    btn.setAttribute("aria-expanded", willShow ? "true" : "false");
+  }
+
   function toggleReportHelp() {
     var panel = els.reportHelpPanel;
     var btn = els.reportHelpBtn;
     if (!panel || !btn) return;
     var willShow = panel.classList.contains("hidden");
+    if (willShow) hideUserFlowGuide();
     if (willShow && els.reportHelpContent && !els.reportHelpContent.dataset.rendered) {
       els.reportHelpContent.dataset.lang = els.reportHelpContent.dataset.lang || "zh";
       renderReportHelpContent();
@@ -9499,7 +9616,8 @@ Full flow (working with Report Mode):
           downloadType: "offers",
           filePrefix: "tier_offers",
           exportScope: tier,
-          sheetName: tier
+          sheetName: tier,
+          tier
         }, {
           title: `${tier} file`,
           description: `${rows.length.toLocaleString()} ${tier} offers from the current offer data.`
@@ -10471,7 +10589,7 @@ Full flow (working with Report Mode):
   }
 
   // ★ Deep Mode (simplified): render Quick Mode HTML in Deep Window
-  function _showQuickResultInDeepPanel(panel, html, prompt) {
+  function _showQuickResultInDeepPanel(panel, html, prompt, options = {}) {
     // Panel may have been closed by user during computation
     if (!panel.el.isConnected) return;
     panel.state = "content";
@@ -10490,7 +10608,11 @@ Full flow (working with Report Mode):
     }
 
     if (panel.sectionsEl) {
-      panel.sectionsEl.innerHTML = '<div class="deep-quick-result">' + html + '</div>';
+      var recommendationCard = renderMemoryRecommendationDownloadCard(
+        options.recommendationResult,
+        options.language || responseLanguageFor(prompt)
+      );
+      panel.sectionsEl.innerHTML = '<div class="deep-quick-result">' + html + '</div>' + recommendationCard;
     }
 
     // Restore buttons
@@ -10842,12 +10964,14 @@ Full flow (working with Report Mode):
   function _extractPanelMemory(panel) {
     // check if panel has a download card with full data rows
     var extraText = "";
+    var downloadItem = null;
     if (panel.sectionsEl) {
       var downloadBtn = panel.sectionsEl.querySelector(".download-xlsx-button");
       if (downloadBtn) {
         var downloadId = downloadBtn.getAttribute("data-download-id");
         if (downloadId && state.recommendationDownloads[downloadId]) {
-          var fullRows = state.recommendationDownloads[downloadId].rows;
+          downloadItem = state.recommendationDownloads[downloadId];
+          var fullRows = downloadItem.rows;
           if (fullRows && fullRows.length > 0) {
             extraText = "\n\n=== Full Data (" + fullRows.length + " rows) ===\n" +
               fullRows.map(function (r) {
@@ -10881,7 +11005,7 @@ Full flow (working with Report Mode):
       textContent = sectionsEl.textContent.replace(/\s+/g, " ").trim();
       htmlContent = sectionsEl.innerHTML;
     }
-    return {
+    var memory = {
       id: "mem-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
       title: title,
       textContent: (textContent + (extraText ? "\n\n" + extraText : "")).slice(0, 8000),
@@ -10889,6 +11013,15 @@ Full flow (working with Report Mode):
       timestamp: Date.now(),
       panelId: panel.id
     };
+    if (downloadItem) {
+      memory.reportSnapshot = buildReportExportSnapshot(downloadItem, {
+        id: memory.id,
+        title,
+        tier: downloadItem.context && downloadItem.context.tier,
+        panelId: panel.id
+      });
+    }
+    return memory;
   }
 
   function _addMemoryFromPanel(panel) {
@@ -11078,6 +11211,8 @@ var _NUMERIC_COL_PATTERNS = [
           return "[上下文: " + m.title + "] " + m.textContent.slice(0, 8000);
         }).join("\n---\n");
       }
+      var chatRecommendationResult = await prepareChatMemoryRecommendation(prompt);
+      memoryText = appendChatMemoryRecommendationContext(memoryText, chatRecommendationResult);
 
       try {
         var responseStream = await fetch("/api/chat/stream", {
@@ -11186,6 +11321,7 @@ var _NUMERIC_COL_PATTERNS = [
           viewBtn.textContent = language === "zh" ? "转为 View" : "Open as View";
           viewBtn._chatPrompt = prompt;
           viewBtn._fullResponse = fullResponse;
+          viewBtn._recommendationResult = chatRecommendationResult;
           viewBtn.addEventListener("click", function (e) {
             var btn = e.currentTarget;
             var _prompt = btn._chatPrompt || "";
@@ -11203,7 +11339,9 @@ var _NUMERIC_COL_PATTERNS = [
               p._mode = "chat";
               p.el.classList.add("source-chat");
               p._viewBtn = btn;
-              _showQuickResultInDeepPanel(p, _html, _prompt);
+              _showQuickResultInDeepPanel(p, _html, _prompt, {
+                recommendationResult: btn._recommendationResult
+              });
             }
           });
           statusBar.appendChild(viewBtn);
@@ -12369,6 +12507,396 @@ var _NUMERIC_COL_PATTERNS = [
     return isoDate(PAYMENT_TODAY) || new Date().toISOString().slice(0, 10);
   }
 
+  function cloneExportRows(rows) {
+    return (rows || []).map(function(row) {
+      return row && typeof row === "object" && !Array.isArray(row) ? { ...row } : row;
+    });
+  }
+
+  function cloneExportSheets(sheets) {
+    return (sheets || []).map(function(sheet) {
+      return {
+        ...sheet,
+        rows: cloneExportRows(sheet && sheet.rows),
+        columns: Array.isArray(sheet && sheet.columns) ? sheet.columns.slice() : sheet && sheet.columns
+      };
+    });
+  }
+
+  function exportMerchantId(row) {
+    const value = row && (row.merchantId || row["Merchant ID"] || row.MerchantID || row.ID);
+    return String(value == null ? "" : value).trim().replace(/\.0$/, "");
+  }
+
+  function buildReportExportSnapshot(downloadItem, metadata = {}) {
+    const item = downloadItem || {};
+    const context = item.context || {};
+    const rows = cloneExportRows(item.rows || []);
+    const sourceSheets = Array.isArray(context.sheets) && context.sheets.length
+      ? context.sheets
+      : [{
+        sheetName: context.sheetName || metadata.title || "Export",
+        rows: item.rows || [],
+        columns: context.columns || item.columns
+    }];
+    const sheets = cloneExportSheets(sourceSheets);
+    const rankingOffers = [];
+    const hasSnapshotValue = function(value) {
+      return value !== undefined && value !== null && (typeof value !== "string" || value.trim() !== "");
+    };
+    const firstSnapshotValue = function(source, keys) {
+      for (const key of keys) {
+        const value = source && source[key];
+        if (hasSnapshotValue(value)) return value;
+      }
+      return undefined;
+    };
+    const normalizedRankingValue = function(row, indexedOffer, displayKeys, indexKeys = displayKeys) {
+      const displayValue = firstSnapshotValue(row, displayKeys);
+      return hasSnapshotValue(displayValue) ? displayValue : firstSnapshotValue(indexedOffer, indexKeys);
+    };
+    rows.forEach(function(row) {
+      const merchantId = exportMerchantId(row);
+      if (!merchantId) return;
+      const indexedOffer = offersByMerchantId.get(merchantId) || null;
+      const category = normalizedRankingValue(
+        row,
+        indexedOffer,
+        ["sheetCategory", "Sheet Category", "mainCategory", "Main Category", "category", "Category", "levantaCategory", "Levanta Category"],
+        ["sheetCategory", "mainCategory", "category", "levantaCategory"]
+      );
+      rankingOffers.push({
+        ...(indexedOffer || {}),
+        ...row,
+        merchantId,
+        brand: normalizedRankingValue(row, indexedOffer, ["brand", "Brand", "merchantName", "Merchant Name", "Merchant"], ["brand", "merchantName"])
+          || "",
+        merchantName: normalizedRankingValue(row, indexedOffer, ["merchantName", "Merchant Name", "Merchant", "brand", "Brand"], ["merchantName", "brand"])
+          || "",
+        tier: normalizedRankingValue(row, indexedOffer, ["tier", "Tier"], ["tier"])
+          || metadata.tier
+          || context.tier
+          || "",
+        sheetCategory: normalizedRankingValue(row, indexedOffer, ["sheetCategory", "Sheet Category"], ["sheetCategory"])
+          || category
+          || "",
+        mainCategory: normalizedRankingValue(row, indexedOffer, ["mainCategory", "Main Category"], ["mainCategory"])
+          || category
+          || "",
+        category: normalizedRankingValue(row, indexedOffer, ["category", "Category"], ["category"])
+          || category
+          || "",
+        epc: normalizedRankingValue(row, indexedOffer, ["epc", "EPC", "EPC (Aff)", "EPC(Aff)", "EPC (All)", "EPC(All)"], ["epc", "affEpc", "allEpc"]),
+        allEpc: normalizedRankingValue(row, indexedOffer, ["allEpc", "All EPC", "EPC (All)", "EPC(All)"], ["allEpc", "epc"]),
+        affEpc: normalizedRankingValue(row, indexedOffer, ["affEpc", "Aff EPC", "EPC (Aff)", "EPC(Aff)"], ["affEpc", "epc"]),
+        orders: normalizedRankingValue(row, indexedOffer, ["orders", "Orders", "Order Count"], ["orders"]),
+        clicks: normalizedRankingValue(row, indexedOffer, ["clicks", "Clicks"], ["clicks"]),
+        salesAmount: normalizedRankingValue(row, indexedOffer, ["salesAmount", "Sales Amount", "Revenue", "GMV"], ["salesAmount"]),
+        aov: normalizedRankingValue(row, indexedOffer, ["aov", "AOV"], ["aov"]),
+        conversionRate: normalizedRankingValue(row, indexedOffer, ["conversionRate", "Conversion Rate", "CVR"], ["conversionRate"]),
+        dpv: normalizedRankingValue(row, indexedOffer, ["dpv", "DPV"], ["dpv"]),
+        atc: normalizedRankingValue(row, indexedOffer, ["atc", "ATC"], ["atc"]),
+        affiliatePayout: normalizedRankingValue(row, indexedOffer, ["affiliatePayout", "Affiliate Payout", "Aff Commission"], ["affiliatePayout", "affCommission"]),
+        affCommission: normalizedRankingValue(row, indexedOffer, ["affCommission", "Aff Commission", "Affiliate Payout"], ["affCommission", "affiliatePayout"]),
+        commissionRate: normalizedRankingValue(row, indexedOffer, ["commissionRate", "Commission Rate"], ["commissionRate"]),
+        network: normalizedRankingValue(row, indexedOffer, ["network", "Network"], ["network"])
+      });
+    });
+    return {
+      sourceDownloadId: metadata.sourceDownloadId || metadata.downloadId || item.id || null,
+      sourceFilename: metadata.sourceFilename || item.filename || null,
+      id: metadata.id || null,
+      title: metadata.title || context.title || item.title || "",
+      tier: metadata.tier || context.tier || "",
+      panelId: metadata.panelId || null,
+      rows,
+      sheets,
+      rankingOffers
+    };
+  }
+
+  function cloneReportExportSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return snapshot;
+    const cloned = { ...snapshot };
+    if (Array.isArray(snapshot.rows)) cloned.rows = cloneExportRows(snapshot.rows);
+    if (Array.isArray(snapshot.primaryRows)) cloned.primaryRows = cloneExportRows(snapshot.primaryRows);
+    if (Array.isArray(snapshot.rankingOffers)) cloned.rankingOffers = cloneExportRows(snapshot.rankingOffers);
+    if (Array.isArray(snapshot.sheets)) cloned.sheets = cloneExportSheets(snapshot.sheets);
+    return cloned;
+  }
+
+  function reportWorkbookSheetRole(sheet, snapshot) {
+    const role = String(sheet && (sheet.role || sheet.sheetRole) || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+    const sheetName = String(sheet && (sheet.sheetName || sheet.name) || "").trim();
+    const normalizedSheetName = sheetName.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+    const normalizedSnapshotTierName = String(snapshot && snapshot.tier || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+    if ((role.includes("category") && role.includes("summary")) || normalizedSheetName === "category summary") {
+      return "category-summary";
+    }
+    if ((role.includes("offer") && role.includes("list")) || normalizedSheetName === "offer list") {
+      return "offer-list";
+    }
+    if (["management", "managed", "admin"].some(function(token) {
+      return normalizedSheetName.includes(token);
+    })) {
+      return "detail";
+    }
+    if (["detail", "management", "managed", "admin", "merchant linked"].some(function(token) {
+      return role.includes(token);
+    })) {
+      return "detail";
+    }
+    if (["primary", "primary table", "main", "main table", "tier"].includes(role)) {
+      return "primary";
+    }
+    if (normalizedSheetName && normalizedSheetName === normalizedSnapshotTierName) {
+      return "primary";
+    }
+    if (["fixed", "config", "configuration", "instructions", "notes"].includes(role)) {
+      return "fixed";
+    }
+    const hasMerchantRows = ((sheet && sheet.rows) || []).some(function(row) {
+      return !!exportMerchantId(row);
+    });
+    return hasMerchantRows ? "detail" : "fixed";
+  }
+
+  function filterReportWorkbookSnapshot(snapshot, merchantIds) {
+    const ids = new Set((merchantIds || []).map(function(id) {
+      return String(id == null ? "" : id).trim().replace(/\.0$/, "");
+    }).filter(Boolean));
+    const sourceSheets = (snapshot && snapshot.sheets) || [];
+    const sheetRoles = sourceSheets.map(function(sheet) {
+      return reportWorkbookSheetRole(sheet, snapshot);
+    });
+    let primarySheetIndex = sheetRoles.indexOf("primary");
+    if (primarySheetIndex < 0) primarySheetIndex = sheetRoles.indexOf("detail");
+    const fallbackRows = cloneExportRows(snapshot && snapshot.rows).filter(function(row) {
+      return ids.has(exportMerchantId(row));
+    });
+    const primaryRows = primarySheetIndex >= 0
+      ? cloneExportRows(sourceSheets[primarySheetIndex] && sourceSheets[primarySheetIndex].rows).filter(function(row) {
+        return ids.has(exportMerchantId(row));
+      })
+      : fallbackRows;
+    const sourceTierSheet = sheetByName(snapshot && snapshot.tier) || {
+      name: snapshot && snapshot.tier || (sourceSheets[primarySheetIndex] && sourceSheets[primarySheetIndex].sheetName) || ""
+    };
+    const sheets = sourceSheets.map(function(sheet, index) {
+      const role = sheetRoles[index];
+      const sourceRows = cloneExportRows(sheet && sheet.rows);
+      let rows;
+      if (role === "category-summary") {
+        rows = tierCategorySummaryExportRows(sourceTierSheet, primaryRows);
+      } else if (index === primarySheetIndex) {
+        rows = cloneExportRows(primaryRows);
+      } else if (role === "detail" || role === "offer-list") {
+        rows = sourceRows.filter(function(row) { return ids.has(exportMerchantId(row)); });
+      } else {
+        rows = sourceRows;
+      }
+      return {
+        ...sheet,
+        rows,
+        columns: Array.isArray(sheet && sheet.columns) ? sheet.columns.slice() : sheet && sheet.columns
+      };
+    });
+    return { ...snapshot, primaryRows: cloneExportRows(primaryRows), sheets };
+  }
+
+  function normalizedMemoryMerchantId(row) {
+    return exportMerchantId(row);
+  }
+
+  function memoryReportsForPrompt(prompt, memories, options = {}) {
+    const available = (memories || []).filter(function(memory) {
+      return memory && memory.reportSnapshot;
+    });
+    const llmParams = options.llmParams || {};
+    const promptedTier = tierFromPrompt(String(prompt || "")) || options.tier || llmParams.tier;
+    if (!promptedTier) return available;
+    const normalizedTier = canonicalTierName(promptedTier);
+    return available.filter(function(memory) {
+      return canonicalTierName(memory.reportSnapshot.tier) === normalizedTier;
+    });
+  }
+
+  function selectMemoryReportForPrompt(prompt, memories, options = {}) {
+    const matches = memoryReportsForPrompt(prompt, memories, options);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function memoryMetricFiltersForPrompt(prompt, options = {}) {
+    const llmParams = options.llmParams || {};
+    if (Array.isArray(llmParams.metricFilters)) {
+      return llmParams.metricFilters.map(function(filter) {
+        return filter && Object.prototype.hasOwnProperty.call(filter, "threshold")
+          ? filter
+          : normalizeLlmMetricFilter(filter);
+      }).filter(Boolean);
+    }
+    if (Array.isArray(options.metricFilters)) return options.metricFilters;
+    return extractMetricFilters(prompt);
+  }
+
+  function memoryMetricSortForPrompt(prompt, options = {}) {
+    const llmParams = options.llmParams || {};
+    const sort = llmParams.metricSort || options.metricSort || extractMetricSortIntent(prompt);
+    if (!sort || !sort.field) return null;
+    const normalizedMetric = normalizeMetricSortName(sort.field);
+    return {
+      ...sort,
+      ...normalizedMetric,
+      direction: String(sort.direction || "desc").toLowerCase() === "asc" ? "asc" : "desc"
+    };
+  }
+
+  function memoryCategoryForPrompt(prompt, options = {}) {
+    const llmParams = options.llmParams || {};
+    return llmParams.category || options.category || categoryForPrompt(prompt);
+  }
+
+  function buildMemoryRecommendationResult(prompt, memories, options = {}) {
+    const requestedCount = Math.max(1, requestedRecommendationCount(prompt, options.requestedCount || 5));
+    const matches = memoryReportsForPrompt(prompt, memories, options);
+    const memory = selectMemoryReportForPrompt(prompt, memories, options);
+    if (!memory) {
+      return {
+        status: matches.length > 1 ? "ambiguous" : "unavailable",
+        requestedCount,
+        matchedCount: 0
+      };
+    }
+    const snapshot = memory.reportSnapshot;
+    const metricFilters = memoryMetricFiltersForPrompt(prompt, options);
+    const metricSort = memoryMetricSortForPrompt(prompt, options);
+    const category = memoryCategoryForPrompt(prompt, options);
+    const snapshotTier = canonicalTierName(snapshot.tier);
+    const rankingGroups = new Map();
+    (snapshot.rankingOffers || []).forEach(function(offer) {
+      const merchantId = normalizedMemoryMerchantId(offer);
+      if (!merchantId) return;
+      if (!rankingGroups.has(merchantId)) rankingGroups.set(merchantId, []);
+      rankingGroups.get(merchantId).push(offer);
+    });
+    const rankingContext = { ...options, prompt, tier: snapshot.tier, category, metricSort, includeTier4: true, includeBlack: true };
+    const tierCandidates = [];
+    rankingGroups.forEach(function(group) {
+      const matchingRows = applyMetricFilters(group.filter(function(offer) {
+        return canonicalTierName(offer && offer.tier) === snapshotTier && categoryMatches(offer, category);
+      }), metricFilters);
+      const representative = rankedRecommendations(matchingRows, rankingContext)[0];
+      if (representative) tierCandidates.push(representative);
+    });
+    const ranked = rankedRecommendations(tierCandidates, rankingContext);
+    const selectedOffers = ranked.slice(0, requestedCount);
+    const selectedMerchantIds = selectedOffers.map(normalizedMemoryMerchantId).filter(Boolean);
+    const filteredSheets = filterReportWorkbookSnapshot(snapshot, selectedMerchantIds).sheets;
+    const selectedRows = cloneExportRows(snapshot.rows || []).filter(function(row) {
+      return selectedMerchantIds.includes(normalizedMemoryMerchantId(row));
+    });
+    const matchedCount = selectedOffers.length;
+    if (!matchedCount) {
+      return {
+        status: "empty",
+        sourceMemoryId: memory.id,
+        sourceSnapshot: snapshot,
+        requestedCount,
+        matchedCount: 0,
+        selectedMerchantIds: [],
+        selectedOffers: [],
+        selectedRows: [],
+        filteredSheets: [],
+        isPartial: false,
+        gap: requestedCount
+      };
+    }
+    return {
+      status: "ready",
+      sourceMemoryId: memory.id,
+      sourceSnapshot: snapshot,
+      criteriaSummary: [
+        category ? `category: ${Array.isArray(category) ? category.join(", ") : category}` : "",
+        metricFilterText(metricFilters),
+        metricSort ? `${metricSort.label || metricSort.field} ${metricSort.direction}` : "",
+        "memory report only"
+      ].filter(Boolean).join("; "),
+      requestedCount,
+      matchedCount,
+      selectedMerchantIds,
+      selectedOffers,
+      selectedRows,
+      filteredSheets,
+      isPartial: matchedCount < requestedCount,
+      gap: Math.max(0, requestedCount - matchedCount)
+    };
+  }
+
+  function shouldPrepareChatMemoryRecommendation(prompt) {
+    return wantsRecommendationList(prompt);
+  }
+
+  async function prepareChatMemoryRecommendation(prompt) {
+    if (!shouldPrepareChatMemoryRecommendation(prompt)) return null;
+    const snapshotMemories = (state.reportMemory || []).filter(function(memory) {
+      return memory && memory.reportSnapshot;
+    });
+    if (!snapshotMemories.length) {
+      return { status: "unavailable", requestedCount: requestedRecommendationCount(prompt, 5), matchedCount: 0 };
+    }
+
+    let classification = null;
+    if (typeof classifyWithLLM === "function") {
+      try {
+        classification = await classifyWithLLM(prompt, collectCategories());
+      } catch (error) {
+        console.warn("[chat-memory-recommendation] fallback to regex:", error && error.message || error);
+      }
+    }
+
+    return buildMemoryRecommendationResult(prompt, state.reportMemory, {
+      llmParams: classification && classification.params ? classification.params : null
+    });
+  }
+
+  function chatMemoryRecommendationStatusExplanation(status) {
+    if (status === "empty") return "No eligible offers matched the recommendation criteria.";
+    if (status === "ambiguous") return "More than one memory report matches this request; specify a Tier or keep one report.";
+    if (status === "unavailable") return "No memory report with an export snapshot is available.";
+    return "";
+  }
+
+  function appendChatMemoryRecommendationContext(memoryText, result) {
+    if (!result || !result.status) return memoryText;
+    const lines = [
+      "=== Structured Memory Recommendation Result ===",
+      "Status: " + result.status
+    ];
+    if (result.criteriaSummary) lines.push("Criteria: " + result.criteriaSummary);
+    if (result.status === "ready") {
+      lines.push("Selected offers (ordered):");
+      (result.selectedOffers || []).forEach(function(offer, index) {
+        const merchantId = normalizedMemoryMerchantId(offer);
+        const brand = String(offer && (offer.brand || offer["Merchant Name"] || offer.merchantName) || "").trim();
+        lines.push((index + 1) + ". Brand: " + brand + " | Merchant ID: " + merchantId);
+      });
+    } else if (result.status === "empty" || result.status === "ambiguous" || result.status === "unavailable") {
+      lines.push("Selected offers: none");
+      lines.push("Status explanation: " + chatMemoryRecommendationStatusExplanation(result.status));
+    }
+    lines.push("=== End Structured Memory Recommendation Result ===");
+    const recommendationContext = lines.join("\n");
+    return memoryText ? memoryText + "\n---\n" + recommendationContext : recommendationContext;
+  }
+
   function registerRecommendationDownload(rows, context = {}, requestedCount = rows.length) {
     const id = `recommendation-${++state.downloadSequence}`;
     const today = todayFileStamp();
@@ -12383,9 +12911,17 @@ var _NUMERIC_COL_PATTERNS = [
       if (r && typeof r === "object" && !Array.isArray(r)) return Object.assign({}, r);
       return r;
     });
+    const snapshotContext = { ...context, columns, sheetName };
+    if (Array.isArray(context.sheets) && context.sheets.length) {
+      snapshotContext.sheets = cloneExportSheets(context.sheets);
+    }
+    if (context.reportSnapshot) {
+      snapshotContext.reportSnapshot = cloneReportExportSnapshot(context.reportSnapshot);
+    }
     state.recommendationDownloads[id] = {
+      id,
       rows: snapshotRows,
-      context: { ...context, columns, sheetName },
+      context: snapshotContext,
       requestedCount,
       columns,
       sheetName,
@@ -12394,6 +12930,76 @@ var _NUMERIC_COL_PATTERNS = [
         : `${prefix}_${safeFilePart(scope)}_${rows.length}_${rowLabel}_${today}.xlsx`)
     };
     return id;
+  }
+
+  function registerReportRecommendationDownload(result, language) {
+    return registerRecommendationDownload(result.selectedRows, {
+      downloadType: "sheet",
+      filePrefix: "filtered_recommendations",
+      exportScope: result.sourceSnapshot.tier || "memory_report",
+      sheetName: result.filteredSheets[0].sheetName,
+      requestedCount: result.requestedCount,
+      sheets: result.filteredSheets,
+      reportSnapshot: result.sourceSnapshot
+    }, result.requestedCount);
+  }
+
+  function renderMemoryRecommendationDownloadCard(result, language = state.language) {
+    if (!result) return "";
+    if (result.status !== "ready") {
+      const copy = chatCopy(language);
+      const statusCopy = {
+        empty: copy.memoryRecommendationExportNoMatch || (language === "zh"
+          ? "当前没有找到符合条件的商户。"
+          : "No merchants matched the current recommendation criteria."),
+        ambiguous: copy.memoryRecommendationExportAmbiguous || (language === "zh"
+          ? "记忆栏中有多份报告，请在问题中明确 Tier。"
+          : "Multiple reports are in memory; specify a Tier in the request."),
+        unavailable: copy.memoryRecommendationExportUnavailable || (language === "zh"
+          ? "当前记忆报告无法生成结构化推荐导出。"
+          : "The current memory report cannot produce a structured recommendation export.")
+      }[result.status];
+      if (!statusCopy) return "";
+      return `<div class="download-card memory-recommendation-download-card memory-recommendation-status-card">
+        <div><span>${escapeHtml(statusCopy)}</span></div>
+      </div>`;
+    }
+    if (!Array.isArray(result.selectedRows) || !result.selectedRows.length) return "";
+    if (!Array.isArray(result.filteredSheets) || !result.filteredSheets.length || !result.sourceSnapshot) return "";
+
+    if (!result.downloadId) {
+      result.downloadId = registerReportRecommendationDownload(result, language);
+    }
+    const copy = chatCopy(language);
+    const matchedCount = Math.max(0, Math.floor(number(result.matchedCount) || 0));
+    const requestedCount = Math.max(matchedCount, Math.floor(number(result.requestedCount) || matchedCount));
+    const values = {
+      matchedCount: matchedCount.toLocaleString(),
+      requestedCount: requestedCount.toLocaleString()
+    };
+    const title = copy.memoryRecommendationExportTitle || (language === "zh" ? "本次推荐 Excel" : "Recommendation Excel");
+    const description = chatFormat(
+      copy.memoryRecommendationExportDescription || (language === "zh"
+        ? "只包含本次推荐商户（{matchedCount} 个），并保留原报告结构。"
+        : "Contains only the merchants in this recommendation ({matchedCount}) and preserves the original report structure."),
+      values
+    );
+    const partial = matchedCount < requestedCount
+      ? chatFormat(
+        copy.memoryRecommendationExportPartial || (language === "zh"
+          ? "请求 {requestedCount} 个，当前找到 {matchedCount} 个。"
+          : "Requested {requestedCount}; currently found {matchedCount}."),
+        values
+      )
+      : "";
+    const buttonLabel = copy.downloadExcel || (language === "zh" ? "下载 Excel" : "Download Excel");
+    return `<div class="download-card memory-recommendation-download-card">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(description)}${partial ? " " + escapeHtml(partial) : ""}</span>
+      </div>
+      <button class="download-xlsx-button" type="button" data-download-id="${escapeHtml(result.downloadId)}">${escapeHtml(buttonLabel)}</button>
+    </div>`;
   }
 
   function downloadCardHtml(rows, context = {}, options = {}) {
@@ -20243,6 +20849,12 @@ var _NUMERIC_COL_PATTERNS = [
     // Report Mode 使用说明书展开/收起
     els.reportHelpBtn?.addEventListener("click", toggleReportHelp);
     els.reportHelpLangBtn?.addEventListener("click", toggleReportHelpLang);
+    els.userFlowGuideBtn?.addEventListener("click", toggleUserFlowGuide);
+    els.userFlowGuideContent?.addEventListener("click", handleUserFlowGuideImageClick);
+    els.userFlowGuideContent?.addEventListener("keydown", handleUserFlowGuideImageKeydown);
+    els.userFlowImageLightboxClose?.addEventListener("click", closeUserFlowImage);
+    els.userFlowImageLightbox?.addEventListener("click", handleUserFlowImageLightboxClick);
+    document.addEventListener("keydown", handleUserFlowImageDocumentKeydown);
     els.chatLogsButton?.addEventListener("click", function (event) {
       event.stopPropagation();
       setChatLogsMenuOpen(els.chatLogsMenu?.classList.contains("hidden"));
@@ -20430,6 +21042,9 @@ var _NUMERIC_COL_PATTERNS = [
       renderReportModeHelp: (md, lang) => markdownToHtml(md || (lang === "en" ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD)),
       reportHelpLang,
       toggleReportHelpLang,
+      toggleUserFlowGuide,
+      loadUserFlowGuide,
+      userFlowGuideUrl,
       detectQueryIntent,
       cleanedMerchantLookupPhrase,
       hasStrongMerchantLookup,
@@ -20453,11 +21068,21 @@ var _NUMERIC_COL_PATTERNS = [
       requestedRecommendationCount,
       parseTierOfferRequest,
       answerPrompt,
+      extractPanelMemory: _extractPanelMemory,
       currentContext: () => state.currentContext,
       currentRecommendationBundle: () => state.activeRecommendationBundle,
       recommendationDownloads: () => state.recommendationDownloads,
+      registerRecommendationDownload,
+      registerReportRecommendationDownload,
+      renderMemoryRecommendationDownloadCard,
+      shouldPrepareChatMemoryRecommendation,
+      prepareChatMemoryRecommendation,
+      appendChatMemoryRecommendationContext,
       excludedRecommendationKeys: () => Array.from(state.excludedRecommendationKeys),
       rankedRecommendations,
+      buildReportExportSnapshot,
+      buildMemoryRecommendationResult,
+      filterReportWorkbookSnapshot,
       chatOverviewColumnLabels: () => chatOverviewColumns.map((column) => column.label),
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       reportHelpMarkdown: (en) => (en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD),
