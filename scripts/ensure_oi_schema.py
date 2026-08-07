@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from offer_db import (
+    MERCHANT_AOV_ESTIMATES_TABLE,
+    MERCHANT_AOV_ESTIMATES_TABLE_DDL,
     MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE,
     MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL,
     MONTHLY_NEW_MERCHANTS_TABLE_DDL,
@@ -172,6 +174,14 @@ def main():
             print("  created")
         else:
             print("[ddl] cnpscy_oi_tier_move_history already exists, skipping")
+
+        if not table_exists(conn, MERCHANT_AOV_ESTIMATES_TABLE):
+            print(f"[ddl] CREATE TABLE {MERCHANT_AOV_ESTIMATES_TABLE} ...")
+            with conn.cursor() as cur:
+                cur.execute(MERCHANT_AOV_ESTIMATES_TABLE_DDL)
+            print("  created")
+        else:
+            print(f"[ddl] {MERCHANT_AOV_ESTIMATES_TABLE} already exists, skipping")
 
         # ?? 1. cnpscy_oi_payment_records ??
         if not table_exists(conn, "cnpscy_oi_payment_records"):

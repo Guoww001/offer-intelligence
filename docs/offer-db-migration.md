@@ -37,6 +37,7 @@ The application expects these database objects:
 - `oi_tier_assignments`: merchant tier state and move provenance.
 - `oi_tier_move_history`: immutable merchant tier migration events (`sourceTier`, `targetTier`, `movedAt`, and `movedBy`).
 - `oi_tier_visual_status`: merchant color state with `color`, `reason_code`, `reason_text`, and `source`.
+- `oi_merchant_aov_estimates`: dated five-product AOV estimates with merchant, currency, source file/date, sample size, and method provenance.
 - `cnpscy_oi_offer_sheet_metadata.agency`: nullable Tier 1 Agency from the Google Sheet, joined by `merchantId`.
 - `cnpscy_oi_offer_sheet_metadata.businessManager`: nullable physical storage for the Tier 1 `BD` field, joined one-to-one by `merchantId`.
 
@@ -67,6 +68,19 @@ treated as `Timmy`; merchants omitted from the CSV are not changed.
 because the Google Sheet has no Merchant ID.
 `data/tier1_bd_corrections.csv` records the verified Level8 source-ID correction
 from `4027338` to the active `cnpscy_advert.advert_id` value `402733`.
+
+The versioned tentative-AOV snapshot is `data/merchant_aov_estimates.csv`. It
+contains every dated observation from the supplied Amazon offer workbooks and
+joins by exact `Merchant ID`. Apply the table and sync all observations with:
+
+```bash
+python scripts/ensure_oi_schema.py
+python scripts/sync_oi_tables.py
+```
+
+The API selects the newest observation per merchant only when the requested
+Tier report range has no positive order count and no positive revenue. Actual
+AOV remains `Revenue / Order count`; estimate history is retained for audit.
 
 The Tier 1 merchant-management endpoint reads active merchants from
 `cnpscy_advert`, updates `cnpscy_oi_tier_assignments`, and appends

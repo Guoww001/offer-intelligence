@@ -3986,8 +3986,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return percentage === null ? text : formatPercentNumber(percentage, minimumFractionDigits);
   }
 
-  function tierCurrencySymbol(row = {}) {
-    const currency = String(row.Currency || row.currency || "").trim().toUpperCase();
+  function tierCurrencySymbol(row = {}, preferredCurrency = "") {
+    const currency = String(preferredCurrency || row.Currency || row.currency || "").trim().toUpperCase();
     const country = String(row.COUNTRY || row.Country || row.country || row.countryCode || "").trim().toUpperCase();
     const currencySymbols = {
       USD: "$",
@@ -4026,7 +4026,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return numeric.toLocaleString(undefined, { maximumFractionDigits: 0 });
     }
     if (["aov", "revenue"].includes(normalizedHeader) && numeric !== null) {
-      return `${tierCurrencySymbol(row)}${numeric.toLocaleString(undefined, {
+      const preferredCurrency = normalizedHeader === "aov" ? row["AOV Currency"] : "";
+      return `${tierCurrencySymbol(row, preferredCurrency)}${numeric.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       })}`;
@@ -17252,6 +17253,14 @@ var _NUMERIC_COL_PATTERNS = [
       else if (header === "Order count") row[header] = number(offer.orders).toLocaleString();
       else if (header === "EPC(All)" || header === "All EPC") row[header] = shortEpc(offerAllEpc(offer));
       else if (header === "EPC(Aff)" || header === "Aff EPC" || header === "Backend EPC" || header === "EPC") row[header] = shortEpc(offerAffEpc(offer));
+      else if (header === "AOV") row[header] = offer.aov == null ? "" : offer.aov;
+      else if (header === "AOV Type") row[header] = offer.aovType || "";
+      else if (header === "AOV Method") row[header] = offer.aovMethod || "";
+      else if (header === "AOV Source") row[header] = offer.aovSource || "";
+      else if (header === "AOV Sample Products") row[header] = offer.aovSampleProductCount || "";
+      else if (header === "AOV Currency") row[header] = offer.aovCurrency || "";
+      else if (header === "AOV Source Date") row[header] = offer.aovSourceDate || "";
+      else if (header === "AOV Source File") row[header] = offer.aovSourceFile || "";
       else if (header === "Revenue") row[header] = shortMoney(offer.salesAmount);
       else if (header === "Completion Rate") row[header] = shortPct(offer.completionRate);
       else if (header === "Payment Cycle") row[header] = offer.paymentCycle ? `${offer.paymentCycle}` : "";
@@ -17310,8 +17319,30 @@ var _NUMERIC_COL_PATTERNS = [
     return kind ? `tier-highlight-row tier-highlight-${kind}` : "";
   }
 
+  function aovCellHtml(row, formattedValue) {
+    const aovType = String((row && row["AOV Type"]) || "").trim().toLowerCase();
+    if (!formattedValue || !["actual", "tentative"].includes(aovType)) {
+      return escapeHtml(formattedValue);
+    }
+    const isActual = aovType === "actual";
+    const marker = state.language === "zh"
+      ? (isActual ? "实" : "暂")
+      : (isActual ? "Actual" : "Est.");
+    const sampleCount = Number(row && row["AOV Sample Products"]) || 5;
+    const sourceDate = String((row && row["AOV Source Date"]) || "").trim();
+    const description = isActual
+      ? (state.language === "zh" ? "真实 AOV：Revenue ÷ Order count" : "Actual AOV: Revenue ÷ Order count")
+      : (state.language === "zh"
+        ? `暂定 AOV：${sampleCount} 款产品平均值${sourceDate ? ` · ${sourceDate}` : ""}`
+        : `Estimated AOV: ${sampleCount}-product average${sourceDate ? ` · ${sourceDate}` : ""}`);
+    return `<span class="aov-value aov-${escapeHtml(aovType)}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}">
+      <span>${escapeHtml(formattedValue)}</span><small>${escapeHtml(marker)}</small>
+    </span>`;
+  }
+
   function sheetCellHtml(sheet, row, header) {
     const value = formatTierSheetCell(sheet, row, header);
+    if (header === "AOV") return aovCellHtml(row, value);
     if (header === "Visual Status Color" || header === "visualStatusColor") {
       const color = normalizeVisualStatusColor(value);
       if (!color || !value) return escapeHtml(value);
@@ -21378,6 +21409,7 @@ var _NUMERIC_COL_PATTERNS = [
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       reportHelpMarkdown: (en) => (en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD),
       formatSheetCell,
+      aovCellHtml,
       tierSheetExportColumns,
       worksheetXml,
       stylesXml,
