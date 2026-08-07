@@ -19,7 +19,7 @@ jobs:
   refresh-caches:
     name: Rebuild API caches from DB
     if: >-
-      github.repository == 'bryansaputra68YP/offer-intelligence' &&
+      github.repository == 'Yeahpromos/offer-intelligence' &&
       (github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main'))
