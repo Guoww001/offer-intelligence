@@ -352,7 +352,8 @@
     deepHistory: [],
     chatHistory: [],
     reportMemory: [],
-    reportMemoryContext: null
+    reportMemoryContext: null,
+    chatIntentOverride: null
   };
 
   const llmClassifyCache = new Map();
@@ -397,6 +398,9 @@
     chatLogChat: document.getElementById("chatLogChat"),
     chatForm: document.getElementById("chatForm"),
     chatInput: document.getElementById("chatInput"),
+    chatInputCommandOverlay: document.getElementById("chatInputCommandOverlay"),
+    chatIntentMenu: document.getElementById("chatIntentMenu"),
+    chatIntentMenuTrack: document.getElementById("chatIntentMenuTrack"),
     reportHelpBtn: document.getElementById("reportHelpBtn"),
     userFlowGuideBtn: document.getElementById("userFlowGuideBtn"),
     chatLogsButton: document.getElementById("chatLogsButton"),
@@ -721,6 +725,21 @@
       "action.expand": "展开",
       "action.close": "关闭",
       "chat.placeholder": "询问 EPC、分层、AOV、转化率、未付款 offer...",
+      "chat.intent.title": "提问类型",
+      "chat.intent.merchant": "商户",
+      "chat.intent.merchantHint": "商户查询",
+      "chat.intent.category": "品类",
+      "chat.intent.categoryHint": "品类查询",
+      "chat.intent.tier": "分层",
+      "chat.intent.tierHint": "Tier 概览",
+      "chat.intent.categoryTier": "品类 + Tier",
+      "chat.intent.categoryTierHint": "某 Tier 下的品类查询",
+      "chat.intent.trend": "趋势",
+      "chat.intent.trendHint": "趋势分析",
+      "chat.intent.payment": "付款",
+      "chat.intent.paymentHint": "付款状态",
+      "chat.intent.asin": "ASIN",
+      "chat.intent.asinHint": "ASIN 查询",
       "table.offers": "Offer 列表",
       "payments.title": "付款",
       "payments.sync": "同步 Levanta",
@@ -2190,7 +2209,32 @@
 
 Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / Tier**，支持中英文提问（自动识别语言）。提问后会生成分析报告并弹出 Deep Window 浮窗，可一键导出 Excel。
 
-## 一、支持的提问类型
+## 一、提问类型命令
+
+输入框支持 **/ 快捷菜单** 与 **类型: 命令前缀** 两种方式指定提问类型，让系统准确理解你的意图，减少意图判断错误。
+
+### 用法
+
+- 在输入框输入 / 弹出提问类型菜单，继续输入字母可快速过滤；用 **↑ / ↓** 选择，**Enter** 确认，**Esc** 关闭。
+- 选择后输入框自动写入 **类型: ** 前缀（如 **trend: shokz**），接着输入问题即可。
+- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**，支持半角与全角冒号（: 与 ：）。
+- 命令前缀在输入框中以**紫色加粗**显示。
+
+### 7 种提问类型
+
+| 类型 | 命令前缀 | 用途 | 示例 |
+| --- | --- | --- | --- |
+| Merchant（商户） | merchant: | 查询单个商户 | merchant: shokz |
+| Category（品类） | category: | 查询品类 | category: beauty |
+| Tier | tier: | 查询层级 | tier: tier 2 |
+| Category & Tier（品类 + Tier） | categorytier: | 查询某 Tier 下的品类 | categorytier: electronics in tier2 |
+| Trend（趋势） | trend: | 趋势分析 | trend: shokz |
+| Payment（付款） | payment: | 付款查询 | payment: 逾期商户 |
+| ASIN | asin: | ASIN 查询 | asin: B0015S8FPI |
+
+Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查询 Tier 2 的 Beauty 品类：**categorytier: beauty in tier2**。
+
+## 二、支持的提问类型
 
 ### 1. 商户查询
 直接输入商户名 / 商户 ID / ASIN 查看概览。
@@ -2233,7 +2277,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 | 逾期商户 | 逾期记录 |
 | 付款周期超过 90 天的商户 | 付款周期筛选 |
 
-## 二、交互说明
+## 三、交互说明
 
 - **Deep Window 浮窗**：提问后弹出报告浮窗，可拖动、最小化、关闭、导出 Excel。
 - **左栏 Context 面板**：同步显示当前查询的上下文、统计卡片、趋势图表。
@@ -2241,7 +2285,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 - **上下文追问**：商户分析后直接追问「它的 EPC」「订单量」即可，无需重复商户名。
 - **中英文切换**：右上角按钮切换界面语言，提问语言自动识别。
 
-## 三、注意事项
+## 四、注意事项
 
 - 数据来自数据库缓存（24h TTL），后台自动刷新。
 - 趋势分析至少需要 2 个月数据；未连接数据库时自动降级为估算（标注 ⚡）。
@@ -2287,7 +2331,32 @@ Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提�
 
 Report Mode lets you query and analyze **merchants / categories / tiers** in natural language, in either Chinese or English (auto-detected). Each query produces an analysis report that opens in a Deep Window popup, with one-click Excel export.
 
-## 1. Supported Query Types
+## 1. Question Type Commands
+
+The input box supports both a **/ quick menu** and **type: command prefixes** to specify the question type explicitly, reducing intent misclassification.
+
+### Usage
+
+- Type **/** in the input box to open the question type menu; keep typing letters to filter instantly. Use **↑ / ↓** to navigate, **Enter** to select, **Esc** to close.
+- Selecting an option writes a **type: ** prefix automatically (e.g. **trend: shokz**); then type your question.
+- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**. Both half-width (:) and full-width (：) colons work.
+- The prefix is shown in **bold purple** in the input box.
+
+### The 7 Question Types
+
+| Type | Command prefix | Use | Example |
+| --- | --- | --- | --- |
+| Merchant | merchant: | Look up a single merchant | merchant: shokz |
+| Category | category: | Query a category | category: beauty |
+| Tier | tier: | Query a tier | tier: tier 2 |
+| Category & Tier | categorytier: | Query a category within a tier | categorytier: electronics in tier2 |
+| Trend | trend: | Trend analysis | trend: shokz |
+| Payment | payment: | Payment queries | payment: overdue merchants |
+| ASIN | asin: | ASIN lookup | asin: B0015S8FPI |
+
+Category & Tier fits combined "category within a tier" queries, e.g. the Beauty category in Tier 2: **categorytier: beauty in tier2**.
+
+## 2. Supported Query Types
 
 ### 1.1 Merchant Lookup
 Type a merchant name / merchant ID / ASIN directly for an overview.
@@ -2330,7 +2399,7 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 | Overdue merchants | Overdue records |
 | Merchants with a payment cycle over 90 days | Payment cycle filter |
 
-## 2. Interactions
+## 3. Interactions
 
 - **Deep Window**: reports open in a draggable, minimizable, closable popup with Excel export.
 - **Context panel**: the left panel shows the current query context, stat cards, and trend charts.
@@ -2338,7 +2407,7 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 - **Context follow-up**: after a merchant analysis, just ask "its EPC" or "order count" without repeating the merchant name.
 - **Language**: switch the UI language with the button at the top right; query language is auto-detected.
 
-## 3. Notes
+## 4. Notes
 
 - Data comes from the database cache (24h TTL) and refreshes in the background automatically.
 - Trend analysis needs at least 2 months of data; without a DB connection it degrades to an estimate (marked with ⚡).
@@ -7485,6 +7554,11 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   function detectQueryIntent(userMessage) {
+    if (state.chatIntentOverride) {
+      const explicitIntent = state.chatIntentOverride;
+      state.chatIntentOverride = null;
+      return explicitIntent.intent;
+    }
     if (state.llmClassifyResult && state.llmClassifyResult.intent) {
       const intent = state.llmClassifyResult.intent;
       const params = state.llmClassifyResult.params;
@@ -9485,7 +9559,24 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
     // Extract LLM params into state.llmParams so downstream fns (paymentAnswer) can use them.
     // detectQueryIntent will consume state.llmClassifyResult.intent as before.
+    const explicitChatIntent = state.chatIntentOverride;
+    if (explicitChatIntent) state.chatIntentOverride = null;
     state.llmParams = (state.llmClassifyResult && state.llmClassifyResult.params) || {};
+    if (explicitChatIntent && explicitChatIntent.key === "trend") {
+      // trend: <目标>：把命令文本作为分析目标传入 llmParams。
+      // 否则下游 analysisAnswer 只在「剥离趋势词后 ≠ 原文」时才提取目标，
+      // 对仅含品牌名的 prompt（如 "trend: shokz" → "shokz"）永远提取不到 → 输出"未找到"。
+      // 同时剥离时间词（"shokz 近三个月" → "shokz"），月份仍由 prompt 走 extractMonthCount。
+      const trendTarget = String(explicitChatIntent.text || "").trim();
+      const trendTargetCleaned = trendTarget
+        .replace(/趋势|trend|分析|analysis|评估|诊断|(?:近|最近|过去|前)?\s*[一二三四五六七八九十百零两半\d]+\s*个?月|(?:近|最近|过去|前)\s*[一二三四五六七八九十百零两半\d]+\s*年|last\s+\d+\s*months?|上个季度|今年以来|过去|最近/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      state.llmParams = Object.assign({}, state.llmParams, {
+        analysisType: "trend",
+        analysisTarget: trendTargetCleaned || trendTarget || state.llmParams.analysisTarget
+      });
+    }
     const p = state.llmParams;
 
     state.currentQuery = prompt;
@@ -9499,7 +9590,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (isRecommendationExclusionPrompt(prompt)) return recommendationBundleExclusionAnswer(prompt);
     if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
     // detectQueryIntent will consume state.llmClassifyResult and return LLM intent if present
-    const intent = detectQueryIntent(prompt);
+    const intent = explicitChatIntent ? explicitChatIntent.intent : detectQueryIntent(prompt);
+    // categorytier 显式意图：品类 + Tier 组合查询（如 "electronics in tier2"），
+    // 强制走 tier+category 路由，跳过 keyword 搜索分支，避免 "electronics" 等品类词被误判为关键词。
+    const forcedCategoryTier = !!(explicitChatIntent && explicitChatIntent.key === "categorytier");
     // ASIN: LLM-extracted array or regex lookup (multi-ASIN support)
     const llmAsins = p.asin;
     const asinResults = llmAsins
@@ -9599,7 +9693,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return analysisAnswer(prompt, p, { categories: categories, tiers: tiers });
     }
 
-    if (!llmIndicatesRecommendation && intent !== "merchant" && hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
+    if (!forcedCategoryTier && !llmIndicatesRecommendation && intent !== "merchant" && hasKeywordSearchIntent(prompt, keywordRequest, { category })) {
       return keywordSearchAnswer(prompt, keywordRequest, { topMetricRequest });
     }
 
@@ -10911,6 +11005,184 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   // 数字列关键词——用于表格渲染时智能对齐
+  const CHAT_INTENT_OPTIONS = Object.freeze([
+    { key: "merchant", intent: "merchant" },
+    { key: "category", intent: "category" },
+    { key: "tier", intent: "tier" },
+    { key: "categorytier", intent: "category" },
+    { key: "trend", intent: "analysis" },
+    { key: "payment", intent: "payment" },
+    { key: "asin", intent: "asin" }
+  ]);
+  let chatIntentActiveIndex = -1;
+
+  function chatIntentOptionElements() {
+    return els.chatIntentMenu ? Array.from(els.chatIntentMenu.querySelectorAll("[data-chat-intent]")) : [];
+  }
+
+  function syncChatInputCommandOverlay() {
+    const input = els.chatInput;
+    const overlay = els.chatInputCommandOverlay;
+    if (!input || !overlay) return;
+
+    const value = String(input.value || "");
+    const match = value.match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin)\s*[:：](?=\s|$)/i);
+    if (!match) {
+      overlay.classList.remove("visible");
+      overlay.innerHTML = "";
+      overlay.style.transform = "none";
+      input.classList.remove("has-command-overlay");
+      return;
+    }
+
+    const commandEnd = match.index + match[0].length;
+    const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : value.length;
+    const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+    const cursorStart = Math.max(0, Math.min(value.length, selectionStart));
+    const cursorEnd = Math.max(cursorStart, Math.min(value.length, selectionEnd));
+    overlay.replaceChildren();
+
+    function appendText(text, className) {
+      if (!text) return;
+      const span = document.createElement("span");
+      span.className = className;
+      span.textContent = text;
+      overlay.appendChild(span);
+    }
+
+    function appendStyledRange(start, end) {
+      if (start >= end) return;
+      const commandSliceEnd = Math.min(end, commandEnd);
+      if (start < commandSliceEnd) appendText(value.slice(start, commandSliceEnd), "command-token");
+      if (end > commandEnd) appendText(value.slice(Math.max(start, commandEnd), end), "command-rest");
+    }
+
+    appendStyledRange(0, cursorStart);
+    if (cursorStart === cursorEnd) {
+      const caret = document.createElement("span");
+      caret.className = "command-caret";
+      caret.setAttribute("aria-hidden", "true");
+      overlay.appendChild(caret);
+    }
+    appendStyledRange(cursorEnd, value.length);
+    overlay.classList.add("visible");
+    input.classList.add("has-command-overlay");
+    overlay.style.transform = `translateX(${-input.scrollLeft}px)`;
+  }
+
+  function updateChatIntentHighlight() {
+    const options = chatIntentOptionElements();
+    let trackY = 0;
+    options.forEach(function (option, index) {
+      const active = index === chatIntentActiveIndex;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-selected", active ? "true" : "false");
+      if (active) trackY = option.offsetTop;
+    });
+    // 键盘高亮滑轨：translateY 跟随选中项滑动（offsetTop 相对菜单 padding 盒，与滑轨定位基准一致）。
+    const track = els.chatIntentMenuTrack;
+    if (track) {
+      const hasSelection = chatIntentActiveIndex >= 0 && options.length > 0;
+      track.classList.toggle("visible", hasSelection);
+      if (hasSelection) track.style.transform = "translateY(" + trackY + "px)";
+    }
+  }
+
+  function showChatIntentMenu() {
+    if (!state.deepMode || !els.chatIntentMenu || !els.chatInput) return;
+    const options = chatIntentOptionElements();
+    if (!options.length) return;
+    if (chatIntentActiveIndex < 0 || chatIntentActiveIndex >= options.length) chatIntentActiveIndex = 0;
+    els.chatIntentMenu.classList.remove("hidden");
+    els.chatIntentMenu.setAttribute("aria-hidden", "false");
+    els.chatInput.setAttribute("aria-expanded", "true");
+    updateChatIntentHighlight();
+  }
+
+  function hideChatIntentMenu() {
+    if (!els.chatIntentMenu || !els.chatInput) return;
+    els.chatIntentMenu.classList.add("hidden");
+    els.chatIntentMenu.setAttribute("aria-hidden", "true");
+    els.chatInput.setAttribute("aria-expanded", "false");
+    chatIntentActiveIndex = -1;
+    // 同步选项高亮与键盘滑轨状态（activeIndex 已复位 → 滑轨隐藏）
+    updateChatIntentHighlight();
+  }
+
+  function chatIntentMenuIsOpen() {
+    return !!(els.chatIntentMenu && !els.chatIntentMenu.classList.contains("hidden"));
+  }
+
+  function handleChatIntentInput() {
+    syncChatInputCommandOverlay();
+    if (!state.deepMode || !els.chatInput) {
+      hideChatIntentMenu();
+      return;
+    }
+    const value = String(els.chatInput.value || "");
+    if (/^\s*\/\w*$/.test(value)) showChatIntentMenu();
+    else hideChatIntentMenu();
+  }
+
+  function selectChatIntent(intentKey) {
+    const selected = CHAT_INTENT_OPTIONS.find(function (option) { return option.key === intentKey; });
+    if (!selected || !els.chatInput) return;
+    els.chatInput.value = selected.key + ": ";
+    syncChatInputCommandOverlay();
+    hideChatIntentMenu();
+    els.chatInput.focus();
+    if (typeof els.chatInput.setSelectionRange === "function") {
+      const end = els.chatInput.value.length;
+      els.chatInput.setSelectionRange(end, end);
+    }
+  }
+
+  function handleChatIntentMenuClick(event) {
+    const option = event.target && event.target.closest ? event.target.closest("[data-chat-intent]") : null;
+    if (!option) return;
+    event.preventDefault();
+    selectChatIntent(option.getAttribute("data-chat-intent"));
+  }
+
+  function handleChatIntentKeydown(event) {
+    if (!event || !els.chatInput) return;
+    if (!chatIntentMenuIsOpen()) {
+      if (event.key === "ArrowDown" && /^\s*\/\w*$/.test(els.chatInput.value || "")) {
+        event.preventDefault();
+        showChatIntentMenu();
+      }
+      return;
+    }
+    const options = chatIntentOptionElements();
+    if (!options.length) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      chatIntentActiveIndex = (chatIntentActiveIndex + direction + options.length) % options.length;
+      updateChatIntentHighlight();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const selected = options[chatIntentActiveIndex] || options[0];
+      selectChatIntent(selected.getAttribute("data-chat-intent"));
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      hideChatIntentMenu();
+    }
+  }
+
+  function parseChatIntentPrefix(prompt) {
+    // 命令格式：xxx: <问题>（如 "trend: shokz"），支持半角/全角冒号
+    const match = String(prompt || "").match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin)\s*[:：]\s*([\s\S]*)?$/i);
+    if (!match) return null;
+    const key = match[1].toLowerCase();
+    const option = CHAT_INTENT_OPTIONS.find(function (item) { return item.key === key; });
+    return option ? { key: option.key, intent: option.intent, text: String(match[2] || "").trim() } : null;
+  }
+
   function _syncChatLogVisibility() {
     var chatLog = els.chatLog;
     var chatLogChat = els.chatLogChat;
@@ -10922,6 +11194,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   // ── 模式切换公共函数（一键「加入对话」与顶部按钮共用）──
   function _switchToChatMode() {
     state.deepMode = false;
+    hideChatIntentMenu();
     if (els.modeFastBtn) els.modeFastBtn.classList.add("active");
     if (els.modeDeepBtn) els.modeDeepBtn.classList.remove("active");
     if (els.chatInput) els.chatInput.placeholder = t("chat.placeholder", "Ask about EPC, tiers, AOV, conversion, unpaid offers...");
@@ -11206,13 +11479,17 @@ var _NUMERIC_COL_PATTERNS = [
   // renderDeepReport 和 deepSummaryHtml 已移至 _renderPanelReport 和 _deepPanelSummaryHtml
 
   async function applyPrompt(prompt) {
-    const language = responseLanguageFor(prompt);
-    var panel = null;
+    const submittedPrompt = prompt;
     var isDeep = state.deepMode;
-    var questionLogIntent = detectQuestionLogIntent(prompt);
+    const explicitChatIntent = isDeep ? parseChatIntentPrefix(prompt) : null;
+    const effectivePrompt = explicitChatIntent && explicitChatIntent.text ? explicitChatIntent.text : prompt;
+    const language = responseLanguageFor(effectivePrompt);
+    var panel = null;
+    var questionLogIntent = explicitChatIntent ? explicitChatIntent.key : detectQuestionLogIntent(prompt);
     var questionLogContext = { mode: isDeep ? "report" : "chat" };
     var questionEventId = createChatQuestionEventId();
-    var questionLogPromise = beginQuestionLog(prompt, questionLogContext.mode, language, questionLogIntent, questionEventId);
+    var questionLogPromise = beginQuestionLog(submittedPrompt, questionLogContext.mode, language, questionLogIntent, questionEventId);
+    state.chatIntentOverride = explicitChatIntent;
 
     // ════════════════════════════════════════
     // Chat Mode: 流式 LLM 回答（独立聊天区）
@@ -11415,42 +11692,42 @@ var _NUMERIC_COL_PATTERNS = [
     // ════════════════════════════════════════
 
     // 用户消息用原有 addMessage（Report Mode 聊天区）
-    addMessage("user", escapeHtml(prompt));
+    addMessage("user", escapeHtml(submittedPrompt));
 
     if (isDeep) {
-      panel = _createDeepPanel(prompt);
+      panel = _createDeepPanel(submittedPrompt);
       panel._mode = "report";
       panel.el.classList.add("source-report");
       _showPanelSkeleton(panel, false);
       await new Promise(function (r) { setTimeout(r, 50); });
     }
 
-    if (state.llmEnabled !== false && !canSkipLLMClassify(prompt)) {
+    if (!explicitChatIntent && state.llmEnabled !== false && !canSkipLLMClassify(effectivePrompt)) {
       const loadingText = language === "zh" ? "正在理解你的问题…" : "Understanding your question…";
       const loadingMsg = document.createElement("div");
       loadingMsg.className = "message assistant loading-indicator";
       loadingMsg.textContent = loadingText;
       els.chatLog.appendChild(loadingMsg);
       els.chatLog.scrollTop = els.chatLog.scrollHeight;
-      const result = await classifyWithLLM(prompt, collectCategories());
+      const result = await classifyWithLLM(effectivePrompt, collectCategories());
       loadingMsg.remove();
       state.llmClassifyResult = result;
-      if (result && result.intent) questionLogIntent = String(result.intent).trim().toLowerCase() || questionLogIntent;
+      if (!explicitChatIntent && result && result.intent) questionLogIntent = String(result.intent).trim().toLowerCase() || questionLogIntent;
     } else {
       state.llmClassifyResult = null;
     }
     state.reportMemoryContext = null;
 
-    const dbMerchantOffer = dbMerchantOfferForPrompt(prompt);
+    const dbMerchantOffer = dbMerchantOfferForPrompt(effectivePrompt);
     var reportSucceeded = false;
     try {
-      var html = answerPrompt(prompt);
+      var html = answerPrompt(effectivePrompt);
       var addedMsg;
       if (isDeep && panel) {
-        _showQuickResultInDeepPanel(panel, html, prompt);
+        _showQuickResultInDeepPanel(panel, html, submittedPrompt);
         // 同步左侧 Overview 内容到 Deep Window，使信息一致
         await _syncContextOverviewToDeepPanel(panel, html);
-        addedMsg = addMessage("assistant", _deepQuickSummaryHtml(panel, prompt, html));
+        addedMsg = addMessage("assistant", _deepQuickSummaryHtml(panel, submittedPrompt, html));
       } else {
         addedMsg = addMessage("assistant", html);
       }
@@ -11486,7 +11763,8 @@ var _NUMERIC_COL_PATTERNS = [
       });
     }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
-    else loadDbSearchInsight(prompt);
+    else loadDbSearchInsight(effectivePrompt);
+    state.chatIntentOverride = null;
   }
 
   function renderMetrics(rows) {
@@ -21126,11 +21404,35 @@ var _NUMERIC_COL_PATTERNS = [
         renderAll();
       });
     });
+    els.chatInput?.addEventListener("input", handleChatIntentInput);
+    els.chatInput?.addEventListener("scroll", syncChatInputCommandOverlay);
+    els.chatInput?.addEventListener("click", syncChatInputCommandOverlay);
+    els.chatInput?.addEventListener("keyup", syncChatInputCommandOverlay);
+    els.chatInput?.addEventListener("select", syncChatInputCommandOverlay);
+    els.chatInput?.addEventListener("keydown", handleChatIntentKeydown);
+    els.chatIntentMenu?.addEventListener("click", handleChatIntentMenuClick);
+    document.addEventListener("click", function (event) {
+      if (!event.target.closest(".chat-input-field")) hideChatIntentMenu();
+    });
     els.chatForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const prompt = els.chatInput.value.trim();
       if (!prompt) return;
+      if (chatIntentMenuIsOpen()) {
+        const options = chatIntentOptionElements();
+        const selected = options[chatIntentActiveIndex] || options[0];
+        if (selected) selectChatIntent(selected.getAttribute("data-chat-intent"));
+        return;
+      }
+      const explicitIntent = state.deepMode ? parseChatIntentPrefix(prompt) : null;
+      if (explicitIntent && !explicitIntent.text) {
+        els.chatInput.focus();
+        showChatIntentMenu();
+        return;
+      }
       els.chatInput.value = "";
+      syncChatInputCommandOverlay();
+      hideChatIntentMenu();
       if (window.CHATBOT_WELCOME) {
         window.CHATBOT_WELCOME.notify("chat-sent", {
           mode: state.deepMode ? "report" : "chat"
@@ -21367,6 +21669,10 @@ var _NUMERIC_COL_PATTERNS = [
       toggleUserFlowGuide,
       loadUserFlowGuide,
       userFlowGuideUrl,
+      showChatIntentMenu,
+      hideChatIntentMenu,
+      selectChatIntent,
+      parseChatIntentPrefix,
       detectQueryIntent,
       cleanedMerchantLookupPhrase,
       hasStrongMerchantLookup,

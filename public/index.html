@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260807-user-guide1" />
+    <link rel="stylesheet" href="./styles.css?v=20260807-intent-picker11" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -349,7 +349,52 @@
               <div class="chat-stream-text user-flow-guide-content" id="userFlowGuideContent"></div>
             </div>
             <form class="chat-input" id="chatForm">
-              <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" />
+              <div class="chat-input-field">
+                <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" aria-controls="chatIntentMenu" aria-expanded="false" />
+                <span class="chat-input-command-overlay" id="chatInputCommandOverlay" aria-hidden="true"></span>
+                <div class="chat-intent-menu hidden" id="chatIntentMenu" role="listbox" aria-label="Choose question type" aria-hidden="true">
+                  <div class="chat-intent-menu-track" id="chatIntentMenuTrack" aria-hidden="true"></div>
+                  <div class="chat-intent-menu-title" role="presentation">
+                    <span data-i18n="chat.intent.title">Question type</span>
+                    <kbd>/</kbd>
+                  </div>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="merchant">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.merchant">Merchant</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.merchantHint">Merchant lookup</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="category">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.category">Category</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.categoryHint">Category lookup</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="tier">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.tier">Tier</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.tierHint">Tier overview</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="categorytier">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.categoryTier">Category &amp; Tier</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.categoryTierHint">Category within a tier</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="trend">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.trend">Trend</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.trendHint">Trend analysis</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="payment">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.payment">Payment</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.paymentHint">Payment status</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="asin">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.asin">ASIN</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.asinHint">ASIN lookup</span>
+                  </button>
+                </div>
+              </div>
               <button type="submit" aria-label="Send">
                 <span data-i18n="action.send">Send</span>
               </button>
@@ -1234,7 +1279,7 @@
     <script src="./chatbot_welcome.js?v=20260805-assistant-tour5"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260807-user-guide2"></script>
+    <script src="./auth.js?v=20260807-intent-picker7"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。
