@@ -745,13 +745,13 @@ assertNotMatch(helpMd, /^### 5\. 对比分析$/m, "help markdown should omit com
 assertNotMatch(helpMd, /^### 6\. 推荐与排行$/m, "help markdown should omit recommendations from supported query types");
 assertNotMatch(helpMd, /^### 7\. 关键词搜索$/m, "help markdown should omit keyword search from supported query types");
 assertNotMatch(helpMd, /^### 9\. 分层管理$/m, "help markdown should omit tier management from supported query types");
-assertMatch(helpMd, /标准提问模板/, "help markdown should include a standard question template section");
+assertMatch(helpMd, /## 二、交互说明/, "help markdown should include the current interaction section");
 const helpHtml = hooks.renderReportModeHelp();
 assertMatch(helpHtml, /<h1>/, "help markdown should render an h1");
 assertMatch(helpHtml, /<h2>/, "help markdown should render h2 sections");
 assertMatch(helpHtml, /<table>/, "help markdown should render tables");
 assertMatch(helpHtml, /<li>/, "help markdown should render lists");
-assertMatch(helpHtml, /<blockquote>/, "help markdown should render blockquotes");
+assertMatch(helpHtml, /<h2>二、交互说明<\/h2>/, "help markdown should render the current interaction section");
 assertNotMatch(helpHtml, /```/, "help markdown should not leak raw code fences");
 assertMatch(
   fs.readFileSync("public/index.html", "utf8"),
@@ -774,11 +774,11 @@ assertNotMatch(helpMdEn, /^### 1\.5 Comparison Analysis$/m, "English help should
 assertNotMatch(helpMdEn, /^### 1\.6 Recommendations & Rankings$/m, "English help should omit recommendations from supported query types");
 assertNotMatch(helpMdEn, /^### 1\.7 Keyword Search$/m, "English help should omit keyword search from supported query types");
 assertNotMatch(helpMdEn, /^### 1\.9 Tier Management$/m, "English help should omit tier management from supported query types");
-assertMatch(helpMdEn, /Standard Question Template/, "English help should include a standard question template section");
+assertMatch(helpMdEn, /## 2\. Interactions/, "English help should include the current interaction section");
 const helpHtmlEn = hooks.renderReportModeHelp(null, "en");
 assertMatch(helpHtmlEn, /<h1>/, "English help should render an h1");
 assertMatch(helpHtmlEn, /<table>/, "English help should render tables");
-assertMatch(helpHtmlEn, /<blockquote>/, "English help should render blockquotes");
+assertMatch(helpHtmlEn, /<h2>2\. Interactions<\/h2>/, "English help should render the current interaction section");
 assertMatch(helpHtmlEn, /USD/, "English help should mention USD currency");
 assertMatch(
   fs.readFileSync("public/index.html", "utf8"),

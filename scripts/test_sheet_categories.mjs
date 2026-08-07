@@ -15,13 +15,13 @@ const sheetReportData = {
   tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
 };
 
-// 新系统使用统一列结构，Category 在 SHEET_COLUMNS 中索引 17（+1 = 18）
+// 当前 Tier Sheet 结构中，Category 位于 0-based 索引 20（+1 = 21）
 const categoryColumnByTier = {
-  "Tier 1": 18,
-  "Tier 2": 18,
-  "Tier 3": 18,
-  "Tier 4": 18,
-  "BLACK TIER": 18
+  "Tier 1": 21,
+  "Tier 2": 21,
+  "Tier 3": 21,
+  "Tier 4": 21,
+  "BLACK TIER": 21
 };
 
 for (const [tier, expectedIndex] of Object.entries(categoryColumnByTier)) {
