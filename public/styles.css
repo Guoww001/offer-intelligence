@@ -2077,6 +2077,208 @@ body.dashboard-mode[data-dash-theme="light"] .report-mode-guide {
   box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.6);
 }
 
+.chat-input-field {
+  position: relative;
+  min-width: 0;
+}
+
+.chat-intent-menu {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  width: min(100%, 280px);
+  padding: 6px;
+  border: 1px solid rgba(118, 94, 170, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 16px 40px rgba(73, 54, 119, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.chat-intent-menu-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+  margin: 0 1px 2px;
+  padding: 0 5px 4px;
+  border-bottom: 1px solid rgba(118, 94, 170, 0.1);
+  color: #9188a5;
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chat-intent-menu-title kbd {
+  display: inline-grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid rgba(118, 94, 170, 0.14);
+  border-radius: 5px;
+  background: rgba(118, 94, 170, 0.05);
+  color: #786d92;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chat-intent-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #5e5474;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.22s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.22s cubic-bezier(0.32, 0.72, 0, 1), color 0.22s cubic-bezier(0.32, 0.72, 0, 1), transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.chat-intent-option-prefix {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 5px;
+  background: transparent;
+  color: #8a7aa8;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), color 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.chat-intent-option-label {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-intent-option-hint {
+  color: #a19aaf;
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: 0;
+  opacity: 0.66;
+  white-space: nowrap;
+  transition: opacity 0.26s cubic-bezier(0.32, 0.72, 0, 1), color 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.chat-intent-option:hover,
+.chat-intent-option:focus-visible,
+.chat-intent-option.active {
+  outline: none;
+  border-color: transparent;
+  background: transparent;
+  color: #513b91;
+  transform: translateX(1px);
+}
+
+.chat-intent-option:hover .chat-intent-option-prefix,
+.chat-intent-option:focus-visible .chat-intent-option-prefix,
+.chat-intent-option.active .chat-intent-option-prefix {
+  background: transparent;
+  color: #6043ba;
+  transform: translateX(1px);
+}
+
+.chat-intent-option:hover .chat-intent-option-hint,
+.chat-intent-option:focus-visible .chat-intent-option-hint,
+.chat-intent-option.active .chat-intent-option-hint {
+  color: #817399;
+  opacity: 1;
+}
+
+/* 光轨层：hover / 键盘选中时以纯 opacity 插值渐现的紫色高亮，不改动选项本体背景。 */
+.chat-intent-option::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(81, 59, 145, 0.07), rgba(81, 59, 145, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  transition: opacity 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: none;
+}
+
+.chat-intent-option:hover::before,
+.chat-intent-option:focus-visible::before,
+.chat-intent-option.active::before {
+  opacity: 1;
+}
+
+.chat-intent-option.active::before {
+  background: linear-gradient(90deg, rgba(81, 59, 145, 0.11), rgba(81, 59, 145, 0.035));
+}
+
+/* 按压物理：鼠标按下时整体轻微收缩，模拟实体按键。 */
+.chat-intent-option:active {
+  transform: scale(0.985);
+  transition-duration: 0.12s;
+}
+
+/* 光轨层压在文字之下（文字 z-index 1）。 */
+.chat-intent-option > span {
+  position: relative;
+  z-index: 1;
+}
+
+/* 键盘高亮滑轨：跟随 ↑/↓ 在选项间以 transform 滑动（Radix 式命令面板）。 */
+.chat-intent-menu-track {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  right: 6px;
+  height: 40px;
+  border: 1px solid rgba(118, 94, 170, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(81, 59, 145, 0.1), rgba(81, 59, 145, 0.02));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.chat-intent-menu-track.visible {
+  opacity: 1;
+}
+
+/* 交错浮现：菜单打开时选项自下而上依次淡入（backwards 让延迟期间保持隐藏）。 */
+.chat-intent-menu > .chat-intent-option {
+  animation: chat-intent-option-in 0.26s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+.chat-intent-menu > .chat-intent-option:nth-child(3) { animation-delay: 16ms; }
+.chat-intent-menu > .chat-intent-option:nth-child(4) { animation-delay: 32ms; }
+.chat-intent-menu > .chat-intent-option:nth-child(5) { animation-delay: 48ms; }
+.chat-intent-menu > .chat-intent-option:nth-child(6) { animation-delay: 64ms; }
+.chat-intent-menu > .chat-intent-option:nth-child(7) { animation-delay: 80ms; }
+.chat-intent-menu > .chat-intent-option:nth-child(8) { animation-delay: 96ms; }
+
+@keyframes chat-intent-option-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .chat-input input {
   min-height: 44px;
   padding: 9px 14px;
@@ -2135,6 +2337,34 @@ body.dashboard-mode[data-dash-theme="light"] .report-mode-guide {
 
 .chat-input button:active {
   transform: scale(0.96);
+}
+
+/* 命令面板选项不是发送按钮：覆盖通用按钮的蓝色背景和渐变层。 */
+.chat-input .chat-intent-option {
+  display: grid;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 6px;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  position: static;
+  overflow: visible;
+  transition: background 0.22s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.22s cubic-bezier(0.32, 0.72, 0, 1), color 0.22s cubic-bezier(0.32, 0.72, 0, 1), transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.chat-input .chat-intent-option::after {
+  display: none;
+}
+
+.chat-input .chat-intent-option:hover,
+.chat-input .chat-intent-option:focus-visible,
+.chat-input .chat-intent-option.active {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translateX(2px);
 }
 
 .insight-panel {
@@ -7984,6 +8214,65 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
   background: rgba(184, 194, 207, 0.08);
   color: rgba(229, 234, 241, 0.84);
 }
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-menu {
+  border-color: rgba(189, 165, 255, 0.2);
+  background: rgba(25, 21, 45, 0.98);
+  box-shadow: 0 16px 40px rgba(10, 6, 28, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option {
+  border-color: transparent;
+  background: transparent;
+  color: rgba(224, 216, 255, 0.78);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-menu-title {
+  border-bottom-color: rgba(189, 165, 255, 0.12);
+  color: rgba(224, 216, 255, 0.58);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-menu-title kbd {
+  border-color: rgba(189, 165, 255, 0.16);
+  background: rgba(189, 165, 255, 0.08);
+  color: rgba(224, 216, 255, 0.72);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option-prefix {
+  background: transparent;
+  color: rgba(224, 216, 255, 0.64);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option-hint {
+  color: rgba(224, 216, 255, 0.46);
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option:hover,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option:focus-visible,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option.active {
+  border-color: transparent;
+  background: transparent;
+  color: #eee8ff;
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option:hover .chat-intent-option-prefix,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option:focus-visible .chat-intent-option-prefix,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option.active .chat-intent-option-prefix {
+  background: transparent;
+  color: #e7deff;
+}
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option:hover .chat-intent-option-hint,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option:focus-visible .chat-intent-option-hint,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option.active .chat-intent-option-hint {
+  color: rgba(224, 216, 255, 0.68);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option::before {
+  background: linear-gradient(90deg, rgba(189, 165, 255, 0.09), rgba(189, 165, 255, 0.02));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option.active::before {
+  background: linear-gradient(90deg, rgba(189, 165, 255, 0.14), rgba(189, 165, 255, 0.045));
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-menu-track {
+  border-color: rgba(189, 165, 255, 0.18);
+  background: linear-gradient(90deg, rgba(189, 165, 255, 0.11), rgba(189, 165, 255, 0.03));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .report-help-lang-btn {
   border-color: rgba(255, 180, 92, 0.3);
   background: rgba(255, 180, 92, 0.1);
@@ -12648,6 +12937,23 @@ body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input button:hover {
   box-shadow: 0 4px 18px rgba(37, 111, 216, 0.35);
 }
 
+/* 深色主题的发送按钮规则位于后面且带 !important，命令选项必须再次隔离。 */
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option:hover,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option:focus-visible,
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option.active {
+  border-color: transparent !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  transform: translateX(2px);
+}
+
+body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option::after {
+  display: none !important;
+  content: none !important;
+}
+
 /* ── 模式切换药丸 ───────────────────────────────────── */
 body.dashboard-mode :is(.insight-panel, .chat-panel) .chat-mode-toggle {
   border-top-color: rgba(156, 199, 255, 0.1);
@@ -16452,4 +16758,130 @@ body[data-dash-theme="light"] #answerFeedbackCancel {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
+}
+
+/* 浅色主题的发送按钮规则位于更后面且带 !important，命令面板也必须保持无背景。 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option:not(:hover):not(:focus-visible):not(.active) {
+  border-color: transparent !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: #5e5474;
+  transform: translateX(2px);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option:hover,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option:focus-visible,
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option.active {
+  border-color: transparent !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: #513b91;
+  transform: translateX(2px);
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input .chat-intent-option::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* 选中态用字重和紫色建立清晰层级，不依赖背景色。 */
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-intent-option.active .chat-intent-option-label {
+  color: #513b91;
+  font-weight: 800;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-intent-option.active .chat-intent-option-prefix {
+  color: #6043ba;
+  font-weight: 800;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option.active .chat-intent-option-label {
+  color: #e7deff;
+  font-weight: 800;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-intent-option.active .chat-intent-option-prefix {
+  color: #e7deff;
+  font-weight: 800;
+}
+
+/* 输入框中的命令前缀视觉层：保留原生 input 的编辑能力，只突出命令 token。 */
+.chat-input-command-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  overflow: hidden;
+  padding: 9px 14px;
+  color: #16294f;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.chat-input-command-overlay.visible {
+  display: flex;
+}
+
+.chat-input-command-overlay .command-token {
+  color: #513b91;
+  font-weight: 800;
+}
+
+.chat-input-command-overlay .command-rest {
+  color: inherit;
+  font-weight: 400;
+}
+
+.chat-input input.has-command-overlay {
+  position: relative;
+  z-index: 2;
+  color: transparent !important;
+  caret-color: #513b91;
+  text-shadow: none !important;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-input-command-overlay {
+  color: #eaf0f9;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-input-command-overlay .command-token {
+  color: #e7deff;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-input input.has-command-overlay {
+  caret-color: #e7deff;
+}
+
+body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-input input.has-command-overlay,
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-input input.has-command-overlay {
+  color: transparent !important;
+  caret-color: transparent !important;
+}
+
+.chat-input-command-overlay .command-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 1.15em;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #513b91;
+  box-shadow: 0 0 6px rgba(81, 59, 145, 0.35);
+  vertical-align: -0.16em;
+  animation: chat-command-caret-blink 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-panel) .chat-input-command-overlay .command-caret {
+  background: #e7deff;
+}
+
+@keyframes chat-command-caret-blink {
+  0%, 46% { opacity: 1; }
+  47%, 100% { opacity: 0.2; }
 }
