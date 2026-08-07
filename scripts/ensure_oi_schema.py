@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from offer_db import (
+    MERCHANT_AOV_ESTIMATES_TABLE,
+    MERCHANT_AOV_ESTIMATES_TABLE_DDL,
     MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE,
     MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL,
     MONTHLY_NEW_MERCHANTS_TABLE_DDL,
@@ -28,6 +30,13 @@ PAYMENT_RECORD_COLUMN_MIGRATIONS = {
     "paymentMadeDate": (
         "ALTER TABLE cnpscy_oi_payment_records "
         "ADD COLUMN paymentMadeDate VARCHAR(16) DEFAULT NULL AFTER rawStatus"
+    ),
+}
+
+MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS = {
+    "isPriority": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN isPriority TINYINT(1) NOT NULL DEFAULT 0 AFTER businessManager"
     ),
 }
 
@@ -107,6 +116,15 @@ def main():
         else:
             print("[ddl] cnpscy_oi_monthly_new_merchants already exists, skipping")
 
+        for column, ddl in MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS.items():
+            if not column_exists(conn, "cnpscy_oi_monthly_new_merchants", column):
+                print(f"[ddl] ALTER TABLE cnpscy_oi_monthly_new_merchants ADD COLUMN {column} ...")
+                with conn.cursor() as cur:
+                    cur.execute(ddl)
+                print("  added")
+            else:
+                print(f"[ddl] cnpscy_oi_monthly_new_merchants.{column} already exists, skipping")
+
         if not table_exists(conn, MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE):
             print(f"[ddl] CREATE TABLE {MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE} ...")
             with conn.cursor() as cur:
@@ -156,6 +174,14 @@ def main():
             print("  created")
         else:
             print("[ddl] cnpscy_oi_tier_move_history already exists, skipping")
+
+        if not table_exists(conn, MERCHANT_AOV_ESTIMATES_TABLE):
+            print(f"[ddl] CREATE TABLE {MERCHANT_AOV_ESTIMATES_TABLE} ...")
+            with conn.cursor() as cur:
+                cur.execute(MERCHANT_AOV_ESTIMATES_TABLE_DDL)
+            print("  created")
+        else:
+            print(f"[ddl] {MERCHANT_AOV_ESTIMATES_TABLE} already exists, skipping")
 
         # ?? 1. cnpscy_oi_payment_records ??
         if not table_exists(conn, "cnpscy_oi_payment_records"):

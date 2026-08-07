@@ -1,0 +1,36 @@
+name: Sync merchant AOV estimates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-merchant-aov-estimates:
+    name: Migrate and sync merchant AOV estimates
+    if: github.repository == 'Yeahpromos/offer-intelligence'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyMySQL
+        run: pip install PyMySQL==1.1.1
+
+      - name: Ensure, sync, and verify AOV observations
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+        run: python scripts/sync_merchant_aov_estimates.py

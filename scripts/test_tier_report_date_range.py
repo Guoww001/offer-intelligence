@@ -124,6 +124,16 @@ def test_report_payload():
             "BD": None,
             "ALL Commission": 10,
         },
+        {
+            "Merchant ID": "303",
+            "Merchant Name": "Estimate Only Merchant",
+            "Brand": "Estimate Only Merchant",
+            "Network": "Levanta",
+            "Agency": None,
+            "BD": None,
+            "ALL Commission": 12,
+            "COUNTRY": "US",
+        },
     ]
     order_rows = [
         {"merchantId": "101", "orders": 2, "revenue": 80, "payout": 8, "affiliatePayout": 6, "affProportion": 75, "dpv": 20, "atc": 5, "orderClicks": 10},
@@ -143,6 +153,21 @@ def test_report_payload():
         calls.append((sql, params))
         if "SHOW COLUMNS FROM `cnpscy_oi_offer_sheet_metadata`" in sql:
             return [{"Field": "agency"}, {"Field": "businessManager"}]
+        if "SHOW COLUMNS FROM `cnpscy_oi_merchant_aov_estimates`" in sql:
+            return [{"Field": field} for field in (
+                "estimateId", "merchantId", "aov", "currency", "sampleProductCount",
+                "method", "sourceFile", "sourceDate",
+            )]
+        if "FROM `cnpscy_oi_merchant_aov_estimates` e" in sql:
+            return [{
+                "merchantId": "303",
+                "aov": 119.99,
+                "currency": "USD",
+                "sampleProductCount": 5,
+                "method": "five_product_average",
+                "sourceFile": "YP Amazon Offers (8-3) .xlsx",
+                "sourceDate": dt.date(2026, 8, 3),
+            }]
         if "FROM cnpscy_amazon_order" in sql:
             return order_rows
         if "FROM cnpscy_amazon_click" in sql:
@@ -194,6 +219,12 @@ def test_report_payload():
     assert_equal(payload["rows"][1]["EPC(All)"], "0.25", "tracked-click all EPC")
     assert_equal(payload["rows"][1]["EPC(Aff)"], "0.2", "tracked-click AFF EPC")
     assert_equal(payload["rows"][1]["Conversion Rate"], "0.1", "tracked conversion")
+    assert_equal(payload["rows"][0]["AOV"], "40.0", "actual AOV")
+    assert_equal(payload["rows"][0]["AOV Type"], "actual", "actual AOV provenance")
+    assert_equal(payload["rows"][2]["AOV"], "119.99", "tentative AOV fallback")
+    assert_equal(payload["rows"][2]["AOV Type"], "tentative", "tentative AOV provenance")
+    assert_equal(payload["rows"][2]["AOV Sample Products"], "5", "tentative sample size")
+    assert_equal(payload["rows"][2]["AOV Source Date"], "2026-08-03", "tentative source date")
 
     amazon_calls = [(sql, params) for sql, params in calls if "cnpscy_amazon_" in sql]
     assert_equal(len(amazon_calls), 2, "Amazon metric query count")

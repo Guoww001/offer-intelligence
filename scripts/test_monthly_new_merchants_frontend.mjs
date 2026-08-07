@@ -80,25 +80,20 @@ assert(hooks, "app should expose test hooks in test mode");
 assertEqual(
   hooks.normalizeMonthlyNewMerchantRecord({
     recordId: "12",
-    reportMonth: "2026-07",
+    reportMonth: "2026-08",
     merchantId: null,
     merchantName: "  Acme  ",
     businessManager: " Dora ",
-    sourceAddedAt: "2026-07-08 09:30:00",
-    sourceLinked: true,
     isPriority: 1,
     gmvMonthlyTarget: "12500.50",
     completionReward: " Bonus "
   }),
   {
     recordId: 12,
-    reportMonth: "2026-07",
+    reportMonth: "2026-08",
     merchantId: "",
     merchantName: "Acme",
     businessManager: "Dora",
-    addedAt: "2026-07-08 09:30:00",
-    sourceAddedAt: "2026-07-08 09:30:00",
-    sourceLinked: true,
     isPriority: true,
     gmvMonthlyTarget: 12500.5,
     completionReward: "Bonus",
@@ -107,7 +102,7 @@ assertEqual(
     createdAt: "",
     updatedAt: ""
   },
-  "record normalization should preserve source linkage and annotation fields"
+  "record normalization should preserve manual fields and priority"
 );
 
 const records = [
@@ -141,26 +136,29 @@ assertEqual(
 
 assertEqual(
   hooks.buildMonthlyNewMerchantPayload({
-    reportMonth: "2026-07",
-    merchantId: "380001",
-    isPriority: false
+    reportMonth: "2026-08",
+    merchantName: "Merchant only"
   }),
   {
     action: "upsert",
-    reportMonth: "2026-07",
-    merchantId: "380001",
+    reportMonth: "2026-08",
+    merchantId: "",
+    merchantName: "Merchant only",
+    businessManager: "",
     isPriority: false,
     gmvMonthlyTarget: null,
     completionReward: ""
   },
-  "untouched backend merchants should save blank GMV and reward annotations"
+  "merchant-only entries should keep every other field optional"
 );
 
 assertEqual(
   hooks.buildMonthlyNewMerchantPayload({
     recordId: "8",
-    reportMonth: "2026-07",
+    reportMonth: "2026-08",
     merchantId: "380001",
+    merchantName: "Full merchant",
+    businessManager: "Dora",
     isPriority: true,
     gmvMonthlyTarget: "50000.25",
     completionReward: "2% bonus"
@@ -168,20 +166,23 @@ assertEqual(
   {
     action: "upsert",
     recordId: 8,
-    reportMonth: "2026-07",
+    reportMonth: "2026-08",
     merchantId: "380001",
+    merchantName: "Full merchant",
+    businessManager: "Dora",
     isPriority: true,
     gmvMonthlyTarget: 50000.25,
     completionReward: "2% bonus"
   },
-  "priority, GMV, and reward should serialize to the annotation API contract"
+  "complete entries should serialize to the manual database API contract"
 );
 
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 assert(indexHtml.includes('id="monthlyNewMerchantsNav"'), "primary navigation should expose the new page");
 assert(indexHtml.includes('id="monthlyNewMerchantsPage"'), "the monthly new merchants page should exist");
-assert(indexHtml.includes('id="monthlyNewMerchantsRefresh"'), "the backend merchant list should have a refresh action");
-assert(!indexHtml.includes('id="monthlyNewMerchantForm"'), "merchant identity should no longer be entered manually");
+assert(indexHtml.includes('id="monthlyNewMerchantAdd"'), "the page should expose a manual add action");
+assert(indexHtml.includes('id="monthlyNewMerchantForm"'), "the add and edit drawer form should exist");
+assert(!indexHtml.includes('id="monthlyNewMerchantsRefresh"'), "database auto-discovery refresh should be removed");
 
 const publishersNavIndex = indexHtml.indexOf('id="publishersNav"');
 const monthlyNewMerchantsNavIndex = indexHtml.indexOf('id="monthlyNewMerchantsNav"');
@@ -207,25 +208,48 @@ assertEqual(
   "monthly new merchants should not activate the Reports parent"
 );
 
+const formMatch = indexHtml.match(/<form id="monthlyNewMerchantForm">([\s\S]*?)<\/form>/);
+assert(formMatch, "monthly new merchant form markup should be readable");
+const formHtml = formMatch[1];
+[
+  "monthlyNewMerchantId",
+  "monthlyNewMerchantName",
+  "monthlyNewMerchantManager",
+  "monthlyNewMerchantPriority",
+  "monthlyNewMerchantGmvTarget",
+  "monthlyNewMerchantReward"
+].forEach((id) => {
+  assert(formHtml.includes(`id="${id}"`), `form should contain ${id}`);
+});
+
+const merchantNameTag = formHtml.match(/<input[^>]*id="monthlyNewMerchantName"[^>]*>/)?.[0] || "";
+assert(/\brequired\b/.test(merchantNameTag), "merchant name should be required");
+["monthlyNewMerchantId", "monthlyNewMerchantManager", "monthlyNewMerchantGmvTarget"].forEach((id) => {
+  const tag = formHtml.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0] || "";
+  assert(tag && !/\brequired\b/.test(tag), `${id} should remain optional`);
+});
+const priorityTag = formHtml.match(/<input[^>]*id="monthlyNewMerchantPriority"[^>]*>/)?.[0] || "";
+assert(/type="checkbox"/.test(priorityTag), "priority should be a checkbox in the manual form");
+
+assert(indexHtml.includes('data-i18n="monthlyNewMerchants.priority">Priority</th>'),
+  "the table should expose the priority marker");
 assert(indexHtml.includes('class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.gmvTarget"'),
   "GMV target should use the right-aligned numeric column");
-assert(indexHtml.includes('data-i18n="monthlyNewMerchants.priority">Priority</th>'),
-  "the table should expose the priority recommendation control");
-assert(indexHtml.includes('data-i18n="monthlyNewMerchants.added">Added</th>'),
-  "the table should show the backend added time");
-assert(indexHtml.includes('data-i18n="monthlyNewMerchants.reward">Merchant reward</th>'),
-  "the table should show the merchant reward report");
+assert(indexHtml.includes('data-i18n="monthlyNewMerchants.updated">Updated</th>'),
+  "the table should show the manual record update time");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
 assert(appSource.includes('data-monthly-new-merchant-action="priority"'),
-  "each backend merchant should have a persistent priority toggle");
-assert(appSource.includes('data-monthly-new-merchant-field="gmvMonthlyTarget"'),
-  "each backend merchant should have an inline GMV target field");
-assert(appSource.includes('data-monthly-new-merchant-field="completionReward"'),
-  "each backend merchant should have an inline reward field");
+  "each manual merchant should have a persistent priority toggle");
+assert(appSource.includes('data-monthly-new-merchant-action="edit"'),
+  "each manual merchant should be editable");
+assert(appSource.includes('data-monthly-new-merchant-action="delete"'),
+  "each manual merchant should be removable");
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
 assert(styles.includes(".monthly-new-merchants-table tbody tr.is-priority td"),
   "priority merchants should receive a row highlight");
+assert(styles.includes(".monthly-new-merchant-drawer-backdrop"),
+  "manual add and edit drawer styles should be restored");
 
-console.log("Monthly new merchants frontend checks passed");
+console.log("Monthly new merchants manual frontend checks passed");

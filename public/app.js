@@ -262,7 +262,10 @@
       notice: "",
       noticeType: "success",
       search: "",
-      savingMerchantIds: new Set()
+      drawerOpen: false,
+      editingRecordId: null,
+      submitting: false,
+      restoreFocus: null
     },
     tierSheetFilters: {
       search: "",
@@ -488,11 +491,27 @@
     publishersTablePanel: document.getElementById("publishersTablePanel"),
     monthlyNewMerchantsPage: document.getElementById("monthlyNewMerchantsPage"),
     monthlyNewMerchantsMonth: document.getElementById("monthlyNewMerchantsMonth"),
-    monthlyNewMerchantsRefresh: document.getElementById("monthlyNewMerchantsRefresh"),
+    monthlyNewMerchantAdd: document.getElementById("monthlyNewMerchantAdd"),
     monthlyNewMerchantsNotice: document.getElementById("monthlyNewMerchantsNotice"),
     monthlyNewMerchantsSearch: document.getElementById("monthlyNewMerchantsSearch"),
     monthlyNewMerchantsCount: document.getElementById("monthlyNewMerchantsCount"),
     monthlyNewMerchantsRows: document.getElementById("monthlyNewMerchantsRows"),
+    monthlyNewMerchantDrawerBackdrop: document.getElementById("monthlyNewMerchantDrawerBackdrop"),
+    monthlyNewMerchantDrawer: document.getElementById("monthlyNewMerchantDrawer"),
+    monthlyNewMerchantDrawerTitle: document.getElementById("monthlyNewMerchantDrawerTitle"),
+    monthlyNewMerchantDrawerClose: document.getElementById("monthlyNewMerchantDrawerClose"),
+    monthlyNewMerchantForm: document.getElementById("monthlyNewMerchantForm"),
+    monthlyNewMerchantRecordId: document.getElementById("monthlyNewMerchantRecordId"),
+    monthlyNewMerchantReportMonth: document.getElementById("monthlyNewMerchantReportMonth"),
+    monthlyNewMerchantId: document.getElementById("monthlyNewMerchantId"),
+    monthlyNewMerchantName: document.getElementById("monthlyNewMerchantName"),
+    monthlyNewMerchantManager: document.getElementById("monthlyNewMerchantManager"),
+    monthlyNewMerchantPriority: document.getElementById("monthlyNewMerchantPriority"),
+    monthlyNewMerchantGmvTarget: document.getElementById("monthlyNewMerchantGmvTarget"),
+    monthlyNewMerchantReward: document.getElementById("monthlyNewMerchantReward"),
+    monthlyNewMerchantFormError: document.getElementById("monthlyNewMerchantFormError"),
+    monthlyNewMerchantCancel: document.getElementById("monthlyNewMerchantCancel"),
+    monthlyNewMerchantSave: document.getElementById("monthlyNewMerchantSave"),
     sheetPage: document.getElementById("sheetPage"),
     categoryPage: document.getElementById("categoryPage"),
     sheetPageTitle: document.getElementById("sheetPageTitle"),
@@ -654,27 +673,34 @@
       "nav.category": "品类",
       "nav.monthlyNewMerchants": "上新商家",
       "monthlyNewMerchants.title": "本月上新商家",
-      "monthlyNewMerchants.subtitle": "商家、ID、BD 与添加时间来自 YeahPromos 后台；重点推荐、GMV 目标与奖励独立持久化",
-      "monthlyNewMerchants.refresh": "刷新数据",
+      "monthlyNewMerchants.subtitle": "手动新增本月商家，每条记录都会直接保存到数据库",
+      "monthlyNewMerchants.add": "新增商家",
       "monthlyNewMerchants.search": "搜索上新商家",
       "monthlyNewMerchants.searchPlaceholder": "搜索商家、ID 或 BD",
       "monthlyNewMerchants.priority": "重点",
       "monthlyNewMerchants.priorityAction": "重点推荐",
+      "monthlyNewMerchants.priorityHelp": "在月度列表中高亮该商家",
       "monthlyNewMerchants.bd": "BD",
-      "monthlyNewMerchants.added": "添加时间",
       "monthlyNewMerchants.gmvTarget": "GMV 月目标",
       "monthlyNewMerchants.reward": "商家奖励",
       "monthlyNewMerchants.rewardPlaceholder": "可填写奖金、佣金提升或其他奖励",
+      "monthlyNewMerchants.updated": "更新时间",
       "monthlyNewMerchants.actions": "操作",
       "monthlyNewMerchants.merchantName": "商家",
-      "monthlyNewMerchants.save": "保存汇报",
-      "monthlyNewMerchants.loading": "正在从数据库读取上新商家…",
+      "monthlyNewMerchants.drawerSubtitle": "商家名称必填；保存后完整记录会直接写入数据库",
+      "monthlyNewMerchants.save": "保存商家",
+      "monthlyNewMerchants.addTitle": "新增上新商家",
+      "monthlyNewMerchants.editTitle": "编辑上新商家",
+      "monthlyNewMerchants.loading": "正在从数据库读取手工新增商家…",
       "monthlyNewMerchants.emptyTitle": "本月还没有上新商家",
-      "monthlyNewMerchants.emptyBody": "后台数据库在这个月份没有找到上新商家。",
+      "monthlyNewMerchants.emptyBody": "点击“新增商家”创建第一条数据库记录。",
       "monthlyNewMerchants.noMatchesTitle": "没有匹配的商家",
       "monthlyNewMerchants.noMatchesBody": "请调整搜索关键词。",
-      "monthlyNewMerchants.saved": "重点推荐、GMV 目标和商家奖励已保存到数据库。",
-      "monthlyNewMerchants.sourceLegacy": "历史记录",
+      "monthlyNewMerchants.saved": "商家信息和重点标记已保存到数据库。",
+      "monthlyNewMerchants.deleted": "商家记录已从数据库删除。",
+      "monthlyNewMerchants.deleteConfirm": "确定删除这条月度上新商家记录吗？",
+      "monthlyNewMerchants.edit": "编辑",
+      "monthlyNewMerchants.delete": "删除",
       "monthlyNewMerchants.databaseError": "数据库暂时无法读取上新商家信息。",
       "action.cancel": "取消",
       "sidebar.status": "数据状态",
@@ -761,6 +787,11 @@
       "publishers.sales": "销售额",
       "publishers.commission": "佣金",
       "publishers.publisherCount": "媒体数量",
+      "publishers.associatedPublishers": "关联媒体",
+      "publishers.merchantMatchKicker": "商家关联结果",
+      "publishers.merchantMatches": "匹配商家",
+      "publishers.merchantNoMatch": "未找到匹配商家",
+      "publishers.merchantMatchHint": "结果已按当前页面筛选条件更新，可点击媒体继续查看画像。",
       "publishers.marketSummary": "概览",
       "publishers.market": "市场",
       "publishers.exportPage": "导出当前页",
@@ -4024,8 +4055,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return percentage === null ? text : formatPercentNumber(percentage, minimumFractionDigits);
   }
 
-  function tierCurrencySymbol(row = {}) {
-    const currency = String(row.Currency || row.currency || "").trim().toUpperCase();
+  function tierCurrencySymbol(row = {}, preferredCurrency = "") {
+    const currency = String(preferredCurrency || row.Currency || row.currency || "").trim().toUpperCase();
     const country = String(row.COUNTRY || row.Country || row.country || row.countryCode || "").trim().toUpperCase();
     const currencySymbols = {
       USD: "$",
@@ -4064,7 +4095,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return numeric.toLocaleString(undefined, { maximumFractionDigits: 0 });
     }
     if (["aov", "revenue"].includes(normalizedHeader) && numeric !== null) {
-      return `${tierCurrencySymbol(row)}${numeric.toLocaleString(undefined, {
+      const preferredCurrency = normalizedHeader === "aov" ? row["AOV Currency"] : "";
+      return `${tierCurrencySymbol(row, preferredCurrency)}${numeric.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       })}`;
@@ -14020,6 +14052,7 @@ var _NUMERIC_COL_PATTERNS = [
   var _publisherPortfolioRequestVersion = 0;
   var _activePublisherPortfolioRows = [];
   var _activePublisherPortfolioSalesTotal = 0;
+  var _publisherMerchantSearchTimer = null;
 
   function _publisherManagerMatches(pub, managerQuery) {
     var manager = String(managerQuery || "").toLowerCase().trim();
@@ -14133,6 +14166,33 @@ var _NUMERIC_COL_PATTERNS = [
     return null;
   }
 
+  function _publisherMerchantMatches(data, query) {
+    var normalizedQuery = String(query || "").toLowerCase().trim();
+    if (!normalizedQuery) return [];
+    var nameMap = (data || {}).merchantNameMap || {};
+    return Object.keys(nameMap).filter(function (merchantId) {
+      var merchantName = String(nameMap[merchantId] || "").toLowerCase();
+      return String(merchantId).toLowerCase().indexOf(normalizedQuery) !== -1 ||
+        merchantName.indexOf(normalizedQuery) !== -1;
+    }).map(function (merchantId) {
+      return {
+        merchantId: String(merchantId),
+        merchantName: String(nameMap[merchantId] || merchantId),
+      };
+    });
+  }
+
+  function _publisherMerchantAssociationSummary(data, publishers, query) {
+    var merchants = _publisherMerchantMatches(data, query);
+    return {
+      query: String(query || "").trim(),
+      merchantCount: merchants.length,
+      publisherCount: (publishers || []).length,
+      merchants: merchants,
+      publishers: (publishers || []).slice(),
+    };
+  }
+
   function _setSelectedPublisher(pub) {
     state.publisherSelectedId = pub ? String(pub.userId) : "";
     state.publisherPortfolioSearch = "";
@@ -14196,7 +14256,11 @@ var _NUMERIC_COL_PATTERNS = [
     var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
     var siteSearch = (state.publisherSiteSearch || "").toLowerCase().trim();
     var trackSearch = (state.publisherTrackSearch || "").toLowerCase().trim();
-    var nameMap = data.merchantNameMap || {};
+    var matchingMerchantIds = merchantSearch
+      ? new Set(_publisherMerchantMatches(data, merchantSearch).map(function (merchant) {
+          return merchant.merchantId;
+        }))
+      : null;
 
     return data.publishers.filter(function (pub) {
       // 市场筛选
@@ -14205,24 +14269,12 @@ var _NUMERIC_COL_PATTERNS = [
       if (network !== "all" && (!pub.networks || pub.networks.indexOf(network) === -1)) return false;
       // 链接类型筛选
       if (linkType !== "all" && (!pub.linkTypes || !pub.linkTypes[linkType])) return false;
-      // 商家搜索（匹配商家名称和 ID）
+      // 商家搜索（只匹配商家名称和 ID）
       if (merchantSearch) {
-        var matched = false;
         var mIds = pub.merchantIds || [];
-        for (var i = 0; i < mIds.length; i++) {
-          var mid = String(mIds[i]);
-          var mName = (nameMap[mid] || "").toLowerCase();
-          if (mid.indexOf(merchantSearch) !== -1 || mName.indexOf(merchantSearch) !== -1) {
-            matched = true;
-            break;
-          }
-        }
-        // 也搜索 publisher 本身名称/ID
-        if (!matched) {
-          var name = (pub.userName || "").toLowerCase();
-          var id = String(pub.userId);
-          if (name.indexOf(merchantSearch) !== -1 || id.indexOf(merchantSearch) !== -1) matched = true;
-        }
+        var matched = mIds.some(function (merchantId) {
+          return matchingMerchantIds.has(String(merchantId));
+        });
         if (!matched) return false;
       }
       // 商品搜索（publisher 名称/ID）
@@ -14811,6 +14863,57 @@ var _NUMERIC_COL_PATTERNS = [
     _renderPublisherCategoryAffinity(summary);
     _renderPublisherAffinitySignals(summary);
     _renderPublisherPortfolioTable(globalRows, summary);
+  }
+
+  function _renderPublisherMerchantAssociation(data, publishers) {
+    if (!els.publisherAffinityEmpty) return;
+    var query = String(state.publisherMerchantSearch || "").trim();
+    if (!query) {
+      els.publisherAffinityEmpty.innerHTML =
+        '<span class="publisher-affinity-empty-index">02</span>' +
+        '<div><strong>' + escapeHtml(t("publishers.affinityEmptyTitle", "Select a publisher to build an affinity profile")) + '</strong>' +
+        '<p>' + escapeHtml(t("publishers.affinityEmptyBody", "Merchant activity is used to calculate category, AOV, and commission preferences.")) + '</p></div>';
+      return;
+    }
+
+    var summary = _publisherMerchantAssociationSummary(data, publishers, query);
+    var matchedMerchantText = summary.merchants.map(function (merchant) {
+      return merchant.merchantName + " · ID " + merchant.merchantId;
+    }).join(" / ");
+    var visiblePublishers = summary.publishers.slice().sort(function (a, b) {
+      return Number(((b || {}).total || {}).sales || 0) - Number(((a || {}).total || {}).sales || 0);
+    }).slice(0, 8);
+    var publisherChips = visiblePublishers.map(function (publisher) {
+      return '<button type="button" class="publisher-merchant-match-chip" data-publisher-id="' +
+        escapeHtml(String(publisher.userId)) + '">' +
+        escapeHtml(publisher.userName || String(publisher.userId)) +
+        '<small>ID ' + escapeHtml(String(publisher.userId)) + '</small></button>';
+    }).join("");
+    var remainingCount = Math.max(0, summary.publisherCount - visiblePublishers.length);
+    if (remainingCount > 0) {
+      publisherChips += '<span class="publisher-merchant-match-more">+' + number(remainingCount) + '</span>';
+    }
+
+    var matchTitle = summary.merchantCount
+      ? t("publishers.merchantMatches", "Matched merchants") + " · " + number(summary.merchantCount)
+      : t("publishers.merchantNoMatch", "No matching merchant");
+    els.publisherAffinityEmpty.innerHTML =
+      '<span class="publisher-affinity-empty-index">02</span>' +
+      '<div class="publisher-merchant-match-result">' +
+        '<span class="publisher-merchant-match-kicker">' +
+          escapeHtml(t("publishers.merchantMatchKicker", "Merchant associations")) +
+        '</span>' +
+        '<div class="publisher-merchant-match-heading">' +
+          '<strong class="publisher-merchant-match-count">' + number(summary.publisherCount) + '</strong>' +
+          '<span>' + escapeHtml(t("publishers.associatedPublishers", "Associated publishers")) + '</span>' +
+        '</div>' +
+        '<p class="publisher-merchant-match-title">' + escapeHtml(matchTitle) + '</p>' +
+        (matchedMerchantText
+          ? '<p class="publisher-merchant-match-merchants">' + escapeHtml(matchedMerchantText) + '</p>'
+          : '<p class="publisher-merchant-match-merchants">“' + escapeHtml(query) + '”</p>') +
+        '<p>' + escapeHtml(t("publishers.merchantMatchHint", "Results reflect the current page filters. Select a publisher to open its profile.")) + '</p>' +
+        (publisherChips ? '<div class="publisher-merchant-match-list">' + publisherChips + '</div>' : '') +
+      '</div>';
   }
 
   function _setPublisherFocusMode(focused) {
@@ -15467,6 +15570,7 @@ var _NUMERIC_COL_PATTERNS = [
         _publisherPortfolioRequestVersion++;
         _setPublisherFocusMode(false);
         renderPublisherAffinity(null, []);
+        _renderPublisherMerchantAssociation(data, filtered);
         var agg = aggregatePublisherMetrics(filtered, market);
 
         // 市场聚合概览
@@ -17427,6 +17531,14 @@ var _NUMERIC_COL_PATTERNS = [
       else if (header === "Order count") row[header] = number(offer.orders).toLocaleString();
       else if (header === "EPC(All)" || header === "All EPC") row[header] = shortEpc(offerAllEpc(offer));
       else if (header === "EPC(Aff)" || header === "Aff EPC" || header === "Backend EPC" || header === "EPC") row[header] = shortEpc(offerAffEpc(offer));
+      else if (header === "AOV") row[header] = offer.aov == null ? "" : offer.aov;
+      else if (header === "AOV Type") row[header] = offer.aovType || "";
+      else if (header === "AOV Method") row[header] = offer.aovMethod || "";
+      else if (header === "AOV Source") row[header] = offer.aovSource || "";
+      else if (header === "AOV Sample Products") row[header] = offer.aovSampleProductCount || "";
+      else if (header === "AOV Currency") row[header] = offer.aovCurrency || "";
+      else if (header === "AOV Source Date") row[header] = offer.aovSourceDate || "";
+      else if (header === "AOV Source File") row[header] = offer.aovSourceFile || "";
       else if (header === "Revenue") row[header] = shortMoney(offer.salesAmount);
       else if (header === "Completion Rate") row[header] = shortPct(offer.completionRate);
       else if (header === "Payment Cycle") row[header] = offer.paymentCycle ? `${offer.paymentCycle}` : "";
@@ -17485,8 +17597,30 @@ var _NUMERIC_COL_PATTERNS = [
     return kind ? `tier-highlight-row tier-highlight-${kind}` : "";
   }
 
+  function aovCellHtml(row, formattedValue) {
+    const aovType = String((row && row["AOV Type"]) || "").trim().toLowerCase();
+    if (!formattedValue || !["actual", "tentative"].includes(aovType)) {
+      return escapeHtml(formattedValue);
+    }
+    const isActual = aovType === "actual";
+    const marker = state.language === "zh"
+      ? (isActual ? "实" : "暂")
+      : (isActual ? "Actual" : "Est.");
+    const sampleCount = Number(row && row["AOV Sample Products"]) || 5;
+    const sourceDate = String((row && row["AOV Source Date"]) || "").trim();
+    const description = isActual
+      ? (state.language === "zh" ? "真实 AOV：Revenue ÷ Order count" : "Actual AOV: Revenue ÷ Order count")
+      : (state.language === "zh"
+        ? `暂定 AOV：${sampleCount} 款产品平均值${sourceDate ? ` · ${sourceDate}` : ""}`
+        : `Estimated AOV: ${sampleCount}-product average${sourceDate ? ` · ${sourceDate}` : ""}`);
+    return `<span class="aov-value aov-${escapeHtml(aovType)}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}">
+      <span>${escapeHtml(formattedValue)}</span><small>${escapeHtml(marker)}</small>
+    </span>`;
+  }
+
   function sheetCellHtml(sheet, row, header) {
     const value = formatTierSheetCell(sheet, row, header);
+    if (header === "AOV") return aovCellHtml(row, value);
     if (header === "Visual Status Color" || header === "visualStatusColor") {
       const color = normalizeVisualStatusColor(value);
       if (!color || !value) return escapeHtml(value);
@@ -19915,9 +20049,6 @@ var _NUMERIC_COL_PATTERNS = [
       merchantId: String(record.merchantId || "").trim(),
       merchantName: String(record.merchantName || "").trim(),
       businessManager: String(record.businessManager || "").trim(),
-      addedAt: String(record.addedAt || record.sourceAddedAt || "").trim(),
-      sourceAddedAt: String(record.sourceAddedAt || "").trim(),
-      sourceLinked: record.sourceLinked !== false,
       isPriority: record.isPriority === true || record.isPriority === 1 || record.isPriority === "1",
       gmvMonthlyTarget: Number.isFinite(parsedTarget) ? parsedTarget : null,
       completionReward: String(record.completionReward || "").trim(),
@@ -19961,6 +20092,8 @@ var _NUMERIC_COL_PATTERNS = [
       ...(recordId ? { recordId } : {}),
       reportMonth: String(source.reportMonth || "").trim(),
       merchantId: String(source.merchantId || "").trim(),
+      merchantName: String(source.merchantName || "").trim(),
+      businessManager: String(source.businessManager || "").trim(),
       isPriority: Boolean(source.isPriority),
       gmvMonthlyTarget: rawTarget ? Number(rawTarget) : null,
       completionReward: String(source.completionReward || "").trim()
@@ -19978,7 +20111,7 @@ var _NUMERIC_COL_PATTERNS = [
     }).format(date);
   }
 
-  function monthlyNewMerchantAddedText(value) {
+  function monthlyNewMerchantUpdatedText(value) {
     const text = String(value || "").trim();
     if (!text) return "—";
     const date = new Date(
@@ -19990,10 +20123,7 @@ var _NUMERIC_COL_PATTERNS = [
     return new Intl.DateTimeFormat(state.language === "zh" ? "zh-CN" : "en-US", {
       year: "numeric",
       month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
+      day: "numeric"
     }).format(date);
   }
 
@@ -20005,6 +20135,12 @@ var _NUMERIC_COL_PATTERNS = [
     els.monthlyNewMerchantsNotice.textContent = management.notice;
     els.monthlyNewMerchantsNotice.classList.toggle("hidden", !management.notice);
     els.monthlyNewMerchantsNotice.classList.toggle("error", management.noticeType === "error");
+  }
+
+  function setMonthlyNewMerchantFormError(message = "") {
+    if (!els.monthlyNewMerchantFormError) return;
+    els.monthlyNewMerchantFormError.textContent = String(message || "");
+    els.monthlyNewMerchantFormError.classList.toggle("hidden", !message);
   }
 
   function renderMonthlyNewMerchantsPage() {
@@ -20060,29 +20196,31 @@ var _NUMERIC_COL_PATTERNS = [
 
     els.monthlyNewMerchantsRows.innerHTML = rows.map((record) => {
       const merchantLabel = record.merchantName || t("monthlyNewMerchants.merchantName", "Merchant");
-      const saving = management.savingMerchantIds.has(record.merchantId);
-      const rowClasses = [
-        record.isPriority ? "is-priority" : "",
-        record.sourceLinked ? "" : "is-legacy"
-      ].filter(Boolean).join(" ");
+      const saving = management.submitting;
+      const rowClasses = record.isPriority ? "is-priority" : "";
       const priorityLabel = t("monthlyNewMerchants.priorityAction", "Priority recommendation");
-      const sourceLabel = record.sourceLinked
-        ? ""
-        : `<small>${escapeHtml(t("monthlyNewMerchants.sourceLegacy", "Historical record"))}</small>`;
-      const targetValue = record.gmvMonthlyTarget === null ? "" : String(record.gmvMonthlyTarget);
-      return `<tr class="${rowClasses}" data-monthly-new-merchant-id="${escapeHtml(record.merchantId)}">
+      const targetText = record.gmvMonthlyTarget === null
+        ? '<span class="monthly-new-merchant-muted">—</span>'
+        : escapeHtml(money(record.gmvMonthlyTarget));
+      const rewardText = record.completionReward
+        ? `<span class="monthly-new-merchant-notes">${escapeHtml(record.completionReward)}</span>`
+        : '<span class="monthly-new-merchant-muted">—</span>';
+      return `<tr class="${rowClasses}" data-monthly-new-merchant-id="${record.recordId}">
         <td class="monthly-new-merchant-priority-cell">
-          <button class="monthly-new-merchant-priority" type="button" data-monthly-new-merchant-action="priority" aria-pressed="${record.isPriority ? "true" : "false"}" aria-label="${escapeHtml(`${priorityLabel}: ${merchantLabel}`)}" ${!record.merchantId || saving ? "disabled" : ""}>
+          <button class="monthly-new-merchant-priority" type="button" data-monthly-new-merchant-action="priority" aria-pressed="${record.isPriority ? "true" : "false"}" aria-label="${escapeHtml(`${priorityLabel}: ${merchantLabel}`)}" ${!record.recordId || saving ? "disabled" : ""}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg>
           </button>
         </td>
-        <td><div class="monthly-new-merchant-name"><strong>${escapeHtml(merchantLabel)}</strong>${sourceLabel}</div></td>
+        <td><div class="monthly-new-merchant-name"><strong>${escapeHtml(merchantLabel)}</strong></div></td>
         <td>${record.merchantId ? escapeHtml(record.merchantId) : '<span class="monthly-new-merchant-muted">—</span>'}</td>
         <td>${record.businessManager ? escapeHtml(record.businessManager) : '<span class="monthly-new-merchant-muted">—</span>'}</td>
-        <td class="monthly-new-merchant-added">${escapeHtml(monthlyNewMerchantAddedText(record.addedAt))}</td>
-        <td class="monthly-new-merchant-number"><input class="monthly-new-merchant-target-input" data-monthly-new-merchant-field="gmvMonthlyTarget" type="number" inputmode="decimal" min="0" max="9999999999999999.99" step="0.01" value="${escapeHtml(targetValue)}" placeholder="0.00" ${!record.merchantId || saving ? "disabled" : ""}/></td>
-        <td><textarea class="monthly-new-merchant-reward-input" data-monthly-new-merchant-field="completionReward" maxlength="1000" rows="2" placeholder="${escapeHtml(t("monthlyNewMerchants.rewardPlaceholder", "Optional bonus, commission uplift, or other reward"))}" ${!record.merchantId || saving ? "disabled" : ""}>${escapeHtml(record.completionReward)}</textarea></td>
-        <td><button class="monthly-new-merchant-save-inline" type="button" data-monthly-new-merchant-action="save" ${!record.merchantId || saving ? "disabled" : ""}>${escapeHtml(saving ? (state.language === "zh" ? "保存中…" : "Saving…") : t("monthlyNewMerchants.save", "Save report"))}</button></td>
+        <td class="monthly-new-merchant-number">${targetText}</td>
+        <td>${rewardText}</td>
+        <td class="monthly-new-merchant-updated">${escapeHtml(monthlyNewMerchantUpdatedText(record.updatedAt || record.createdAt))}</td>
+        <td><div class="monthly-new-merchant-actions">
+          <button type="button" data-monthly-new-merchant-action="edit" ${saving ? "disabled" : ""}>${escapeHtml(t("monthlyNewMerchants.edit", "Edit"))}</button>
+          <button class="is-danger" type="button" data-monthly-new-merchant-action="delete" ${saving ? "disabled" : ""}>${escapeHtml(t("monthlyNewMerchants.delete", "Delete"))}</button>
+        </div></td>
       </tr>`;
     }).join("");
   }
@@ -20138,57 +20276,190 @@ var _NUMERIC_COL_PATTERNS = [
     }
   }
 
-  function monthlyNewMerchantPayloadFromRow(row, record, isPriority = record.isPriority) {
-    const targetInput = row.querySelector('[data-monthly-new-merchant-field="gmvMonthlyTarget"]');
-    const rewardInput = row.querySelector('[data-monthly-new-merchant-field="completionReward"]');
-    if (targetInput && !targetInput.checkValidity()) {
-      targetInput.reportValidity();
-      return null;
+  function openMonthlyNewMerchantDrawer(record = null) {
+    const management = state.monthlyNewMerchants;
+    const normalizedRecord = record ? normalizeMonthlyNewMerchantRecord(record) : null;
+    management.restoreFocus = document.activeElement;
+    management.drawerOpen = true;
+    management.editingRecordId = normalizedRecord ? normalizedRecord.recordId : null;
+    setMonthlyNewMerchantFormError("");
+    if (els.monthlyNewMerchantForm) els.monthlyNewMerchantForm.reset();
+    if (els.monthlyNewMerchantRecordId) {
+      els.monthlyNewMerchantRecordId.value = normalizedRecord ? String(normalizedRecord.recordId) : "";
     }
-    return buildMonthlyNewMerchantPayload({
-      recordId: record.recordId,
-      reportMonth: record.reportMonth,
-      merchantId: record.merchantId,
-      isPriority,
-      gmvMonthlyTarget: targetInput ? targetInput.value : record.gmvMonthlyTarget,
-      completionReward: rewardInput ? rewardInput.value : record.completionReward
+    if (els.monthlyNewMerchantReportMonth) {
+      els.monthlyNewMerchantReportMonth.value = normalizedRecord
+        ? normalizedRecord.reportMonth
+        : management.month;
+    }
+    if (els.monthlyNewMerchantId) els.monthlyNewMerchantId.value = normalizedRecord ? normalizedRecord.merchantId : "";
+    if (els.monthlyNewMerchantName) els.monthlyNewMerchantName.value = normalizedRecord ? normalizedRecord.merchantName : "";
+    if (els.monthlyNewMerchantManager) els.monthlyNewMerchantManager.value = normalizedRecord ? normalizedRecord.businessManager : "";
+    if (els.monthlyNewMerchantPriority) {
+      els.monthlyNewMerchantPriority.checked = Boolean(normalizedRecord && normalizedRecord.isPriority);
+    }
+    if (els.monthlyNewMerchantGmvTarget) {
+      els.monthlyNewMerchantGmvTarget.value = normalizedRecord && normalizedRecord.gmvMonthlyTarget !== null
+        ? String(normalizedRecord.gmvMonthlyTarget)
+        : "";
+    }
+    if (els.monthlyNewMerchantReward) {
+      els.monthlyNewMerchantReward.value = normalizedRecord ? normalizedRecord.completionReward : "";
+    }
+    if (els.monthlyNewMerchantDrawerTitle) {
+      els.monthlyNewMerchantDrawerTitle.textContent = normalizedRecord
+        ? t("monthlyNewMerchants.editTitle", "Edit new merchant")
+        : t("monthlyNewMerchants.addTitle", "Add new merchant");
+    }
+    if (els.monthlyNewMerchantDrawerBackdrop) {
+      els.monthlyNewMerchantDrawerBackdrop.classList.remove("hidden");
+      els.monthlyNewMerchantDrawerBackdrop.setAttribute("aria-hidden", "false");
+    }
+    document.body.classList.add("monthly-new-merchant-drawer-open");
+    window.requestAnimationFrame(() => {
+      if (els.monthlyNewMerchantName) els.monthlyNewMerchantName.focus();
     });
   }
 
-  async function saveMonthlyNewMerchantRow(row, record, { togglePriority = false } = {}) {
+  function closeMonthlyNewMerchantDrawer({ restoreFocus = true } = {}) {
     const management = state.monthlyNewMerchants;
-    if (!record.merchantId || management.savingMerchantIds.has(record.merchantId)) return;
-    const requestedMonth = record.reportMonth;
-    const payload = monthlyNewMerchantPayloadFromRow(
-      row,
-      record,
-      togglePriority ? !record.isPriority : record.isPriority
-    );
-    if (!payload) return;
-    management.savingMerchantIds.add(record.merchantId);
+    management.drawerOpen = false;
+    management.editingRecordId = null;
+    if (els.monthlyNewMerchantDrawerBackdrop) {
+      els.monthlyNewMerchantDrawerBackdrop.classList.add("hidden");
+      els.monthlyNewMerchantDrawerBackdrop.setAttribute("aria-hidden", "true");
+    }
+    document.body.classList.remove("monthly-new-merchant-drawer-open");
+    setMonthlyNewMerchantFormError("");
+    if (
+      restoreFocus
+      && management.restoreFocus
+      && typeof management.restoreFocus.focus === "function"
+    ) {
+      management.restoreFocus.focus();
+    }
+    management.restoreFocus = null;
+  }
+
+  function trapMonthlyNewMerchantDrawerFocus(event) {
+    if (
+      event.key !== "Tab"
+      || !state.monthlyNewMerchants.drawerOpen
+      || !els.monthlyNewMerchantDrawer
+    ) return false;
+    const focusable = Array.from(els.monthlyNewMerchantDrawer.querySelectorAll(
+      "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    )).filter((element) => !element.closest(".hidden"));
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
+
+  async function submitMonthlyNewMerchant(event) {
+    event.preventDefault();
+    const management = state.monthlyNewMerchants;
+    if (management.submitting || !els.monthlyNewMerchantForm) return;
+    if (!els.monthlyNewMerchantForm.reportValidity()) return;
+    const payload = buildMonthlyNewMerchantPayload({
+      recordId: els.monthlyNewMerchantRecordId && els.monthlyNewMerchantRecordId.value,
+      reportMonth: els.monthlyNewMerchantReportMonth && els.monthlyNewMerchantReportMonth.value,
+      merchantId: els.monthlyNewMerchantId && els.monthlyNewMerchantId.value,
+      merchantName: els.monthlyNewMerchantName && els.monthlyNewMerchantName.value,
+      businessManager: els.monthlyNewMerchantManager && els.monthlyNewMerchantManager.value,
+      isPriority: els.monthlyNewMerchantPriority && els.monthlyNewMerchantPriority.checked,
+      gmvMonthlyTarget: els.monthlyNewMerchantGmvTarget && els.monthlyNewMerchantGmvTarget.value,
+      completionReward: els.monthlyNewMerchantReward && els.monthlyNewMerchantReward.value
+    });
+    management.submitting = true;
+    setMonthlyNewMerchantFormError("");
+    if (els.monthlyNewMerchantSave) {
+      els.monthlyNewMerchantSave.disabled = true;
+      els.monthlyNewMerchantSave.textContent = state.language === "zh" ? "保存中…" : "Saving…";
+    }
+    try {
+      await requestMonthlyNewMerchants(payload);
+      closeMonthlyNewMerchantDrawer({ restoreFocus: false });
+      management.loadedMonth = "";
+      await loadMonthlyNewMerchants({ force: true });
+      setMonthlyNewMerchantNotice(
+        t("monthlyNewMerchants.saved", "Merchant information and priority were saved to the database.")
+      );
+      if (els.monthlyNewMerchantAdd) els.monthlyNewMerchantAdd.focus();
+    } catch (error) {
+      setMonthlyNewMerchantFormError(error && error.message ? error.message : String(error));
+    } finally {
+      management.submitting = false;
+      if (els.monthlyNewMerchantSave) {
+        els.monthlyNewMerchantSave.disabled = false;
+        els.monthlyNewMerchantSave.textContent = t("monthlyNewMerchants.save", "Save merchant");
+      }
+      renderMonthlyNewMerchantsPage();
+    }
+  }
+
+  async function toggleMonthlyNewMerchantPriority(record) {
+    const management = state.monthlyNewMerchants;
+    const normalizedRecord = normalizeMonthlyNewMerchantRecord(record);
+    if (!normalizedRecord.recordId || management.submitting) return;
+    management.submitting = true;
     setMonthlyNewMerchantNotice("");
     renderMonthlyNewMerchantsPage();
     try {
-      const response = await requestMonthlyNewMerchants(payload);
-      if (requestedMonth !== management.month) return;
+      const response = await requestMonthlyNewMerchants(buildMonthlyNewMerchantPayload({
+        ...normalizedRecord,
+        isPriority: !normalizedRecord.isPriority
+      }));
       const saved = response.record ? normalizeMonthlyNewMerchantRecord(response.record) : null;
       if (saved) {
         management.records = management.records.map((item) => (
-          item.merchantId === saved.merchantId ? saved : item
+          Number(item.recordId) === saved.recordId ? saved : item
         ));
       } else {
         management.loadedMonth = "";
         await loadMonthlyNewMerchants({ force: true });
       }
       setMonthlyNewMerchantNotice(
-        t("monthlyNewMerchants.saved", "Priority, GMV target, and merchant reward were saved to the database.")
+        t("monthlyNewMerchants.saved", "Merchant information and priority were saved to the database.")
       );
     } catch (error) {
-      if (requestedMonth === management.month) {
-        setMonthlyNewMerchantNotice(error && error.message ? error.message : String(error), "error");
-      }
+      setMonthlyNewMerchantNotice(error && error.message ? error.message : String(error), "error");
     } finally {
-      management.savingMerchantIds.delete(record.merchantId);
+      management.submitting = false;
+      renderMonthlyNewMerchantsPage();
+    }
+  }
+
+  async function deleteMonthlyNewMerchant(record) {
+    const management = state.monthlyNewMerchants;
+    const normalizedRecord = normalizeMonthlyNewMerchantRecord(record);
+    if (!normalizedRecord.recordId || management.submitting) return;
+    const prompt = t("monthlyNewMerchants.deleteConfirm", "Delete this monthly new merchant record?");
+    if (!window.confirm(`${prompt}\n${normalizedRecord.merchantName}`)) return;
+    management.submitting = true;
+    setMonthlyNewMerchantNotice("");
+    renderMonthlyNewMerchantsPage();
+    try {
+      await requestMonthlyNewMerchants({ action: "delete", recordId: normalizedRecord.recordId });
+      management.loadedMonth = "";
+      await loadMonthlyNewMerchants({ force: true });
+      setMonthlyNewMerchantNotice(
+        t("monthlyNewMerchants.deleted", "The merchant record was deleted from the database.")
+      );
+    } catch (error) {
+      setMonthlyNewMerchantNotice(error && error.message ? error.message : String(error), "error");
+    } finally {
+      management.submitting = false;
       renderMonthlyNewMerchantsPage();
     }
   }
@@ -20197,14 +20468,19 @@ var _NUMERIC_COL_PATTERNS = [
     const button = event.target.closest("[data-monthly-new-merchant-action]");
     if (!button) return;
     const row = button.closest("[data-monthly-new-merchant-id]");
-    const merchantId = String(row && row.dataset.monthlyNewMerchantId || "");
+    const recordId = Number(row && row.dataset.monthlyNewMerchantId) || 0;
     const record = state.monthlyNewMerchants.records.find(
-      (item) => item.merchantId === merchantId
+      (item) => Number(item.recordId) === recordId
     );
     if (!record) return;
-    saveMonthlyNewMerchantRow(row, record, {
-      togglePriority: button.dataset.monthlyNewMerchantAction === "priority"
-    });
+    const action = button.dataset.monthlyNewMerchantAction;
+    if (action === "priority") {
+      toggleMonthlyNewMerchantPriority(record);
+    } else if (action === "edit") {
+      openMonthlyNewMerchantDrawer(record);
+    } else if (action === "delete") {
+      deleteMonthlyNewMerchant(record);
+    }
   }
 
   function updateReportsNavState() {
@@ -20333,6 +20609,9 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function switchPage(page) {
+    if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.drawerOpen) {
+      closeMonthlyNewMerchantDrawer({ restoreFocus: false });
+    }
     state.page = page;
     updatePageModeClass(page);
     if (page !== "tier") {
@@ -20574,15 +20853,25 @@ var _NUMERIC_COL_PATTERNS = [
         renderMonthlyNewMerchantsPage();
       });
     }
-    if (els.monthlyNewMerchantsRefresh) {
-      els.monthlyNewMerchantsRefresh.addEventListener("click", () => {
-        state.monthlyNewMerchants.loadedMonth = "";
-        setMonthlyNewMerchantNotice("");
-        loadMonthlyNewMerchants({ force: true });
-      });
+    if (els.monthlyNewMerchantAdd) {
+      els.monthlyNewMerchantAdd.addEventListener("click", () => openMonthlyNewMerchantDrawer());
     }
     if (els.monthlyNewMerchantsRows) {
       els.monthlyNewMerchantsRows.addEventListener("click", handleMonthlyNewMerchantTableClick);
+    }
+    if (els.monthlyNewMerchantForm) {
+      els.monthlyNewMerchantForm.addEventListener("submit", submitMonthlyNewMerchant);
+    }
+    if (els.monthlyNewMerchantDrawerClose) {
+      els.monthlyNewMerchantDrawerClose.addEventListener("click", () => closeMonthlyNewMerchantDrawer());
+    }
+    if (els.monthlyNewMerchantCancel) {
+      els.monthlyNewMerchantCancel.addEventListener("click", () => closeMonthlyNewMerchantDrawer());
+    }
+    if (els.monthlyNewMerchantDrawerBackdrop) {
+      els.monthlyNewMerchantDrawerBackdrop.addEventListener("click", (event) => {
+        if (event.target === els.monthlyNewMerchantDrawerBackdrop) closeMonthlyNewMerchantDrawer();
+      });
     }
     els.targetMonthSelect.addEventListener("change", () => {
       state.targetFilters.month = els.targetMonthSelect.value;
@@ -20698,8 +20987,13 @@ var _NUMERIC_COL_PATTERNS = [
     els.sheetExpandedBackdrop.addEventListener("click", () => closeTierSheetOverlay());
     document.addEventListener("keydown", (event) => {
       if (handleMobileNavigationKeydown(event)) return;
+      if (trapMonthlyNewMerchantDrawerFocus(event)) return;
       if (trapTier1AdditionsOverlayFocus(event)) return;
       if (trapTier1MerchantDialogFocus(event)) return;
+      if (event.key === "Escape" && state.monthlyNewMerchants.drawerOpen) {
+        closeMonthlyNewMerchantDrawer();
+        return;
+      }
       if (event.key === "Escape" && state.tier1Management.panelOpen) {
         closeTier1AdditionsOverlay();
         return;
@@ -20872,10 +21166,34 @@ var _NUMERIC_COL_PATTERNS = [
       _hideManagerDropdown();
       renderPublishersPage();
     });
-    // 文本输入框仅同步 state，不触发渲染（点击搜索按钮才渲染）
+    // 商家搜索即时返回关联媒体；短延迟避免连续输入时反复重绘大表。
     els.publisherMerchantSearch.addEventListener("input", function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+      if (state.publisherSelectedId) _setSelectedPublisher(null);
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = setTimeout(function () {
+        _publisherMerchantSearchTimer = null;
+        renderPublishersPage();
+      }, 180);
     });
+    els.publisherMerchantSearch.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = null;
+      state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+      renderPublishersPage();
+    });
+    if (els.publisherAffinityEmpty) {
+      els.publisherAffinityEmpty.addEventListener("click", function (event) {
+        var option = event.target.closest("[data-publisher-id]");
+        if (!option) return;
+        var publisher = _publisherById(_publishersCache, option.getAttribute("data-publisher-id"));
+        if (!publisher) return;
+        _setSelectedPublisher(publisher);
+        renderPublishersPage();
+      });
+    }
     if (els.publisherProductSearch) {
       els.publisherProductSearch.addEventListener("input", function () {
         state.publisherProductSearch = els.publisherProductSearch.value;
@@ -20919,6 +21237,8 @@ var _NUMERIC_COL_PATTERNS = [
       });
     }
     els.publisherSearchBtn.addEventListener("click", function () {
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = null;
       renderPublishersPage();
     });
     // 日期快捷按钮
@@ -20957,6 +21277,8 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublishersPage();
     });
     els.publisherResetBtn.addEventListener("click", function () {
+      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+      _publisherMerchantSearchTimer = null;
       state.publisherMarket = "all";
       state.publisherNetwork = "all";
       state.publisherLinkType = "all";
@@ -21393,6 +21715,7 @@ var _NUMERIC_COL_PATTERNS = [
       contextColumnLabels: () => contextColumnsFor().map((column) => column.label),
       reportHelpMarkdown: (en) => (en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD),
       formatSheetCell,
+      aovCellHtml,
       tierSheetExportColumns,
       worksheetXml,
       stylesXml,
@@ -21459,6 +21782,9 @@ var _NUMERIC_COL_PATTERNS = [
       dbDailyTrendChartHtml,
       publisherManagerMatches: _publisherManagerMatches,
       publishersForManager: _publishersForManager,
+      filteredPublishers: getFilteredPublishers,
+      publisherMerchantMatches: _publisherMerchantMatches,
+      publisherMerchantAssociationSummary: _publisherMerchantAssociationSummary,
       publisherTierOptions: _publisherTierOptions,
       publisherMetricAffEpc: _publisherMetricAffEpc,
       publisherMetricEpc: _publisherMetricAffEpc,

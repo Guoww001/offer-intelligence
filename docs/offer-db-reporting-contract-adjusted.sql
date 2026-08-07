@@ -57,6 +57,25 @@ CREATE TABLE cnpscy_oi_tier_visual_status (
   KEY idx_cnpscy_oi_tier_visual_status_source (source)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS cnpscy_oi_merchant_aov_estimates (
+  estimateId          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  merchantId          VARCHAR(32) NOT NULL,
+  merchantName        VARCHAR(255) DEFAULT NULL,
+  aov                 DECIMAL(12,6) NOT NULL,
+  currency            VARCHAR(8) DEFAULT NULL,
+  sampleProductCount  SMALLINT UNSIGNED NOT NULL DEFAULT 5,
+  method              VARCHAR(64) NOT NULL DEFAULT 'five_product_average',
+  sourceFile          VARCHAR(255) NOT NULL,
+  sourceDate          DATE NOT NULL,
+  importedBy          VARCHAR(128) DEFAULT NULL,
+  createdAt           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (estimateId),
+  UNIQUE KEY uq_merchant_aov_source_date (merchantId, sourceDate),
+  KEY idx_merchant_aov_latest (merchantId, sourceDate),
+  KEY idx_merchant_aov_method (method)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 3. ????????????????
 DROP TABLE IF EXISTS cnpscy_oi_category;
 CREATE TABLE cnpscy_oi_category (

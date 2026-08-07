@@ -37,6 +37,27 @@ TIER1_NAME = "Tier 1"
 DEFAULT_AFF_PROPORTION = 0.75
 MANAGED_TIER_NAMES = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
 MONTH_KEY_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+MERCHANT_AOV_ESTIMATES_TABLE = "cnpscy_oi_merchant_aov_estimates"
+MERCHANT_AOV_ESTIMATES_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS cnpscy_oi_merchant_aov_estimates (
+  estimateId          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  merchantId          VARCHAR(32) NOT NULL,
+  merchantName        VARCHAR(255) DEFAULT NULL,
+  aov                 DECIMAL(12, 6) NOT NULL,
+  currency            VARCHAR(8) DEFAULT NULL,
+  sampleProductCount  SMALLINT UNSIGNED NOT NULL DEFAULT 5,
+  method              VARCHAR(64) NOT NULL DEFAULT 'five_product_average',
+  sourceFile          VARCHAR(255) NOT NULL,
+  sourceDate          DATE NOT NULL,
+  importedBy          VARCHAR(128) DEFAULT NULL,
+  createdAt           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (estimateId),
+  UNIQUE KEY uq_merchant_aov_source_date (merchantId, sourceDate),
+  KEY idx_merchant_aov_latest (merchantId, sourceDate),
+  KEY idx_merchant_aov_method (method)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+""".strip()
 MONTHLY_NEW_MERCHANTS_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants (
   recordId         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -44,6 +65,7 @@ CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants (
   merchantId       VARCHAR(64) DEFAULT NULL,
   merchantName     VARCHAR(180) NOT NULL,
   businessManager  VARCHAR(128) DEFAULT NULL,
+  isPriority       TINYINT(1) NOT NULL DEFAULT 0,
   gmvMonthlyTarget DECIMAL(18, 2) DEFAULT NULL,
   completionReward VARCHAR(1000) DEFAULT NULL,
   createdBy        VARCHAR(128) DEFAULT NULL,
@@ -588,6 +610,94 @@ def commission_amount_epc(commission: Any, clicks: Any) -> float:
     if clicks_value <= 0:
         return 0.0
     return to_float(commission) / clicks_value
+
+
+def latest_merchant_aov_estimates(
+    conn,
+    merchant_ids: list[Any] | set[Any] | tuple[Any, ...],
+) -> dict[str, dict[str, Any]]:
+    """Return the newest persisted five-product AOV estimate per merchant."""
+    required_columns = {
+        "estimateId", "merchantId", "aov", "currency", "sampleProductCount",
+        "method", "sourceFile", "sourceDate",
+    }
+    if not required_columns.issubset(table_columns(conn, MERCHANT_AOV_ESTIMATES_TABLE)):
+        return {}
+
+    normalized_ids = {
+        str(merchant_id or "").strip()
+        for merchant_id in merchant_ids
+        if DIGITS_RE.match(str(merchant_id or "").strip())
+    }
+    if not normalized_ids:
+        return {}
+
+    result: dict[str, dict[str, Any]] = {}
+    rows = fetch_all(
+        conn,
+        f"""
+        SELECT e.merchantId, e.aov, e.currency, e.sampleProductCount,
+               e.method, e.sourceFile, e.sourceDate
+        FROM {q(MERCHANT_AOV_ESTIMATES_TABLE)} e
+        LEFT JOIN {q(MERCHANT_AOV_ESTIMATES_TABLE)} newer
+          ON newer.merchantId = e.merchantId
+         AND (
+              newer.sourceDate > e.sourceDate
+              OR (newer.sourceDate = e.sourceDate AND newer.estimateId > e.estimateId)
+         )
+        WHERE newer.estimateId IS NULL
+        """,
+    )
+    for row in rows:
+        merchant_id = str(row.get("merchantId") or "").strip()
+        if merchant_id in normalized_ids:
+            result[merchant_id] = row
+    return result
+
+
+def resolve_merchant_aov(
+    orders: Any,
+    revenue: Any,
+    estimate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve an AOV value and provenance without leaving inference to the UI."""
+    order_count = to_float(orders)
+    revenue_amount = to_float(revenue)
+    if order_count > 0 and revenue_amount > 0:
+        return {
+            "aov": clean_decimal(revenue_amount / order_count, 6),
+            "aovType": "actual",
+            "aovSource": "cnpscy_amazon_order",
+            "aovMethod": "revenue_divided_by_orders",
+            "aovCurrency": None,
+            "aovSampleProductCount": None,
+            "aovSourceFile": None,
+            "aovSourceDate": None,
+        }
+
+    estimate_value = to_float((estimate or {}).get("aov"))
+    if estimate_value > 0:
+        return {
+            "aov": clean_decimal(estimate_value, 6),
+            "aovType": "tentative",
+            "aovSource": MERCHANT_AOV_ESTIMATES_TABLE,
+            "aovMethod": (estimate or {}).get("method") or "five_product_average",
+            "aovCurrency": (estimate or {}).get("currency") or None,
+            "aovSampleProductCount": int((estimate or {}).get("sampleProductCount") or 5),
+            "aovSourceFile": (estimate or {}).get("sourceFile") or None,
+            "aovSourceDate": (estimate or {}).get("sourceDate") or None,
+        }
+
+    return {
+        "aov": None,
+        "aovType": "unavailable",
+        "aovSource": None,
+        "aovMethod": None,
+        "aovCurrency": None,
+        "aovSampleProductCount": None,
+        "aovSourceFile": None,
+        "aovSourceDate": None,
+    }
 
 
 def read_static_merchant_ids() -> list[str]:
@@ -1921,13 +2031,24 @@ def _monthly_new_merchant_values(
     )
     if merchant_id and not DIGITS_RE.match(merchant_id):
         raise ValueError("merchantId must be numeric")
-    if not merchant_id:
-        raise ValueError("merchantId is required")
+
+    merchant_name = _monthly_new_merchant_text(
+        payload,
+        "merchantName",
+        required=True,
+        maximum=180,
+    )
     actor = str(updated_by or "offer-intelligence-ui").strip()[:128] or "offer-intelligence-ui"
     return {
         "recordId": _monthly_new_merchant_record_id(payload.get("recordId")),
         "reportMonth": report_month,
         "merchantId": merchant_id,
+        "merchantName": merchant_name,
+        "businessManager": _monthly_new_merchant_text(
+            payload,
+            "businessManager",
+            maximum=128,
+        ),
         "isPriority": _monthly_new_merchant_priority(payload.get("isPriority")),
         "gmvMonthlyTarget": _monthly_new_merchant_gmv_target(
             payload.get("gmvMonthlyTarget")
@@ -1951,6 +2072,15 @@ def ensure_monthly_new_merchants_schema(conn) -> None:
         with conn.cursor() as cursor:
             cursor.execute(MONTHLY_NEW_MERCHANTS_TABLE_DDL)
             cursor.execute(MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL)
+        TABLE_COLUMNS_CACHE.pop("cnpscy_oi_monthly_new_merchants", None)
+        if "isPriority" not in table_columns(conn, "cnpscy_oi_monthly_new_merchants"):
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+                    "ADD COLUMN isPriority TINYINT(1) NOT NULL DEFAULT 0 "
+                    "AFTER businessManager"
+                )
+            TABLE_COLUMNS_CACHE.pop("cnpscy_oi_monthly_new_merchants", None)
         _monthly_new_merchants_schema_ready = True
 
 
@@ -1964,6 +2094,7 @@ def _monthly_new_merchant_record(conn, record_id: int) -> dict[str, Any] | None:
             merchantId,
             merchantName,
             businessManager,
+            isPriority,
             gmvMonthlyTarget,
             completionReward,
             createdBy,
@@ -2296,30 +2427,7 @@ def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
     report_month = normalize_monthly_new_merchant_month(month)
     with db_connection() as conn:
         ensure_monthly_new_merchants_schema(conn)
-        source_rows, source_config = _monthly_new_merchant_source_rows(conn, report_month)
-        annotation_rows = fetch_all(
-            conn,
-            f"""
-            SELECT
-                recordId,
-                reportMonth,
-                merchantId,
-                merchantNameSnapshot,
-                businessManagerSnapshot,
-                sourceAddedAt,
-                isPriority,
-                gmvMonthlyTarget,
-                completionReward,
-                createdBy,
-                updatedBy,
-                createdAt,
-                updatedAt
-            FROM {MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE}
-            WHERE reportMonth = %s
-            """,
-            (report_month,),
-        )
-        legacy_rows = fetch_all(
+        rows = fetch_all(
             conn,
             """
             SELECT
@@ -2328,6 +2436,7 @@ def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
                 merchantId,
                 merchantName,
                 businessManager,
+                isPriority,
                 gmvMonthlyTarget,
                 completionReward,
                 createdBy,
@@ -2336,50 +2445,16 @@ def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
                 updatedAt
             FROM cnpscy_oi_monthly_new_merchants
             WHERE reportMonth = %s
+            ORDER BY
+                isPriority DESC,
+                updatedAt DESC,
+                merchantName ASC,
+                recordId DESC
             """,
             (report_month,),
         )
 
-    annotation_by_id = {
-        str(row.get("merchantId") or "").strip(): row
-        for row in annotation_rows
-        if str(row.get("merchantId") or "").strip()
-    }
-    legacy_by_id = {
-        str(row.get("merchantId") or "").strip(): row
-        for row in legacy_rows
-        if str(row.get("merchantId") or "").strip()
-    }
-    records = []
-    source_ids = set()
-    for source_row in source_rows:
-        merchant_id = str(source_row.get("merchantId") or "").strip()
-        if not merchant_id:
-            continue
-        source_ids.add(merchant_id)
-        records.append(
-            _monthly_new_merchant_merged_record(
-                source_row,
-                annotation_by_id.get(merchant_id),
-                legacy_by_id.get(merchant_id),
-            )
-        )
-
-    for legacy_row in legacy_rows:
-        merchant_id = str(legacy_row.get("merchantId") or "").strip()
-        if merchant_id and merchant_id in source_ids:
-            continue
-        records.append(
-            _monthly_new_merchant_merged_record(
-                None,
-                annotation_by_id.get(merchant_id) if merchant_id else None,
-                legacy_row,
-            )
-        )
-
-    records.sort(key=lambda record: str(record.get("merchantName") or "").casefold())
-    records.sort(key=lambda record: str(record.get("addedAt") or ""), reverse=True)
-    records.sort(key=lambda record: bool(record.get("isPriority")), reverse=True)
+    records = [_monthly_new_merchant_api_record(row) for row in rows]
     gmv_target_total = sum(
         float(record.get("gmvMonthlyTarget") or 0)
         for record in records
@@ -2394,11 +2469,7 @@ def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
         ),
         "gmvTargetTotal": gmv_target_total,
         "priorityCount": sum(1 for record in records if record.get("isPriority")),
-        "annotatedCount": len(annotation_rows),
-        "source": "cnpscy_advert",
-        "annotationSource": MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE,
-        "sourceDateField": source_config["sourceDateColumn"],
-        "sourceBdField": source_config.get("sourceBdColumn") or "cnpscy_oi_offer_sheet_metadata.businessManager",
+        "source": "cnpscy_oi_monthly_new_merchants",
         "records": records,
     }
 
@@ -2409,97 +2480,126 @@ def upsert_monthly_new_merchant(
     updated_by: str,
 ) -> dict[str, Any]:
     values = _monthly_new_merchant_values(payload, updated_by=updated_by)
+    record_id = values["recordId"]
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
     with db_connection() as conn:
         ensure_monthly_new_merchants_schema(conn)
-        source_rows, _source_config = _monthly_new_merchant_source_rows(
-            conn,
-            values["reportMonth"],
-            values["merchantId"],
-        )
-        source = source_rows[0] if source_rows else None
-        if not source:
-            legacy = fetch_one(
-                conn,
-                """
-                SELECT merchantId, merchantName, businessManager, createdAt
-                FROM cnpscy_oi_monthly_new_merchants
-                WHERE reportMonth = %s AND merchantId = %s
-                LIMIT 1
-                """,
-                (values["reportMonth"], values["merchantId"]),
-            )
-            if legacy:
-                source = {
-                    "merchantId": legacy.get("merchantId"),
-                    "merchantName": legacy.get("merchantName"),
-                    "businessManager": legacy.get("businessManager"),
-                    "sourceAddedAt": legacy.get("createdAt"),
-                }
-        if not source:
-            return {
-                "ok": False,
-                "code": "merchant_not_found",
-                "error": "The merchant is not linked to the selected month's YeahPromos records.",
-            }
-
         try:
             conn.begin()
-            existing = _monthly_new_merchant_annotation_record(
-                conn,
-                values["reportMonth"],
-                values["merchantId"],
-            )
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    f"""
-                    INSERT INTO {MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE}
-                        (
-                            reportMonth,
-                            merchantId,
-                            merchantNameSnapshot,
-                            businessManagerSnapshot,
-                            sourceAddedAt,
-                            isPriority,
-                            gmvMonthlyTarget,
-                            completionReward,
-                            createdBy,
-                            updatedBy,
-                            createdAt,
-                            updatedAt
-                        )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        merchantNameSnapshot = VALUES(merchantNameSnapshot),
-                        businessManagerSnapshot = VALUES(businessManagerSnapshot),
-                        sourceAddedAt = VALUES(sourceAddedAt),
-                        isPriority = VALUES(isPriority),
-                        gmvMonthlyTarget = VALUES(gmvMonthlyTarget),
-                        completionReward = VALUES(completionReward),
-                        updatedBy = VALUES(updatedBy),
-                        updatedAt = VALUES(updatedAt)
+            if record_id is not None:
+                existing = fetch_one(
+                    conn,
+                    """
+                    SELECT recordId
+                    FROM cnpscy_oi_monthly_new_merchants
+                    WHERE recordId = %s
+                    LIMIT 1
+                    FOR UPDATE
                     """,
-                    (
-                        values["reportMonth"],
-                        values["merchantId"],
-                        str(source.get("merchantName") or "").strip()[:180] or None,
-                        str(source.get("businessManager") or "").strip()[:128] or None,
-                        source.get("sourceAddedAt"),
-                        int(values["isPriority"]),
-                        values["gmvMonthlyTarget"],
-                        values["completionReward"] or None,
-                        values["updatedBy"],
-                        values["updatedBy"],
-                        now,
-                        now,
-                    ),
+                    (record_id,),
                 )
-            record = _monthly_new_merchant_annotation_record(
-                conn,
+                if not existing:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "code": "record_not_found",
+                        "error": "Monthly new merchant record was not found.",
+                    }
+
+            duplicate_sql = """
+                SELECT recordId
+                FROM cnpscy_oi_monthly_new_merchants
+                WHERE reportMonth = %s
+                  AND (
+                    merchantName = %s
+            """
+            duplicate_params: list[Any] = [
                 values["reportMonth"],
-                values["merchantId"],
-            )
+                values["merchantName"],
+            ]
+            if values["merchantId"]:
+                duplicate_sql += " OR merchantId = %s"
+                duplicate_params.append(values["merchantId"])
+            duplicate_sql += ")"
+            if record_id is not None:
+                duplicate_sql += " AND recordId <> %s"
+                duplicate_params.append(record_id)
+            duplicate_sql += " LIMIT 1 FOR UPDATE"
+            duplicate = fetch_one(conn, duplicate_sql, tuple(duplicate_params))
+            if duplicate:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "duplicate_month_merchant",
+                    "error": "This merchant is already recorded for the selected month.",
+                }
+
+            with conn.cursor() as cursor:
+                if record_id is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO cnpscy_oi_monthly_new_merchants
+                            (
+                                reportMonth,
+                                merchantId,
+                                merchantName,
+                                businessManager,
+                                isPriority,
+                                gmvMonthlyTarget,
+                                completionReward,
+                                createdBy,
+                                updatedBy,
+                                createdAt,
+                                updatedAt
+                            )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            values["reportMonth"],
+                            values["merchantId"] or None,
+                            values["merchantName"],
+                            values["businessManager"] or None,
+                            int(values["isPriority"]),
+                            values["gmvMonthlyTarget"],
+                            values["completionReward"] or None,
+                            values["updatedBy"],
+                            values["updatedBy"],
+                            now,
+                            now,
+                        ),
+                    )
+                    record_id = int(cursor.lastrowid)
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE cnpscy_oi_monthly_new_merchants
+                        SET
+                            reportMonth = %s,
+                            merchantId = %s,
+                            merchantName = %s,
+                            businessManager = %s,
+                            isPriority = %s,
+                            gmvMonthlyTarget = %s,
+                            completionReward = %s,
+                            updatedBy = %s,
+                            updatedAt = %s
+                        WHERE recordId = %s
+                        """,
+                        (
+                            values["reportMonth"],
+                            values["merchantId"] or None,
+                            values["merchantName"],
+                            values["businessManager"] or None,
+                            int(values["isPriority"]),
+                            values["gmvMonthlyTarget"],
+                            values["completionReward"] or None,
+                            values["updatedBy"],
+                            now,
+                            record_id,
+                        ),
+                    )
+            record = _monthly_new_merchant_record(conn, int(record_id))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -2507,8 +2607,8 @@ def upsert_monthly_new_merchant(
 
     return {
         "ok": True,
-        "action": "updated" if existing else "created",
-        "record": _monthly_new_merchant_merged_record(source, record, None),
+        "action": "created" if values["recordId"] is None else "updated",
+        "record": _monthly_new_merchant_api_record(record),
     }
 
 
@@ -2535,6 +2635,7 @@ def delete_monthly_new_merchant(
                     merchantId,
                     merchantName,
                     businessManager,
+                    isPriority,
                     gmvMonthlyTarget,
                     completionReward,
                     createdBy,
@@ -2929,6 +3030,13 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
+        # Persisted five-product estimates are only used when the selected
+        # report range has neither positive orders nor positive revenue.
+        aov_estimate_map = latest_merchant_aov_estimates(
+            conn,
+            [row.get("merchantId") for row in core_offers],
+        )
+
         # Network fallback: ?? network ?????????????????
         missing_network_ids = [
             row.get("merchantId")
@@ -2954,7 +3062,11 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             o["epc"] = metrics.get("epc")
             o["allEpc"] = metrics.get("allEpc")
             o["affEpc"] = metrics.get("affEpc")
-            o["aov"] = metrics.get("aov")
+            o.update(resolve_merchant_aov(
+                metrics.get("orders"),
+                metrics.get("revenue"),
+                aov_estimate_map.get(mid),
+            ))
             o["conversionRate"] = metrics.get("conversionRate")
             o["payout"] = metrics.get("payout")
             o["affiliatePayout"] = metrics.get("affiliatePayout")
@@ -3272,6 +3384,13 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             ("allEpc", "EPC(All)"),
             ("affEpc", "EPC(Aff)"),
             ("aov", "AOV"),
+            ("aovType", "AOV Type"),
+            ("aovMethod", "AOV Method"),
+            ("aovSource", "AOV Source"),
+            ("aovSampleProductCount", "AOV Sample Products"),
+            ("aovCurrency", "AOV Currency"),
+            ("aovSourceDate", "AOV Source Date"),
+            ("aovSourceFile", "AOV Source File"),
             ("conversionRate", "Conversion"),
             ("clicks", "Clicks"),
             ("dpv", "DPV"),
@@ -3351,6 +3470,7 @@ def merge_tier_report_metrics(
     base_rows: list[dict[str, Any]],
     order_rows: list[dict[str, Any]],
     click_rows: list[dict[str, Any]],
+    aov_estimates: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Merge metrics using the same advertiser click rule as YeahPromos."""
     orders_by_merchant = _tier_report_metric_map(order_rows)
@@ -3376,6 +3496,11 @@ def merge_tier_report_metrics(
         aff_rate = all_rate * aff_proportion if all_rate else commission_rate_from_amount(revenue, aff_commission)
         all_epc = commission_amount_epc(all_commission, clicks)
         aff_epc = commission_amount_epc(aff_commission, clicks)
+        aov_details = resolve_merchant_aov(
+            orders,
+            revenue,
+            (aov_estimates or {}).get(merchant_id),
+        )
 
         row.update({
             "ALL Commission": clean_decimal(all_rate * 100, 4),
@@ -3386,7 +3511,14 @@ def merge_tier_report_metrics(
             "Backend EPC": clean_decimal(aff_epc, 6),
             "EPC(All)": clean_decimal(all_epc, 6),
             "EPC(Aff)": clean_decimal(aff_epc, 6),
-            "AOV": clean_decimal(revenue / orders if orders else 0, 6),
+            "AOV": aov_details["aov"],
+            "AOV Type": aov_details["aovType"],
+            "AOV Method": aov_details["aovMethod"],
+            "AOV Source": aov_details["aovSource"],
+            "AOV Sample Products": aov_details["aovSampleProductCount"],
+            "AOV Currency": aov_details["aovCurrency"],
+            "AOV Source Date": aov_details["aovSourceDate"],
+            "AOV Source File": aov_details["aovSourceFile"],
             "Conversion Rate": clean_decimal(orders / clicks if clicks else 0, 8),
             "Clicks": clean_decimal(clicks, 0),
             "DPV": clean_decimal(order.get("dpv"), 0),
@@ -3664,8 +3796,12 @@ def tier_sheet_payload(
             """,
             (tier_name, start_day, end_day),
         )
+        aov_estimates = latest_merchant_aov_estimates(
+            conn,
+            [row.get("Merchant ID") for row in base_rows],
+        )
 
-    rows = merge_tier_report_metrics(base_rows, order_rows, click_rows)
+    rows = merge_tier_report_metrics(base_rows, order_rows, click_rows, aov_estimates)
     headers = list(rows[0].keys()) if rows else []
     result = {
         "ok": True,
@@ -3683,6 +3819,7 @@ def tier_sheet_payload(
             "metricsTables": ["cnpscy_amazon_order", "cnpscy_amazon_click"],
             "merchantTables": ["cnpscy_advert", "cnpscy_advert_type", "cnpscy_oi_offer_sheet_metadata"],
             "tierTable": "cnpscy_oi_tier_assignments",
+            "aovEstimateTable": MERCHANT_AOV_ESTIMATES_TABLE,
         },
     }
     _tier_sheet_cache[cache_key] = (now, result)

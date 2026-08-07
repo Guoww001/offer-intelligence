@@ -50,6 +50,7 @@ TIER_VISUAL_STATUS_SOURCE_KEYS = [
 OFFERS_CACHE_PATH = ROOT / "protected_data" / "db_offers_cache.json"
 FEISHU_CATEGORIES_PATH = ROOT / "data" / "feishu_merchant_categories.csv"
 TIER1_AGENCIES_PATH = ROOT / "data" / "tier1_agencies.csv"
+MERCHANT_AOV_ESTIMATES_PATH = ROOT / "data" / "merchant_aov_estimates.csv"
 
 
 def load_offers_from_cache() -> list[dict]:
@@ -94,6 +95,15 @@ def load_tier1_agencies_csv() -> list[dict]:
         print(f"[warn] Tier 1 agency CSV not found at {TIER1_AGENCIES_PATH}, skipping")
         return []
     with TIER1_AGENCIES_PATH.open(encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def load_merchant_aov_estimates_csv() -> list[dict]:
+    """Read the versioned five-product AOV estimate observations."""
+    if not MERCHANT_AOV_ESTIMATES_PATH.exists():
+        print(f"[warn] AOV estimates CSV not found at {MERCHANT_AOV_ESTIMATES_PATH}, skipping")
+        return []
+    with MERCHANT_AOV_ESTIMATES_PATH.open(encoding="utf-8-sig", newline="") as f:
         return list(csv.DictReader(f))
 
 
@@ -179,6 +189,51 @@ def sync_tiers(conn, offers: list[dict]) -> int:
         })
     n = upsert(conn, "cnpscy_oi_tier_assignments", rows, ["merchantId"])
     print(f"  → upserted {n} rows")
+    return n
+
+
+def sync_merchant_aov_estimates(conn, source_rows: list[dict]) -> int:
+    """Persist every dated AOV observation; runtime reads the newest per merchant."""
+    print("[sync] cnpscy_oi_merchant_aov_estimates ...")
+    rows = []
+    seen: set[tuple[str, str]] = set()
+    for source_row in source_rows:
+        merchant_id = str(source_row.get("Merchant ID") or "").strip()
+        source_date = str(source_row.get("Source Date") or "").strip()
+        if not re.match(r"^\d+$", merchant_id):
+            continue
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", source_date):
+            raise ValueError(f"Invalid AOV source date for Merchant ID {merchant_id}: {source_date!r}")
+        key = (merchant_id, source_date)
+        if key in seen:
+            raise ValueError(f"Duplicate AOV observation for Merchant ID {merchant_id} on {source_date}")
+        seen.add(key)
+        try:
+            aov = float(source_row.get("Tentative AOV") or 0)
+            sample_count = int(source_row.get("Sample Product Count") or 5)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Invalid AOV observation for Merchant ID {merchant_id}") from error
+        if aov <= 0 or sample_count <= 0:
+            raise ValueError(f"AOV and sample count must be positive for Merchant ID {merchant_id}")
+        rows.append({
+            "merchantId": merchant_id,
+            "merchantName": str(source_row.get("Merchant Name") or "").strip() or None,
+            "aov": round(aov, 6),
+            "currency": str(source_row.get("Currency") or "").strip().upper() or None,
+            "sampleProductCount": sample_count,
+            "method": str(source_row.get("Method") or "five_product_average").strip(),
+            "sourceFile": str(source_row.get("Source File") or "").strip(),
+            "sourceDate": source_date,
+            "importedBy": "sync_oi_tables.py",
+        })
+    n = upsert(
+        conn,
+        "cnpscy_oi_merchant_aov_estimates",
+        rows,
+        ["merchantId", "sourceDate"],
+    )
+    merchant_count = len({row["merchantId"] for row in rows})
+    print(f"  -> upserted {n} dated observations for {merchant_count} merchants")
     return n
 
 
@@ -847,6 +902,7 @@ def main(argv: list[str] | None = None):
 
     print("[load] product_name_keywords_t1_t3.csv ...")
     keyword_rows = load_product_keywords_csv()
+    aov_rows = load_merchant_aov_estimates_csv()
     print(f"  → {len(keyword_rows)} merchants\n")
 
     # 2. 连接数据库
@@ -874,6 +930,8 @@ def main(argv: list[str] | None = None):
         print()
         n5 = sync_sheet_metadata(conn, sheets, offers)
         print()
+        n6 = sync_merchant_aov_estimates(conn, aov_rows)
+        print()
 
         # 4. 汇总
         print("=== sync complete ===")
@@ -888,6 +946,7 @@ def main(argv: list[str] | None = None):
         )
         print(f"  cnpscy_oi_product_keywords:      {n4} merchants")
         print(f"  cnpscy_oi_offer_sheet_metadata:  {n5} merchants")
+        print(f"  cnpscy_oi_merchant_aov_estimates: {n6} dated observations")
         print(f"  cnpscy_oi_payment_records:       (handled by sync_levanta_payments.py)")
 
     finally:

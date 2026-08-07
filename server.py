@@ -503,7 +503,7 @@ class Handler(BaseHTTPRequestHandler):
             if result.get("ok"):
                 self.send_json(200, result)
                 return
-            status = 404 if result.get("code") in {"record_not_found", "merchant_not_found"} else 409
+            status = 404 if result.get("code") == "record_not_found" else 409
             self.send_json(status, result)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_json(400, {
