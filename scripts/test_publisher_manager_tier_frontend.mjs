@@ -89,6 +89,40 @@ assertEqual(
   "manager matching should stay case-insensitive"
 );
 
+const merchantAssociationData = {
+  merchantNameMap: {
+    "380813": "MERACHFITNESS",
+    "380945": "Merach",
+    "123456": "Another Merchant"
+  },
+  publishers: [
+    { userId: 11, userName: "Media Eleven", adminName: "Dora Long", merchantIds: [380945], markets: {}, networks: [], linkTypes: {}, total: { sales: 100 } },
+    { userId: 12, userName: "Media Twelve", adminName: "Alex Chen", merchantIds: [380813, 380945], markets: {}, networks: [], linkTypes: {}, total: { sales: 80 } },
+    { userId: 13, userName: "Merach Fan", adminName: "Alex Chen", merchantIds: [123456], markets: {}, networks: [], linkTypes: {}, total: { sales: 60 } }
+  ]
+};
+hooks.setPublisherPortfolioFilters({
+  market: "all",
+  network: "all",
+  merchantSearch: "merach"
+});
+const merchantPublishers = hooks.filteredPublishers(merchantAssociationData);
+assertEqual(
+  merchantPublishers.map((publisher) => publisher.userId),
+  [11, 12],
+  "merchant search should return associated publishers without matching publisher names"
+);
+const merchantAssociationSummary = hooks.publisherMerchantAssociationSummary(
+  merchantAssociationData,
+  merchantPublishers,
+  "merach"
+);
+assertEqual(
+  [merchantAssociationSummary.merchantCount, merchantAssociationSummary.publisherCount],
+  [2, 2],
+  "merchant search should expose matched merchant and associated publisher counts"
+);
+
 const metric = (sales) => ({
   clicks: 10,
   dpv: 5,
