@@ -8,6 +8,7 @@ from sync_oi_tables import (
     load_merchant_aov_estimates_csv,
     sync_merchant_aov_estimates,
 )
+from offer_db import MERCHANT_AOV_ESTIMATES_TABLE_DDL
 
 
 def verify_persisted_estimates(conn, source_rows: list[dict]) -> tuple[int, int]:
@@ -64,6 +65,9 @@ def main() -> int:
 
     conn = db_connection()
     try:
+        with conn.cursor() as cursor:
+            cursor.execute(MERCHANT_AOV_ESTIMATES_TABLE_DDL)
+        print("Ensured cnpscy_oi_merchant_aov_estimates")
         written = sync_merchant_aov_estimates(conn, rows)
         verified_rows, verified_merchants = verify_persisted_estimates(conn, rows)
     finally:

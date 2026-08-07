@@ -96,8 +96,9 @@ def test_targeted_sync_entrypoint():
     )
     assert "sync_merchant_aov_estimates(conn, rows)" in source
     assert "verify_persisted_estimates(conn, rows)" in source
+    assert "cursor.execute(MERCHANT_AOV_ESTIMATES_TABLE_DDL)" in source
     assert "github.repository == 'Yeahpromos/offer-intelligence'" in workflow
-    assert "python scripts/ensure_oi_schema.py" in workflow
+    assert "python scripts/ensure_oi_schema.py" not in workflow
     assert "python scripts/sync_merchant_aov_estimates.py" in workflow
 
 
