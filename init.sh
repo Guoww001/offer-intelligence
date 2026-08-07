@@ -48,6 +48,7 @@ run_check "test_vercel_chat_routes.py"      python scripts/test_vercel_chat_rout
 run_check "test_vercel_payment_packaging.py" python scripts/test_vercel_payment_packaging.py
 run_check "test_llm_stream_timeout.py"      python scripts/test_llm_stream_timeout.py
 run_check "test_tier_visual_status_rules.py" python scripts/test_tier_visual_status_rules.py
+run_check "test_merchant_aov_estimates.py" python scripts/test_merchant_aov_estimates.py
 run_check "test_payment_placeholders.py"    python -m scripts.test_payment_placeholders
 run_check "test_chatbot_intent_flow.mjs"    node scripts/test_chatbot_intent_flow.mjs
 run_check "test_zh_chatbot.mjs"             node scripts/test_zh_chatbot.mjs

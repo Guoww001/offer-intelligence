@@ -6652,6 +6652,35 @@ th {
   border-left-color: var(--rose);
 }
 
+.aov-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  border-radius: 7px;
+  padding: 3px 7px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.aov-value small {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  opacity: 0.82;
+}
+
+.aov-actual {
+  background: rgba(23, 123, 115, 0.11);
+  color: #0b655f;
+}
+
+.aov-tentative {
+  background: rgba(181, 130, 24, 0.14);
+  color: #8a5d00;
+}
+
 .phase-pill {
   display: inline-flex;
   align-items: center;

@@ -48,6 +48,7 @@ jobs:
           python scripts/test_vercel_payment_packaging.py
           python scripts/test_llm_stream_timeout.py
           python scripts/test_tier_report_date_range.py
+          python scripts/test_merchant_aov_estimates.py
           python scripts/test_publishers_portfolio.py
           node scripts/test_publisher_manager_tier_frontend.mjs
           python scripts/test_monthly_new_merchants.py

@@ -37,6 +37,27 @@ TIER1_NAME = "Tier 1"
 DEFAULT_AFF_PROPORTION = 0.75
 MANAGED_TIER_NAMES = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
 MONTH_KEY_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+MERCHANT_AOV_ESTIMATES_TABLE = "cnpscy_oi_merchant_aov_estimates"
+MERCHANT_AOV_ESTIMATES_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS cnpscy_oi_merchant_aov_estimates (
+  estimateId          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  merchantId          VARCHAR(32) NOT NULL,
+  merchantName        VARCHAR(255) DEFAULT NULL,
+  aov                 DECIMAL(12, 6) NOT NULL,
+  currency            VARCHAR(8) DEFAULT NULL,
+  sampleProductCount  SMALLINT UNSIGNED NOT NULL DEFAULT 5,
+  method              VARCHAR(64) NOT NULL DEFAULT 'five_product_average',
+  sourceFile          VARCHAR(255) NOT NULL,
+  sourceDate          DATE NOT NULL,
+  importedBy          VARCHAR(128) DEFAULT NULL,
+  createdAt           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (estimateId),
+  UNIQUE KEY uq_merchant_aov_source_date (merchantId, sourceDate),
+  KEY idx_merchant_aov_latest (merchantId, sourceDate),
+  KEY idx_merchant_aov_method (method)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+""".strip()
 MONTHLY_NEW_MERCHANTS_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants (
   recordId         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -589,6 +610,94 @@ def commission_amount_epc(commission: Any, clicks: Any) -> float:
     if clicks_value <= 0:
         return 0.0
     return to_float(commission) / clicks_value
+
+
+def latest_merchant_aov_estimates(
+    conn,
+    merchant_ids: list[Any] | set[Any] | tuple[Any, ...],
+) -> dict[str, dict[str, Any]]:
+    """Return the newest persisted five-product AOV estimate per merchant."""
+    required_columns = {
+        "estimateId", "merchantId", "aov", "currency", "sampleProductCount",
+        "method", "sourceFile", "sourceDate",
+    }
+    if not required_columns.issubset(table_columns(conn, MERCHANT_AOV_ESTIMATES_TABLE)):
+        return {}
+
+    normalized_ids = {
+        str(merchant_id or "").strip()
+        for merchant_id in merchant_ids
+        if DIGITS_RE.match(str(merchant_id or "").strip())
+    }
+    if not normalized_ids:
+        return {}
+
+    result: dict[str, dict[str, Any]] = {}
+    rows = fetch_all(
+        conn,
+        f"""
+        SELECT e.merchantId, e.aov, e.currency, e.sampleProductCount,
+               e.method, e.sourceFile, e.sourceDate
+        FROM {q(MERCHANT_AOV_ESTIMATES_TABLE)} e
+        LEFT JOIN {q(MERCHANT_AOV_ESTIMATES_TABLE)} newer
+          ON newer.merchantId = e.merchantId
+         AND (
+              newer.sourceDate > e.sourceDate
+              OR (newer.sourceDate = e.sourceDate AND newer.estimateId > e.estimateId)
+         )
+        WHERE newer.estimateId IS NULL
+        """,
+    )
+    for row in rows:
+        merchant_id = str(row.get("merchantId") or "").strip()
+        if merchant_id in normalized_ids:
+            result[merchant_id] = row
+    return result
+
+
+def resolve_merchant_aov(
+    orders: Any,
+    revenue: Any,
+    estimate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve an AOV value and provenance without leaving inference to the UI."""
+    order_count = to_float(orders)
+    revenue_amount = to_float(revenue)
+    if order_count > 0 and revenue_amount > 0:
+        return {
+            "aov": clean_decimal(revenue_amount / order_count, 6),
+            "aovType": "actual",
+            "aovSource": "cnpscy_amazon_order",
+            "aovMethod": "revenue_divided_by_orders",
+            "aovCurrency": None,
+            "aovSampleProductCount": None,
+            "aovSourceFile": None,
+            "aovSourceDate": None,
+        }
+
+    estimate_value = to_float((estimate or {}).get("aov"))
+    if estimate_value > 0:
+        return {
+            "aov": clean_decimal(estimate_value, 6),
+            "aovType": "tentative",
+            "aovSource": MERCHANT_AOV_ESTIMATES_TABLE,
+            "aovMethod": (estimate or {}).get("method") or "five_product_average",
+            "aovCurrency": (estimate or {}).get("currency") or None,
+            "aovSampleProductCount": int((estimate or {}).get("sampleProductCount") or 5),
+            "aovSourceFile": (estimate or {}).get("sourceFile") or None,
+            "aovSourceDate": (estimate or {}).get("sourceDate") or None,
+        }
+
+    return {
+        "aov": None,
+        "aovType": "unavailable",
+        "aovSource": None,
+        "aovMethod": None,
+        "aovCurrency": None,
+        "aovSampleProductCount": None,
+        "aovSourceFile": None,
+        "aovSourceDate": None,
+    }
 
 
 def read_static_merchant_ids() -> list[str]:
@@ -2921,6 +3030,13 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
         )
         vs_map: dict = {r["merchantId"]: r for r in vs_rows}
 
+        # Persisted five-product estimates are only used when the selected
+        # report range has neither positive orders nor positive revenue.
+        aov_estimate_map = latest_merchant_aov_estimates(
+            conn,
+            [row.get("merchantId") for row in core_offers],
+        )
+
         # Network fallback: ?? network ?????????????????
         missing_network_ids = [
             row.get("merchantId")
@@ -2946,7 +3062,11 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             o["epc"] = metrics.get("epc")
             o["allEpc"] = metrics.get("allEpc")
             o["affEpc"] = metrics.get("affEpc")
-            o["aov"] = metrics.get("aov")
+            o.update(resolve_merchant_aov(
+                metrics.get("orders"),
+                metrics.get("revenue"),
+                aov_estimate_map.get(mid),
+            ))
             o["conversionRate"] = metrics.get("conversionRate")
             o["payout"] = metrics.get("payout")
             o["affiliatePayout"] = metrics.get("affiliatePayout")
@@ -3264,6 +3384,13 @@ def _build_offers_payload(month: str | None = None) -> dict[str, Any]:
             ("allEpc", "EPC(All)"),
             ("affEpc", "EPC(Aff)"),
             ("aov", "AOV"),
+            ("aovType", "AOV Type"),
+            ("aovMethod", "AOV Method"),
+            ("aovSource", "AOV Source"),
+            ("aovSampleProductCount", "AOV Sample Products"),
+            ("aovCurrency", "AOV Currency"),
+            ("aovSourceDate", "AOV Source Date"),
+            ("aovSourceFile", "AOV Source File"),
             ("conversionRate", "Conversion"),
             ("clicks", "Clicks"),
             ("dpv", "DPV"),
@@ -3343,6 +3470,7 @@ def merge_tier_report_metrics(
     base_rows: list[dict[str, Any]],
     order_rows: list[dict[str, Any]],
     click_rows: list[dict[str, Any]],
+    aov_estimates: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Merge metrics using the same advertiser click rule as YeahPromos."""
     orders_by_merchant = _tier_report_metric_map(order_rows)
@@ -3368,6 +3496,11 @@ def merge_tier_report_metrics(
         aff_rate = all_rate * aff_proportion if all_rate else commission_rate_from_amount(revenue, aff_commission)
         all_epc = commission_amount_epc(all_commission, clicks)
         aff_epc = commission_amount_epc(aff_commission, clicks)
+        aov_details = resolve_merchant_aov(
+            orders,
+            revenue,
+            (aov_estimates or {}).get(merchant_id),
+        )
 
         row.update({
             "ALL Commission": clean_decimal(all_rate * 100, 4),
@@ -3378,7 +3511,14 @@ def merge_tier_report_metrics(
             "Backend EPC": clean_decimal(aff_epc, 6),
             "EPC(All)": clean_decimal(all_epc, 6),
             "EPC(Aff)": clean_decimal(aff_epc, 6),
-            "AOV": clean_decimal(revenue / orders if orders else 0, 6),
+            "AOV": aov_details["aov"],
+            "AOV Type": aov_details["aovType"],
+            "AOV Method": aov_details["aovMethod"],
+            "AOV Source": aov_details["aovSource"],
+            "AOV Sample Products": aov_details["aovSampleProductCount"],
+            "AOV Currency": aov_details["aovCurrency"],
+            "AOV Source Date": aov_details["aovSourceDate"],
+            "AOV Source File": aov_details["aovSourceFile"],
             "Conversion Rate": clean_decimal(orders / clicks if clicks else 0, 8),
             "Clicks": clean_decimal(clicks, 0),
             "DPV": clean_decimal(order.get("dpv"), 0),
@@ -3656,8 +3796,12 @@ def tier_sheet_payload(
             """,
             (tier_name, start_day, end_day),
         )
+        aov_estimates = latest_merchant_aov_estimates(
+            conn,
+            [row.get("Merchant ID") for row in base_rows],
+        )
 
-    rows = merge_tier_report_metrics(base_rows, order_rows, click_rows)
+    rows = merge_tier_report_metrics(base_rows, order_rows, click_rows, aov_estimates)
     headers = list(rows[0].keys()) if rows else []
     result = {
         "ok": True,
@@ -3675,6 +3819,7 @@ def tier_sheet_payload(
             "metricsTables": ["cnpscy_amazon_order", "cnpscy_amazon_click"],
             "merchantTables": ["cnpscy_advert", "cnpscy_advert_type", "cnpscy_oi_offer_sheet_metadata"],
             "tierTable": "cnpscy_oi_tier_assignments",
+            "aovEstimateTable": MERCHANT_AOV_ESTIMATES_TABLE,
         },
     }
     _tier_sheet_cache[cache_key] = (now, result)

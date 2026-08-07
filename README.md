@@ -159,6 +159,18 @@ The bottom offer list is grouped by main category instead of being a flat previe
 
 Dashboard filters and exports continue to operate on the same filtered offer set.
 
+### Tier AOV Provenance
+
+Tier tables display actual AOV in teal and tentative AOV in amber. Actual AOV
+is calculated server-side as `Revenue / Order count` only when both values are
+positive. Otherwise, the newest dated five-product estimate from
+`cnpscy_oi_merchant_aov_estimates` is used and marked as tentative. The source
+snapshot is versioned in `data/merchant_aov_estimates.csv`; the UI only renders
+the AOV type and provenance supplied by the database API.
+
+Production operators can apply the schema and sync only this snapshot with the
+manual `Sync merchant AOV estimates` GitHub Actions workflow.
+
 ### Manual Tier and Color Control
 
 Scheduled synchronization preserves operator-managed tier assignments and row

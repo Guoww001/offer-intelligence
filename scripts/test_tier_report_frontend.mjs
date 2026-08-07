@@ -230,6 +230,33 @@ assertEqual(
   "$154.49",
   "US tier AOV should show dollars with two decimal places"
 );
+assertEqual(
+  hooks.formatTierSheetCell("Tier 1", { AOV: "154.489751", COUNTRY: "US", "AOV Currency": "CAD" }, "AOV"),
+  "C$154.49",
+  "tentative AOV currency should take precedence over the tier country"
+);
+
+hooks.setLanguage("zh");
+const actualAovHtml = hooks.aovCellHtml(
+  { "AOV Type": "actual" },
+  "$40.00"
+);
+assertEqual(actualAovHtml.includes("aov-actual"), true, "actual AOV should use the actual color class");
+assertEqual(actualAovHtml.includes("真实 AOV"), true, "actual AOV should explain Revenue divided by orders");
+assertEqual(actualAovHtml.includes(">实<"), true, "actual AOV should display the actual marker");
+
+const tentativeAovHtml = hooks.aovCellHtml(
+  { "AOV Type": "tentative", "AOV Sample Products": "5", "AOV Source Date": "2026-08-03" },
+  "$119.99"
+);
+assertEqual(tentativeAovHtml.includes("aov-tentative"), true, "tentative AOV should use the estimate color class");
+assertEqual(tentativeAovHtml.includes("5 款产品平均值"), true, "tentative AOV should explain the five-product method");
+assertEqual(tentativeAovHtml.includes(">暂<"), true, "tentative AOV should display the tentative marker");
+assertEqual(
+  hooks.aovCellHtml({ "AOV Type": "unavailable" }, ""),
+  "",
+  "unavailable AOV should remain blank"
+);
 
 const exportRows = [{
   "ALL Commission": "27.0",
