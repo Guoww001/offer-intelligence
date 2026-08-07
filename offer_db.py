@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants (
   merchantId       VARCHAR(64) DEFAULT NULL,
   merchantName     VARCHAR(180) NOT NULL,
   businessManager  VARCHAR(128) DEFAULT NULL,
+  program          VARCHAR(128) DEFAULT NULL,
+  platform         VARCHAR(128) DEFAULT NULL,
+  gmvRequirement   VARCHAR(255) DEFAULT NULL,
+  pastMonthPurchase VARCHAR(255) DEFAULT NULL,
+  independentWebsites VARCHAR(255) DEFAULT NULL,
+  reviewSummary    VARCHAR(255) DEFAULT NULL,
+  ourCommission    DECIMAL(7, 2) DEFAULT NULL,
+  presetCommission DECIMAL(7, 2) DEFAULT NULL,
   isPriority       TINYINT(1) NOT NULL DEFAULT 0,
   gmvMonthlyTarget DECIMAL(18, 2) DEFAULT NULL,
   completionReward VARCHAR(1000) DEFAULT NULL,
@@ -78,6 +86,44 @@ CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchants (
   KEY idx_monthly_new_month (reportMonth)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """.strip()
+MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS = {
+    "program": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN program VARCHAR(128) DEFAULT NULL AFTER businessManager"
+    ),
+    "platform": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN platform VARCHAR(128) DEFAULT NULL AFTER program"
+    ),
+    "gmvRequirement": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN gmvRequirement VARCHAR(255) DEFAULT NULL AFTER platform"
+    ),
+    "pastMonthPurchase": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN pastMonthPurchase VARCHAR(255) DEFAULT NULL AFTER gmvRequirement"
+    ),
+    "independentWebsites": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN independentWebsites VARCHAR(255) DEFAULT NULL AFTER pastMonthPurchase"
+    ),
+    "reviewSummary": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN reviewSummary VARCHAR(255) DEFAULT NULL AFTER independentWebsites"
+    ),
+    "ourCommission": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN ourCommission DECIMAL(7, 2) DEFAULT NULL AFTER reviewSummary"
+    ),
+    "presetCommission": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN presetCommission DECIMAL(7, 2) DEFAULT NULL AFTER ourCommission"
+    ),
+    "isPriority": (
+        "ALTER TABLE cnpscy_oi_monthly_new_merchants "
+        "ADD COLUMN isPriority TINYINT(1) NOT NULL DEFAULT 0 AFTER presetCommission"
+    ),
+}
 MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE = "cnpscy_oi_monthly_new_merchant_annotations"
 MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS cnpscy_oi_monthly_new_merchant_annotations (
@@ -2005,6 +2051,25 @@ def _monthly_new_merchant_gmv_target(value: Any) -> Decimal | None:
         raise ValueError("gmvMonthlyTarget must be a valid number") from None
 
 
+def _monthly_new_merchant_commission(value: Any, field: str) -> Decimal | None:
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return None
+    if text.endswith("%"):
+        text = text[:-1].strip()
+    text = text.replace(",", "").replace(" ", "")
+    try:
+        amount = Decimal(text)
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{field} must be a valid percentage") from None
+    if not amount.is_finite() or amount < 0 or amount > 100:
+        raise ValueError(f"{field} must be between 0 and 100")
+    try:
+        return amount.quantize(Decimal("0.01"))
+    except InvalidOperation:
+        raise ValueError(f"{field} must be a valid percentage") from None
+
+
 def _monthly_new_merchant_priority(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -2049,6 +2114,36 @@ def _monthly_new_merchant_values(
             "businessManager",
             maximum=128,
         ),
+        "program": _monthly_new_merchant_text(payload, "program", maximum=128),
+        "platform": _monthly_new_merchant_text(payload, "platform", maximum=128),
+        "gmvRequirement": _monthly_new_merchant_text(
+            payload,
+            "gmvRequirement",
+            maximum=255,
+        ),
+        "pastMonthPurchase": _monthly_new_merchant_text(
+            payload,
+            "pastMonthPurchase",
+            maximum=255,
+        ),
+        "independentWebsites": _monthly_new_merchant_text(
+            payload,
+            "independentWebsites",
+            maximum=255,
+        ),
+        "reviewSummary": _monthly_new_merchant_text(
+            payload,
+            "reviewSummary",
+            maximum=255,
+        ),
+        "ourCommission": _monthly_new_merchant_commission(
+            payload.get("ourCommission"),
+            "ourCommission",
+        ),
+        "presetCommission": _monthly_new_merchant_commission(
+            payload.get("presetCommission"),
+            "presetCommission",
+        ),
         "isPriority": _monthly_new_merchant_priority(payload.get("isPriority")),
         "gmvMonthlyTarget": _monthly_new_merchant_gmv_target(
             payload.get("gmvMonthlyTarget")
@@ -2073,14 +2168,14 @@ def ensure_monthly_new_merchants_schema(conn) -> None:
             cursor.execute(MONTHLY_NEW_MERCHANTS_TABLE_DDL)
             cursor.execute(MONTHLY_NEW_MERCHANT_ANNOTATIONS_TABLE_DDL)
         TABLE_COLUMNS_CACHE.pop("cnpscy_oi_monthly_new_merchants", None)
-        if "isPriority" not in table_columns(conn, "cnpscy_oi_monthly_new_merchants"):
+        columns = table_columns(conn, "cnpscy_oi_monthly_new_merchants")
+        for column, ddl in MONTHLY_NEW_MERCHANT_COLUMN_MIGRATIONS.items():
+            if column in columns:
+                continue
             with conn.cursor() as cursor:
-                cursor.execute(
-                    "ALTER TABLE cnpscy_oi_monthly_new_merchants "
-                    "ADD COLUMN isPriority TINYINT(1) NOT NULL DEFAULT 0 "
-                    "AFTER businessManager"
-                )
-            TABLE_COLUMNS_CACHE.pop("cnpscy_oi_monthly_new_merchants", None)
+                cursor.execute(ddl)
+            columns.add(column)
+        TABLE_COLUMNS_CACHE.pop("cnpscy_oi_monthly_new_merchants", None)
         _monthly_new_merchants_schema_ready = True
 
 
@@ -2094,6 +2189,14 @@ def _monthly_new_merchant_record(conn, record_id: int) -> dict[str, Any] | None:
             merchantId,
             merchantName,
             businessManager,
+            program,
+            platform,
+            gmvRequirement,
+            pastMonthPurchase,
+            independentWebsites,
+            reviewSummary,
+            ourCommission,
+            presetCommission,
             isPriority,
             gmvMonthlyTarget,
             completionReward,
@@ -2436,6 +2539,14 @@ def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
                 merchantId,
                 merchantName,
                 businessManager,
+                program,
+                platform,
+                gmvRequirement,
+                pastMonthPurchase,
+                independentWebsites,
+                reviewSummary,
+                ourCommission,
+                presetCommission,
                 isPriority,
                 gmvMonthlyTarget,
                 completionReward,
@@ -2545,6 +2656,14 @@ def upsert_monthly_new_merchant(
                                 merchantId,
                                 merchantName,
                                 businessManager,
+                                program,
+                                platform,
+                                gmvRequirement,
+                                pastMonthPurchase,
+                                independentWebsites,
+                                reviewSummary,
+                                ourCommission,
+                                presetCommission,
                                 isPriority,
                                 gmvMonthlyTarget,
                                 completionReward,
@@ -2553,13 +2672,24 @@ def upsert_monthly_new_merchant(
                                 createdAt,
                                 updatedAt
                             )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
                         """,
                         (
                             values["reportMonth"],
                             values["merchantId"] or None,
                             values["merchantName"],
                             values["businessManager"] or None,
+                            values["program"] or None,
+                            values["platform"] or None,
+                            values["gmvRequirement"] or None,
+                            values["pastMonthPurchase"] or None,
+                            values["independentWebsites"] or None,
+                            values["reviewSummary"] or None,
+                            values["ourCommission"],
+                            values["presetCommission"],
                             int(values["isPriority"]),
                             values["gmvMonthlyTarget"],
                             values["completionReward"] or None,
@@ -2579,6 +2709,14 @@ def upsert_monthly_new_merchant(
                             merchantId = %s,
                             merchantName = %s,
                             businessManager = %s,
+                            program = %s,
+                            platform = %s,
+                            gmvRequirement = %s,
+                            pastMonthPurchase = %s,
+                            independentWebsites = %s,
+                            reviewSummary = %s,
+                            ourCommission = %s,
+                            presetCommission = %s,
                             isPriority = %s,
                             gmvMonthlyTarget = %s,
                             completionReward = %s,
@@ -2591,6 +2729,14 @@ def upsert_monthly_new_merchant(
                             values["merchantId"] or None,
                             values["merchantName"],
                             values["businessManager"] or None,
+                            values["program"] or None,
+                            values["platform"] or None,
+                            values["gmvRequirement"] or None,
+                            values["pastMonthPurchase"] or None,
+                            values["independentWebsites"] or None,
+                            values["reviewSummary"] or None,
+                            values["ourCommission"],
+                            values["presetCommission"],
                             int(values["isPriority"]),
                             values["gmvMonthlyTarget"],
                             values["completionReward"] or None,
@@ -2635,6 +2781,14 @@ def delete_monthly_new_merchant(
                     merchantId,
                     merchantName,
                     businessManager,
+                    program,
+                    platform,
+                    gmvRequirement,
+                    pastMonthPurchase,
+                    independentWebsites,
+                    reviewSummary,
+                    ourCommission,
+                    presetCommission,
                     isPriority,
                     gmvMonthlyTarget,
                     completionReward,
