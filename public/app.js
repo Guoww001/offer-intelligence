@@ -10884,6 +10884,12 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var chartClone = document.createElement("div");
     chartClone.className = "trend-context-wrap cloned";
     chartClone.innerHTML = chartHtml;
+    // The cloned SVG may skip the dash-draw animation (for example when the
+    // browser prefers reduced motion), leaving the polyline at its hidden
+    // initial offset. Make the deep-window copy immediately visible.
+    chartClone.querySelectorAll(".trend-line").forEach(function (line) {
+      line.style.strokeDashoffset = "0";
+    });
     container.appendChild(chartClone);
 
     // 记录面板自己的趋势数据，供面板内指标切换使用——
@@ -10954,6 +10960,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       var svgContainer = chartWrap.querySelector("[data-trend-chart]");
       if (svgContainer) {
         svgContainer.innerHTML = svgHtml;
+        svgContainer.querySelectorAll(".trend-line").forEach(function (line) {
+          line.style.strokeDashoffset = "0";
+        });
       }
     });
 
@@ -11005,6 +11014,17 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (syncTypes.indexOf(context.type) === -1) return;
     // 已经替换过则跳过
     if (panel.sectionsEl.querySelector(".deep-context-overview")) return;
+    // Category answers already contain a registered Excel download card. Keep it
+    // when the richer context overview replaces the original quick result.
+    var preservedDownloadCards = Array.from(panel.sectionsEl.querySelectorAll(".download-card"))
+      .map(function (card) { return card.cloneNode(true); });
+    function appendPreservedDownloadCards() {
+      if (!preservedDownloadCards.length) return;
+      var downloads = document.createElement("div");
+      downloads.className = "deep-context-downloads";
+      preservedDownloadCards.forEach(function (card) { downloads.appendChild(card); });
+      panel.sectionsEl.appendChild(downloads);
+    }
     var headingText = state.language === "zh" ? "概览" : "Overview";
 
     // merchant：左侧 recBox 由异步 renderMerchantStatsPanel 渲染（先 fetch 再写 innerHTML），
@@ -11020,6 +11040,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         panel.sectionsEl.innerHTML = '<div class="deep-context-overview">'
           + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
           + body + '</div>';
+        appendPreservedDownloadCards();
         return;
       }
     }
@@ -11030,6 +11051,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
       + '<div class="deep-overview-body">' + contextHtml + '</div>'
       + '</div>';
+    appendPreservedDownloadCards();
   }
 
   // ★ Deep Mode: summary card for chat (click to bring panel to front)
