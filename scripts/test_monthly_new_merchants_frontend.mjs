@@ -290,12 +290,14 @@ assert(!indexHtml.includes('id="monthlyNewMerchantsRefresh"'), "database auto-di
 const publishersNavIndex = indexHtml.indexOf('id="publishersNav"');
 const monthlyNewMerchantsNavIndex = indexHtml.indexOf('id="monthlyNewMerchantsNav"');
 const targetsNavIndex = indexHtml.indexOf('id="targetNav"');
+const offerListTrackerNavIndex = indexHtml.indexOf('id="offerListTrackerNav"');
 const reportsNavIndex = indexHtml.indexOf('id="sheetsNav"');
 assert(
-  publishersNavIndex < monthlyNewMerchantsNavIndex
-    && monthlyNewMerchantsNavIndex < targetsNavIndex
-    && targetsNavIndex < reportsNavIndex,
-  "monthly new merchants and Targets should be top-level pages before Reports"
+  publishersNavIndex < targetsNavIndex
+    && targetsNavIndex < monthlyNewMerchantsNavIndex
+    && monthlyNewMerchantsNavIndex < offerListTrackerNavIndex
+    && offerListTrackerNavIndex < reportsNavIndex,
+  "monthly new merchants should be a top-level page directly after Targets"
 );
 const reportsSubnavMatch = indexHtml.match(/<div class="nav-subnav" id="reportsSubnav"[\s\S]*?<\/div>/);
 assert(
@@ -357,8 +359,10 @@ const priorityHeaderIndex = indexHtml.indexOf(
   'data-i18n="monthlyNewMerchants.priority">Priority</th>'
 );
 assert(
-  merchantIdHeaderIndex >= 0 && merchantIdHeaderIndex < priorityHeaderIndex,
-  "Merchant ID should be the first table column"
+  priorityHeaderIndex >= 0
+    && merchantIdHeaderIndex > priorityHeaderIndex
+    && /data-i18n="monthlyNewMerchants\.priority">Priority<\/th>\s*<th class="monthly-new-merchant-id-column" data-i18n="monthlyNewMerchants\.merchantId">Merchant ID<\/th>/.test(indexHtml),
+  "Merchant ID should appear directly after Priority"
 );
 assert(indexHtml.includes('data-i18n="monthlyNewMerchants.gmvRequirement">GMV need to be reached</th>'),
   "the table should expose the imported GMV requirement");
@@ -368,8 +372,13 @@ assert(indexHtml.includes('data-i18n="monthlyNewMerchants.updated">Updated</th>'
   "the table should show the manual record update time");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
-assert(appSource.includes('class="monthly-new-merchant-id-cell"'),
-  "each merchant row should render the resolved Merchant ID first");
+const priorityCellIndex = appSource.indexOf('class="monthly-new-merchant-priority-cell"');
+const merchantIdCellIndex = appSource.indexOf('class="monthly-new-merchant-id-cell"');
+assert(
+  priorityCellIndex >= 0
+    && priorityCellIndex < merchantIdCellIndex
+    && /<td class="monthly-new-merchant-priority-cell">[\s\S]*?<\/td>\s*<td class="monthly-new-merchant-id-cell">/.test(appSource),
+  "each merchant row should render the resolved Merchant ID after Priority");
 assert(appSource.includes("monthlyNewMerchantsMonth.showPicker()"),
   "clicking the month input should open the native picker across the full control");
 assert(appSource.includes('data-monthly-new-merchant-action="priority"'),
@@ -381,7 +390,7 @@ assert(appSource.includes('data-monthly-new-merchant-action="delete"'),
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
 assert(styles.includes(".monthly-new-merchant-id-column"),
-  "the first Merchant ID column should have dedicated table styling");
+  "the Merchant ID column should have dedicated table styling");
 assert(styles.includes(".monthly-new-merchants-table tbody tr.is-priority td"),
   "priority merchants should receive a row highlight");
 assert(styles.includes(".monthly-new-merchant-drawer-backdrop"),
