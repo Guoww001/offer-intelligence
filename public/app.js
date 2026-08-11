@@ -796,7 +796,7 @@
       "offerTracker.defineRangeSubtitle": "先选择商业范围，再查看并导出对应的优先级清单。",
       "offerTracker.liveSource": "实时 Offer 缓存",
       "offerTracker.aovRange": "AOV 范围",
-      "offerTracker.commissionRange": "佣金范围",
+      "offerTracker.commissionRange": "AFF 佣金范围",
       "offerTracker.applyFilters": "应用筛选",
       "offerTracker.offerList": "Offer 清单",
       "offerTracker.productList": "品牌产品清单",
@@ -21063,12 +21063,12 @@ var _NUMERIC_COL_PATTERNS = [
         ? '<span class="monthly-new-merchant-muted">—</span>'
         : `${escapeHtml(Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }))}%`;
       return `<tr class="${rowClasses}" data-monthly-new-merchant-id="${record.recordId}">
-        <td class="monthly-new-merchant-id-cell">${textCell(record.merchantId)}</td>
         <td class="monthly-new-merchant-priority-cell">
           <button class="monthly-new-merchant-priority" type="button" data-monthly-new-merchant-action="priority" aria-pressed="${record.isPriority ? "true" : "false"}" aria-label="${escapeHtml(`${priorityLabel}: ${merchantLabel}`)}" ${!record.recordId || saving ? "disabled" : ""}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg>
           </button>
         </td>
+        <td class="monthly-new-merchant-id-cell">${textCell(record.merchantId)}</td>
         <td><div class="monthly-new-merchant-name"><strong>${escapeHtml(merchantLabel)}</strong></div></td>
         <td>${textCell(record.program)}</td>
         <td>${textCell(record.platform)}</td>
@@ -21704,12 +21704,43 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function offerTrackerCommissionRate(offer) {
-    const candidates = [offer && offer.affCommissionRate, offer && offer.commissionRate];
-    for (const value of candidates) {
-      const parsed = offerTrackerOptionalNumber(value);
-      if (parsed !== null) return parsed;
+    const parsed = offerTrackerOptionalNumber(offer && offer.affCommissionRate);
+    return parsed === null ? 0 : parsed;
+  }
+
+  function offerTrackerAovType(offer) {
+    const type = String((offer && offer.aovType) || "").trim().toLowerCase();
+    if (type === "actual") return "actual";
+    if (["tentative", "estimated", "estimate"].includes(type)) return "estimated";
+    return "unavailable";
+  }
+
+  function offerTrackerAovTypeLabel(offer, language = state.language) {
+    const type = offerTrackerAovType(offer);
+    const labels = language === "zh"
+      ? { actual: "真实", estimated: "预估", unavailable: "无可用数据" }
+      : { actual: "Actual", estimated: "Estimated", unavailable: "Unavailable" };
+    return labels[type];
+  }
+
+  function offerTrackerAovCellHtml(offer) {
+    const value = offerTrackerOptionalNumber(offer && offer.aov);
+    if (value === null || value <= 0) {
+      return '<span class="offer-tracker-number-cell">—</span>';
     }
-    return 0;
+    const type = offerTrackerAovType(offer);
+    const label = offerTrackerAovTypeLabel(offer);
+    const sampleCount = Number(offer && offer.aovSampleProductCount) || 5;
+    const sourceDate = String((offer && offer.aovSourceDate) || "").trim();
+    const description = type === "actual"
+      ? offerTrackerText("Actual AOV: Revenue ÷ Order count", "真实 AOV：Revenue ÷ Order count")
+      : type === "estimated"
+        ? offerTrackerText(
+          `Estimated AOV: ${sampleCount}-product average${sourceDate ? ` · ${sourceDate}` : ""}`,
+          `预估 AOV：${sampleCount} 款产品平均值${sourceDate ? ` · ${sourceDate}` : ""}`
+        )
+        : offerTrackerText("AOV source is not specified", "AOV 来源未标明");
+    return `<span class="offer-tracker-aov-cell" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"><span class="offer-tracker-number-cell">${escapeHtml(money(value))}</span><small class="offer-tracker-aov-badge ${type}">${escapeHtml(label)}</small></span>`;
   }
 
   function offerTrackerAsins(offer) {
@@ -21805,8 +21836,8 @@ var _NUMERIC_COL_PATTERNS = [
 
   function offerTrackerColumnDefinitions(view = state.offerListTracker.view) {
     const labels = state.language === "zh"
-      ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "佣金", aov: "AOV", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
-      : { priority: "Priority", merchant: "Merchant", tier: "Tier", commission: "Commission", aov: "AOV", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
+      ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "AFF 佣金", aov: "AOV", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
+      : { priority: "Priority", merchant: "Merchant", tier: "Tier", commission: "AFF Commission", aov: "AOV", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
     const all = [
       { key: "priority", label: labels.priority, mandatory: true },
       { key: "merchant", label: labels.merchant, mandatory: true },
@@ -21834,7 +21865,7 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (column.key === "tier") return `<span class="offer-tracker-tier-badge">${escapeHtml(canonicalTierName(offer.tier) || "Unknown")}</span>`;
     if (column.key === "commission") return `<span class="offer-tracker-number-cell">${escapeHtml(`${offerTrackerCommissionRate(offer).toFixed(2).replace(/\.00$/, "")}%`)}</span>`;
-    if (column.key === "aov") return `<span class="offer-tracker-number-cell">${escapeHtml(money(number(offer.aov)))}</span>`;
+    if (column.key === "aov") return offerTrackerAovCellHtml(offer);
     if (column.key === "category") return `<span class="offer-tracker-category-cell">${escapeHtml(displayCategory(offer))}</span>`;
     if (column.key === "asins") {
       const asins = offerTrackerAsins(offer);
@@ -21850,8 +21881,9 @@ var _NUMERIC_COL_PATTERNS = [
       ["Merchant ID", (offer) => offer.merchantId || "", 16],
       ["Merchant Name", (offer) => offerTrackerMerchantName(offer), 28],
       ["Tier", (offer) => canonicalTierName(offer.tier) || "Unknown", 14],
-      ["Commission", (offer) => offerTrackerCommissionRate(offer), 14, "percentage"],
-      ["AOV", (offer) => number(offer.aov), 14],
+      ["AFF Commission", (offer) => offerTrackerCommissionRate(offer), 16, "percentage"],
+      ["AOV", (offer) => offerTrackerOptionalNumber(offer.aov), 14],
+      ["AOV Type", (offer) => offerTrackerAovTypeLabel(offer, "en"), 14],
       ["Category", (offer) => displayCategory(offer), 34],
       ["Recommendation", (offer) => offerTrackerRecommendation(offer, offerTrackerPriority(offer, state.offerListTracker.rules)), 54]
     ];
@@ -21862,7 +21894,8 @@ var _NUMERIC_COL_PATTERNS = [
       ["Priority", (offer) => offerTrackerPriorityLabel(offerTrackerPriority(offer, state.offerListTracker.rules).key, "en"), 22],
       ["Merchant ID", (offer) => offer.merchantId || "", 16],
       ["Merchant Name", (offer) => offerTrackerMerchantName(offer), 28],
-      ["AOV", (offer) => number(offer.aov), 14],
+      ["AOV", (offer) => offerTrackerOptionalNumber(offer.aov), 14],
+      ["AOV Type", (offer) => offerTrackerAovTypeLabel(offer, "en"), 14],
       ["Category", (offer) => displayCategory(offer), 34],
       ["Top Rank ASINs", (offer) => offerTrackerAsins(offer).join(", "), 42]
     ];
@@ -21940,7 +21973,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (filters.category !== "all") chips.push(filters.category);
     if (filters.network !== "all") chips.push(filters.network);
     if (filters.minAov || filters.maxAov) chips.push(`AOV ${filters.minAov ? `$${filters.minAov}` : "$0"}–${filters.maxAov ? `$${filters.maxAov}` : "∞"}`);
-    if (filters.minCommission || filters.maxCommission) chips.push(`${filters.minCommission || "0"}%–${filters.maxCommission || "100"}%`);
+    if (filters.minCommission || filters.maxCommission) chips.push(`AFF ${filters.minCommission || "0"}%–${filters.maxCommission || "100"}%`);
     return chips;
   }
 
@@ -21955,8 +21988,8 @@ var _NUMERIC_COL_PATTERNS = [
   function renderOfferTrackerColumnsPanel() {
     if (!els.offerTrackerColumnsPanel) return;
     const labels = state.language === "zh"
-      ? { tier: "层级", commission: "佣金", aov: "AOV", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
-      : { tier: "Tier", commission: "Commission", aov: "AOV", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
+      ? { tier: "层级", commission: "AFF 佣金", aov: "AOV", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
+      : { tier: "Tier", commission: "AFF Commission", aov: "AOV", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
     els.offerTrackerColumnsPanel.innerHTML = `<div class="offer-tracker-popover-header"><strong>${escapeHtml(offerTrackerText("Visible columns", "显示列"))}</strong><button type="button" data-offer-tracker-close="columns" aria-label="Close columns">×</button></div>${Object.keys(labels).map((key) => `<label class="offer-tracker-column-option"><input type="checkbox" data-offer-tracker-column="${key}" ${state.offerListTracker.visibleColumns[key] !== false ? "checked" : ""}/><span>${escapeHtml(labels[key])}</span></label>`).join("")}`;
   }
 
@@ -21965,8 +21998,8 @@ var _NUMERIC_COL_PATTERNS = [
     els.offerTrackerHighScore.value = state.offerListTracker.rules.highScore;
     els.offerTrackerLowAovMax.value = state.offerListTracker.rules.lowAovMax;
     els.offerTrackerScoreLegend.innerHTML = state.language === "zh"
-      ? "<span>层级：Tier 1 +4 / Tier 2 +3 / Tier 3 +2 / Tier 4 +1</span><span>佣金：≥20% +4 / ≥15% +3 / ≥10% +2 / ≥5% +1</span><span>AOV：$75–$350 +2 / &gt;$350 +1；有 ASIN +1</span>"
-      : "<span>Tier: T1 +4 / T2 +3 / T3 +2 / T4 +1</span><span>Commission: ≥20% +4 / ≥15% +3 / ≥10% +2 / ≥5% +1</span><span>AOV: $75–$350 +2 / &gt;$350 +1; ASIN coverage +1</span>";
+      ? "<span>层级：Tier 1 +4 / Tier 2 +3 / Tier 3 +2 / Tier 4 +1</span><span>AFF 佣金：≥20% +4 / ≥15% +3 / ≥10% +2 / ≥5% +1</span><span>AOV：$75–$350 +2 / &gt;$350 +1；有 ASIN +1</span>"
+      : "<span>Tier: T1 +4 / T2 +3 / T3 +2 / T4 +1</span><span>AFF Commission: ≥20% +4 / ≥15% +3 / ≥10% +2 / ≥5% +1</span><span>AOV: $75–$350 +2 / &gt;$350 +1; ASIN coverage +1</span>";
   }
 
   function renderOfferTrackerSavedViews() {
@@ -23623,6 +23656,9 @@ var _NUMERIC_COL_PATTERNS = [
       monthlyNewMerchantImportRows,
       pageBelongsToReports,
       offerTrackerCommissionRate,
+      offerTrackerAovType,
+      offerTrackerAovTypeLabel,
+      offerTrackerAovCellHtml,
       offerTrackerAsins,
       offerTrackerScore,
       offerTrackerPriority,

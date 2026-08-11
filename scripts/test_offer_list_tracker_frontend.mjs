@@ -83,6 +83,7 @@ const high = {
   affCommissionRate: 20,
   commissionRate: 12,
   aov: 100,
+  aovType: "actual",
   recommendation: "Source recommendation should not be exported",
   topAsins: ["B012345678", "B012345678", "not-an-asin"]
 };
@@ -93,7 +94,10 @@ const lowAov = {
   network: "Levanta",
   mainCategory: "Home & Kitchen",
   affCommissionRate: 12,
-  aov: 80
+  aov: 80,
+  aovType: "tentative",
+  aovSampleProductCount: 5,
+  aovSourceDate: "2026-07-09"
 };
 const recommended = {
   merchantId: "303",
@@ -102,10 +106,18 @@ const recommended = {
   network: "Amazon Associates",
   mainCategory: "Sports & Outdoors",
   affCommissionRate: 12,
-  aov: 180
+  aov: 180,
+  aovType: "actual"
 };
 
 assertEqual(hooks.offerTrackerCommissionRate(high), 20, "affiliate commission should be preferred for tracker filtering");
+assertEqual(hooks.offerTrackerCommissionRate({ commissionRate: 30 }), 0, "generic commission should never be presented as AFF Commission");
+assertEqual(hooks.offerTrackerAovType(high), "actual", "actual AOV provenance should remain explicit");
+assertEqual(hooks.offerTrackerAovType(lowAov), "estimated", "tentative AOV provenance should display as estimated");
+assertEqual(hooks.offerTrackerAovTypeLabel(high, "en"), "Actual", "actual AOV should have an English source label");
+assertEqual(hooks.offerTrackerAovTypeLabel(lowAov, "en"), "Estimated", "tentative AOV should have an English source label");
+assert(hooks.offerTrackerAovCellHtml(high).includes("offer-tracker-aov-badge actual"), "actual AOV cells should show an actual badge");
+assert(hooks.offerTrackerAovCellHtml(lowAov).includes("offer-tracker-aov-badge estimated"), "tentative AOV cells should show an estimated badge");
 assertEqual(hooks.offerTrackerAsins(high), ["B012345678"], "ASIN export should deduplicate and validate values");
 assertEqual(hooks.offerTrackerScore(high), 11, "score should combine tier, commission, AOV, and ASIN signals");
 assertEqual(hooks.offerTrackerPriority(high).key, "high", "strong commercial offers should be high priority");
@@ -125,15 +137,19 @@ assertEqual(
   ["303"],
   "search should match merchant IDs"
 );
+assert(
+  hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", network: "all", minCommission: "10", maxCommission: "25" }).includes("AFF 10%–25%"),
+  "commission filter chips should identify AFF Commission"
+);
 
 assertEqual(
   hooks.offerTrackerOfferExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "Tier", "Commission", "AOV", "Category", "Recommendation"],
+  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "AOV Type", "Category", "Recommendation"],
   "offer worksheet should preserve the approved business columns"
 );
 assertEqual(
   hooks.offerTrackerProductExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "AOV", "Category", "Top Rank ASINs"],
+  ["Priority", "Merchant ID", "Merchant Name", "AOV", "AOV Type", "Category", "Top Rank ASINs"],
   "product worksheet should preserve the reference workbook columns"
 );
 
@@ -155,5 +171,14 @@ const reportsIndex = html.indexOf('id="sheetsNav"');
 assert(targetIndex >= 0 && trackerIndex > targetIndex && reportsIndex > trackerIndex, "Targets and Offer List Tracker should be top-level items before Reports");
 assert(html.includes('id="offerListTrackerPage"'), "Offer List Tracker page should exist");
 assert(html.includes('id="offerTrackerExportSelected"'), "selected-row workbook export should exist");
+assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission range</span>'), "commission filters should be labeled as AFF Commission");
+
+const appSource = fs.readFileSync("public/app.js", "utf8");
+assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
+assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
+
+const styles = fs.readFileSync("public/styles.css", "utf8");
+assert(styles.includes(".offer-tracker-aov-badge.actual"), "actual AOV badges should have dedicated styling");
+assert(styles.includes(".offer-tracker-aov-badge.estimated"), "estimated AOV badges should have dedicated styling");
 
 console.log("Offer List Tracker frontend checks passed");
