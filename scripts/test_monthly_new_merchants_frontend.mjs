@@ -126,6 +126,21 @@ const records = [
   { recordId: 2, merchantId: "202", merchantName: "Beta Beauty", businessManager: "Alex" }
 ];
 assertEqual(
+  hooks.resolveMonthlyNewMerchantId({ merchantName: "Merach", platform: "Levanta" }),
+  "380945",
+  "blank merchant IDs should resolve from an exact Tier 1 brand match"
+);
+assertEqual(
+  hooks.resolveMonthlyNewMerchantId({ merchantName: "Manspot", platform: "Levanta" }),
+  "363268",
+  "platform should disambiguate exact non-Tier-1 brand matches"
+);
+assertEqual(
+  hooks.resolveMonthlyNewMerchantId({ merchantId: "999999", merchantName: "Merach" }),
+  "999999",
+  "an explicitly stored merchant ID should remain authoritative"
+);
+assertEqual(
   hooks.filteredMonthlyNewMerchantRecords(records, "alpha").map((record) => record.recordId),
   [1],
   "search should match merchant names"
@@ -274,16 +289,22 @@ assert(!indexHtml.includes('id="monthlyNewMerchantsRefresh"'), "database auto-di
 
 const publishersNavIndex = indexHtml.indexOf('id="publishersNav"');
 const monthlyNewMerchantsNavIndex = indexHtml.indexOf('id="monthlyNewMerchantsNav"');
+const targetsNavIndex = indexHtml.indexOf('id="targetNav"');
 const reportsNavIndex = indexHtml.indexOf('id="sheetsNav"');
 assert(
   publishersNavIndex < monthlyNewMerchantsNavIndex
-    && monthlyNewMerchantsNavIndex < reportsNavIndex,
-  "monthly new merchants should be a top-level page between Publishers and Reports"
+    && monthlyNewMerchantsNavIndex < targetsNavIndex
+    && targetsNavIndex < reportsNavIndex,
+  "monthly new merchants and Targets should be top-level pages before Reports"
 );
 const reportsSubnavMatch = indexHtml.match(/<div class="nav-subnav" id="reportsSubnav"[\s\S]*?<\/div>/);
 assert(
   reportsSubnavMatch && !reportsSubnavMatch[0].includes('id="monthlyNewMerchantsNav"'),
   "monthly new merchants should not be nested inside the Reports submenu"
+);
+assert(
+  reportsSubnavMatch && !reportsSubnavMatch[0].includes('id="targetNav"'),
+  "Targets should not be nested inside the Reports submenu"
 );
 assertEqual(
   [
@@ -292,8 +313,8 @@ assertEqual(
     hooks.pageBelongsToReports("tier"),
     hooks.pageBelongsToReports("monthly-new-merchants")
   ],
-  [true, true, true, false],
-  "monthly new merchants should not activate the Reports parent"
+  [false, true, true, false],
+  "Targets and monthly new merchants should not activate the Reports parent"
 );
 
 const formMatch = indexHtml.match(/<form id="monthlyNewMerchantForm">([\s\S]*?)<\/form>/);
@@ -329,6 +350,16 @@ assert(/type="checkbox"/.test(priorityTag), "priority should be a checkbox in th
 
 assert(indexHtml.includes('data-i18n="monthlyNewMerchants.priority">Priority</th>'),
   "the table should expose the priority marker");
+const merchantIdHeaderIndex = indexHtml.indexOf(
+  'data-i18n="monthlyNewMerchants.merchantId">Merchant ID</th>'
+);
+const priorityHeaderIndex = indexHtml.indexOf(
+  'data-i18n="monthlyNewMerchants.priority">Priority</th>'
+);
+assert(
+  merchantIdHeaderIndex >= 0 && merchantIdHeaderIndex < priorityHeaderIndex,
+  "Merchant ID should be the first table column"
+);
 assert(indexHtml.includes('data-i18n="monthlyNewMerchants.gmvRequirement">GMV need to be reached</th>'),
   "the table should expose the imported GMV requirement");
 assert(indexHtml.includes('data-i18n="monthlyNewMerchants.presetCommission">Preset commission</th>'),
@@ -337,6 +368,10 @@ assert(indexHtml.includes('data-i18n="monthlyNewMerchants.updated">Updated</th>'
   "the table should show the manual record update time");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
+assert(appSource.includes('class="monthly-new-merchant-id-cell"'),
+  "each merchant row should render the resolved Merchant ID first");
+assert(appSource.includes("monthlyNewMerchantsMonth.showPicker()"),
+  "clicking the month input should open the native picker across the full control");
 assert(appSource.includes('data-monthly-new-merchant-action="priority"'),
   "each manual merchant should have a persistent priority toggle");
 assert(appSource.includes('data-monthly-new-merchant-action="edit"'),
@@ -345,6 +380,8 @@ assert(appSource.includes('data-monthly-new-merchant-action="delete"'),
   "each manual merchant should be removable");
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
+assert(styles.includes(".monthly-new-merchant-id-column"),
+  "the first Merchant ID column should have dedicated table styling");
 assert(styles.includes(".monthly-new-merchants-table tbody tr.is-priority td"),
   "priority merchants should receive a row highlight");
 assert(styles.includes(".monthly-new-merchant-drawer-backdrop"),
