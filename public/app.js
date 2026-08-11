@@ -21123,7 +21123,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function pageBelongsToReports(page) {
-    return page === "sheets" || page === "category" || page === "tier";
+    return page === "category" || page === "tier";
   }
 
   function updatePageModeClass(page = state.page) {
