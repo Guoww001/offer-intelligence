@@ -1202,8 +1202,8 @@
   background: #fff6df;
 }
 
-.monthly-new-merchants-table th:nth-child(1) { width: 112px; }
-.monthly-new-merchants-table th:nth-child(2) { width: 82px; }
+.monthly-new-merchants-table th:nth-child(1) { width: 82px; }
+.monthly-new-merchants-table th:nth-child(2) { width: 112px; }
 .monthly-new-merchants-table th:nth-child(3) { width: 190px; }
 .monthly-new-merchants-table th:nth-child(4) { width: 120px; }
 .monthly-new-merchants-table th:nth-child(5) { width: 120px; }

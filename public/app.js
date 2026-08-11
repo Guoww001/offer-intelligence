@@ -20680,12 +20680,12 @@ var _NUMERIC_COL_PATTERNS = [
         ? '<span class="monthly-new-merchant-muted">—</span>'
         : `${escapeHtml(Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }))}%`;
       return `<tr class="${rowClasses}" data-monthly-new-merchant-id="${record.recordId}">
-        <td class="monthly-new-merchant-id-cell">${textCell(record.merchantId)}</td>
         <td class="monthly-new-merchant-priority-cell">
           <button class="monthly-new-merchant-priority" type="button" data-monthly-new-merchant-action="priority" aria-pressed="${record.isPriority ? "true" : "false"}" aria-label="${escapeHtml(`${priorityLabel}: ${merchantLabel}`)}" ${!record.recordId || saving ? "disabled" : ""}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg>
           </button>
         </td>
+        <td class="monthly-new-merchant-id-cell">${textCell(record.merchantId)}</td>
         <td><div class="monthly-new-merchant-name"><strong>${escapeHtml(merchantLabel)}</strong></div></td>
         <td>${textCell(record.program)}</td>
         <td>${textCell(record.platform)}</td>
