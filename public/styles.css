@@ -5132,6 +5132,10 @@ body.dashboard-mode .insight-panel {
     animation: none;
   }
 
+  .trend-line {
+    stroke-dashoffset: 0;
+  }
+
   .target-progress-card,
   .target-edit-button,
   .target-edit-form button,
@@ -9641,6 +9645,12 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
 }
 .deep-context-overview .stat-cards {
   margin: 0;
+}
+.deep-context-downloads {
+  margin-top: 12px;
+}
+.deep-context-downloads .download-card {
+  margin-top: 0;
 }
 /* 保持 Overview 中的 mini-table 与面板样式一致 */
 .deep-context-overview .mini-table {

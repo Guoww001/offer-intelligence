@@ -15,13 +15,14 @@ const sheetReportData = {
   tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
 };
 
-// 当前 Tier Sheet 结构中，Category 位于 0-based 索引 20（+1 = 21）
+// 当前 Tier Sheet 结构中，Category 位于 0-based 索引 27（+1 = 28）。
+// 前置字段包含点击、DPV、ATC 和 Visual Status 相关列。
 const categoryColumnByTier = {
-  "Tier 1": 21,
-  "Tier 2": 21,
-  "Tier 3": 21,
-  "Tier 4": 21,
-  "BLACK TIER": 21
+  "Tier 1": 28,
+  "Tier 2": 28,
+  "Tier 3": 28,
+  "Tier 4": 28,
+  "BLACK TIER": 28
 };
 
 for (const [tier, expectedIndex] of Object.entries(categoryColumnByTier)) {
