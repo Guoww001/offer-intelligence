@@ -897,6 +897,8 @@
       "chat.intent.paymentHint": "付款状态",
       "chat.intent.asin": "ASIN",
       "chat.intent.asinHint": "ASIN 查询",
+      "chat.intent.publisher": "媒体",
+      "chat.intent.publisherHint": "媒体记录查询",
       "table.offers": "Offer 列表",
       "payments.title": "付款",
       "payments.sync": "同步 Levanta",
@@ -2366,7 +2368,7 @@
   // 注意：内容为模板字符串，避免使用未转义反引号与 ${ 插值。
   const REPORT_MODE_HELP_MD = `# Report Mode 使用说明
 
-Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / Tier**，支持中英文提问（自动识别语言）。提问后会生成分析报告并弹出 Deep Window 浮窗，可一键导出 Excel。
+Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / Tier / 媒体**，支持中英文提问（自动识别语言）。提问后会生成分析报告并弹出 Deep Window 浮窗，可一键导出 Excel。
 
 ## 一、提问类型命令
 
@@ -2376,10 +2378,10 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 - 在输入框输入 / 弹出提问类型菜单，继续输入字母可快速过滤；用 **↑ / ↓** 选择，**Enter** 确认，**Esc** 关闭。
 - 选择后输入框自动写入 **类型: ** 前缀（如 **trend: shokz**），接着输入问题即可。
-- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**，支持半角与全角冒号（: 与 ：）。
+- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**、**publisher:**，支持半角与全角冒号（: 与 ：）。
 - 命令前缀在输入框中以**紫色加粗**显示。
 
-### 7 种提问类型
+### 8 种提问类型
 
 | 类型 | 命令前缀 | 用途 | 示例 |
 | --- | --- | --- | --- |
@@ -2390,6 +2392,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 | Trend（趋势） | trend: | 趋势分析 | trend: shokz |
 | Payment（付款） | payment: | 付款查询 | payment: 逾期商户 |
 | ASIN | asin: | ASIN 查询 | asin: B0015S8FPI |
+| Publisher（媒体） | publisher: | 按站点 / 联盟 / 商家 / 经理筛选媒体记录 | publisher: amazon.de Amazon 张三 |
 
 Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查询 Tier 2 的 Beauty 品类：**categorytier: beauty in tier2**。
 
@@ -2435,6 +2438,17 @@ Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查�
 | 四月未付款有哪些 | 指定月未付款 |
 | 逾期商户 | 逾期记录 |
 | 付款周期超过 90 天的商户 | 付款周期筛选 |
+
+### 6. 媒体记录查询
+
+| 标准提问 | 说明 |
+| --- | --- |
+| 列一下媒体 | 全部媒体列表 |
+| amazon.de 市场的媒体 | 按站点筛选 |
+| Amazon 联盟的媒体 | 按联盟筛选 |
+| 和 Shokz 合作的媒体 | 按商家筛选 |
+| 经理张三的媒体 | 按经理筛选 |
+| 销售最高的 5 个媒体 | 排序 + 限额 |
 
 ## 三、交互说明
 
@@ -2488,7 +2502,7 @@ Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提�
   // 与 REPORT_MODE_HELP_MD 内容一一对应，供说明面板语言切换按钮切换显示。
   const REPORT_MODE_HELP_MD_EN = `# Report Mode User Guide
 
-Report Mode lets you query and analyze **merchants / categories / tiers** in natural language, in either Chinese or English (auto-detected). Each query produces an analysis report that opens in a Deep Window popup, with one-click Excel export.
+Report Mode lets you query and analyze **merchants / categories / tiers / publishers** in natural language, in either Chinese or English (auto-detected). Each query produces an analysis report that opens in a Deep Window popup, with one-click Excel export.
 
 ## 1. Question Type Commands
 
@@ -2498,10 +2512,10 @@ The input box supports both a **/ quick menu** and **type: command prefixes** to
 
 - Type **/** in the input box to open the question type menu; keep typing letters to filter instantly. Use **↑ / ↓** to navigate, **Enter** to select, **Esc** to close.
 - Selecting an option writes a **type: ** prefix automatically (e.g. **trend: shokz**); then type your question.
-- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**. Both half-width (:) and full-width (：) colons work.
+- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**, **publisher:**. Both half-width (:) and full-width (：) colons work.
 - The prefix is shown in **bold purple** in the input box.
 
-### The 7 Question Types
+### The 8 Question Types
 
 | Type | Command prefix | Use | Example |
 | --- | --- | --- | --- |
@@ -2512,6 +2526,7 @@ The input box supports both a **/ quick menu** and **type: command prefixes** to
 | Trend | trend: | Trend analysis | trend: shokz |
 | Payment | payment: | Payment queries | payment: overdue merchants |
 | ASIN | asin: | ASIN lookup | asin: B0015S8FPI |
+| Publisher | publisher: | Filter publisher records by site / network / merchant / manager | publisher: amazon.de Amazon 张三 |
 
 Category & Tier fits combined "category within a tier" queries, e.g. the Beauty category in Tier 2: **categorytier: beauty in tier2**.
 
@@ -2557,6 +2572,17 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 | Which April payments are unpaid | Unpaid payments in a given month |
 | Overdue merchants | Overdue records |
 | Merchants with a payment cycle over 90 days | Payment cycle filter |
+
+### 1.6 Publisher Records
+
+| Standard question | Description |
+| --- | --- |
+| List publishers | Full publisher list |
+| Publishers in the amazon.de market | Filter by site |
+| Publishers in the Amazon network | Filter by network |
+| Publishers partnering with Shokz | Filter by merchant |
+| Publishers managed by Zhang San | Filter by manager |
+| Top 5 publishers by sales | Sort + limit |
 
 ## 3. Interactions
 
@@ -7712,6 +7738,356 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     }
   }
 
+  // Publishers 意图检测：出现媒体词（publisher/publishers/媒体）时视为媒体查询；
+  // 与趋势/分析词组合时让位给 analysis（如「分析媒体 X 的表现」→ 商户分析）。
+  function hasPublisherIntent(prompt) {
+    const lower = String(prompt || "").toLowerCase();
+    if (!/(?:publisher|publishers|媒体)/i.test(lower)) return false;
+    if (/趋势|trend|分析|analy|评估|诊断|表现|performance|health\s*check|怎么样/i.test(lower)) return false;
+    return true;
+  }
+
+  // ── Publishers 查询解析 ──────────────────────────────
+  // 站点别名按具体域名优先；短国家代码只在单词边界内匹配，避免误识别 sales 等英文词。
+  const PUBLISHER_MARKET_ALIASES = [
+    { key: "amazon.com.mx", aliases: ["amazon.com.mx", "墨西哥", "mx", "墨西哥站", "墨西哥市场"] },
+    { key: "amazon.co.uk", aliases: ["amazon.co.uk", "英国", "uk", "英国站", "英国市场", "英区"] },
+    { key: "amazon.com", aliases: ["amazon.com", "美国", "us", "美国站", "美国市场", "美区"] },
+    { key: "amazon.de", aliases: ["amazon.de", "德国", "de", "德国站", "德国市场", "德区"] },
+    { key: "amazon.fr", aliases: ["amazon.fr", "法国", "fr", "法国站", "法国市场"] },
+    { key: "amazon.ca", aliases: ["amazon.ca", "加拿大", "ca", "加拿大站", "加拿大市场"] },
+    { key: "amazon.it", aliases: ["amazon.it", "意大利", "it", "意大利站", "意大利市场"] },
+    { key: "amazon.es", aliases: ["amazon.es", "西班牙", "es", "西班牙站", "西班牙市场"] },
+    { key: "amazon.nl", aliases: ["amazon.nl", "荷兰", "nl", "荷兰站", "荷兰市场"] }
+  ];
+
+  // 排序指标别名表：指标 key → 别名（中英）。
+  const PUBLISHER_SORT_ALIASES = [
+    { key: "sales", aliases: ["销售额", "销售", "sales", "revenue", "收入"] },
+    { key: "allCommission", aliases: ["总佣金", "全部佣金", "佣金", "commission", "payout"] },
+    { key: "affCommission", aliases: ["联盟佣金", "affiliate commission", "aff commission", "aff"] },
+    { key: "orders", aliases: ["订单", "orders", "order", "单量", "出单"] },
+    { key: "clicks", aliases: ["点击", "clicks", "click", "流量"] },
+    { key: "cvr", aliases: ["转化率", "cvr", "conversion rate"] },
+    { key: "dpv", aliases: ["dpv", "详情页", "detail page views"] },
+    { key: "atc", aliases: ["atc", "加购", "add to cart"] },
+    { key: "grossProfit", aliases: ["毛利", "gross profit"] }
+  ];
+
+  const PUBLISHER_STOP_WORDS = [
+    "媒体", "publisher", "publishers", "列", "列举", "列出", "查", "查询", "找", "一下", "的", "哪些",
+    "有哪些", "有", "看", "看看", "展示", "显示", "输出", "列表", "记录", "业绩", "数据", "排序", "排名",
+    "市场", "站点", "联盟", "商家", "合作", "经理", "管理员", "前", "个", "条", "名", "最", "最高", "最大",
+    "list", "show", "give", "find", "lookup", "for", "with", "in", "and", "the", "top", "only", "by"
+  ];
+
+  function publisherAliasMatches(text, alias) {
+    const value = String(text || "").toLowerCase();
+    const normalizedAlias = String(alias || "").toLowerCase();
+    if (!normalizedAlias) return false;
+    if (/^[a-z]{2}$/i.test(normalizedAlias)) {
+      const escaped = escapeRegExp(normalizedAlias);
+      return new RegExp("(^|[^a-z])" + escaped + "(?=$|[^a-z])", "i").test(value);
+    }
+    return value.indexOf(normalizedAlias) !== -1;
+  }
+
+  // 解析 publishers 查询的筛选条件（自然语言与 publisher: 前缀共用）。
+  // 返回 { market, network, merchantIds, manager, sortKey, limit, unrecognized }。
+  function parsePublisherFilters(prompt, data) {
+    const text = String(prompt || "");
+    const lower = text.toLowerCase();
+    const source = data || {};
+    const publishers = Array.isArray(source.publishers) ? source.publishers : [];
+    const networks = Array.isArray(source.networks) ? source.networks : [];
+    const merchantNameMap = source.merchantNameMap || {};
+
+    let market = null;
+    for (const entry of PUBLISHER_MARKET_ALIASES) {
+      if (entry.aliases.some(function (alias) { return publisherAliasMatches(lower, alias); })) {
+        market = entry.key;
+        break;
+      }
+    }
+
+    let network = null;
+    const sortedNetworks = networks.slice().sort(function (a, b) {
+      return String(b).length - String(a).length;
+    });
+    for (const candidate of sortedNetworks) {
+      if (lower.indexOf(String(candidate).toLowerCase()) !== -1) {
+        network = String(candidate);
+        break;
+      }
+    }
+
+    const merchantIds = [];
+    let merchantQuery = null;
+    const addMerchantId = function (value) {
+      const id = Number(value);
+      if (Number.isFinite(id) && merchantIds.indexOf(id) === -1) merchantIds.push(id);
+    };
+    const idMatches = text.match(/\b\d{4,8}\b/g) || [];
+    idMatches.forEach(function (id) {
+      if (Object.prototype.hasOwnProperty.call(merchantNameMap, String(Number(id)))) addMerchantId(id);
+    });
+    if (!merchantIds.length) {
+      const queryTokens = lower.split(/[\s,，、;；:：]+/).filter(function (token) {
+        return token.length >= 3 && !PUBLISHER_STOP_WORDS.some(function (word) {
+          return word.length >= 2 && token.indexOf(word.toLowerCase()) !== -1;
+        }) && token !== String(network || "").toLowerCase() && !/^amazon\.[a-z.]+$/.test(token);
+      });
+      Object.keys(merchantNameMap).forEach(function (merchantId) {
+        const merchantName = String(merchantNameMap[merchantId] || "").toLowerCase();
+        if (merchantName && (lower.indexOf(merchantName) !== -1 || queryTokens.some(function (token) {
+          return merchantName.indexOf(token) !== -1;
+        }))) addMerchantId(merchantId);
+      });
+    }
+    if (!merchantIds.length) {
+      const merchantMatch = text.match(/(?:商家|merchant)\s*[:：]?\s*([^\s,，、;；]+)/i);
+      if (merchantMatch) {
+        merchantQuery = merchantMatch[1].replace(/(?:的|媒体|publishers?|records?).*$/i, "").trim() || null;
+      }
+    }
+
+    const adminNames = Array.from(new Set(
+      publishers.map(function (publisher) { return String(publisher.adminName || ""); }).filter(Boolean)
+    ));
+    let manager = null;
+    const managerMatch = text.match(/(?:经理|管理员|manager)\s*[:：]?\s*([^\s,，、;；]+)/i);
+    if (managerMatch) {
+      const raw = managerMatch[1].replace(/(?:的|媒体|publishers?|records?).*$/i, "").trim();
+      const exact = adminNames.find(function (name) { return name.toLowerCase() === raw.toLowerCase(); });
+      const fuzzy = !exact && adminNames.find(function (name) { return name.toLowerCase().indexOf(raw.toLowerCase()) !== -1; });
+      manager = exact || fuzzy || raw || null;
+    }
+    if (!manager) {
+      manager = adminNames.find(function (name) {
+        return name.toLowerCase() !== "unknown" && lower.indexOf(name.toLowerCase()) !== -1;
+      }) || null;
+    }
+
+    let sortKey = "clicks";
+    let sortAliasLength = 0;
+    PUBLISHER_SORT_ALIASES.forEach(function (entry) {
+      entry.aliases.forEach(function (alias) {
+        if (lower.indexOf(alias.toLowerCase()) !== -1 && alias.length > sortAliasLength) {
+          sortKey = entry.key;
+          sortAliasLength = alias.length;
+        }
+      });
+    });
+
+    let limit = 50;
+    const limitMatch = lower.match(/(?:前|top|最多|只显示|只)\s*(\d{1,4})/i) || lower.match(/\b(\d{1,4})\s*(?:个|条|名|publishers?)/i);
+    if (limitMatch) limit = Math.max(1, Math.min(1000, parseInt(limitMatch[1], 10)));
+
+    const recognized = [market, network, manager, merchantQuery].filter(Boolean).map(String).concat(merchantIds.map(String));
+    const unrecognized = [];
+    text.split(/[\s,，、;；]+/).forEach(function (token) {
+      const value = token.trim();
+      if (!value || /^\d+$/.test(value) || !/[a-z一-龥]/i.test(value)) return;
+      if (PUBLISHER_STOP_WORDS.some(function (word) {
+        return word.length >= 2 && value.toLowerCase().indexOf(word.toLowerCase()) !== -1;
+      })) return;
+      if (recognized.some(function (item) { return item.toLowerCase() === value.toLowerCase(); })) return;
+      if (unrecognized.indexOf(value) === -1) unrecognized.push(value);
+    });
+
+    return {
+      market: market,
+      network: network,
+      merchantIds: merchantIds,
+      merchantQuery: merchantQuery,
+      manager: manager,
+      sortKey: sortKey,
+      limit: limit,
+      unrecognized: unrecognized
+    };
+  }
+
+  function renderPublisherRecordsHtml(prompt, data, language) {
+    const source = data || {};
+    const zh = language === "zh";
+    const filters = parsePublisherFilters(prompt, source);
+    const publishers = Array.isArray(source.publishers) ? source.publishers : [];
+    const merchantNameMap = source.merchantNameMap || {};
+    const networkMatches = function (publisher, network) {
+      return Array.isArray(publisher.networks) && publisher.networks.some(function (value) {
+        return String(value).toLowerCase() === String(network).toLowerCase();
+      });
+    };
+    const merchantMatches = function (publisher, ids) {
+      const publisherIds = Array.isArray(publisher.merchantIds) ? publisher.merchantIds.map(String) : [];
+      return ids.some(function (id) { return publisherIds.indexOf(String(id)) !== -1; });
+    };
+
+    const filtered = publishers.filter(function (publisher) {
+      if (filters.market && !(publisher.markets && publisher.markets[filters.market])) return false;
+      if (filters.network && !networkMatches(publisher, filters.network)) return false;
+      if (filters.merchantQuery && !filters.merchantIds.length) return false;
+      if (filters.merchantIds.length && !merchantMatches(publisher, filters.merchantIds)) return false;
+      if (filters.manager && String(publisher.adminName || "").toLowerCase() !== String(filters.manager).toLowerCase()) return false;
+      return true;
+    });
+
+    const metricFor = function (publisher) {
+      return (filters.market && publisher.markets && publisher.markets[filters.market]) || publisher.total || {};
+    };
+    const valueFor = function (metric, key) {
+      if (key === "cvr") return Number(metric.clicks || 0) > 0 ? Number(metric.orders || 0) / Number(metric.clicks) : 0;
+      if (key === "grossProfit") return Number(metric.allCommission || 0) - Number(metric.affCommission || 0);
+      return Number(metric[key] || 0);
+    };
+    filtered.sort(function (a, b) {
+      return valueFor(metricFor(b), filters.sortKey) - valueFor(metricFor(a), filters.sortKey) ||
+        String(a.userName || a.userId || "").localeCompare(String(b.userName || b.userId || ""), undefined, { sensitivity: "base" });
+    });
+    const rows = filtered.slice(0, filters.limit);
+
+    const colLabels = zh ? {
+      userId: "媒体 ID", userName: "媒体名称", adminName: "经理", clicks: "点击", cvr: "转化率",
+      dpv: "DPV", atc: "ATC", orders: "订单", sales: "销售额", allCommission: "总佣金",
+      affCommission: "联盟佣金", grossProfit: "毛利"
+    } : {
+      userId: "Publisher ID", userName: "Publisher Name", adminName: "Manager", clicks: "Clicks", cvr: "CVR",
+      dpv: "DPV", atc: "ATC", orders: "Orders", sales: "Sales", allCommission: "All Comm",
+      affCommission: "Aff Comm", grossProfit: "Gross Profit"
+    };
+    const conditionParts = [];
+    if (filters.market) conditionParts.push((zh ? "站点 " : "market ") + filters.market);
+    if (filters.network) conditionParts.push((zh ? "联盟 " : "network ") + filters.network);
+    if (filters.merchantIds.length) {
+      const names = filters.merchantIds.map(function (id) {
+        return merchantNameMap[String(id)] || id;
+      });
+      conditionParts.push((zh ? "商家 " : "merchant ") + names.join(", "));
+    } else if (filters.merchantQuery) {
+      conditionParts.push((zh ? "商家 " : "merchant ") + filters.merchantQuery);
+    }
+    if (filters.manager) conditionParts.push((zh ? "经理 " : "manager ") + filters.manager);
+    const conditionNote = conditionParts.concat(filters.unrecognized.length
+      ? [(zh ? "未识别：" : "unrecognized: ") + filters.unrecognized.join(", ")]
+      : []).join(" · ");
+    const title = zh ? "媒体业绩记录" : "Publisher Records";
+
+    if (!filtered.length) {
+      return '<div class="analysis-section publisher-records-section"><h4>' + title + '</h4>' +
+        '<p class="warning">' + (zh ? "未找到匹配的媒体。" : "No matching publishers found.") + '</p>' +
+        (conditionNote ? '<p><small>' + escapeHtml(conditionNote) + '</small></p>' : "") +
+        '</div>';
+    }
+
+    // 合计按完整筛选结果计算；limit 只限制明细行数量。
+    const total = filtered.reduce(function (acc, publisher) {
+      const metric = metricFor(publisher);
+      acc.clicks += Number(metric.clicks || 0);
+      acc.dpv += Number(metric.dpv || 0);
+      acc.atc += Number(metric.atc || 0);
+      acc.orders += Number(metric.orders || 0);
+      acc.sales += Number(metric.sales || 0);
+      acc.allCommission += Number(metric.allCommission || 0);
+      acc.affCommission += Number(metric.affCommission || 0);
+      return acc;
+    }, { clicks: 0, dpv: 0, atc: 0, orders: 0, sales: 0, allCommission: 0, affCommission: 0 });
+
+    const numericCell = function (metric, key) {
+      if (key === "cvr") return pct(valueFor(metric, key));
+      if (["sales", "allCommission", "affCommission", "grossProfit"].indexOf(key) !== -1) {
+        return money(valueFor(metric, key));
+      }
+      return number(valueFor(metric, key));
+    };
+    const header = Object.keys(colLabels).map(function (key) {
+      return "<th>" + colLabels[key] + "</th>";
+    }).join("");
+    const rowHtml = rows.map(function (publisher) {
+      const metric = metricFor(publisher);
+      return "<tr>" +
+        "<td>" + escapeHtml(String(publisher.userId || "")) + "</td>" +
+        "<td>" + escapeHtml(String(publisher.userName || "")) + "</td>" +
+        "<td>" + escapeHtml(String(publisher.adminName || "Unknown")) + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "clicks") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "cvr") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "dpv") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "atc") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "orders") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "sales") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "allCommission") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "affCommission") + "</td>" +
+        "<td class=\"num\">" + numericCell(metric, "grossProfit") + "</td>" +
+        "</tr>";
+    }).join("");
+    const totalMetric = {
+      clicks: total.clicks, dpv: total.dpv, atc: total.atc, orders: total.orders,
+      sales: total.sales, allCommission: total.allCommission, affCommission: total.affCommission
+    };
+    const totalRow = "<tr class=\"total-row\">" +
+      "<td colspan=\"3\">" + (zh ? "合计" : "Total") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "clicks") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "cvr") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "dpv") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "atc") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "orders") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "sales") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "allCommission") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "affCommission") + "</td>" +
+      "<td class=\"num\">" + numericCell(totalMetric, "grossProfit") + "</td>" +
+      "</tr>";
+    const sortLabel = colLabels[filters.sortKey] || filters.sortKey;
+    const note = (zh ? "共 " : "Total: ") + filtered.length.toLocaleString() +
+      " · " + (zh ? "按 " + sortLabel + " 降序" : "ranked by " + sortLabel + " desc");
+
+    return '<div class="analysis-section publisher-records-section"><h4>' + title + '</h4>' +
+      (conditionNote ? '<p><small>' + escapeHtml(conditionNote) + '</small></p>' : "") +
+      '<div class="table-wrap"><table><thead><tr>' + header + '</tr></thead><tbody>' + totalRow + rowHtml + '</tbody></table></div>' +
+      '<p><small>' + escapeHtml(note) + '</small></p>' +
+      '</div>';
+  }
+
+  let publisherRecordsPlaceholderCounter = 0;
+
+  function updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml) {
+    for (const key in _deepReportCache) {
+      const cached = _deepReportCache[key];
+      if (cached && typeof cached.html === "string" && cached.html.indexOf(placeholderId) !== -1) {
+        const replacement = renderedHtml || (container && container.outerHTML) || "";
+        const pattern = new RegExp('<div id="' + escapeRegExp(placeholderId) + '"[^>]*>[\\s\\S]*?<\\/div>', "i");
+        cached.html = pattern.test(cached.html) ? cached.html.replace(pattern, replacement) : replacement;
+      }
+    }
+  }
+
+  // 数据未加载时先返回占位，加载完成后替换占位内容，并同步 Deep Window 缓存。
+  function publisherRecordsAnswer(prompt) {
+    const language = responseLanguageFor(prompt);
+    const zh = language === "zh";
+    const data = _publishersCache;
+    if (!data) {
+      const placeholderId = "publisher-records-" + Date.now() + "-" + (++publisherRecordsPlaceholderCounter);
+      setTimeout(function () {
+        loadPublishersData()
+          .then(function () {
+            const renderedHtml = renderPublisherRecordsHtml(prompt, _publishersCache, language);
+            const container = document.getElementById(placeholderId);
+            if (container) container.innerHTML = renderedHtml;
+            updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml);
+          })
+          .catch(function () {
+            const container = document.getElementById(placeholderId);
+            const renderedHtml = '<div class="analysis-section publisher-records-section"><p class="warning">' +
+              (zh ? "Publishers 数据暂时不可用。" : "Publisher data is temporarily unavailable.") + '</p></div>';
+            if (container) container.innerHTML = renderedHtml;
+            updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml);
+          });
+      }, 0);
+      return '<div id="' + placeholderId + '" class="analysis-section publisher-records-section"><p><em>' +
+        (zh ? "正在加载媒体数据…" : "Loading publisher data…") + '</em></p></div>';
+    }
+    return renderPublisherRecordsHtml(prompt, data, language);
+  }
+
   function detectQueryIntent(userMessage) {
     if (state.chatIntentOverride) {
       const explicitIntent = state.chatIntentOverride;
@@ -7727,9 +8103,12 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       if ((intent === "merchant" || intent === "keyword") && (/趋势|trend/i.test(userMessage) || /\b(?:analyze|analyse|analysis|performance|health\s*check)\b/i.test(userMessage))) {
         return "analysis";
       }
+      // Publishers 尚未纳入旧版 LLM 意图集合时，仍以本地规则保证媒体查询进入专用路由。
+      if (hasPublisherIntent(userMessage)) return "publisher";
       return intent;
     }
     const lower = userMessage.toLowerCase().trim();
+    if (hasPublisherIntent(userMessage)) return "publisher";
     if (findByAsin(userMessage)) return "asin";
     if (findByMerchantId(userMessage)) return "merchant";
     const zhIntent = chatbotI18n.detectIntent && chatbotI18n.detectIntent(userMessage);
@@ -9750,6 +10129,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
     // detectQueryIntent will consume state.llmClassifyResult and return LLM intent if present
     const intent = explicitChatIntent ? explicitChatIntent.intent : detectQueryIntent(prompt);
+    if (intent === "publisher") {
+      return publisherRecordsAnswer(prompt);
+    }
     // categorytier 显式意图：品类 + Tier 组合查询（如 "electronics in tier2"），
     // 强制走 tier+category 路由，跳过 keyword 搜索分支，避免 "electronics" 等品类词被误判为关键词。
     const forcedCategoryTier = !!(explicitChatIntent && explicitChatIntent.key === "categorytier");
@@ -11193,7 +11575,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     { key: "categorytier", intent: "category" },
     { key: "trend", intent: "analysis" },
     { key: "payment", intent: "payment" },
-    { key: "asin", intent: "asin" }
+    { key: "asin", intent: "asin" },
+    { key: "publisher", intent: "publisher" }
   ]);
   let chatIntentActiveIndex = -1;
 
@@ -11207,7 +11590,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (!input || !overlay) return;
 
     const value = String(input.value || "");
-    const match = value.match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin)\s*[:：](?=\s|$)/i);
+    const match = value.match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisher)\s*[:：](?=\s|$)/i);
     if (!match) {
       overlay.classList.remove("visible");
       overlay.innerHTML = "";
@@ -11357,7 +11740,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
   function parseChatIntentPrefix(prompt) {
     // 命令格式：xxx: <问题>（如 "trend: shokz"），支持半角/全角冒号
-    const match = String(prompt || "").match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin)\s*[:：]\s*([\s\S]*)?$/i);
+    const match = String(prompt || "").match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisher)\s*[:：]\s*([\s\S]*)?$/i);
     if (!match) return null;
     const key = match[1].toLowerCase();
     const option = CHAT_INTENT_OPTIONS.find(function (item) { return item.key === key; });
@@ -23139,6 +23522,10 @@ var _NUMERIC_COL_PATTERNS = [
       selectChatIntent,
       parseChatIntentPrefix,
       detectQueryIntent,
+      hasPublisherIntent,
+      parsePublisherFilters,
+      renderPublisherRecordsHtml,
+      publisherRecordsAnswer,
       cleanedMerchantLookupPhrase,
       hasStrongMerchantLookup,
       extractMetricFilters,

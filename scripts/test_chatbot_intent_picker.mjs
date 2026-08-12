@@ -17,7 +17,7 @@ assertMatch(html, /role="listbox"/, "提问类型菜单应支持列表语义");
 assertMatch(html, /class="chat-intent-menu-title"/, "提问类型菜单应提供简洁标题");
 assertMatch(html, /class="chat-intent-option-prefix"/, "提问类型选项应显示命令前缀");
 assertMatch(html, /class="chat-intent-option-hint"/, "提问类型选项应提供简短说明");
-for (const intent of ["merchant", "category", "tier", "categorytier", "trend", "payment", "asin"]) {
+for (const intent of ["merchant", "category", "tier", "categorytier", "trend", "payment", "asin", "publisher"]) {
   assertMatch(html, new RegExp(`data-chat-intent="${intent}"`), `提问类型菜单应包含 ${intent}`);
 }
 assertMatch(html, /Category &amp; Tier/, "菜单应提供 Category & Tier 组合选项");
@@ -51,7 +51,7 @@ assertMatch(styles, /\.chat-intent-option:hover,[\s\S]*?\.chat-intent-option\.ac
   assertMatch(styles, /body\.dashboard-mode[\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?background-image:\s*none\s*!important;/, "深色主题的高优先级蓝色背景规则也应被命令面板覆盖");
   assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?background:\s*transparent\s*!important;/, "浅色主题的高优先级蓝色背景规则也应被命令面板覆盖");
   assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?color:\s*#5e5474;/, "浅色主题的非选中命令选项应保持可读文字颜色");
-  assertMatch(html, /styles\.css\?v=20260807-intent-picker11/, "菜单样式更新应提升缓存版本");
+  assertMatch(html, /styles\.css\?v=20260807-publisher1/, "菜单样式更新应提升缓存版本");
 
 assertMatch(styles, /\.chat-intent-option\.active \.chat-intent-option-label\s*\{[^}]*font-weight:\s*800;/, "选中命令选项标签应加粗");
 assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-intent-option\.active \.chat-intent-option-label\s*\{[^}]*color:\s*#513b91;/, "浅色主题的选中标签应使用紫色区分");
@@ -84,10 +84,10 @@ assertMatch(app, /analysisTarget:\s*trendTargetCleaned\s*\|\|\s*trendTarget/, "t
 assertMatch(app, /## 一、提问类型命令/, "中文说明书应介绍提问类型命令");
 assertMatch(app, /输入\s*\/\s*弹出提问类型菜单/, "中文说明书应说明 / 快捷菜单");
 assertMatch(app, /categorytier: electronics in tier2/, "中文说明书应提供 Category & Tier 示例");
-assertMatch(app, /7 种提问类型/, "中文说明书应列出全部 7 种提问类型");
+assertMatch(app, /8 种提问类型/, "中文说明书应列出全部 8 种提问类型");
 assertMatch(app, /紫色加粗/, "中文说明书应说明前缀的紫色加粗显示");
 assertMatch(app, /## 1\. Question Type Commands/, "英文说明书应介绍提问类型命令");
-assertMatch(app, /The 7 Question Types/, "英文说明书应列出全部 7 种提问类型");
+assertMatch(app, /The 8 Question Types/, "英文说明书应列出全部 8 种提问类型");
 assertMatch(app, /categorytier: electronics in tier2/, "英文说明书应提供 Category & Tier 示例");
 
 // 交互增强：键盘高亮滑轨、光轨层、按压物理、交错浮现
