@@ -737,6 +737,33 @@
   color: #60747f;
 }
 
+.offer-tracker-bb-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.offer-tracker-bb-badge.mind {
+  background: rgba(197, 54, 54, 0.12);
+  color: #a32626;
+}
+
+.offer-tracker-bb-badge.open {
+  background: rgba(23, 123, 80, 0.12);
+  color: #0d7048;
+}
+
+.offer-tracker-bb-badge.unknown {
+  background: #eef2f4;
+  color: #60747f;
+}
+
 .offer-tracker-category-cell,
 .offer-tracker-recommendation-cell {
   max-width: 235px;

@@ -194,10 +194,28 @@
   const OFFER_TRACKER_COLUMNS_KEY = "offerListTrackerColumnsV1";
   const OFFER_TRACKER_SAVED_VIEWS_KEY = "offerListTrackerSavedViewsV1";
   const DEFAULT_OFFER_TRACKER_RULES = Object.freeze({ highScore: 8, lowAovMax: 100 });
+  const OFFER_TRACKER_BB_POLICY_BRANDS = Object.freeze({
+    mind: Object.freeze([
+      "ulike", "Aiper", "Neakasa", "Speediance", "WOLFBOX", "REDTIGER", "Beatbot",
+      "Mammotion", "3W", "Gosovr", "WORX", "True classic", "VITURE",
+      "TP-Link", "Sublue"
+    ]),
+    open: Object.freeze([
+      "Merach", "Heyzoo", "Ottocast", "Rockbros", "Chebio", "Tabwee", "Shaperx", "Bluewood",
+      "Featol", "AOCHUAN", "Edifier", "GaiaLoop", "Tagry", "Hisense", "Shokz", "Gyroor",
+      "DJI", "Level8", "Bassbloom", "Derila", "Akusoli", "Matsato", "Nuubu", "Synoshi",
+      "Enence", "Kinzeno"
+    ])
+  });
+  const OFFER_TRACKER_BB_POLICY_KEYS = Object.freeze({
+    mind: new Set(OFFER_TRACKER_BB_POLICY_BRANDS.mind.map(normalize)),
+    open: new Set(OFFER_TRACKER_BB_POLICY_BRANDS.open.map(normalize))
+  });
   const DEFAULT_OFFER_TRACKER_COLUMNS = Object.freeze({
     tier: true,
     commission: true,
     aov: true,
+    bbPolicy: true,
     category: true,
     asins: true,
     recommendation: true
@@ -21751,7 +21769,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (!/^B0[A-Z0-9]{8}$/.test(value) || seen.has(value)) return false;
       seen.add(value);
       return true;
-    }).slice(0, 3);
+    }).slice(0, 5);
   }
 
   function offerTrackerScore(offer) {
@@ -21784,6 +21802,28 @@ var _NUMERIC_COL_PATTERNS = [
 
   function offerTrackerMerchantName(offer) {
     return String((offer && (offer.merchantName || offer.brand)) || "Unnamed merchant").trim();
+  }
+
+  function offerTrackerBbPolicyKey(offer) {
+    const brandKey = normalize(offerTrackerMerchantName(offer));
+    const matches = (keys) => Array.from(keys).some((key) =>
+      brandKey === key || brandKey.startsWith(key) || brandKey.endsWith(key)
+    );
+    if (matches(OFFER_TRACKER_BB_POLICY_KEYS.mind)) return "mind";
+    if (matches(OFFER_TRACKER_BB_POLICY_KEYS.open)) return "open";
+    return "unknown";
+  }
+
+  function offerTrackerBbPolicyLabel(offer, language = state.language) {
+    const labels = language === "zh"
+      ? { mind: "介意 BB", open: "不介意 BB", unknown: "未知" }
+      : { mind: "Mind BB", open: "Doesn't mind BB", unknown: "Unknown" };
+    return labels[offerTrackerBbPolicyKey(offer)];
+  }
+
+  function offerTrackerBbPolicyCellHtml(offer) {
+    const key = offerTrackerBbPolicyKey(offer);
+    return `<span class="offer-tracker-bb-badge ${key}">${escapeHtml(offerTrackerBbPolicyLabel(offer))}</span>`;
   }
 
   function offerTrackerRecommendation() {
@@ -21836,20 +21876,21 @@ var _NUMERIC_COL_PATTERNS = [
 
   function offerTrackerColumnDefinitions(view = state.offerListTracker.view) {
     const labels = state.language === "zh"
-      ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "AFF 佣金", aov: "AOV", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
-      : { priority: "Priority", merchant: "Merchant", tier: "Tier", commission: "AFF Commission", aov: "AOV", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
+      ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "AFF 佣金", aov: "AOV", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
+      : { priority: "Priority", merchant: "Merchant", tier: "Tier", commission: "AFF Commission", aov: "AOV", bbPolicy: "BB Preference", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
     const all = [
       { key: "priority", label: labels.priority, mandatory: true },
       { key: "merchant", label: labels.merchant, mandatory: true },
       { key: "tier", label: labels.tier },
       { key: "commission", label: labels.commission },
       { key: "aov", label: labels.aov },
+      { key: "bbPolicy", label: labels.bbPolicy },
       { key: "category", label: labels.category },
       { key: "asins", label: labels.asins },
       { key: "recommendation", label: labels.recommendation }
     ];
     const allowed = view === "products"
-      ? new Set(["priority", "merchant", "aov", "category", "asins"])
+      ? new Set(["priority", "merchant", "aov", "bbPolicy", "category", "asins"])
       : new Set(all.map((column) => column.key));
     return all.filter((column) => allowed.has(column.key) && (column.mandatory || state.offerListTracker.visibleColumns[column.key] !== false));
   }
@@ -21866,6 +21907,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (column.key === "tier") return `<span class="offer-tracker-tier-badge">${escapeHtml(canonicalTierName(offer.tier) || "Unknown")}</span>`;
     if (column.key === "commission") return `<span class="offer-tracker-number-cell">${escapeHtml(`${offerTrackerCommissionRate(offer).toFixed(2).replace(/\.00$/, "")}%`)}</span>`;
     if (column.key === "aov") return offerTrackerAovCellHtml(offer);
+    if (column.key === "bbPolicy") return offerTrackerBbPolicyCellHtml(offer);
     if (column.key === "category") return `<span class="offer-tracker-category-cell">${escapeHtml(displayCategory(offer))}</span>`;
     if (column.key === "asins") {
       const asins = offerTrackerAsins(offer);
@@ -21884,6 +21926,7 @@ var _NUMERIC_COL_PATTERNS = [
       ["AFF Commission", (offer) => offerTrackerCommissionRate(offer), 16, "percentage"],
       ["AOV", (offer) => offerTrackerOptionalNumber(offer.aov), 14],
       ["AOV Type", (offer) => offerTrackerAovTypeLabel(offer, "en"), 14],
+      ["BB Preference", (offer) => offerTrackerBbPolicyLabel(offer, "en"), 18],
       ["Category", (offer) => displayCategory(offer), 34],
       ["Recommendation", (offer) => offerTrackerRecommendation(offer, offerTrackerPriority(offer, state.offerListTracker.rules)), 54]
     ];
@@ -21896,6 +21939,7 @@ var _NUMERIC_COL_PATTERNS = [
       ["Merchant Name", (offer) => offerTrackerMerchantName(offer), 28],
       ["AOV", (offer) => offerTrackerOptionalNumber(offer.aov), 14],
       ["AOV Type", (offer) => offerTrackerAovTypeLabel(offer, "en"), 14],
+      ["BB Preference", (offer) => offerTrackerBbPolicyLabel(offer, "en"), 18],
       ["Category", (offer) => displayCategory(offer), 34],
       ["Top Rank ASINs", (offer) => offerTrackerAsins(offer).join(", "), 42]
     ];
@@ -21988,8 +22032,8 @@ var _NUMERIC_COL_PATTERNS = [
   function renderOfferTrackerColumnsPanel() {
     if (!els.offerTrackerColumnsPanel) return;
     const labels = state.language === "zh"
-      ? { tier: "层级", commission: "AFF 佣金", aov: "AOV", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
-      : { tier: "Tier", commission: "AFF Commission", aov: "AOV", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
+      ? { tier: "层级", commission: "AFF 佣金", aov: "AOV", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
+      : { tier: "Tier", commission: "AFF Commission", aov: "AOV", bbPolicy: "BB Preference", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
     els.offerTrackerColumnsPanel.innerHTML = `<div class="offer-tracker-popover-header"><strong>${escapeHtml(offerTrackerText("Visible columns", "显示列"))}</strong><button type="button" data-offer-tracker-close="columns" aria-label="Close columns">×</button></div>${Object.keys(labels).map((key) => `<label class="offer-tracker-column-option"><input type="checkbox" data-offer-tracker-column="${key}" ${state.offerListTracker.visibleColumns[key] !== false ? "checked" : ""}/><span>${escapeHtml(labels[key])}</span></label>`).join("")}`;
   }
 
@@ -23659,6 +23703,9 @@ var _NUMERIC_COL_PATTERNS = [
       offerTrackerAovType,
       offerTrackerAovTypeLabel,
       offerTrackerAovCellHtml,
+      offerTrackerBbPolicyKey,
+      offerTrackerBbPolicyLabel,
+      offerTrackerBbPolicyCellHtml,
       offerTrackerAsins,
       offerTrackerScore,
       offerTrackerPriority,

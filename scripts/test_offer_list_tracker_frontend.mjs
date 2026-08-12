@@ -85,7 +85,10 @@ const high = {
   aov: 100,
   aovType: "actual",
   recommendation: "Source recommendation should not be exported",
-  topAsins: ["B012345678", "B012345678", "not-an-asin"]
+  topAsins: [
+    "B012345678", "B012345678", "B087654321", "not-an-asin",
+    "B011223344", "B055667788", "B099887766", "B000000001"
+  ]
 };
 const lowAov = {
   merchantId: "202",
@@ -109,6 +112,9 @@ const recommended = {
   aov: 180,
   aovType: "actual"
 };
+const bbMind = { merchantName: "Mammotion US" };
+const bbOpen = { merchantName: "Ottocast" };
+const bbUnknown = { merchantName: "Unlisted Brand" };
 
 assertEqual(hooks.offerTrackerCommissionRate(high), 20, "affiliate commission should be preferred for tracker filtering");
 assertEqual(hooks.offerTrackerCommissionRate({ commissionRate: 30 }), 0, "generic commission should never be presented as AFF Commission");
@@ -118,7 +124,23 @@ assertEqual(hooks.offerTrackerAovTypeLabel(high, "en"), "Actual", "actual AOV sh
 assertEqual(hooks.offerTrackerAovTypeLabel(lowAov, "en"), "Estimated", "tentative AOV should have an English source label");
 assert(hooks.offerTrackerAovCellHtml(high).includes("offer-tracker-aov-badge actual"), "actual AOV cells should show an actual badge");
 assert(hooks.offerTrackerAovCellHtml(lowAov).includes("offer-tracker-aov-badge estimated"), "tentative AOV cells should show an estimated badge");
-assertEqual(hooks.offerTrackerAsins(high), ["B012345678"], "ASIN export should deduplicate and validate values");
+assertEqual(hooks.offerTrackerBbPolicyKey(bbMind), "mind", "brands that prohibit BB should be marked as minding BB");
+assertEqual(hooks.offerTrackerBbPolicyKey({ merchantName: "Mammotion" }), "mind", "known regional brand aliases should share the BB policy");
+assertEqual(hooks.offerTrackerBbPolicyKey({ merchantName: "Beatbot Amazon" }), "mind", "database merchant suffixes should preserve the brand BB policy");
+assertEqual(hooks.offerTrackerBbPolicyKey(bbOpen), "open", "brands that allow BB should be marked as open");
+assertEqual(hooks.offerTrackerBbPolicyKey({ merchantName: "Shokz Official" }), "open", "official-store suffixes should preserve the brand BB policy");
+assertEqual(hooks.offerTrackerBbPolicyKey({ merchantName: "AutoPlay (Ottocast)" }), "open", "confirmed brands should match when the brand appears as a merchant suffix");
+assertEqual(hooks.offerTrackerBbPolicyKey(bbUnknown), "unknown", "unlisted brands should have an unknown BB policy");
+assertEqual(hooks.offerTrackerBbPolicyLabel(bbMind, "zh"), "介意 BB", "BB policy labels should support Chinese");
+assertEqual(hooks.offerTrackerBbPolicyLabel(bbOpen, "en"), "Doesn't mind BB", "BB policy labels should support English");
+assert(hooks.offerTrackerBbPolicyCellHtml(bbMind).includes("offer-tracker-bb-badge mind"), "BB-sensitive brands should render a red badge class");
+assert(hooks.offerTrackerBbPolicyCellHtml(bbOpen).includes("offer-tracker-bb-badge open"), "BB-open brands should render a green badge class");
+assert(hooks.offerTrackerBbPolicyCellHtml(bbUnknown).includes("offer-tracker-bb-badge unknown"), "unknown brands should render a gray badge class");
+assertEqual(
+  hooks.offerTrackerAsins(high),
+  ["B012345678", "B087654321", "B011223344", "B055667788", "B099887766"],
+  "ASIN display and export should deduplicate, validate, and keep the top five values"
+);
 assertEqual(hooks.offerTrackerScore(high), 11, "score should combine tier, commission, AOV, and ASIN signals");
 assertEqual(hooks.offerTrackerPriority(high).key, "high", "strong commercial offers should be high priority");
 assertEqual(hooks.offerTrackerPriority(lowAov).key, "low-aov", "accessible AOV offers should enter the low-AOV group");
@@ -144,12 +166,12 @@ assert(
 
 assertEqual(
   hooks.offerTrackerOfferExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "AOV Type", "Category", "Recommendation"],
+  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "AOV Type", "BB Preference", "Category", "Recommendation"],
   "offer worksheet should preserve the approved business columns"
 );
 assertEqual(
   hooks.offerTrackerProductExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "AOV", "AOV Type", "Category", "Top Rank ASINs"],
+  ["Priority", "Merchant ID", "Merchant Name", "AOV", "AOV Type", "BB Preference", "Category", "Top Rank ASINs"],
   "product worksheet should preserve the reference workbook columns"
 );
 
@@ -162,6 +184,8 @@ const workbook = hooks.createRecommendationWorkbook([high, lowAov], {
 const workbookText = new TextDecoder().decode(workbook);
 assert(workbookText.includes("List of Offers"), "workbook should contain the List of Offers worksheet");
 assert(workbookText.includes("Brand Product List"), "workbook should contain the Brand Product List worksheet");
+assert(workbookText.includes("B099887766"), "workbook should include the fifth Top Rank ASIN");
+assert(!workbookText.includes("B000000001"), "workbook should omit ASINs after the top five");
 assert(!workbookText.includes("Source recommendation should not be exported"), "workbook recommendation cells should remain blank");
 
 const html = fs.readFileSync("public/index.html", "utf8");
@@ -176,9 +200,14 @@ assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission ra
 const appSource = fs.readFileSync("public/app.js", "utf8");
 assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
 assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
+assert(appSource.includes('bbPolicy: "BB Preference"'), "tracker table headers should include the BB preference column");
+assert(appSource.includes('"Mammotion", "3W", "Gosovr"'), "tracker should preserve the confirmed prohibited-BB brand list");
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
 assert(styles.includes(".offer-tracker-aov-badge.actual"), "actual AOV badges should have dedicated styling");
 assert(styles.includes(".offer-tracker-aov-badge.estimated"), "estimated AOV badges should have dedicated styling");
+assert(styles.includes(".offer-tracker-bb-badge.mind"), "BB-sensitive brands should have red badge styling");
+assert(styles.includes(".offer-tracker-bb-badge.open"), "BB-open brands should have green badge styling");
+assert(styles.includes(".offer-tracker-bb-badge.unknown"), "unknown BB policies should have gray badge styling");
 
 console.log("Offer List Tracker frontend checks passed");
