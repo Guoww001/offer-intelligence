@@ -223,6 +223,15 @@ assertEqual(
   ["Levanta", "Wayward"],
   "network selections should be normalized and deduplicated"
 );
+const preexistingSelection = hooks.updateOfferTrackerRowSelection([wayward], true, new Set());
+const pageSelection = hooks.updateOfferTrackerRowSelection([high, lowAov], true, preexistingSelection);
+assert(hooks.offerTrackerRowsAreSelected([high, lowAov], pageSelection), "current-page rows should remain selectable as a group");
+assert(!hooks.offerTrackerRowsAreSelected([high, lowAov, recommended], pageSelection), "current-page selection should not imply cross-page selection");
+const filteredSelection = hooks.updateOfferTrackerRowSelection([high, lowAov, recommended], true, pageSelection);
+assert(hooks.offerTrackerRowsAreSelected([high, lowAov, recommended], filteredSelection), "all matching rows should be selectable across pages");
+const clearedFilteredSelection = hooks.updateOfferTrackerRowSelection([high, lowAov, recommended], false, filteredSelection);
+assertEqual(clearedFilteredSelection.size, 1, "clearing matching rows should preserve selections outside the current filters");
+assert(hooks.offerTrackerRowsAreSelected([wayward], clearedFilteredSelection), "unmatched selected rows should remain selected");
 assertEqual(
   hooks.filterOfferTrackerRows([recommended, lowAov, high], { tier: "all", category: "all", network: "all" }, "303").map((offer) => offer.merchantId),
   ["303"],
@@ -347,8 +356,10 @@ assert(html.includes('id="offerTrackerRevenueStatus"'), "revenue status filter s
 assert(html.includes('id="offerTrackerRevenueSort"'), "revenue sort control should exist");
 assert(html.includes('id="offerTrackerNetworkMenu"'), "network filter should provide a checkbox menu");
 assert(html.includes('aria-controls="offerTrackerNetworkMenu"'), "network filter toggle should expose its menu to assistive technology");
+assert(html.includes('id="offerTrackerSelectAllFiltered"'), "tracker should provide an all-matching cross-page selection action");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
+assert(appSource.includes('aria-label="Select current page"'), "the table header should retain current-page selection");
 assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
 assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
 assert(appSource.includes('bbPolicy: "BB Preference"'), "tracker table headers should include the BB preference column");
@@ -361,6 +372,7 @@ assert(styles.includes(".offer-tracker-bb-badge.mind"), "BB-sensitive brands sho
 assert(styles.includes(".offer-tracker-bb-badge.open"), "BB-open brands should have green badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.unknown"), "unknown BB policies should have gray badge styling");
 assert(styles.includes(".offer-tracker-network-option"), "network checkbox options should have dedicated styling");
+assert(styles.includes(".offer-tracker-select-filtered"), "all-matching selection action should have dedicated styling");
 assert(html.includes('id="offerTrackerExportDialog"'), "workbook export setup dialog should exist");
 assert(html.includes('id="offerTrackerExportTiers"'), "per-Tier export quantity controls should exist");
 assert(html.includes('id="offerTrackerBackgroundRanges"'), "row background range controls should exist");
