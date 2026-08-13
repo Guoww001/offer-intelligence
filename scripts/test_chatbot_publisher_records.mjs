@@ -38,9 +38,9 @@ assertMatch(app, /### 6\. 媒体记录查询/, "中文说明书应提供媒体�
 assertMatch(app, /### 1\.6 Publisher Records/, "英文说明书应提供 Publisher Records 小节");
 
 // ── Task 6：缓存版本 ──
-assertMatch(html, /styles\.css\?v=20260813-prefixlabel1/, "样式应提升缓存版本");
-assertMatch(html, /auth\.js\?v=20260813-prefixlabel1/, "认证脚本应提升缓存版本");
-assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-prefixlabel1"/, "app.js 缓存版本应与 auth.js 一致");
+assertMatch(html, /styles\.css\?v=20260813-profile-visual1/, "样式应提升缓存版本");
+assertMatch(html, /auth\.js\?v=20260813-profile-visual1/, "认证脚本应提升缓存版本");
+assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-profile-visual1"/, "app.js 缓存版本应与 auth.js 一致");
 
 const storageValues = new Map();
 const elementStub = {

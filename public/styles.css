@@ -12881,6 +12881,230 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
   white-space: nowrap;
 }
 
+/* ── Deep Window 内媒体画像（publisherprofile）──
+   跟随 .deep-window 的 --dw-* 账本美学变量：纸面 + 发丝线，深色控制室自动换肤。
+   作用域限定 .deep-window，避免泄漏到 Publishers 独立页。 */
+
+.deep-window .publisher-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 14px;
+}
+
+.deep-window .publisher-profile-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--dw-src-soft);
+  border: 1px solid var(--dw-src-fade);
+  color: var(--dw-src);
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.deep-window .publisher-profile-head > div {
+  min-width: 0;
+}
+
+.deep-window .publisher-profile-head strong {
+  display: block;
+  overflow: hidden;
+  color: var(--dw-ink);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deep-window .publisher-profile-head small {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--dw-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* KPI 指标带：6 卡 3×2，发丝线分隔的纸面账本卡带 */
+.deep-window .publisher-profile-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 0 0 14px;
+  border: 1px solid var(--dw-line-strong);
+  border-radius: 14px;
+  background: var(--dw-line-strong);
+}
+
+.deep-window .publisher-profile-kpis .metric {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--dw-paper-2);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transition: background 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.deep-window .publisher-profile-kpis .metric:hover {
+  background: var(--dw-card);
+}
+
+.deep-window .publisher-profile-kpis .metric-icon {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.deep-window .publisher-profile-kpis .metric-body .metric-label {
+  color: var(--dw-muted);
+  font-size: 9px;
+}
+
+.deep-window .publisher-profile-kpis .metric-body .metric-value {
+  color: var(--dw-ink);
+  font-size: 17px;
+}
+
+.deep-window .publisher-profile-kpis .metric-full {
+  color: var(--dw-muted);
+  font-size: 10px;
+}
+
+/* 画像指标卡：4 卡一行 */
+.deep-window .publisher-affinity-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  margin: 0 0 14px;
+  border: 1px solid var(--dw-line-strong);
+  border-radius: 14px;
+  background: var(--dw-card);
+}
+
+.deep-window .publisher-affinity-metric {
+  min-width: 0;
+  padding: 13px 16px;
+  border-right: 1px solid var(--dw-line);
+  border-bottom: 0;
+}
+
+.deep-window .publisher-affinity-metric:last-child {
+  border-right: 0;
+}
+
+.deep-window .publisher-affinity-metric > span {
+  color: var(--dw-muted);
+}
+
+.deep-window .publisher-affinity-metric strong {
+  color: var(--dw-ink);
+  font-size: 19px;
+}
+
+.deep-window .publisher-affinity-metric small {
+  color: var(--dw-muted);
+}
+
+/* 品类偏好条 */
+.deep-window .publisher-category-row {
+  padding: 7px 0;
+}
+
+.deep-window .publisher-category-copy strong {
+  color: var(--dw-ink);
+}
+
+.deep-window .publisher-category-copy small {
+  color: var(--dw-muted);
+}
+
+.deep-window .publisher-category-rank {
+  color: var(--dw-muted);
+}
+
+.deep-window .publisher-category-track {
+  background: var(--dw-paper-2);
+}
+
+.deep-window .publisher-category-share {
+  color: var(--dw-ink);
+}
+
+.deep-window .publisher-affinity-inline-empty {
+  color: var(--dw-muted);
+}
+
+/* 偏好信号：2×2 网格 + 发丝线 */
+.deep-window .publisher-affinity-signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 14px;
+  border: 1px solid var(--dw-line-strong);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--dw-card);
+}
+
+.deep-window .publisher-signal-row {
+  border-right: 1px solid var(--dw-line);
+  border-bottom: 1px solid var(--dw-line);
+}
+
+.deep-window .publisher-signal-index {
+  color: var(--dw-muted);
+}
+
+.deep-window .publisher-signal-row small {
+  color: var(--dw-muted);
+}
+
+.deep-window .publisher-signal-row strong {
+  color: var(--dw-ink);
+}
+
+.deep-window .publisher-signal-row p {
+  color: var(--dw-muted);
+}
+
+/* 窄窗口折叠：KPI 3→2 列，画像 4→2 列，信号保持 2 列 */
+@media (max-width: 640px) {
+  .deep-window .publisher-profile-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .deep-window .publisher-affinity-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .deep-window .publisher-affinity-metric {
+    border-bottom: 1px solid var(--dw-line);
+  }
+  .deep-window .publisher-affinity-metric:nth-child(2n) {
+    border-right: 0;
+  }
+  .deep-window .publisher-affinity-metric:nth-child(n + 3) {
+    border-bottom: 0;
+  }
+  .deep-window .publisher-affinity-signals {
+    grid-template-columns: 1fr;
+  }
+  .deep-window .publisher-signal-row {
+    border-right: 0;
+  }
+}
+
 .publisher-portfolio {
   min-width: 0;
 }

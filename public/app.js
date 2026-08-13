@@ -5637,6 +5637,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       var percentile = sampleEligible && catValues.length
         ? percentileRank(metrics[field], catValues)
         : null;
+      var rankStatus = !sampleEligible
+        ? "insufficient_sample"
+        : (catValues.length ? "ok" : "no_comparison");
       ranks[field] = {
         value: metrics[field],
         percentile: percentile,
@@ -5644,7 +5647,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         comparisonCount: comparableOffers.length,
         sampleSize: analysisMetricSampleSize(offer, field),
         sampleEligible: sampleEligible,
-        status: sampleEligible ? "ok" : "insufficient_sample"
+        status: rankStatus
       };
     }
 
@@ -5888,7 +5891,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         month: months[i],
         revenue: Math.round(rev * 100) / 100,
         orders: Math.round(ord),
-        epc: clk > 0 ? Math.round((rev / clk) * 10000) / 10000 : 0,
+        epc: clk > 0 ? Math.round((comm / clk) * 10000) / 10000 : 0,
         aov: ord > 0 ? Math.round((rev / ord) * 100) / 100 : 0,
         clicks: Math.round(clk),
         affiliatePayout: Math.round(comm * 100) / 100
@@ -5920,28 +5923,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return s;
     }
     function avgField(list, field) {
-      if (!list.length) return 0;
-      if (field === "epc") {
-        var _rev = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? _rev / _cls : 0;
-      }
-      if (field === "aov") {
-        var _rev = 0, _ord = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _ord += Number(list[_i].orders || 0); }
-        return _ord > 0 ? _rev / _ord : 0;
-      }
-      if (field === "conversionRate") {
-        var _ord = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _ord += Number(list[_i].orders || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? (_ord / _cls) * 100 : 0;
-      }
-      if (field === "commissionRate") {
-        var _comm = 0, _rev = 0;
-        for (var _i = 0; _i < list.length; _i++) { _comm += Number(list[_i].affCommission || 0); _rev += Number(list[_i].salesAmount || 0); }
-        return _rev > 0 ? _comm / _rev : 0;
-      }
-      return sumField(list, field) / list.length;
+      return analysisAverage(list, field);
     }
 
     var aggregates = {
@@ -6004,28 +5986,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return s;
     }
     function avgField(list, field) {
-      if (!list.length) return 0;
-      if (field === "epc") {
-        var _rev = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? _rev / _cls : 0;
-      }
-      if (field === "aov") {
-        var _rev = 0, _ord = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _ord += Number(list[_i].orders || 0); }
-        return _ord > 0 ? _rev / _ord : 0;
-      }
-      if (field === "conversionRate") {
-        var _ord = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _ord += Number(list[_i].orders || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? (_ord / _cls) * 100 : 0;
-      }
-      if (field === "commissionRate") {
-        var _comm = 0, _rev = 0;
-        for (var _i = 0; _i < list.length; _i++) { _comm += Number(list[_i].affCommission || 0); _rev += Number(list[_i].salesAmount || 0); }
-        return _rev > 0 ? _comm / _rev : 0;
-      }
-      return sumField(list, field) / list.length;
+      return analysisAverage(list, field);
     }
 
     var aggregates = {
@@ -6066,8 +6027,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var outliers = [];
     for (var i = 0; i < tierOffers.length; i++) {
       var o = tierOffers[i];
-      var oEpc = o.epc || 0;
-      var oCvr = (o.conversionRate || 0) * 100;
+      var oEpc = metricValueForOffer(o, "epc") || 0;
+      var oCvr = metricValueForOffer(o, "conversionRate") || 0;
       var nameO = o.brand || o.merchantName || "Unknown";
       if (tierAvgEpc > 0 && oEpc > tierAvgEpc * 3) {
         outliers.push({ name: nameO, reason: "EPC " + epc(oEpc) + "远超同级均值 " + epc(tierAvgEpc) });
@@ -6112,10 +6073,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         totalClicks += Number(o.clicks || 0);
         totalOrders += Number(o.orders || 0);
       }
-      var avgEpc = commissionEpcFromTotals(totalRevenue, totalCommission, totalClicks);
-      var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-      var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
-      var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
+      var avgEpc = analysisAverage(catOffers, "epc") || 0;
+      var avgAov = analysisAverage(catOffers, "aov") || 0;
+      var avgCvr = analysisAverage(catOffers, "conversionRate") || 0;
+      var avgCommRate = analysisAverage(catOffers, "commissionRate") || 0;
 
       // Top 5 brands by commission
       var sorted = catOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
@@ -6188,10 +6149,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         totalClicks += Number(o.clicks || 0);
         totalOrders += Number(o.orders || 0);
       }
-      var avgEpc = commissionEpcFromTotals(totalRevenue, totalCommission, totalClicks);
-      var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-      var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
-      var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
+      var avgEpc = analysisAverage(tierOffers, "epc") || 0;
+      var avgAov = analysisAverage(tierOffers, "aov") || 0;
+      var avgCvr = analysisAverage(tierOffers, "conversionRate") || 0;
+      var avgCommRate = analysisAverage(tierOffers, "commissionRate") || 0;
 
       // Top 5 brands by commission
       var sorted = tierOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
@@ -6276,7 +6237,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     for (var f = 0; f < fields.length; f++) {
       var field = fields[f];
       var rank = s.ranks[field];
-      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + (zh ? "前" : "Top ") + (100 - rank.percentile) + "%</td></tr>";
+      var rankText = rank.percentile === null
+        ? (zh ? "样本不足" : "Insufficient sample")
+        : ((zh ? "前" : "Top ") + (100 - rank.percentile) + "%");
+      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + rankText + "</td></tr>";
     }
     html += "</tbody></table></div>";
 
@@ -6306,6 +6270,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     }
     if (!s.strengths.length && !s.weaknesses.length) {
       html += "<p>" + (zh ? "该商户各项指标处于品类中等水平。" : "All metrics are near the category median.") + "</p>";
+    }
+    var insufficientFields = Object.keys(s.ranks || {}).filter(function(field) {
+      return s.ranks[field] && s.ranks[field].status === "insufficient_sample";
+    });
+    if (insufficientFields.length) {
+      html += "<p class=\"analysis-sample-note\"><strong>" + (zh ? "样本提示：" : "Sample note: ") + "</strong>" +
+        (zh ? "部分指标样本量不足，未将其判定为亮点或短板。" : "Some metrics have insufficient sample size and were not classified as strengths or weaknesses.") +
+        "</p>";
     }
     html += "<p><strong>" + (zh ? "支付状态：" : "Payment: ") + "</strong>" + escapeHtml(s.paymentRisk.riskText || (zh ? "无风险" : "No risk")) + "</p>";
     html += "</div>";
@@ -7463,6 +7435,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         for (var i = 0; i < summary.weaknesses.length; i++) wNames.push(metricLabel(summary.weaknesses[i]));
         lines.push(zh ? ("关注点：" + wNames.join("、") + " 低于品类均值，建议优化。") : ("Areas to watch: " + wNames.join(", ") + " are below category average."));
       }
+      var insufficientFields = Object.keys(summary.ranks || {}).filter(function(field) {
+        return summary.ranks[field] && summary.ranks[field].status === "insufficient_sample";
+      });
+      if (insufficientFields.length) {
+        lines.push(zh
+          ? "部分指标样本量不足，未将其判定为亮点或短板。"
+          : "Some metrics have insufficient sample size and were not classified as strengths or weaknesses.");
+      }
       if (!lines.length) {
         lines.push(zh ? (escapeHtml(name) + " 各项指标处于品类中等水平，表现稳定。") : (escapeHtml(name) + " metrics are near the category median — stable performance."));
       }
@@ -8398,7 +8378,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       '<div class="publisher-profile-kpis">' + kpiCards + '</div>' +
       '<div class="publisher-affinity-metrics">' + affinityCards + '</div>' +
       '<h5>' + (zh ? "品类偏好" : "Category affinity") + '</h5>' + categoryBlock +
-      '<h5>' + (zh ? "偏好信号" : "Affinity signals") + '</h5>' + signals +
+      '<h5>' + (zh ? "偏好信号" : "Affinity signals") + '</h5>' +
+      '<div class="publisher-affinity-signals">' + signals + '</div>' +
       '<h5>' + (zh ? "合作商家（" : "Partner merchants (") + String(rows.length) + "）</h5>" +
       '<div class="table-wrap"><table><thead>' + merchantHeader + '</thead><tbody>' + merchantBody + '</tbody></table></div>' +
       '<p><small>' + (zh ? "共 " : "Total: ") + String(rows.length) + (zh ? " 个商家 · 按销售额降序" : " merchants · ranked by sales desc") + '</small></p>' +
@@ -24182,8 +24163,10 @@ var _NUMERIC_COL_PATTERNS = [
           : filters.tier;
       },
       publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
-        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
+      _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
       analyzeMerchant,
+      analyzeCategory,
+      analyzeTier,
       analysisMetricValueForOffer,
       analysisMetricSampleSize,
       analysisMetricSampleEligible,

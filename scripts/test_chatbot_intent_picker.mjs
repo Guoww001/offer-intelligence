@@ -51,7 +51,7 @@ assertMatch(styles, /\.chat-intent-option:hover,[\s\S]*?\.chat-intent-option\.ac
   assertMatch(styles, /body\.dashboard-mode[\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?background-image:\s*none\s*!important;/, "深色主题的高优先级蓝色背景规则也应被命令面板覆盖");
   assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?background:\s*transparent\s*!important;/, "浅色主题的高优先级蓝色背景规则也应被命令面板覆盖");
   assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?color:\s*#5e5474;/, "浅色主题的非选中命令选项应保持可读文字颜色");
-  assertMatch(html, /styles\.css\?v=20260813-prefixlabel1/, "菜单样式更新应提升缓存版本");
+  assertMatch(html, /styles\.css\?v=20260813-profile-visual1/, "菜单样式更新应提升缓存版本");
 
 assertMatch(styles, /\.chat-intent-option\.active \.chat-intent-option-label\s*\{[^}]*font-weight:\s*800;/, "选中命令选项标签应加粗");
 assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-intent-option\.active \.chat-intent-option-label\s*\{[^}]*color:\s*#513b91;/, "浅色主题的选中标签应使用紫色区分");
