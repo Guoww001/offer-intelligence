@@ -314,7 +314,7 @@
         maxAov: "",
         minCommission: "",
         maxCommission: "",
-        network: "all",
+        networks: [],
         revenueStatus: "all",
         revenueSort: "priority"
       },
@@ -325,7 +325,7 @@
         maxAov: "",
         minCommission: "",
         maxCommission: "",
-        network: "all",
+        networks: [],
         revenueStatus: "all",
         revenueSort: "priority"
       },
@@ -585,6 +585,9 @@
     offerTrackerMinCommission: document.getElementById("offerTrackerMinCommission"),
     offerTrackerMaxCommission: document.getElementById("offerTrackerMaxCommission"),
     offerTrackerNetwork: document.getElementById("offerTrackerNetwork"),
+    offerTrackerNetworkToggle: document.getElementById("offerTrackerNetworkToggle"),
+    offerTrackerNetworkSummary: document.getElementById("offerTrackerNetworkSummary"),
+    offerTrackerNetworkMenu: document.getElementById("offerTrackerNetworkMenu"),
     offerTrackerRevenueStatus: document.getElementById("offerTrackerRevenueStatus"),
     offerTrackerRevenueSort: document.getElementById("offerTrackerRevenueSort"),
     offerTrackerFilterChips: document.getElementById("offerTrackerFilterChips"),
@@ -22227,6 +22230,31 @@ var _NUMERIC_COL_PATTERNS = [
     return state.language === "zh" ? zh : en;
   }
 
+  function offerTrackerSelectedNetworks(filters = {}) {
+    const rawValues = Array.isArray(filters.networks)
+      ? filters.networks
+      : filters.network && filters.network !== "all"
+        ? [filters.network]
+        : [];
+    return Array.from(new Set(rawValues
+      .map((value) => String(value || "").trim())
+      .filter((value) => value && value !== "all")));
+  }
+
+  function normalizeOfferTrackerFilters(filters = {}) {
+    return {
+      tier: filters.tier || "all",
+      category: filters.category || "all",
+      minAov: filters.minAov == null ? "" : String(filters.minAov),
+      maxAov: filters.maxAov == null ? "" : String(filters.maxAov),
+      minCommission: filters.minCommission == null ? "" : String(filters.minCommission),
+      maxCommission: filters.maxCommission == null ? "" : String(filters.maxCommission),
+      networks: offerTrackerSelectedNetworks(filters),
+      revenueStatus: filters.revenueStatus || "all",
+      revenueSort: filters.revenueSort || "priority"
+    };
+  }
+
   function offerTrackerOptionalNumber(value) {
     if (value == null || String(value).trim() === "") return null;
     const parsed = Number(String(value).replace(/[$,%]/g, "").replace(/,/g, "").trim());
@@ -22352,6 +22380,7 @@ var _NUMERIC_COL_PATTERNS = [
     const maxAov = offerTrackerOptionalNumber(filters.maxAov);
     const minCommission = offerTrackerOptionalNumber(filters.minCommission);
     const maxCommission = offerTrackerOptionalNumber(filters.maxCommission);
+    const selectedNetworks = offerTrackerSelectedNetworks(filters);
     const query = String(search || "").trim().toLowerCase();
     return (sourceRows || []).filter((offer) => {
       const tier = canonicalTierName(offer.tier);
@@ -22361,7 +22390,7 @@ var _NUMERIC_COL_PATTERNS = [
       const revenue = offerTrackerRevenue(offer);
       if (filters.tier && filters.tier !== "all" && tier !== canonicalTierName(filters.tier)) return false;
       if (filters.category && filters.category !== "all" && category !== filters.category) return false;
-      if (filters.network && filters.network !== "all" && String(offer.network || "") !== String(filters.network)) return false;
+      if (selectedNetworks.length && !selectedNetworks.includes(String(offer.network || ""))) return false;
       if (minAov !== null && aov < minAov) return false;
       if (maxAov !== null && aov > maxAov) return false;
       if (minCommission !== null && commission < minCommission) return false;
@@ -22719,16 +22748,65 @@ var _NUMERIC_COL_PATTERNS = [
     if (state.offerListTracker.controlsReady || !els.offerTrackerTier) return;
     replaceSelectOptions(els.offerTrackerTier, "All tiers", uniqueValues("tier"), state.offerListTracker.draftFilters.tier);
     replaceSelectOptions(els.offerTrackerCategory, "All categories", uniqueCategoryValues(), state.offerListTracker.draftFilters.category);
-    replaceSelectOptions(els.offerTrackerNetwork, "All networks", uniqueValues("network"), state.offerListTracker.draftFilters.network);
     state.offerListTracker.controlsReady = true;
     syncOfferTrackerControls();
+  }
+
+  function renderOfferTrackerNetworkOptions() {
+    if (!els.offerTrackerNetworkMenu) return;
+    const selected = new Set(offerTrackerSelectedNetworks(state.offerListTracker.draftFilters));
+    const allLabel = optionText("All networks");
+    els.offerTrackerNetworkMenu.setAttribute("aria-label", offerTrackerText("Networks", "联盟"));
+    els.offerTrackerNetworkMenu.innerHTML = [
+      `<label class="offer-tracker-network-option"><input type="checkbox" data-offer-tracker-network-all ${selected.size ? "" : "checked"}/><span>${escapeHtml(allLabel)}</span></label>`,
+      ...uniqueValues("network").map((network) => `<label class="offer-tracker-network-option"><input type="checkbox" data-offer-tracker-network="${escapeHtml(network)}" ${selected.has(network) ? "checked" : ""}/><span>${escapeHtml(network)}</span></label>`)
+    ].join("");
+    syncOfferTrackerNetworkControl();
+  }
+
+  function offerTrackerNetworkSelectionFromControl() {
+    if (!els.offerTrackerNetworkMenu) return offerTrackerSelectedNetworks(state.offerListTracker.draftFilters);
+    return Array.from(els.offerTrackerNetworkMenu.querySelectorAll("[data-offer-tracker-network]:checked"))
+      .map((input) => input.dataset.offerTrackerNetwork)
+      .filter(Boolean);
+  }
+
+  function syncOfferTrackerNetworkControl() {
+    const selected = offerTrackerSelectedNetworks(state.offerListTracker.draftFilters);
+    const selectedSet = new Set(selected);
+    if (els.offerTrackerNetworkMenu) {
+      const allInput = els.offerTrackerNetworkMenu.querySelector("[data-offer-tracker-network-all]");
+      if (allInput) allInput.checked = selected.length === 0;
+      els.offerTrackerNetworkMenu.querySelectorAll("[data-offer-tracker-network]").forEach((input) => {
+        input.checked = selectedSet.has(input.dataset.offerTrackerNetwork);
+      });
+    }
+    if (els.offerTrackerNetworkSummary) {
+      const summary = selected.length === 0
+        ? optionText("All networks")
+        : selected.length <= 2
+          ? selected.join(", ")
+          : `${selected.slice(0, 2).join(", ")} +${selected.length - 2}`;
+      els.offerTrackerNetworkSummary.textContent = summary;
+      els.offerTrackerNetworkSummary.title = selected.length ? selected.join(", ") : optionText("All networks");
+    }
+    if (els.offerTrackerNetworkToggle) {
+      els.offerTrackerNetworkToggle.classList.toggle("is-active", selected.length > 0);
+    }
+  }
+
+  function toggleOfferTrackerNetworkMenu(forceOpen) {
+    if (!els.offerTrackerNetworkMenu || !els.offerTrackerNetworkToggle) return;
+    const open = forceOpen == null ? els.offerTrackerNetworkMenu.classList.contains("hidden") : Boolean(forceOpen);
+    els.offerTrackerNetworkMenu.classList.toggle("hidden", !open);
+    els.offerTrackerNetworkToggle.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
   function syncOfferTrackerControls() {
     const draft = state.offerListTracker.draftFilters;
     if (els.offerTrackerTier) els.offerTrackerTier.value = draft.tier;
     if (els.offerTrackerCategory) els.offerTrackerCategory.value = draft.category;
-    if (els.offerTrackerNetwork) els.offerTrackerNetwork.value = draft.network;
+    syncOfferTrackerNetworkControl();
     if (els.offerTrackerRevenueStatus) els.offerTrackerRevenueStatus.value = draft.revenueStatus || "all";
     if (els.offerTrackerRevenueSort) els.offerTrackerRevenueSort.value = draft.revenueSort || "priority";
     if (els.offerTrackerMinAov) els.offerTrackerMinAov.value = draft.minAov;
@@ -22748,7 +22826,7 @@ var _NUMERIC_COL_PATTERNS = [
       maxAov: els.offerTrackerMaxAov.value.trim(),
       minCommission: els.offerTrackerMinCommission.value.trim(),
       maxCommission: els.offerTrackerMaxCommission.value.trim(),
-      network: els.offerTrackerNetwork.value || "all",
+      networks: offerTrackerNetworkSelectionFromControl(),
       revenueStatus: els.offerTrackerRevenueStatus.value || "all",
       revenueSort: els.offerTrackerRevenueSort.value || "priority"
     };
@@ -22758,7 +22836,7 @@ var _NUMERIC_COL_PATTERNS = [
     const chips = [];
     if (filters.tier !== "all") chips.push(filters.tier);
     if (filters.category !== "all") chips.push(filters.category);
-    if (filters.network !== "all") chips.push(filters.network);
+    offerTrackerSelectedNetworks(filters).forEach((network) => chips.push(network));
     if (filters.revenueStatus === "positive") chips.push(offerTrackerText("Revenue > $0", "已产生 Revenue"));
     if (filters.revenueStatus === "none") chips.push(offerTrackerText("Revenue = $0", "未产生 Revenue"));
     if (filters.revenueSort === "revenue-desc") chips.push(offerTrackerText("Revenue high to low", "Revenue 从高到低"));
@@ -22804,10 +22882,10 @@ var _NUMERIC_COL_PATTERNS = [
   function renderOfferListTrackerPage() {
     if (!els.offerListTrackerPage) return;
     initializeOfferTrackerControls();
+    renderOfferTrackerNetworkOptions();
     [
       [els.offerTrackerTier, "All tiers"],
-      [els.offerTrackerCategory, "All categories"],
-      [els.offerTrackerNetwork, "All networks"]
+      [els.offerTrackerCategory, "All categories"]
     ].forEach(([select, label]) => {
       const option = select && select.querySelector('option[value="all"]');
       if (option) option.textContent = optionText(label);
@@ -22881,16 +22959,18 @@ var _NUMERIC_COL_PATTERNS = [
     state.offerListTracker.draftFilters = { ...filters };
     state.offerListTracker.filters = { ...filters };
     state.offerListTracker.page = 1;
+    toggleOfferTrackerNetworkMenu(false);
     setOfferTrackerNotice("");
     renderOfferListTrackerPage();
   }
 
   function resetOfferTrackerFilters() {
-    const filters = { tier: "all", category: "all", minAov: "", maxAov: "", minCommission: "", maxCommission: "", network: "all", revenueStatus: "all", revenueSort: "priority" };
+    const filters = { tier: "all", category: "all", minAov: "", maxAov: "", minCommission: "", maxCommission: "", networks: [], revenueStatus: "all", revenueSort: "priority" };
     state.offerListTracker.draftFilters = { ...filters };
     state.offerListTracker.filters = { ...filters };
     state.offerListTracker.search = "";
     state.offerListTracker.page = 1;
+    toggleOfferTrackerNetworkMenu(false);
     setOfferTrackerNotice("");
     syncOfferTrackerControls();
     renderOfferListTrackerPage();
@@ -22934,7 +23014,10 @@ var _NUMERIC_COL_PATTERNS = [
     const view = {
       id: `view-${Date.now()}`,
       name,
-      filters: { ...state.offerListTracker.filters },
+      filters: {
+        ...state.offerListTracker.filters,
+        networks: offerTrackerSelectedNetworks(state.offerListTracker.filters)
+      },
       search: state.offerListTracker.search,
       view: state.offerListTracker.view
     };
@@ -22951,8 +23034,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (loadButton) {
       const saved = state.offerListTracker.savedViews.find((view) => view.id === loadButton.dataset.offerTrackerLoadView);
       if (!saved) return;
-      state.offerListTracker.filters = { ...state.offerListTracker.filters, ...(saved.filters || {}) };
-      state.offerListTracker.draftFilters = { ...state.offerListTracker.filters };
+      state.offerListTracker.filters = normalizeOfferTrackerFilters(saved.filters || {});
+      state.offerListTracker.draftFilters = normalizeOfferTrackerFilters(state.offerListTracker.filters);
       state.offerListTracker.search = saved.search || "";
       state.offerListTracker.view = saved.view === "products" ? "products" : "offers";
       state.offerListTracker.page = 1;
@@ -23352,13 +23435,34 @@ var _NUMERIC_COL_PATTERNS = [
     [
       els.offerTrackerTier,
       els.offerTrackerCategory,
-      els.offerTrackerNetwork,
       els.offerTrackerRevenueStatus,
       els.offerTrackerRevenueSort
     ].filter(Boolean).forEach((select) => {
       select.addEventListener("change", () => {
         state.offerListTracker.draftFilters = readOfferTrackerDraftFilters();
       });
+    });
+    if (els.offerTrackerNetworkToggle) {
+      els.offerTrackerNetworkToggle.addEventListener("click", () => toggleOfferTrackerNetworkMenu());
+    }
+    if (els.offerTrackerNetworkMenu) {
+      els.offerTrackerNetworkMenu.addEventListener("change", (event) => {
+        const allInput = event.target.closest("[data-offer-tracker-network-all]");
+        const networkInput = event.target.closest("[data-offer-tracker-network]");
+        if (!allInput && !networkInput) return;
+        if (allInput) {
+          els.offerTrackerNetworkMenu.querySelectorAll("[data-offer-tracker-network]").forEach((input) => {
+            input.checked = false;
+          });
+        }
+        state.offerListTracker.draftFilters = readOfferTrackerDraftFilters();
+        syncOfferTrackerNetworkControl();
+      });
+    }
+    document.addEventListener("click", (event) => {
+      if (els.offerTrackerNetwork && !els.offerTrackerNetwork.contains(event.target)) {
+        toggleOfferTrackerNetworkMenu(false);
+      }
     });
     [els.offerTrackerMinAov, els.offerTrackerMaxAov, els.offerTrackerMinCommission, els.offerTrackerMaxCommission].filter(Boolean).forEach((input) => {
       input.addEventListener("input", () => {
@@ -23706,6 +23810,11 @@ var _NUMERIC_COL_PATTERNS = [
       if (trapMonthlyNewMerchantDrawerFocus(event)) return;
       if (trapTier1AdditionsOverlayFocus(event)) return;
       if (trapTier1MerchantDialogFocus(event)) return;
+      if (event.key === "Escape" && els.offerTrackerNetworkMenu && !els.offerTrackerNetworkMenu.classList.contains("hidden")) {
+        toggleOfferTrackerNetworkMenu(false);
+        if (els.offerTrackerNetworkToggle) els.offerTrackerNetworkToggle.focus();
+        return;
+      }
       if (event.key === "Escape" && state.offerListTracker.exportDialogOpen) {
         closeOfferTrackerExportDialog();
         return;
@@ -24554,6 +24663,7 @@ var _NUMERIC_COL_PATTERNS = [
       offerTrackerPriority,
       offerTrackerPriorityLabel,
       offerTrackerRecommendation,
+      offerTrackerSelectedNetworks,
       filterOfferTrackerRows,
       offerTrackerOfferExportColumns,
       offerTrackerProductExportColumns,
