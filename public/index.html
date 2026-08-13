@@ -1104,9 +1104,31 @@
                   <input id="offerTrackerMaxCommission" type="number" min="0" max="100" step="0.25" inputmode="decimal" placeholder="Max %" />
                 </span>
               </label>
-              <label>
+              <div class="offer-tracker-filter-field">
                 <span data-i18n="label.Network">Network</span>
-                <select id="offerTrackerNetwork"><option value="all">All networks</option></select>
+                <div class="offer-tracker-network-multiselect" id="offerTrackerNetwork">
+                  <button class="offer-tracker-network-toggle" id="offerTrackerNetworkToggle" type="button" aria-expanded="false" aria-controls="offerTrackerNetworkMenu">
+                    <span id="offerTrackerNetworkSummary">All networks</span>
+                    <span class="offer-tracker-network-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="offer-tracker-network-menu hidden" id="offerTrackerNetworkMenu" role="group" aria-label="Networks"></div>
+                </div>
+              </div>
+              <label>
+                <span data-i18n="offerTracker.revenueStatus">Revenue status</span>
+                <select id="offerTrackerRevenueStatus">
+                  <option value="all" data-i18n="offerTracker.revenueAll">All revenue</option>
+                  <option value="positive" data-i18n="offerTracker.revenuePositive">Revenue generated</option>
+                  <option value="none" data-i18n="offerTracker.revenueNone">No revenue</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="offerTracker.revenueSort">Revenue order</span>
+                <select id="offerTrackerRevenueSort">
+                  <option value="priority" data-i18n="offerTracker.sortPriority">Priority order</option>
+                  <option value="revenue-desc" data-i18n="offerTracker.sortRevenueDesc">Revenue: high to low</option>
+                  <option value="revenue-asc" data-i18n="offerTracker.sortRevenueAsc">Revenue: low to high</option>
+                </select>
               </label>
             </div>
             <div class="offer-tracker-filter-footer">
@@ -1132,6 +1154,11 @@
                   <span class="sr-only" data-i18n="offerTracker.search">Search offers</span>
                   <input id="offerTrackerSearch" type="search" placeholder="Search merchant or ID" data-i18n-placeholder="offerTracker.searchPlaceholder" />
                 </label>
+                <button class="offer-tracker-tool-button offer-tracker-select-filtered" id="offerTrackerSelectAllFiltered" type="button" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 2.5 2.5L16 9"/></svg>
+                  <span id="offerTrackerSelectAllFilteredLabel">Select all matching</span>
+                  <b id="offerTrackerSelectAllFilteredCount">0</b>
+                </button>
                 <div class="offer-tracker-menu-wrap">
                   <button class="offer-tracker-tool-button" id="offerTrackerColumnsToggle" type="button" aria-expanded="false" aria-controls="offerTrackerColumnsPanel">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM10 5v14M16 5v14"/></svg>

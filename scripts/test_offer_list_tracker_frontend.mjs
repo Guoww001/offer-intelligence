@@ -82,6 +82,7 @@ const high = {
   mainCategory: "Beauty & Personal Care",
   affCommissionRate: 20,
   commissionRate: 12,
+  salesAmount: 1200,
   aov: 100,
   aovType: "actual",
   recommendation: "Source recommendation should not be exported",
@@ -97,6 +98,7 @@ const lowAov = {
   network: "Levanta",
   mainCategory: "Home & Kitchen",
   affCommissionRate: 12,
+  salesAmount: 0,
   aov: 80,
   aovType: "tentative",
   aovSampleProductCount: 5,
@@ -109,6 +111,7 @@ const recommended = {
   network: "Amazon Associates",
   mainCategory: "Sports & Outdoors",
   affCommissionRate: 12,
+  salesAmount: 450,
   aov: 180,
   aovType: "actual"
 };
@@ -129,8 +132,16 @@ const tierTwoSecond = {
   affCommissionRate: 15,
   aov: 120
 };
+const wayward = {
+  ...lowAov,
+  merchantId: "404",
+  merchantName: "Delta Home",
+  network: "Wayward"
+};
 
 assertEqual(hooks.offerTrackerCommissionRate(high), 20, "affiliate commission should be preferred for tracker filtering");
+assertEqual(hooks.offerTrackerRevenue(high), 1200, "tracker revenue should use the offer salesAmount field");
+assertEqual(hooks.offerTrackerRevenue({ salesAmount: null }), 0, "missing tracker revenue should be treated as zero");
 assertEqual(hooks.offerTrackerCommissionRate({ commissionRate: 30 }), 0, "generic commission should never be presented as AFF Commission");
 assertEqual(hooks.offerTrackerAovType(high), "actual", "actual AOV provenance should remain explicit");
 assertEqual(hooks.offerTrackerAovType(lowAov), "estimated", "tentative AOV provenance should display as estimated");
@@ -169,6 +180,59 @@ const filtered = hooks.filterOfferTrackerRows(
 );
 assertEqual(filtered.map((offer) => offer.merchantId), ["101", "202"], "commercial filters should combine inclusively and keep priority order");
 assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, lowAov, high],
+    { tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-desc" }
+  ).map((offer) => offer.merchantId),
+  ["101", "303"],
+  "positive-revenue filter should exclude zero revenue and sort high to low"
+);
+assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, lowAov, high],
+    { tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-asc" }
+  ).map((offer) => offer.merchantId),
+  ["303", "101"],
+  "revenue sorting should support low to high"
+);
+assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, lowAov, high],
+    { tier: "all", category: "all", network: "all", revenueStatus: "none", revenueSort: "priority" }
+  ).map((offer) => offer.merchantId),
+  ["202"],
+  "no-revenue filter should keep only zero-revenue offers"
+);
+assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, wayward, high],
+    { tier: "all", category: "all", networks: ["Levanta", "Wayward"] },
+    "",
+    hooks.defaultOfferTrackerRules()
+  ).map((offer) => offer.merchantId),
+  ["101", "404"],
+  "network filter should include offers from every selected network"
+);
+assertEqual(
+  hooks.offerTrackerSelectedNetworks({ network: "Levanta" }),
+  ["Levanta"],
+  "legacy saved views with one network should remain compatible"
+);
+assertEqual(
+  hooks.offerTrackerSelectedNetworks({ networks: ["Levanta", "Wayward", "Levanta", "all"] }),
+  ["Levanta", "Wayward"],
+  "network selections should be normalized and deduplicated"
+);
+const preexistingSelection = hooks.updateOfferTrackerRowSelection([wayward], true, new Set());
+const pageSelection = hooks.updateOfferTrackerRowSelection([high, lowAov], true, preexistingSelection);
+assert(hooks.offerTrackerRowsAreSelected([high, lowAov], pageSelection), "current-page rows should remain selectable as a group");
+assert(!hooks.offerTrackerRowsAreSelected([high, lowAov, recommended], pageSelection), "current-page selection should not imply cross-page selection");
+const filteredSelection = hooks.updateOfferTrackerRowSelection([high, lowAov, recommended], true, pageSelection);
+assert(hooks.offerTrackerRowsAreSelected([high, lowAov, recommended], filteredSelection), "all matching rows should be selectable across pages");
+const clearedFilteredSelection = hooks.updateOfferTrackerRowSelection([high, lowAov, recommended], false, filteredSelection);
+assertEqual(clearedFilteredSelection.size, 1, "clearing matching rows should preserve selections outside the current filters");
+assert(hooks.offerTrackerRowsAreSelected([wayward], clearedFilteredSelection), "unmatched selected rows should remain selected");
+assertEqual(
   hooks.filterOfferTrackerRows([recommended, lowAov, high], { tier: "all", category: "all", network: "all" }, "303").map((offer) => offer.merchantId),
   ["303"],
   "search should match merchant IDs"
@@ -176,6 +240,15 @@ assertEqual(
 assert(
   hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", network: "all", minCommission: "10", maxCommission: "25" }).includes("AFF 10%–25%"),
   "commission filter chips should identify AFF Commission"
+);
+assert(
+  hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-desc" }).includes("已产生 Revenue"),
+  "revenue filter chips should identify positive revenue"
+);
+assertEqual(
+  hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", networks: ["Levanta", "Wayward"] }),
+  ["Levanta", "Wayward"],
+  "each selected network should be visible in the applied-filter chips"
 );
 
 const exportSourceRows = [tierTwoFirst, tierTwoSecond, lowAov, recommended, high];
@@ -231,12 +304,12 @@ assertEqual(
 
 assertEqual(
   hooks.offerTrackerOfferExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "AOV Type", "BB Preference", "Category", "Recommendation"],
+  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "Revenue", "AOV Type", "BB Preference", "Category", "Recommendation"],
   "offer worksheet should preserve the approved business columns"
 );
 assertEqual(
   hooks.offerTrackerProductExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "AOV", "AOV Type", "BB Preference", "Category", "Top Rank ASINs"],
+  ["Priority", "Merchant ID", "Merchant Name", "AOV", "Revenue", "AOV Type", "BB Preference", "Category", "Top Rank ASINs"],
   "product worksheet should preserve the reference workbook columns"
 );
 
@@ -279,8 +352,14 @@ assert(targetIndex >= 0 && trackerIndex > targetIndex && reportsIndex > trackerI
 assert(html.includes('id="offerListTrackerPage"'), "Offer List Tracker page should exist");
 assert(html.includes('id="offerTrackerExportSelected"'), "selected-row workbook export should exist");
 assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission range</span>'), "commission filters should be labeled as AFF Commission");
+assert(html.includes('id="offerTrackerRevenueStatus"'), "revenue status filter should exist");
+assert(html.includes('id="offerTrackerRevenueSort"'), "revenue sort control should exist");
+assert(html.includes('id="offerTrackerNetworkMenu"'), "network filter should provide a checkbox menu");
+assert(html.includes('aria-controls="offerTrackerNetworkMenu"'), "network filter toggle should expose its menu to assistive technology");
+assert(html.includes('id="offerTrackerSelectAllFiltered"'), "tracker should provide an all-matching cross-page selection action");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
+assert(appSource.includes('aria-label="Select current page"'), "the table header should retain current-page selection");
 assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
 assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
 assert(appSource.includes('bbPolicy: "BB Preference"'), "tracker table headers should include the BB preference column");
@@ -292,6 +371,8 @@ assert(styles.includes(".offer-tracker-aov-badge.estimated"), "estimated AOV bad
 assert(styles.includes(".offer-tracker-bb-badge.mind"), "BB-sensitive brands should have red badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.open"), "BB-open brands should have green badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.unknown"), "unknown BB policies should have gray badge styling");
+assert(styles.includes(".offer-tracker-network-option"), "network checkbox options should have dedicated styling");
+assert(styles.includes(".offer-tracker-select-filtered"), "all-matching selection action should have dedicated styling");
 assert(html.includes('id="offerTrackerExportDialog"'), "workbook export setup dialog should exist");
 assert(html.includes('id="offerTrackerExportTiers"'), "per-Tier export quantity controls should exist");
 assert(html.includes('id="offerTrackerBackgroundRanges"'), "row background range controls should exist");

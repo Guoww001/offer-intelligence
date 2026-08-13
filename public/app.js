@@ -217,6 +217,7 @@
     tier: true,
     commission: true,
     aov: true,
+    revenue: true,
     bbPolicy: true,
     category: true,
     asins: true,
@@ -313,7 +314,9 @@
         maxAov: "",
         minCommission: "",
         maxCommission: "",
-        network: "all"
+        networks: [],
+        revenueStatus: "all",
+        revenueSort: "priority"
       },
       filters: {
         tier: "all",
@@ -322,7 +325,9 @@
         maxAov: "",
         minCommission: "",
         maxCommission: "",
-        network: "all"
+        networks: [],
+        revenueStatus: "all",
+        revenueSort: "priority"
       },
       search: "",
       view: "offers",
@@ -580,6 +585,11 @@
     offerTrackerMinCommission: document.getElementById("offerTrackerMinCommission"),
     offerTrackerMaxCommission: document.getElementById("offerTrackerMaxCommission"),
     offerTrackerNetwork: document.getElementById("offerTrackerNetwork"),
+    offerTrackerNetworkToggle: document.getElementById("offerTrackerNetworkToggle"),
+    offerTrackerNetworkSummary: document.getElementById("offerTrackerNetworkSummary"),
+    offerTrackerNetworkMenu: document.getElementById("offerTrackerNetworkMenu"),
+    offerTrackerRevenueStatus: document.getElementById("offerTrackerRevenueStatus"),
+    offerTrackerRevenueSort: document.getElementById("offerTrackerRevenueSort"),
     offerTrackerFilterChips: document.getElementById("offerTrackerFilterChips"),
     offerTrackerResetFilters: document.getElementById("offerTrackerResetFilters"),
     offerTrackerApplyFilters: document.getElementById("offerTrackerApplyFilters"),
@@ -604,6 +614,9 @@
     offerTrackerPageIndicator: document.getElementById("offerTrackerPageIndicator"),
     offerTrackerExportSelected: document.getElementById("offerTrackerExportSelected"),
     offerTrackerSelectedCount: document.getElementById("offerTrackerSelectedCount"),
+    offerTrackerSelectAllFiltered: document.getElementById("offerTrackerSelectAllFiltered"),
+    offerTrackerSelectAllFilteredLabel: document.getElementById("offerTrackerSelectAllFilteredLabel"),
+    offerTrackerSelectAllFilteredCount: document.getElementById("offerTrackerSelectAllFilteredCount"),
     offerTrackerNotice: document.getElementById("offerTrackerNotice"),
     offerTrackerExportDialog: document.getElementById("offerTrackerExportDialog"),
     offerTrackerExportDialogClose: document.getElementById("offerTrackerExportDialogClose"),
@@ -834,6 +847,14 @@
       "offerTracker.liveSource": "实时 Offer 缓存",
       "offerTracker.aovRange": "AOV 范围",
       "offerTracker.commissionRange": "AFF 佣金范围",
+      "offerTracker.revenueStatus": "Revenue 状态",
+      "offerTracker.revenueAll": "全部 Revenue",
+      "offerTracker.revenuePositive": "已产生 Revenue",
+      "offerTracker.revenueNone": "未产生 Revenue",
+      "offerTracker.revenueSort": "Revenue 排序",
+      "offerTracker.sortPriority": "默认优先级",
+      "offerTracker.sortRevenueDesc": "Revenue：从高到低",
+      "offerTracker.sortRevenueAsc": "Revenue：从低到高",
       "offerTracker.applyFilters": "应用筛选",
       "offerTracker.offerList": "Offer 清单",
       "offerTracker.productList": "品牌产品清单",
@@ -22212,6 +22233,31 @@ var _NUMERIC_COL_PATTERNS = [
     return state.language === "zh" ? zh : en;
   }
 
+  function offerTrackerSelectedNetworks(filters = {}) {
+    const rawValues = Array.isArray(filters.networks)
+      ? filters.networks
+      : filters.network && filters.network !== "all"
+        ? [filters.network]
+        : [];
+    return Array.from(new Set(rawValues
+      .map((value) => String(value || "").trim())
+      .filter((value) => value && value !== "all")));
+  }
+
+  function normalizeOfferTrackerFilters(filters = {}) {
+    return {
+      tier: filters.tier || "all",
+      category: filters.category || "all",
+      minAov: filters.minAov == null ? "" : String(filters.minAov),
+      maxAov: filters.maxAov == null ? "" : String(filters.maxAov),
+      minCommission: filters.minCommission == null ? "" : String(filters.minCommission),
+      maxCommission: filters.maxCommission == null ? "" : String(filters.maxCommission),
+      networks: offerTrackerSelectedNetworks(filters),
+      revenueStatus: filters.revenueStatus || "all",
+      revenueSort: filters.revenueSort || "priority"
+    };
+  }
+
   function offerTrackerOptionalNumber(value) {
     if (value == null || String(value).trim() === "") return null;
     const parsed = Number(String(value).replace(/[$,%]/g, "").replace(/,/g, "").trim());
@@ -22221,6 +22267,11 @@ var _NUMERIC_COL_PATTERNS = [
   function offerTrackerCommissionRate(offer) {
     const parsed = offerTrackerOptionalNumber(offer && offer.affCommissionRate);
     return parsed === null ? 0 : parsed;
+  }
+
+  function offerTrackerRevenue(offer) {
+    const parsed = offerTrackerOptionalNumber(offer && offer.salesAmount);
+    return parsed === null ? 0 : Math.max(0, parsed);
   }
 
   function offerTrackerAovType(offer) {
@@ -22332,19 +22383,23 @@ var _NUMERIC_COL_PATTERNS = [
     const maxAov = offerTrackerOptionalNumber(filters.maxAov);
     const minCommission = offerTrackerOptionalNumber(filters.minCommission);
     const maxCommission = offerTrackerOptionalNumber(filters.maxCommission);
+    const selectedNetworks = offerTrackerSelectedNetworks(filters);
     const query = String(search || "").trim().toLowerCase();
     return (sourceRows || []).filter((offer) => {
       const tier = canonicalTierName(offer.tier);
       const category = displayCategory(offer);
       const aov = number(offer.aov);
       const commission = offerTrackerCommissionRate(offer);
+      const revenue = offerTrackerRevenue(offer);
       if (filters.tier && filters.tier !== "all" && tier !== canonicalTierName(filters.tier)) return false;
       if (filters.category && filters.category !== "all" && category !== filters.category) return false;
-      if (filters.network && filters.network !== "all" && String(offer.network || "") !== String(filters.network)) return false;
+      if (selectedNetworks.length && !selectedNetworks.includes(String(offer.network || ""))) return false;
       if (minAov !== null && aov < minAov) return false;
       if (maxAov !== null && aov > maxAov) return false;
       if (minCommission !== null && commission < minCommission) return false;
       if (maxCommission !== null && commission > maxCommission) return false;
+      if (filters.revenueStatus === "positive" && revenue <= 0) return false;
+      if (filters.revenueStatus === "none" && revenue > 0) return false;
       if (query) {
         const haystack = [offerTrackerMerchantName(offer), offer.brand, offer.merchantId, tier, offer.network, category]
           .filter(Boolean).join(" ").toLowerCase();
@@ -22352,6 +22407,11 @@ var _NUMERIC_COL_PATTERNS = [
       }
       return true;
     }).sort((a, b) => {
+      const revenueSort = String(filters.revenueSort || "priority");
+      if (revenueSort === "revenue-desc" || revenueSort === "revenue-asc") {
+        const revenueDifference = offerTrackerRevenue(b) - offerTrackerRevenue(a);
+        if (revenueDifference) return revenueSort === "revenue-desc" ? revenueDifference : -revenueDifference;
+      }
       const aPriority = offerTrackerPriority(a, rules);
       const bPriority = offerTrackerPriority(b, rules);
       return aPriority.order - bPriority.order
@@ -22371,23 +22431,39 @@ var _NUMERIC_COL_PATTERNS = [
     );
   }
 
+  function offerTrackerRowsAreSelected(sourceRows, selectedKeys = state.offerListTracker.selectedKeys) {
+    const rows = sourceRows || [];
+    return rows.length > 0 && rows.every((offer) => selectedKeys.has(offerKey(offer)));
+  }
+
+  function updateOfferTrackerRowSelection(sourceRows, selected, selectedKeys = state.offerListTracker.selectedKeys) {
+    const nextKeys = new Set(selectedKeys || []);
+    (sourceRows || []).forEach((offer) => {
+      const key = offerKey(offer);
+      if (selected) nextKeys.add(key);
+      else nextKeys.delete(key);
+    });
+    return nextKeys;
+  }
+
   function offerTrackerColumnDefinitions(view = state.offerListTracker.view) {
     const labels = state.language === "zh"
-      ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "AFF 佣金", aov: "AOV", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
-      : { priority: "Priority", merchant: "Merchant", tier: "Tier", commission: "AFF Commission", aov: "AOV", bbPolicy: "BB Preference", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
+      ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "AFF 佣金", aov: "AOV", revenue: "Revenue", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
+      : { priority: "Priority", merchant: "Merchant", tier: "Tier", commission: "AFF Commission", aov: "AOV", revenue: "Revenue", bbPolicy: "BB Preference", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
     const all = [
       { key: "priority", label: labels.priority, mandatory: true },
       { key: "merchant", label: labels.merchant, mandatory: true },
       { key: "tier", label: labels.tier },
       { key: "commission", label: labels.commission },
       { key: "aov", label: labels.aov },
+      { key: "revenue", label: labels.revenue },
       { key: "bbPolicy", label: labels.bbPolicy },
       { key: "category", label: labels.category },
       { key: "asins", label: labels.asins },
       { key: "recommendation", label: labels.recommendation }
     ];
     const allowed = view === "products"
-      ? new Set(["priority", "merchant", "aov", "bbPolicy", "category", "asins"])
+      ? new Set(["priority", "merchant", "aov", "revenue", "bbPolicy", "category", "asins"])
       : new Set(all.map((column) => column.key));
     return all.filter((column) => allowed.has(column.key) && (column.mandatory || state.offerListTracker.visibleColumns[column.key] !== false));
   }
@@ -22404,6 +22480,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (column.key === "tier") return `<span class="offer-tracker-tier-badge">${escapeHtml(canonicalTierName(offer.tier) || "Unknown")}</span>`;
     if (column.key === "commission") return `<span class="offer-tracker-number-cell">${escapeHtml(`${offerTrackerCommissionRate(offer).toFixed(2).replace(/\.00$/, "")}%`)}</span>`;
     if (column.key === "aov") return offerTrackerAovCellHtml(offer);
+    if (column.key === "revenue") return `<span class="offer-tracker-number-cell">${escapeHtml(money(offerTrackerRevenue(offer)))}</span>`;
     if (column.key === "bbPolicy") return offerTrackerBbPolicyCellHtml(offer);
     if (column.key === "category") return `<span class="offer-tracker-category-cell">${escapeHtml(displayCategory(offer))}</span>`;
     if (column.key === "asins") {
@@ -22422,6 +22499,7 @@ var _NUMERIC_COL_PATTERNS = [
       ["Tier", (offer) => canonicalTierName(offer.tier) || "Unknown", 14],
       ["AFF Commission", (offer) => offerTrackerCommissionRate(offer), 16, "percentage"],
       ["AOV", (offer) => offerTrackerOptionalNumber(offer.aov), 14],
+      ["Revenue", (offer) => offerTrackerRevenue(offer), 16],
       ["AOV Type", (offer) => offerTrackerAovTypeLabel(offer, "en"), 14],
       ["BB Preference", (offer) => offerTrackerBbPolicyLabel(offer, "en"), 18],
       ["Category", (offer) => displayCategory(offer), 34],
@@ -22435,6 +22513,7 @@ var _NUMERIC_COL_PATTERNS = [
       ["Merchant ID", (offer) => offer.merchantId || "", 16],
       ["Merchant Name", (offer) => offerTrackerMerchantName(offer), 28],
       ["AOV", (offer) => offerTrackerOptionalNumber(offer.aov), 14],
+      ["Revenue", (offer) => offerTrackerRevenue(offer), 16],
       ["AOV Type", (offer) => offerTrackerAovTypeLabel(offer, "en"), 14],
       ["BB Preference", (offer) => offerTrackerBbPolicyLabel(offer, "en"), 18],
       ["Category", (offer) => displayCategory(offer), 34],
@@ -22687,16 +22766,67 @@ var _NUMERIC_COL_PATTERNS = [
     if (state.offerListTracker.controlsReady || !els.offerTrackerTier) return;
     replaceSelectOptions(els.offerTrackerTier, "All tiers", uniqueValues("tier"), state.offerListTracker.draftFilters.tier);
     replaceSelectOptions(els.offerTrackerCategory, "All categories", uniqueCategoryValues(), state.offerListTracker.draftFilters.category);
-    replaceSelectOptions(els.offerTrackerNetwork, "All networks", uniqueValues("network"), state.offerListTracker.draftFilters.network);
     state.offerListTracker.controlsReady = true;
     syncOfferTrackerControls();
+  }
+
+  function renderOfferTrackerNetworkOptions() {
+    if (!els.offerTrackerNetworkMenu) return;
+    const selected = new Set(offerTrackerSelectedNetworks(state.offerListTracker.draftFilters));
+    const allLabel = optionText("All networks");
+    els.offerTrackerNetworkMenu.setAttribute("aria-label", offerTrackerText("Networks", "联盟"));
+    els.offerTrackerNetworkMenu.innerHTML = [
+      `<label class="offer-tracker-network-option"><input type="checkbox" data-offer-tracker-network-all ${selected.size ? "" : "checked"}/><span>${escapeHtml(allLabel)}</span></label>`,
+      ...uniqueValues("network").map((network) => `<label class="offer-tracker-network-option"><input type="checkbox" data-offer-tracker-network="${escapeHtml(network)}" ${selected.has(network) ? "checked" : ""}/><span>${escapeHtml(network)}</span></label>`)
+    ].join("");
+    syncOfferTrackerNetworkControl();
+  }
+
+  function offerTrackerNetworkSelectionFromControl() {
+    if (!els.offerTrackerNetworkMenu) return offerTrackerSelectedNetworks(state.offerListTracker.draftFilters);
+    return Array.from(els.offerTrackerNetworkMenu.querySelectorAll("[data-offer-tracker-network]:checked"))
+      .map((input) => input.dataset.offerTrackerNetwork)
+      .filter(Boolean);
+  }
+
+  function syncOfferTrackerNetworkControl() {
+    const selected = offerTrackerSelectedNetworks(state.offerListTracker.draftFilters);
+    const selectedSet = new Set(selected);
+    if (els.offerTrackerNetworkMenu) {
+      const allInput = els.offerTrackerNetworkMenu.querySelector("[data-offer-tracker-network-all]");
+      if (allInput) allInput.checked = selected.length === 0;
+      els.offerTrackerNetworkMenu.querySelectorAll("[data-offer-tracker-network]").forEach((input) => {
+        input.checked = selectedSet.has(input.dataset.offerTrackerNetwork);
+      });
+    }
+    if (els.offerTrackerNetworkSummary) {
+      const summary = selected.length === 0
+        ? optionText("All networks")
+        : selected.length <= 2
+          ? selected.join(", ")
+          : `${selected.slice(0, 2).join(", ")} +${selected.length - 2}`;
+      els.offerTrackerNetworkSummary.textContent = summary;
+      els.offerTrackerNetworkSummary.title = selected.length ? selected.join(", ") : optionText("All networks");
+    }
+    if (els.offerTrackerNetworkToggle) {
+      els.offerTrackerNetworkToggle.classList.toggle("is-active", selected.length > 0);
+    }
+  }
+
+  function toggleOfferTrackerNetworkMenu(forceOpen) {
+    if (!els.offerTrackerNetworkMenu || !els.offerTrackerNetworkToggle) return;
+    const open = forceOpen == null ? els.offerTrackerNetworkMenu.classList.contains("hidden") : Boolean(forceOpen);
+    els.offerTrackerNetworkMenu.classList.toggle("hidden", !open);
+    els.offerTrackerNetworkToggle.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
   function syncOfferTrackerControls() {
     const draft = state.offerListTracker.draftFilters;
     if (els.offerTrackerTier) els.offerTrackerTier.value = draft.tier;
     if (els.offerTrackerCategory) els.offerTrackerCategory.value = draft.category;
-    if (els.offerTrackerNetwork) els.offerTrackerNetwork.value = draft.network;
+    syncOfferTrackerNetworkControl();
+    if (els.offerTrackerRevenueStatus) els.offerTrackerRevenueStatus.value = draft.revenueStatus || "all";
+    if (els.offerTrackerRevenueSort) els.offerTrackerRevenueSort.value = draft.revenueSort || "priority";
     if (els.offerTrackerMinAov) els.offerTrackerMinAov.value = draft.minAov;
     if (els.offerTrackerMaxAov) els.offerTrackerMaxAov.value = draft.maxAov;
     if (els.offerTrackerMinCommission) els.offerTrackerMinCommission.value = draft.minCommission;
@@ -22714,7 +22844,9 @@ var _NUMERIC_COL_PATTERNS = [
       maxAov: els.offerTrackerMaxAov.value.trim(),
       minCommission: els.offerTrackerMinCommission.value.trim(),
       maxCommission: els.offerTrackerMaxCommission.value.trim(),
-      network: els.offerTrackerNetwork.value || "all"
+      networks: offerTrackerNetworkSelectionFromControl(),
+      revenueStatus: els.offerTrackerRevenueStatus.value || "all",
+      revenueSort: els.offerTrackerRevenueSort.value || "priority"
     };
   }
 
@@ -22722,7 +22854,11 @@ var _NUMERIC_COL_PATTERNS = [
     const chips = [];
     if (filters.tier !== "all") chips.push(filters.tier);
     if (filters.category !== "all") chips.push(filters.category);
-    if (filters.network !== "all") chips.push(filters.network);
+    offerTrackerSelectedNetworks(filters).forEach((network) => chips.push(network));
+    if (filters.revenueStatus === "positive") chips.push(offerTrackerText("Revenue > $0", "已产生 Revenue"));
+    if (filters.revenueStatus === "none") chips.push(offerTrackerText("Revenue = $0", "未产生 Revenue"));
+    if (filters.revenueSort === "revenue-desc") chips.push(offerTrackerText("Revenue high to low", "Revenue 从高到低"));
+    if (filters.revenueSort === "revenue-asc") chips.push(offerTrackerText("Revenue low to high", "Revenue 从低到高"));
     if (filters.minAov || filters.maxAov) chips.push(`AOV ${filters.minAov ? `$${filters.minAov}` : "$0"}–${filters.maxAov ? `$${filters.maxAov}` : "∞"}`);
     if (filters.minCommission || filters.maxCommission) chips.push(`AFF ${filters.minCommission || "0"}%–${filters.maxCommission || "100"}%`);
     return chips;
@@ -22739,8 +22875,8 @@ var _NUMERIC_COL_PATTERNS = [
   function renderOfferTrackerColumnsPanel() {
     if (!els.offerTrackerColumnsPanel) return;
     const labels = state.language === "zh"
-      ? { tier: "层级", commission: "AFF 佣金", aov: "AOV", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
-      : { tier: "Tier", commission: "AFF Commission", aov: "AOV", bbPolicy: "BB Preference", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
+      ? { tier: "层级", commission: "AFF 佣金", aov: "AOV", revenue: "Revenue", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
+      : { tier: "Tier", commission: "AFF Commission", aov: "AOV", revenue: "Revenue", bbPolicy: "BB Preference", category: "Category", asins: "Top Rank ASINs", recommendation: "Recommendation" };
     els.offerTrackerColumnsPanel.innerHTML = `<div class="offer-tracker-popover-header"><strong>${escapeHtml(offerTrackerText("Visible columns", "显示列"))}</strong><button type="button" data-offer-tracker-close="columns" aria-label="Close columns">×</button></div>${Object.keys(labels).map((key) => `<label class="offer-tracker-column-option"><input type="checkbox" data-offer-tracker-column="${key}" ${state.offerListTracker.visibleColumns[key] !== false ? "checked" : ""}/><span>${escapeHtml(labels[key])}</span></label>`).join("")}`;
   }
 
@@ -22764,10 +22900,10 @@ var _NUMERIC_COL_PATTERNS = [
   function renderOfferListTrackerPage() {
     if (!els.offerListTrackerPage) return;
     initializeOfferTrackerControls();
+    renderOfferTrackerNetworkOptions();
     [
       [els.offerTrackerTier, "All tiers"],
-      [els.offerTrackerCategory, "All categories"],
-      [els.offerTrackerNetwork, "All networks"]
+      [els.offerTrackerCategory, "All categories"]
     ].forEach(([select, label]) => {
       const option = select && select.querySelector('option[value="all"]');
       if (option) option.textContent = optionText(label);
@@ -22790,7 +22926,8 @@ var _NUMERIC_COL_PATTERNS = [
     els.offerTrackerKpis.innerHTML = kpis.map((kpi) => `<article class="offer-tracker-kpi" style="--kpi-accent:${kpi.color};--kpi-soft:${kpi.soft}"><span class="offer-tracker-kpi-icon">${escapeHtml(kpi.icon)}</span><div><small>${escapeHtml(kpi.label)}</small><strong>${number(kpi.value).toLocaleString()}</strong><span>${escapeHtml(kpi.note)}</span></div></article>`).join("");
 
     const columns = offerTrackerColumnDefinitions();
-    const allPageSelected = pageRows.length > 0 && pageRows.every((offer) => state.offerListTracker.selectedKeys.has(offerKey(offer)));
+    const allPageSelected = offerTrackerRowsAreSelected(pageRows);
+    const allFilteredSelected = offerTrackerRowsAreSelected(rows);
     els.offerTrackerTableHead.innerHTML = `<tr>${columns.map((column) => `<th>${column.key === "priority" ? `<span class="offer-tracker-priority-cell"><input class="offer-tracker-select-all" type="checkbox" ${allPageSelected ? "checked" : ""} aria-label="Select current page"/><span>${escapeHtml(column.label)}</span></span>` : escapeHtml(column.label)}</th>`).join("")}</tr>`;
     els.offerTrackerTableRows.innerHTML = pageRows.length
       ? pageRows.map((offer) => `<tr class="${state.offerListTracker.selectedKeys.has(offerKey(offer)) ? "is-selected" : ""}">${columns.map((column) => `<td>${offerTrackerCellHtml(offer, column)}</td>`).join("")}</tr>`).join("")
@@ -22809,6 +22946,26 @@ var _NUMERIC_COL_PATTERNS = [
     const selectedCount = rows.filter((offer) => state.offerListTracker.selectedKeys.has(offerKey(offer))).length;
     els.offerTrackerSelectedCount.textContent = selectedCount.toLocaleString();
     els.offerTrackerExportSelected.disabled = selectedCount === 0;
+    if (els.offerTrackerSelectAllFiltered) {
+      const actionLabel = allFilteredSelected
+        ? offerTrackerText("Clear matching selection", "清除匹配选择")
+        : offerTrackerText("Select all matching", "选择全部匹配");
+      const actionDescription = allFilteredSelected
+        ? offerTrackerText(
+          `Clear all ${rows.length.toLocaleString()} matching offers across all pages`,
+          `清除跨所有页面的 ${rows.length.toLocaleString()} 个匹配 Offer`
+        )
+        : offerTrackerText(
+          `Select all ${rows.length.toLocaleString()} matching offers across all pages`,
+          `跨所有页面选择全部 ${rows.length.toLocaleString()} 个匹配 Offer`
+        );
+      els.offerTrackerSelectAllFiltered.disabled = rows.length === 0;
+      els.offerTrackerSelectAllFiltered.setAttribute("aria-pressed", allFilteredSelected ? "true" : "false");
+      els.offerTrackerSelectAllFiltered.setAttribute("aria-label", actionDescription);
+      els.offerTrackerSelectAllFiltered.title = actionDescription;
+      if (els.offerTrackerSelectAllFilteredLabel) els.offerTrackerSelectAllFilteredLabel.textContent = actionLabel;
+      if (els.offerTrackerSelectAllFilteredCount) els.offerTrackerSelectAllFilteredCount.textContent = rows.length.toLocaleString();
+    }
     renderOfferTrackerFilterChips();
     renderOfferTrackerColumnsPanel();
     renderOfferTrackerRulesPanel();
@@ -22841,16 +22998,18 @@ var _NUMERIC_COL_PATTERNS = [
     state.offerListTracker.draftFilters = { ...filters };
     state.offerListTracker.filters = { ...filters };
     state.offerListTracker.page = 1;
+    toggleOfferTrackerNetworkMenu(false);
     setOfferTrackerNotice("");
     renderOfferListTrackerPage();
   }
 
   function resetOfferTrackerFilters() {
-    const filters = { tier: "all", category: "all", minAov: "", maxAov: "", minCommission: "", maxCommission: "", network: "all" };
+    const filters = { tier: "all", category: "all", minAov: "", maxAov: "", minCommission: "", maxCommission: "", networks: [], revenueStatus: "all", revenueSort: "priority" };
     state.offerListTracker.draftFilters = { ...filters };
     state.offerListTracker.filters = { ...filters };
     state.offerListTracker.search = "";
     state.offerListTracker.page = 1;
+    toggleOfferTrackerNetworkMenu(false);
     setOfferTrackerNotice("");
     syncOfferTrackerControls();
     renderOfferListTrackerPage();
@@ -22894,7 +23053,10 @@ var _NUMERIC_COL_PATTERNS = [
     const view = {
       id: `view-${Date.now()}`,
       name,
-      filters: { ...state.offerListTracker.filters },
+      filters: {
+        ...state.offerListTracker.filters,
+        networks: offerTrackerSelectedNetworks(state.offerListTracker.filters)
+      },
       search: state.offerListTracker.search,
       view: state.offerListTracker.view
     };
@@ -22911,8 +23073,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (loadButton) {
       const saved = state.offerListTracker.savedViews.find((view) => view.id === loadButton.dataset.offerTrackerLoadView);
       if (!saved) return;
-      state.offerListTracker.filters = { ...state.offerListTracker.filters, ...(saved.filters || {}) };
-      state.offerListTracker.draftFilters = { ...state.offerListTracker.filters };
+      state.offerListTracker.filters = normalizeOfferTrackerFilters(saved.filters || {});
+      state.offerListTracker.draftFilters = normalizeOfferTrackerFilters(state.offerListTracker.filters);
       state.offerListTracker.search = saved.search || "";
       state.offerListTracker.view = saved.view === "products" ? "products" : "offers";
       state.offerListTracker.page = 1;
@@ -22937,10 +23099,17 @@ var _NUMERIC_COL_PATTERNS = [
     if (!allCheckbox) return;
     const rows = offerTrackerFilteredRows();
     const start = (state.offerListTracker.page - 1) * state.offerListTracker.pageSize;
-    rows.slice(start, start + state.offerListTracker.pageSize).forEach((offer) => {
-      if (allCheckbox.checked) state.offerListTracker.selectedKeys.add(offerKey(offer));
-      else state.offerListTracker.selectedKeys.delete(offerKey(offer));
-    });
+    state.offerListTracker.selectedKeys = updateOfferTrackerRowSelection(
+      rows.slice(start, start + state.offerListTracker.pageSize),
+      allCheckbox.checked
+    );
+    renderOfferListTrackerPage();
+  }
+
+  function toggleOfferTrackerFilteredSelection() {
+    const rows = offerTrackerFilteredRows();
+    const shouldSelect = !offerTrackerRowsAreSelected(rows);
+    state.offerListTracker.selectedKeys = updateOfferTrackerRowSelection(rows, shouldSelect);
     renderOfferListTrackerPage();
   }
 
@@ -23309,10 +23478,37 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (els.offerTrackerApplyFilters) els.offerTrackerApplyFilters.addEventListener("click", applyOfferTrackerFilters);
     if (els.offerTrackerResetFilters) els.offerTrackerResetFilters.addEventListener("click", resetOfferTrackerFilters);
-    [els.offerTrackerTier, els.offerTrackerCategory, els.offerTrackerNetwork].filter(Boolean).forEach((select) => {
+    [
+      els.offerTrackerTier,
+      els.offerTrackerCategory,
+      els.offerTrackerRevenueStatus,
+      els.offerTrackerRevenueSort
+    ].filter(Boolean).forEach((select) => {
       select.addEventListener("change", () => {
         state.offerListTracker.draftFilters = readOfferTrackerDraftFilters();
       });
+    });
+    if (els.offerTrackerNetworkToggle) {
+      els.offerTrackerNetworkToggle.addEventListener("click", () => toggleOfferTrackerNetworkMenu());
+    }
+    if (els.offerTrackerNetworkMenu) {
+      els.offerTrackerNetworkMenu.addEventListener("change", (event) => {
+        const allInput = event.target.closest("[data-offer-tracker-network-all]");
+        const networkInput = event.target.closest("[data-offer-tracker-network]");
+        if (!allInput && !networkInput) return;
+        if (allInput) {
+          els.offerTrackerNetworkMenu.querySelectorAll("[data-offer-tracker-network]").forEach((input) => {
+            input.checked = false;
+          });
+        }
+        state.offerListTracker.draftFilters = readOfferTrackerDraftFilters();
+        syncOfferTrackerNetworkControl();
+      });
+    }
+    document.addEventListener("click", (event) => {
+      if (els.offerTrackerNetwork && !els.offerTrackerNetwork.contains(event.target)) {
+        toggleOfferTrackerNetworkMenu(false);
+      }
     });
     [els.offerTrackerMinAov, els.offerTrackerMaxAov, els.offerTrackerMinCommission, els.offerTrackerMaxCommission].filter(Boolean).forEach((input) => {
       input.addEventListener("input", () => {
@@ -23377,6 +23573,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.offerTrackerSavedViewsList) els.offerTrackerSavedViewsList.addEventListener("click", handleOfferTrackerSavedViewsClick);
     if (els.offerTrackerTableHead) els.offerTrackerTableHead.addEventListener("change", handleOfferTrackerSelectionChange);
     if (els.offerTrackerTableRows) els.offerTrackerTableRows.addEventListener("change", handleOfferTrackerSelectionChange);
+    if (els.offerTrackerSelectAllFiltered) els.offerTrackerSelectAllFiltered.addEventListener("click", toggleOfferTrackerFilteredSelection);
     if (els.offerTrackerPagePrev) {
       els.offerTrackerPagePrev.addEventListener("click", () => {
         state.offerListTracker.page = Math.max(1, state.offerListTracker.page - 1);
@@ -23660,6 +23857,11 @@ var _NUMERIC_COL_PATTERNS = [
       if (trapMonthlyNewMerchantDrawerFocus(event)) return;
       if (trapTier1AdditionsOverlayFocus(event)) return;
       if (trapTier1MerchantDialogFocus(event)) return;
+      if (event.key === "Escape" && els.offerTrackerNetworkMenu && !els.offerTrackerNetworkMenu.classList.contains("hidden")) {
+        toggleOfferTrackerNetworkMenu(false);
+        if (els.offerTrackerNetworkToggle) els.offerTrackerNetworkToggle.focus();
+        return;
+      }
       if (event.key === "Escape" && state.offerListTracker.exportDialogOpen) {
         closeOfferTrackerExportDialog();
         return;
@@ -24496,6 +24698,7 @@ var _NUMERIC_COL_PATTERNS = [
       monthlyNewMerchantImportRows,
       pageBelongsToReports,
       offerTrackerCommissionRate,
+      offerTrackerRevenue,
       offerTrackerAovType,
       offerTrackerAovTypeLabel,
       offerTrackerAovCellHtml,
@@ -24507,7 +24710,10 @@ var _NUMERIC_COL_PATTERNS = [
       offerTrackerPriority,
       offerTrackerPriorityLabel,
       offerTrackerRecommendation,
+      offerTrackerSelectedNetworks,
       filterOfferTrackerRows,
+      offerTrackerRowsAreSelected,
+      updateOfferTrackerRowSelection,
       offerTrackerOfferExportColumns,
       offerTrackerProductExportColumns,
       offerTrackerFilterChipLabels,
