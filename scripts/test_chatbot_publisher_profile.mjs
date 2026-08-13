@@ -118,4 +118,38 @@ if (q6.publisher !== null) throw new Error("多匹配时 publisher 应为 null")
 if (q6.candidates.length !== 3) throw new Error("多匹配应返回全部 3 个候选");
 if (q6.candidates[0].userName !== "TestMedia 媒体1") throw new Error("候选应按销售额降序（媒体1 销售额最高）");
 
+// ── Task 4: marketOverride 与纯行构建 ──
+const merchantsFixture = [
+  {
+    merchantId: 1001, merchantName: "测试商家A", category: "Beauty", network: "Archer", tier: "Tier 2",
+    markets: {
+      "amazon.com": { clicks: 100, dpv: 50, atc: 20, orders: 10, sales: 500, allCommission: 40, affCommission: 30, aov: 50, epc: 0.3, conversionRate: 0.1, effectiveCommissionRate: 8 },
+      "amazon.de": { clicks: 10, dpv: 5, atc: 2, orders: 1, sales: 50, allCommission: 4, affCommission: 3, aov: 50, epc: 0.3, conversionRate: 0.1, effectiveCommissionRate: 8 }
+    },
+    total: { clicks: 110, dpv: 55, atc: 22, orders: 11, sales: 550, allCommission: 44, affCommission: 33, aov: 50, epc: 0.3, conversionRate: 0.1, effectiveCommissionRate: 8 }
+  },
+  {
+    merchantId: 1002, merchantName: "测试商家B", category: "Electronics", network: "Levanta", tier: "Tier 3",
+    markets: {
+      "amazon.com": { clicks: 50, dpv: 25, atc: 10, orders: 5, sales: 1000, allCommission: 80, affCommission: 60, aov: 200, epc: 1.2, conversionRate: 0.1, effectiveCommissionRate: 8 }
+    },
+    total: { clicks: 50, dpv: 25, atc: 10, orders: 5, sales: 1000, allCommission: 80, affCommission: 60, aov: 200, epc: 1.2, conversionRate: 0.1, effectiveCommissionRate: 8 }
+  }
+];
+const rowsAll = hooks.publisherProfileRowsForMarket(merchantsFixture, "all");
+if (rowsAll.length !== 2) throw new Error("all 口径应返回全部活跃商家行");
+const rowsDe = hooks.publisherProfileRowsForMarket(merchantsFixture, "amazon.de");
+if (rowsDe.length !== 1 || rowsDe[0].merchant.merchantId !== 1001) throw new Error("站点口径应只返回该站点有活跃指标的商家");
+if (rowsDe[0].metrics.clicks !== 10) throw new Error("站点口径指标应取该市场数值");
+// marketOverride：与 rows 同口径（渲染流程中两者来自同一 market 参数）
+const allSummary = hooks.publisherAffinitySummary(rowsAll, "all");
+if (allSummary.markets.length !== 2) throw new Error("all 口径应统计 2 个市场");
+const deSummary = hooks.publisherAffinitySummary(rowsDe, "amazon.de");
+if (deSummary.markets.length !== 1 || deSummary.markets[0].market !== "amazon.de") throw new Error("marketOverride 应限定市场统计");
+if (deSummary.sales !== 50) throw new Error("marketOverride 应按站点口径汇总销售额");
+if (!(deSummary.categories.length === 1 && deSummary.categories[0].category === "Beauty")) throw new Error("marketOverride 品类聚合应按站点口径");
+// 不传第二参行为不变（回归现有 hooks 用法）
+const legacySummary = hooks.publisherAffinitySummary(rowsAll);
+if (legacySummary.sales !== 1550) throw new Error("不传 marketOverride 时应按 all 口径汇总");
+
 console.log("PASS: chatbot publisher profile contract tests (Task 1 static)");

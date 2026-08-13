@@ -15098,6 +15098,17 @@ var _NUMERIC_COL_PATTERNS = [
     return rows;
   }
 
+  // 画像商家行构建：仅按站点口径取指标 + 活跃过滤。
+  // 不复用 _publisherPortfolioRowsForState——它读取 state.publisherNetwork / state.publisherMerchantSearch，
+  // 页面残留状态会污染 chatbot 画像；画像场景不需要这些页面级筛选。
+  function publisherProfileRowsForMarket(merchants, market) {
+    return (merchants || []).map(function (merchant) {
+      return { merchant: merchant, metrics: _publisherMetricForMarket(merchant, market) };
+    }).filter(function (row) {
+      return _publisherMetricIsActive(row.metrics);
+    });
+  }
+
   function _publisherAovBand(aov) {
     if (aov == null || !Number.isFinite(Number(aov))) return "N/A";
     var value = Number(aov);
@@ -15107,7 +15118,7 @@ var _NUMERIC_COL_PATTERNS = [
     return "$200+";
   }
 
-  function _publisherAffinitySummary(rows) {
+  function _publisherAffinitySummary(rows, marketOverride) {
     var summary = {
       merchantCount: rows.length,
       clicks: 0,
@@ -15175,8 +15186,9 @@ var _NUMERIC_COL_PATTERNS = [
         }
       }
 
-      var marketNames = state.publisherMarket && state.publisherMarket !== "all"
-        ? [state.publisherMarket]
+      const marketKey = marketOverride !== undefined ? marketOverride : state.publisherMarket;
+      var marketNames = marketKey && marketKey !== "all"
+        ? [marketKey]
         : Object.keys(merchant.markets || {});
       marketNames.forEach(function (marketName) {
         var marketMetric = merchant.markets[marketName];
@@ -23631,6 +23643,7 @@ var _NUMERIC_COL_PATTERNS = [
       hasPublisherIntent,
       hasPublisherProfileIntent,
       parsePublisherProfileQuery,
+      publisherProfileRowsForMarket,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
