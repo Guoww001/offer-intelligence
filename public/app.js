@@ -345,7 +345,9 @@
       exportRangeSequence: 0,
       exportRestoreFocus: null,
       controlsReady: false,
-      animated: false
+      animated: false,
+      renderedRows: [],
+      renderedSelectedCount: 0
     },
     tierSheetFilters: {
       search: "",
@@ -22446,6 +22448,71 @@ var _NUMERIC_COL_PATTERNS = [
     return nextKeys;
   }
 
+  function offerTrackerSelectionSummary(sourceRows, pageRows, selectedKeys = state.offerListTracker.selectedKeys) {
+    const rows = sourceRows || [];
+    const currentPageRows = pageRows || [];
+    const selectedCount = rows.reduce(
+      (count, offer) => count + (selectedKeys.has(offerKey(offer)) ? 1 : 0),
+      0
+    );
+    return {
+      selectedCount,
+      allFilteredSelected: rows.length > 0 && selectedCount === rows.length,
+      allPageSelected: currentPageRows.length > 0 && currentPageRows.every((offer) => selectedKeys.has(offerKey(offer)))
+    };
+  }
+
+  function syncOfferTrackerSelectionUi() {
+    const tracker = state.offerListTracker;
+    const rows = Array.isArray(tracker.renderedRows) ? tracker.renderedRows : null;
+    if (!rows) {
+      renderOfferListTrackerPage();
+      return;
+    }
+    const totalPages = Math.max(1, Math.ceil(rows.length / tracker.pageSize));
+    tracker.page = Math.min(Math.max(1, tracker.page), totalPages);
+    const start = (tracker.page - 1) * tracker.pageSize;
+    const pageRows = rows.slice(start, start + tracker.pageSize);
+    const allPageSelected = pageRows.length > 0 && pageRows.every((offer) => tracker.selectedKeys.has(offerKey(offer)));
+    const selectedCount = tracker.renderedSelectedCount;
+    const allFilteredSelected = rows.length > 0 && selectedCount === rows.length;
+
+    if (els.offerTrackerTableRows) {
+      els.offerTrackerTableRows.querySelectorAll("[data-offer-tracker-key]").forEach((checkbox) => {
+        const selected = tracker.selectedKeys.has(checkbox.dataset.offerTrackerKey || "");
+        checkbox.checked = selected;
+        const row = checkbox.closest("tr");
+        if (row) row.classList.toggle("is-selected", selected);
+      });
+    }
+    if (els.offerTrackerTableHead) {
+      const allCheckbox = els.offerTrackerTableHead.querySelector(".offer-tracker-select-all");
+      if (allCheckbox) allCheckbox.checked = allPageSelected;
+    }
+    if (els.offerTrackerSelectedCount) els.offerTrackerSelectedCount.textContent = selectedCount.toLocaleString();
+    if (els.offerTrackerExportSelected) els.offerTrackerExportSelected.disabled = selectedCount === 0;
+    if (els.offerTrackerSelectAllFiltered) {
+      const actionLabel = allFilteredSelected
+        ? offerTrackerText("Clear matching selection", "清除匹配选择")
+        : offerTrackerText("Select all matching", "选择全部匹配");
+      const actionDescription = allFilteredSelected
+        ? offerTrackerText(
+          `Clear all ${rows.length.toLocaleString()} matching offers across all pages`,
+          `清除跨所有页面的 ${rows.length.toLocaleString()} 个匹配 Offer`
+        )
+        : offerTrackerText(
+          `Select all ${rows.length.toLocaleString()} matching offers across all pages`,
+          `跨所有页面选择全部 ${rows.length.toLocaleString()} 个匹配 Offer`
+        );
+      els.offerTrackerSelectAllFiltered.disabled = rows.length === 0;
+      els.offerTrackerSelectAllFiltered.setAttribute("aria-pressed", allFilteredSelected ? "true" : "false");
+      els.offerTrackerSelectAllFiltered.setAttribute("aria-label", actionDescription);
+      els.offerTrackerSelectAllFiltered.title = actionDescription;
+      if (els.offerTrackerSelectAllFilteredLabel) els.offerTrackerSelectAllFilteredLabel.textContent = actionLabel;
+      if (els.offerTrackerSelectAllFilteredCount) els.offerTrackerSelectAllFilteredCount.textContent = rows.length.toLocaleString();
+    }
+  }
+
   function offerTrackerColumnDefinitions(view = state.offerListTracker.view) {
     const labels = state.language === "zh"
       ? { priority: "优先级", merchant: "商家", tier: "层级", commission: "AFF 佣金", aov: "AOV", revenue: "Revenue", bbPolicy: "是否介意 BB", category: "品类", asins: "Top Rank ASINs", recommendation: "推荐信息" }
@@ -22917,6 +22984,9 @@ var _NUMERIC_COL_PATTERNS = [
       result[offerTrackerPriority(offer, state.offerListTracker.rules).key] += 1;
       return result;
     }, { high: 0, recommended: 0, "low-aov": 0 });
+    const selectionSummary = offerTrackerSelectionSummary(rows, pageRows);
+    state.offerListTracker.renderedRows = rows;
+    state.offerListTracker.renderedSelectedCount = selectionSummary.selectedCount;
     const kpis = [
       { label: offerTrackerText("Matched Offers", "匹配 Offer"), value: rows.length, note: offerTrackerText("current filter range", "当前筛选范围"), icon: "#", color: "#1769d2", soft: "#eaf2fc" },
       { label: offerTrackerText("High Priority", "高优先级"), value: counts.high, note: `${offerTrackerText("score", "评分")} ≥ ${state.offerListTracker.rules.highScore}`, icon: "★", color: "#b36d00", soft: "#fff3dc" },
@@ -22926,8 +22996,8 @@ var _NUMERIC_COL_PATTERNS = [
     els.offerTrackerKpis.innerHTML = kpis.map((kpi) => `<article class="offer-tracker-kpi" style="--kpi-accent:${kpi.color};--kpi-soft:${kpi.soft}"><span class="offer-tracker-kpi-icon">${escapeHtml(kpi.icon)}</span><div><small>${escapeHtml(kpi.label)}</small><strong>${number(kpi.value).toLocaleString()}</strong><span>${escapeHtml(kpi.note)}</span></div></article>`).join("");
 
     const columns = offerTrackerColumnDefinitions();
-    const allPageSelected = offerTrackerRowsAreSelected(pageRows);
-    const allFilteredSelected = offerTrackerRowsAreSelected(rows);
+    const allPageSelected = selectionSummary.allPageSelected;
+    const allFilteredSelected = selectionSummary.allFilteredSelected;
     els.offerTrackerTableHead.innerHTML = `<tr>${columns.map((column) => `<th>${column.key === "priority" ? `<span class="offer-tracker-priority-cell"><input class="offer-tracker-select-all" type="checkbox" ${allPageSelected ? "checked" : ""} aria-label="Select current page"/><span>${escapeHtml(column.label)}</span></span>` : escapeHtml(column.label)}</th>`).join("")}</tr>`;
     els.offerTrackerTableRows.innerHTML = pageRows.length
       ? pageRows.map((offer) => `<tr class="${state.offerListTracker.selectedKeys.has(offerKey(offer)) ? "is-selected" : ""}">${columns.map((column) => `<td>${offerTrackerCellHtml(offer, column)}</td>`).join("")}</tr>`).join("")
@@ -22943,7 +23013,7 @@ var _NUMERIC_COL_PATTERNS = [
     els.offerTrackerPageIndicator.textContent = `${state.offerListTracker.page} / ${totalPages}`;
     els.offerTrackerPagePrev.disabled = state.offerListTracker.page <= 1;
     els.offerTrackerPageNext.disabled = state.offerListTracker.page >= totalPages;
-    const selectedCount = rows.filter((offer) => state.offerListTracker.selectedKeys.has(offerKey(offer))).length;
+    const selectedCount = state.offerListTracker.renderedSelectedCount;
     els.offerTrackerSelectedCount.textContent = selectedCount.toLocaleString();
     els.offerTrackerExportSelected.disabled = selectedCount === 0;
     if (els.offerTrackerSelectAllFiltered) {
@@ -23090,27 +23160,51 @@ var _NUMERIC_COL_PATTERNS = [
   function handleOfferTrackerSelectionChange(event) {
     const rowCheckbox = event.target.closest(".offer-tracker-row-select");
     if (rowCheckbox) {
-      if (rowCheckbox.checked) state.offerListTracker.selectedKeys.add(rowCheckbox.dataset.offerTrackerKey);
-      else state.offerListTracker.selectedKeys.delete(rowCheckbox.dataset.offerTrackerKey);
-      renderOfferListTrackerPage();
+      const tracker = state.offerListTracker;
+      const key = rowCheckbox.dataset.offerTrackerKey || "";
+      const wasSelected = tracker.selectedKeys.has(key);
+      if (rowCheckbox.checked && !wasSelected) {
+        tracker.selectedKeys.add(key);
+        tracker.renderedSelectedCount += 1;
+      } else if (!rowCheckbox.checked && wasSelected) {
+        tracker.selectedKeys.delete(key);
+        tracker.renderedSelectedCount = Math.max(0, tracker.renderedSelectedCount - 1);
+      }
+      syncOfferTrackerSelectionUi();
       return;
     }
     const allCheckbox = event.target.closest(".offer-tracker-select-all");
     if (!allCheckbox) return;
-    const rows = offerTrackerFilteredRows();
-    const start = (state.offerListTracker.page - 1) * state.offerListTracker.pageSize;
-    state.offerListTracker.selectedKeys = updateOfferTrackerRowSelection(
-      rows.slice(start, start + state.offerListTracker.pageSize),
-      allCheckbox.checked
+    const tracker = state.offerListTracker;
+    if (!Array.isArray(tracker.renderedRows)) {
+      syncOfferTrackerSelectionUi();
+      return;
+    }
+    const rows = tracker.renderedRows;
+    const start = (tracker.page - 1) * tracker.pageSize;
+    const pageRows = rows.slice(start, start + tracker.pageSize);
+    const previousSelectedCount = pageRows.reduce(
+      (count, offer) => count + (tracker.selectedKeys.has(offerKey(offer)) ? 1 : 0),
+      0
     );
-    renderOfferListTrackerPage();
+    tracker.selectedKeys = updateOfferTrackerRowSelection(pageRows, allCheckbox.checked);
+    tracker.renderedSelectedCount = allCheckbox.checked
+      ? tracker.renderedSelectedCount + pageRows.length - previousSelectedCount
+      : Math.max(0, tracker.renderedSelectedCount - previousSelectedCount);
+    syncOfferTrackerSelectionUi();
   }
 
   function toggleOfferTrackerFilteredSelection() {
-    const rows = offerTrackerFilteredRows();
-    const shouldSelect = !offerTrackerRowsAreSelected(rows);
-    state.offerListTracker.selectedKeys = updateOfferTrackerRowSelection(rows, shouldSelect);
-    renderOfferListTrackerPage();
+    const tracker = state.offerListTracker;
+    if (!Array.isArray(tracker.renderedRows)) {
+      syncOfferTrackerSelectionUi();
+      return;
+    }
+    const rows = tracker.renderedRows;
+    const shouldSelect = tracker.renderedSelectedCount !== rows.length;
+    tracker.selectedKeys = updateOfferTrackerRowSelection(rows, shouldSelect);
+    tracker.renderedSelectedCount = shouldSelect ? rows.length : 0;
+    syncOfferTrackerSelectionUi();
   }
 
   function updateReportsNavState() {
@@ -24714,6 +24808,7 @@ var _NUMERIC_COL_PATTERNS = [
       filterOfferTrackerRows,
       offerTrackerRowsAreSelected,
       updateOfferTrackerRowSelection,
+      offerTrackerSelectionSummary,
       offerTrackerOfferExportColumns,
       offerTrackerProductExportColumns,
       offerTrackerFilterChipLabels,

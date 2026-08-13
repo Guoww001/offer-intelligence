@@ -366,6 +366,8 @@ for (const key of ["progressStep1", "progressStep2", "progressStep3", "progressA
   assertTruthy(t.copy.zh[key], `zh missing ${key}`);
   assertTruthy(t.copy.en[key], `en missing ${key}`);
 }
+assertEqual(t.copy.zh.chatReminderBody, "Chat Mode 可以根据记忆内容做解释、归纳、横向比较和行动建议", "Chat Mode 顶部卡片中文说明应体现记忆内容的分析能力");
+assertEqual(t.copy.en.chatReminderBody, "Chat Mode can explain, summarize, compare side by side, and suggest actions based on memory content.", "Chat Mode 顶部卡片英文说明应与中文能力描述一致");
 
 // ── 用例 19：进度条渲染（progressHtml 纯函数）──
 assertMatch(t.progressHtml({ hasReport: false, hasMemory: false, isChat: false }), /data-stage="noReport"/, "noReport progress stage");

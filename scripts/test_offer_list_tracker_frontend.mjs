@@ -233,6 +233,11 @@ const clearedFilteredSelection = hooks.updateOfferTrackerRowSelection([high, low
 assertEqual(clearedFilteredSelection.size, 1, "clearing matching rows should preserve selections outside the current filters");
 assert(hooks.offerTrackerRowsAreSelected([wayward], clearedFilteredSelection), "unmatched selected rows should remain selected");
 assertEqual(
+  hooks.offerTrackerSelectionSummary([high, lowAov, recommended], [high, lowAov], filteredSelection),
+  { selectedCount: 3, allFilteredSelected: true, allPageSelected: true },
+  "selection summary should keep filtered and current-page state aligned"
+);
+assertEqual(
   hooks.filterOfferTrackerRows([recommended, lowAov, high], { tier: "all", category: "all", network: "all" }, "303").map((offer) => offer.merchantId),
   ["303"],
   "search should match merchant IDs"
@@ -364,6 +369,12 @@ assert(appSource.includes('commission: "AFF Commission"'), "tracker table header
 assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
 assert(appSource.includes('bbPolicy: "BB Preference"'), "tracker table headers should include the BB preference column");
 assert(appSource.includes('"Mammotion", "3W", "Gosovr"'), "tracker should preserve the confirmed prohibited-BB brand list");
+const selectionHandlerStart = appSource.indexOf("function handleOfferTrackerSelectionChange");
+const selectionHandlerEnd = appSource.indexOf("function toggleOfferTrackerFilteredSelection", selectionHandlerStart);
+const selectionHandlerSource = appSource.slice(selectionHandlerStart, selectionHandlerEnd);
+assert(selectionHandlerStart >= 0 && selectionHandlerEnd > selectionHandlerStart, "tracker selection handler should remain discoverable");
+assert(selectionHandlerSource.includes("syncOfferTrackerSelectionUi"), "tracker selection should update only selection UI");
+assert(!selectionHandlerSource.includes("renderOfferListTrackerPage();"), "tracker selection should not rebuild the entire page");
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
 assert(styles.includes(".offer-tracker-aov-badge.actual"), "actual AOV badges should have dedicated styling");
