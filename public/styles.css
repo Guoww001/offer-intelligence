@@ -871,6 +871,302 @@
   font-weight: 700;
 }
 
+.offer-tracker-export-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background: rgba(15, 34, 48, 0.48);
+  padding: 24px;
+  backdrop-filter: blur(3px);
+}
+
+.offer-tracker-export-dialog {
+  width: min(820px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid #d6e1e7;
+  border-radius: 14px;
+  background: #f7f9fa;
+  box-shadow: 0 30px 80px rgba(10, 32, 47, 0.28);
+  color: #203b4b;
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.offer-tracker-export-dialog-header,
+.offer-tracker-export-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  background: #fff;
+  padding: 18px 20px;
+}
+
+.offer-tracker-export-dialog-header {
+  border-bottom: 1px solid #dce5ea;
+}
+
+.offer-tracker-export-dialog-header span {
+  display: block;
+  margin-bottom: 5px;
+  color: #1769d2;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.offer-tracker-export-dialog-header h3,
+.offer-tracker-export-section-heading h4 {
+  margin: 0;
+  color: #142b3b;
+}
+
+.offer-tracker-export-dialog-header h3 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.offer-tracker-export-dialog-header p,
+.offer-tracker-export-section-heading p {
+  margin: 5px 0 0;
+  color: #738791;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.offer-tracker-export-dialog-header > button {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: #eff3f5;
+  color: #536873;
+  cursor: pointer;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.offer-tracker-export-dialog-body {
+  display: grid;
+  gap: 14px;
+  max-height: calc(100vh - 210px);
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+.offer-tracker-export-section {
+  border: 1px solid #dce5ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px;
+}
+
+.offer-tracker-export-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.offer-tracker-export-section-heading h4 {
+  font-size: 12px;
+}
+
+.offer-tracker-export-section-heading > strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eaf2fc;
+  color: #0c4fa8;
+  padding: 6px 9px;
+  font-size: 9px;
+}
+
+.offer-tracker-export-tier-list,
+.offer-tracker-background-ranges {
+  display: grid;
+  gap: 8px;
+}
+
+.offer-tracker-export-tier-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) minmax(90px, auto) 116px;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 1px solid #e2e9ed;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 7px 9px;
+}
+
+.offer-tracker-export-tier-row.is-disabled {
+  opacity: 0.52;
+}
+
+.offer-tracker-export-tier-row input[type="checkbox"] {
+  accent-color: #1769d2;
+}
+
+.offer-tracker-export-tier-row strong {
+  color: #203b4b;
+  font-size: 11px;
+}
+
+.offer-tracker-export-tier-row small {
+  color: #768a95;
+  font-size: 9px;
+}
+
+.offer-tracker-export-tier-row label {
+  display: grid;
+  grid-template-columns: auto 64px;
+  align-items: center;
+  gap: 7px;
+  color: #647985;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.offer-tracker-export-tier-row input[type="number"],
+.offer-tracker-background-range input[type="number"] {
+  width: 100%;
+  height: 31px;
+  border: 1px solid #d3dfe5;
+  border-radius: 6px;
+  background: #fff;
+  color: #203b4b;
+  outline: 0;
+  padding: 0 8px;
+  font: 700 10px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.offer-tracker-export-tier-row input:focus,
+.offer-tracker-background-range input:focus {
+  border-color: #1769d2;
+  box-shadow: 0 0 0 3px rgba(23, 105, 210, 0.1);
+}
+
+.offer-tracker-add-range {
+  flex: 0 0 auto;
+  min-height: 31px;
+  border: 1px solid #cddce4;
+  border-radius: 7px;
+  background: #fff;
+  color: #315566;
+  cursor: pointer;
+  padding: 0 10px;
+  font: 750 9px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.offer-tracker-background-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(150px, 1.2fr) auto;
+  align-items: end;
+  gap: 9px;
+  border: 1px solid #e2e9ed;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 9px;
+}
+
+.offer-tracker-background-range label {
+  display: grid;
+  gap: 5px;
+  color: #647985;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.offer-tracker-background-color {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.offer-tracker-background-color input[type="color"] {
+  width: 34px;
+  height: 31px;
+  border: 1px solid #d3dfe5;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  padding: 3px;
+}
+
+.offer-tracker-background-color output {
+  overflow: hidden;
+  color: #405966;
+  font-size: 9px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offer-tracker-background-range > button {
+  width: 31px;
+  height: 31px;
+  border: 0;
+  border-radius: 6px;
+  background: #f4e9eb;
+  color: #a14f5b;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.offer-tracker-background-empty {
+  margin: 0;
+  border: 1px dashed #d6e1e7;
+  border-radius: 8px;
+  color: #81939c;
+  padding: 13px;
+  text-align: center;
+  font-size: 9px;
+}
+
+.offer-tracker-export-dialog-notice {
+  margin: 0;
+  border-radius: 8px;
+  background: #fff0f1;
+  color: #a23f4d;
+  padding: 9px 11px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.offer-tracker-export-dialog-footer {
+  justify-content: flex-end;
+  border-top: 1px solid #dce5ea;
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+.offer-tracker-export-dialog-footer button {
+  min-height: 36px;
+  border: 1px solid #d4e0e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #36505e;
+  cursor: pointer;
+  padding: 0 14px;
+  font: 750 10px/1 "Plus Jakarta Sans", sans-serif;
+}
+
+.offer-tracker-export-dialog-footer button:last-child {
+  border-color: #1769d2;
+  background: #1769d2;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(23, 105, 210, 0.18);
+}
+
 @media (max-width: 1240px) {
   .offer-tracker-filter-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -946,6 +1242,38 @@
   .offer-tracker-table-footer p,
   .offer-tracker-selected-export {
     justify-self: center;
+  }
+
+  .offer-tracker-export-overlay {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .offer-tracker-export-dialog {
+    max-height: calc(100vh - 20px);
+  }
+
+  .offer-tracker-export-dialog-header,
+  .offer-tracker-export-dialog-body,
+  .offer-tracker-export-dialog-footer {
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .offer-tracker-export-tier-row,
+  .offer-tracker-background-range {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .offer-tracker-export-tier-row label,
+  .offer-tracker-background-range label,
+  .offer-tracker-background-range > button {
+    grid-column: 2;
+  }
+
+  .offer-tracker-export-section-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 @font-face {
