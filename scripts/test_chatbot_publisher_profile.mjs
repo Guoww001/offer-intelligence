@@ -41,6 +41,7 @@ const elementStub = {
 const sandbox = {
   console: { ...console, warn() {} }, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
   Uint8Array, TextDecoder, TextEncoder, clearInterval, setInterval, clearTimeout, setTimeout,
+  URLSearchParams,
   fetch: fetchImpl,
   localStorage: {
     getItem(key) { return storageValues.get(key) || null; },
@@ -187,5 +188,20 @@ if (!notFoundHtml.includes("不存在的媒体xyz")) throw new Error("未找到�
 // 用法提示
 const usageHtml = hooks.renderPublisherProfileUsageHtml("zh");
 if (!usageHtml.includes("publisherprofile: 1022")) throw new Error("用法提示应含示例");
+
+// ── Task 6: 回答入口与路由 ──
+// answerPrompt 路由断言用静态匹配（vm 沙箱缺少完整 DOM/state，不直接调用 answerPrompt）
+assertMatch(app, /if \(intent === "publisherprofile"\) \{[\s\S]{0,80}return publisherProfileAnswer\(prompt\);/,
+  "answerPrompt 应路由 publisherprofile 意图到 publisherProfileAnswer");
+const answer = hooks.publisherProfileAnswer("publisherprofile: 1022");
+if (!answer.includes("正在加载")) throw new Error("缓存未加载时应返回占位");
+// 触发加载（fetch stub 返回真实缓存 → 唯一匹配 → portfolio 请求）
+await new Promise(function (resolve) { setTimeout(resolve, 50); });
+if (!requests.some(function (url) { return url === "/api/ui/db/publishers"; })) {
+  throw new Error("应请求 publishers 数据");
+}
+if (!requests.some(function (url) { return url.indexOf("/api/ui/db/publishers?userId=1022") !== -1; })) {
+  throw new Error("唯一匹配后应请求该媒体的商家明细");
+}
 
 console.log("PASS: chatbot publisher profile contract tests (Task 1 static)");

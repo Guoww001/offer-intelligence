@@ -8390,6 +8390,66 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return renderPublisherRecordsHtml(prompt, data, language);
   }
 
+  let publisherProfilePlaceholderCounter = 0;
+
+  // 媒体画像回答入口：
+  // 缓存未加载 → 占位 + loadPublishersData + 重走匹配流程（trend 占位模式，复用 updatePublisherRecordsDeepCache）。
+  // 已加载 → 解析匹配：空/无匹配/多匹配同步返回；唯一匹配 → 占位 + portfolio 请求 + 渲染替换。
+  function publisherProfileAnswer(prompt) {
+    const language = responseLanguageFor(prompt);
+    const zh = language === "zh";
+    const source = _publishersCache;
+
+    const placeholderHtml = function (placeholderId, text) {
+      return '<div id="' + placeholderId + '" class="analysis-section publisher-profile-section"><p><em>' + text + '</em></p></div>';
+    };
+    const replacePlaceholder = function (placeholderId, renderedHtml) {
+      const container = document.getElementById(placeholderId);
+      if (container) container.innerHTML = renderedHtml;
+      updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml);
+    };
+    const renderFromCache = function (cache) {
+      const parsed = parsePublisherProfileQuery(prompt, cache);
+      if (parsed.mode === "empty") return renderPublisherProfileUsageHtml(language);
+      if (parsed.mode === "none") return renderPublisherProfileNotFoundHtml(parsed.queryText, language);
+      if (parsed.mode === "name" && !parsed.publisher) {
+        return renderPublisherProfileCandidatesHtml(parsed.candidates, parsed.queryText, language);
+      }
+      // 唯一匹配 → 需要 portfolio 商家明细（异步占位）
+      const publisher = parsed.publisher;
+      const placeholderId = "publisher-profile-" + Date.now() + "-" + (++publisherProfilePlaceholderCounter);
+      setTimeout(function () {
+        loadPublisherPortfolioData(publisher.userId)
+          .then(function (portfolio) {
+            const html = renderPublisherProfileHtml(prompt, publisher, (portfolio && portfolio.merchants) || [], language);
+            replacePlaceholder(placeholderId, html);
+          })
+          .catch(function () {
+            // 商家明细失败：头部 + KPI 正常渲染，商家表空 + 警告条（第五参 degradedNote）
+            const html = renderPublisherProfileHtml(prompt, publisher, [], language,
+              zh ? "媒体商家数据暂时不可用。" : "Publisher merchant data is temporarily unavailable.");
+            replacePlaceholder(placeholderId, html);
+          });
+      }, 0);
+      return placeholderHtml(placeholderId, zh ? "正在加载媒体画像…" : "Loading publisher profile…");
+    };
+
+    if (!source) {
+      const placeholderId = "publisher-profile-" + Date.now() + "-" + (++publisherProfilePlaceholderCounter);
+      setTimeout(function () {
+        loadPublishersData()
+          .then(function () { replacePlaceholder(placeholderId, renderFromCache(_publishersCache)); })
+          .catch(function () {
+            replacePlaceholder(placeholderId,
+              '<div class="analysis-section publisher-profile-section"><p class="warning">' +
+              (zh ? "Publishers 数据暂时不可用。" : "Publisher data is temporarily unavailable.") + '</p></div>');
+          });
+      }, 0);
+      return placeholderHtml(placeholderId, zh ? "正在加载媒体数据…" : "Loading publisher data…");
+    }
+    return renderFromCache(source);
+  }
+
   function detectQueryIntent(userMessage) {
     if (state.chatIntentOverride) {
       const explicitIntent = state.chatIntentOverride;
@@ -10434,6 +10494,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
     // detectQueryIntent will consume state.llmClassifyResult and return LLM intent if present
     const intent = explicitChatIntent ? explicitChatIntent.intent : detectQueryIntent(prompt);
+    if (intent === "publisherprofile") {
+      return publisherProfileAnswer(prompt);
+    }
     if (intent === "publisher") {
       return publisherRecordsAnswer(prompt);
     }
@@ -23874,6 +23937,8 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublisherProfileCandidatesHtml,
       renderPublisherProfileNotFoundHtml,
       renderPublisherProfileUsageHtml,
+      publisherProfileAnswer,
+      loadPublishersData,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
