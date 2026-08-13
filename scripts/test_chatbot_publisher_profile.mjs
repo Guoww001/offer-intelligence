@@ -26,6 +26,11 @@ assertMatch(app, /publisherprofile: 1022/, "说明书应提供 publisherprofile 
 assertMatch(app, /### 7\. 媒体画像查询/, "中文说明书应提供媒体画像查询小节");
 assertMatch(app, /### 1\.7 Publisher Profile/, "英文说明书应提供 Publisher Profile 小节");
 
+// ── Task 8: 缓存版本 ──
+assertMatch(html, /styles\.css\?v=20260813-publisherprofile1/, "样式应提升缓存版本");
+assertMatch(html, /auth\.js\?v=20260813-publisherprofile1/, "认证脚本应提升缓存版本");
+assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-publisherprofile1"/, "app.js 缓存版本应与 auth.js 一致");
+
 // ── Task 2: 意图检测（vm 沙箱） ──
 import vm from "node:vm";
 
