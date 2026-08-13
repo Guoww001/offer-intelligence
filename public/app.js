@@ -7777,6 +7777,52 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return false;
   }
 
+  // 解析 publisherprofile 查询：去前缀文本 → 媒体 ID / 名称匹配 + 可选站点。
+  // 返回 { mode: "id"|"name"|"empty"|"none", publisher, candidates, market, queryText }。
+  // mode=id: 数字精确匹配；mode=name: 名称包含匹配（唯一→publisher，多个→candidates）；
+  // mode=empty: 前缀后无文本；mode=none: 无任何匹配。
+  function parsePublisherProfileQuery(prompt, data) {
+    const text = String(prompt || "").replace(/^\s*publisherprofile\s*[:：]\s*/i, "").trim();
+    const source = data || {};
+    const publishers = Array.isArray(source.publishers) ? source.publishers : [];
+    const base = { market: null, queryText: text };
+
+    // 站点解析（复用 PUBLISHER_MARKET_ALIASES 与 publisherAliasMatches）
+    for (const entry of PUBLISHER_MARKET_ALIASES) {
+      if (entry.aliases.some(function (alias) { return publisherAliasMatches(text, alias); })) {
+        base.market = entry.key;
+        break;
+      }
+    }
+
+    if (!text) return Object.assign({ mode: "empty", publisher: null, candidates: [] }, base);
+
+    // 数字 → 精确 ID 匹配（真实数据 ID 长度 1-4 位，逐 token 精确匹配，失败则回落名称匹配）
+    const idMatches = text.match(/\b\d{1,10}\b/g) || [];
+    if (idMatches.length) {
+      for (const idStr of idMatches) {
+        const publisher = _publisherById(source, idStr);
+        if (publisher) return Object.assign({ mode: "id", publisher: publisher, candidates: [] }, base);
+      }
+    }
+
+    // 名称 → 忽略大小写包含匹配
+    const lowered = text.toLowerCase();
+    const matches = publishers.filter(function (pub) {
+      return String(pub.userName || "").toLowerCase().indexOf(lowered) !== -1;
+    });
+    if (matches.length === 1) {
+      return Object.assign({ mode: "name", publisher: matches[0], candidates: [] }, base);
+    }
+    if (matches.length > 1) {
+      matches.sort(function (a, b) {
+        return Number((b.total || {}).sales || 0) - Number((a.total || {}).sales || 0);
+      });
+      return Object.assign({ mode: "name", publisher: null, candidates: matches }, base);
+    }
+    return Object.assign({ mode: "none", publisher: null, candidates: [] }, base);
+  }
+
   // ── Publishers 查询解析 ──────────────────────────────
   // 站点别名按具体域名优先；短国家代码只在单词边界内匹配，避免误识别 sales 等英文词。
   const PUBLISHER_MARKET_ALIASES = [
@@ -23584,6 +23630,7 @@ var _NUMERIC_COL_PATTERNS = [
       detectQueryIntent,
       hasPublisherIntent,
       hasPublisherProfileIntent,
+      parsePublisherProfileQuery,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,

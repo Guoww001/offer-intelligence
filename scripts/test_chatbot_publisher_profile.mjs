@@ -90,4 +90,32 @@ if (hooks.detectQueryIntent("publisher: 1022") !== "publisher") throw new Error(
 if (hooks.parseChatIntentPrefix("publisherprofile: 1022")?.intent !== "publisherprofile") throw new Error("parseChatIntentPrefix 应解析 publisherprofile");
 if (hooks.parseChatIntentPrefix("publisher: 1022")?.intent !== "publisher") throw new Error("parseChatIntentPrefix 不应破坏 publisher");
 
+// ── Task 3: 媒体匹配解析 ──
+const pubData = publishersCache;
+const q1 = hooks.parsePublisherProfileQuery("publisherprofile: 1022", pubData);
+if (q1.mode !== "id" || !q1.publisher) throw new Error("ID 查询应精确匹配媒体");
+if (String(q1.publisher.userId) !== "1022") throw new Error("ID 匹配的媒体不正确");
+const q1b = hooks.parsePublisherProfileQuery("publisherprofile: 26", pubData);
+if (q1b.mode !== "id" || String(q1b.publisher.userId) !== "26") throw new Error("短 ID（2 位）也应精确匹配");
+const q2 = hooks.parsePublisherProfileQuery("publisherprofile: 1022 amazon.de", pubData);
+if (q2.market !== "amazon.de") throw new Error("应解析出站点 amazon.de");
+const q3 = hooks.parsePublisherProfileQuery("publisherprofile: 不存在的媒体xyz", pubData);
+if (q3.mode !== "none") throw new Error("无匹配应返回 mode=none");
+if (!q3.queryText.includes("不存在的媒体xyz")) throw new Error("应回显查询词");
+const q4 = hooks.parsePublisherProfileQuery("publisherprofile:", pubData);
+if (q4.mode !== "empty") throw new Error("空查询应返回 mode=empty");
+const someName = pubData.publishers[0].userName;
+const q5 = hooks.parsePublisherProfileQuery("publisherprofile: " + someName, pubData);
+if (q5.mode !== "id" && q5.mode !== "name") throw new Error("名称查询应返回 id 或 name 模式");
+if (!q5.publisher && !(q5.candidates || []).length) throw new Error("名称匹配应有结果");
+// 名称多匹配 → 候选模式（构造 3 个共享前缀的媒体）
+const multiData = { publishers: pubData.publishers.slice(0, 3).map(function (p, i) {
+  return { ...p, userId: 1000 + i, userName: "TestMedia 媒体" + (i + 1), total: { ...(p.total || {}), sales: 1000 - i * 100 } };
+}), merchantNameMap: pubData.merchantNameMap, networks: pubData.networks };
+const q6 = hooks.parsePublisherProfileQuery("publisherprofile: TestMedia", multiData);
+if (q6.mode !== "name") throw new Error("名称多匹配应返回 mode=name");
+if (q6.publisher !== null) throw new Error("多匹配时 publisher 应为 null");
+if (q6.candidates.length !== 3) throw new Error("多匹配应返回全部 3 个候选");
+if (q6.candidates[0].userName !== "TestMedia 媒体1") throw new Error("候选应按销售额降序（媒体1 销售额最高）");
+
 console.log("PASS: chatbot publisher profile contract tests (Task 1 static)");
