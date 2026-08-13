@@ -7,6 +7,8 @@
 YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英双语，覆盖商户查询、品类搜索、推荐排名、支付追踪、Tier 管理和数据分析。系统采用 **LLM 意图分类 + 规则引擎回答生成** 的混合架构，所有数据在页面加载时一次性载入前端内存，回答生成零网络延迟。
 
 > Chat Mode 商户分析的当前相对比较口径单独记录在 [Chat Mode 商户分析相对比较规则](chatbot-analysis-comparison-rules.md)，包括比较范围、指标公式、百分位阈值和已知口径问题。
+>
+> Chat Mode 面对商户、品类、Tier、趋势和媒体等不同分析类型的内容与边界，见 [Chat Mode 不同分析类型说明](chat-mode-analysis-types.md)。
 
 ---
 
