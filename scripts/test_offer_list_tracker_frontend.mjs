@@ -132,6 +132,12 @@ const tierTwoSecond = {
   affCommissionRate: 15,
   aov: 120
 };
+const wayward = {
+  ...lowAov,
+  merchantId: "404",
+  merchantName: "Delta Home",
+  network: "Wayward"
+};
 
 assertEqual(hooks.offerTrackerCommissionRate(high), 20, "affiliate commission should be preferred for tracker filtering");
 assertEqual(hooks.offerTrackerRevenue(high), 1200, "tracker revenue should use the offer salesAmount field");
@@ -198,6 +204,26 @@ assertEqual(
   "no-revenue filter should keep only zero-revenue offers"
 );
 assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, wayward, high],
+    { tier: "all", category: "all", networks: ["Levanta", "Wayward"] },
+    "",
+    hooks.defaultOfferTrackerRules()
+  ).map((offer) => offer.merchantId),
+  ["101", "404"],
+  "network filter should include offers from every selected network"
+);
+assertEqual(
+  hooks.offerTrackerSelectedNetworks({ network: "Levanta" }),
+  ["Levanta"],
+  "legacy saved views with one network should remain compatible"
+);
+assertEqual(
+  hooks.offerTrackerSelectedNetworks({ networks: ["Levanta", "Wayward", "Levanta", "all"] }),
+  ["Levanta", "Wayward"],
+  "network selections should be normalized and deduplicated"
+);
+assertEqual(
   hooks.filterOfferTrackerRows([recommended, lowAov, high], { tier: "all", category: "all", network: "all" }, "303").map((offer) => offer.merchantId),
   ["303"],
   "search should match merchant IDs"
@@ -209,6 +235,11 @@ assert(
 assert(
   hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-desc" }).includes("已产生 Revenue"),
   "revenue filter chips should identify positive revenue"
+);
+assertEqual(
+  hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", networks: ["Levanta", "Wayward"] }),
+  ["Levanta", "Wayward"],
+  "each selected network should be visible in the applied-filter chips"
 );
 
 const exportSourceRows = [tierTwoFirst, tierTwoSecond, lowAov, recommended, high];
@@ -314,6 +345,8 @@ assert(html.includes('id="offerTrackerExportSelected"'), "selected-row workbook 
 assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission range</span>'), "commission filters should be labeled as AFF Commission");
 assert(html.includes('id="offerTrackerRevenueStatus"'), "revenue status filter should exist");
 assert(html.includes('id="offerTrackerRevenueSort"'), "revenue sort control should exist");
+assert(html.includes('id="offerTrackerNetworkMenu"'), "network filter should provide a checkbox menu");
+assert(html.includes('aria-controls="offerTrackerNetworkMenu"'), "network filter toggle should expose its menu to assistive technology");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
 assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
@@ -327,6 +360,7 @@ assert(styles.includes(".offer-tracker-aov-badge.estimated"), "estimated AOV bad
 assert(styles.includes(".offer-tracker-bb-badge.mind"), "BB-sensitive brands should have red badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.open"), "BB-open brands should have green badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.unknown"), "unknown BB policies should have gray badge styling");
+assert(styles.includes(".offer-tracker-network-option"), "network checkbox options should have dedicated styling");
 assert(html.includes('id="offerTrackerExportDialog"'), "workbook export setup dialog should exist");
 assert(html.includes('id="offerTrackerExportTiers"'), "per-Tier export quantity controls should exist");
 assert(html.includes('id="offerTrackerBackgroundRanges"'), "row background range controls should exist");
