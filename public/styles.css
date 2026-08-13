@@ -514,6 +514,33 @@
   padding-inline: 10px;
 }
 
+.offer-tracker-select-filtered {
+  white-space: nowrap;
+}
+
+.offer-tracker-select-filtered b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #e7f0fc;
+  color: var(--tracker-blue-dark);
+  padding: 0 5px;
+  font-size: 8px;
+}
+
+.offer-tracker-select-filtered[aria-pressed="true"] {
+  border-color: var(--tracker-blue);
+  background: #eaf2fc;
+  color: var(--tracker-blue-dark);
+}
+
+.offer-tracker-select-filtered:disabled {
+  cursor: default;
+  opacity: 0.46;
+}
+
 .offer-tracker-popover {
   position: absolute;
   top: calc(100% + 8px);
