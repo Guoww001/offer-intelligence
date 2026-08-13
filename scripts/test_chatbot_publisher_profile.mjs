@@ -152,4 +152,40 @@ if (!(deSummary.categories.length === 1 && deSummary.categories[0].category === 
 const legacySummary = hooks.publisherAffinitySummary(rowsAll);
 if (legacySummary.sales !== 1550) throw new Error("不传 marketOverride 时应按 all 口径汇总");
 
+// ── Task 5: 画像渲染 ──
+const profilePub = pubData.publishers[0];
+const zhHtml = hooks.renderPublisherProfileHtml("publisherprofile: " + profilePub.userId, profilePub, merchantsFixture, "zh");
+if (!zhHtml.includes("媒体画像")) throw new Error("中文标题应显示媒体画像");
+if (!zhHtml.includes("ID " + profilePub.userId)) throw new Error("头部应显示媒体 ID");
+if (!zhHtml.includes("Clicks")) throw new Error("应含 6 个 publisher 级 KPI（Clicks 等）");
+if (!zhHtml.includes("活跃商家")) throw new Error("应含画像指标卡（活跃商家）");
+if (!zhHtml.includes("品类偏好")) throw new Error("应含品类偏好区块");
+if (!zhHtml.includes("典型 AOV 区间")) throw new Error("应含偏好信号（典型 AOV 区间）");
+if (!zhHtml.includes("商家")) throw new Error("应含合作商家表头");
+if (!zhHtml.includes("测试商家A")) throw new Error("商家表应含商家名称");
+if (!zhHtml.includes("publisher-category-row")) throw new Error("品类条应复用独立页样式类");
+if (!zhHtml.includes("publisher-share-cell")) throw new Error("商家份额应复用独立页样式类");
+if (!zhHtml.includes("共 2")) throw new Error("应显示商家数量统计");
+const enHtml = hooks.renderPublisherProfileHtml("publisherprofile: " + profilePub.userId, profilePub, merchantsFixture, "en");
+if (!enHtml.includes("Publisher Profile")) throw new Error("英文标题应显示 Publisher Profile");
+if (!enHtml.includes("Typical AOV band")) throw new Error("英文信号文案应显示 Typical AOV band");
+// 站点口径回显
+const marketHtml = hooks.renderPublisherProfileHtml("publisherprofile: " + profilePub.userId + " amazon.de", profilePub, merchantsFixture, "zh");
+if (!marketHtml.includes("站点 amazon.de")) throw new Error("应回显站点筛选条件");
+// 空商家明细
+const emptyMerchantsHtml = hooks.renderPublisherProfileHtml("publisherprofile: " + profilePub.userId, profilePub, [], "zh");
+if (!emptyMerchantsHtml.includes("无商家数据")) throw new Error("空明细应显示无商家数据提示");
+// 候选列表
+const candHtml = hooks.renderPublisherProfileCandidatesHtml([profilePub, pubData.publishers[1]], "shokz", "zh");
+if (!candHtml.includes("匹配到多个媒体")) throw new Error("候选列表应有多匹配提示");
+if (!candHtml.includes(profilePub.userName)) throw new Error("候选列表应含媒体名称");
+if (!candHtml.includes(String(profilePub.userId))) throw new Error("候选列表应含媒体 ID");
+// 未找到
+const notFoundHtml = hooks.renderPublisherProfileNotFoundHtml("不存在的媒体xyz", "zh");
+if (!notFoundHtml.includes("未找到匹配的媒体")) throw new Error("未找到提示应显示未找到匹配的媒体");
+if (!notFoundHtml.includes("不存在的媒体xyz")) throw new Error("未找到提示应回显查询词");
+// 用法提示
+const usageHtml = hooks.renderPublisherProfileUsageHtml("zh");
+if (!usageHtml.includes("publisherprofile: 1022")) throw new Error("用法提示应含示例");
+
 console.log("PASS: chatbot publisher profile contract tests (Task 1 static)");

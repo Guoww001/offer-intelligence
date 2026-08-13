@@ -8122,6 +8122,232 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       '</div>';
   }
 
+  // ── 媒体画像渲染（publisherprofile 意图）──────────────────
+  // 输出结构与 Publishers 独立页选中媒体后的画像面板对齐：
+  // 头部 + 6 个 publisher 级 KPI + 4 个画像指标卡 + 品类偏好 + 偏好信号 + 合作商家明细表。
+  // 纯函数：接收数据返回 HTML 字符串，复用独立页样式类（styles.css 全局类，Deep Window 内可用）。
+
+  function publisherProfileMetricFor(pub, market) {
+    return (market && pub.markets && pub.markets[market]) || pub.total || {};
+  }
+
+  function publisherProfileTitle(language) {
+    return language === "zh" ? "媒体画像" : "Publisher Profile";
+  }
+
+  // 用法提示（前缀后为空）
+  function renderPublisherProfileUsageHtml(language) {
+    const zh = language === "zh";
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      '<p class="warning">' + (zh ? "请提供媒体名称或 ID，例如：" : "Provide a publisher name or ID, e.g.: ") +
+      '<code>publisherprofile: 1022</code>' + (zh ? " 或 " : " or ") +
+      '<code>publisherprofile: ' + (zh ? "媒体名 amazon.de" : "name amazon.de") + '</code></p></div>';
+  }
+
+  // 未找到提示
+  function renderPublisherProfileNotFoundHtml(queryText, language) {
+    const zh = language === "zh";
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      '<p class="warning">' + (zh ? "未找到匹配的媒体。" : "No matching publisher found.") + '</p>' +
+      (queryText ? '<p><small>' + escapeHtml(queryText) + '</small></p>' : "") +
+      '</div>';
+  }
+
+  // 名称多匹配候选列表（按销售降序）
+  function renderPublisherProfileCandidatesHtml(candidates, queryText, language) {
+    const zh = language === "zh";
+    const rows = (candidates || []).map(function (pub) {
+      return "<tr>" +
+        "<td>" + escapeHtml(String(pub.userName || "")) + "</td>" +
+        "<td>" + escapeHtml(String(pub.userId || "")) + "</td>" +
+        "<td class=\"num\">" + money(Number((pub.total || {}).sales || 0)) + "</td>" +
+        "</tr>";
+    }).join("");
+    const header = "<tr><th>" + (zh ? "媒体名称" : "Publisher Name") + "</th><th>" +
+      (zh ? "媒体 ID" : "Publisher ID") + "</th><th>" + (zh ? "销售额" : "Sales") + "</th></tr>";
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      '<p><small>' + escapeHtml(queryText || "") + (zh ? " · 匹配到多个媒体，请用媒体 ID 再次提问" : " · multiple matches, use the publisher ID instead") + '</small></p>' +
+      '<div class="table-wrap"><table><thead>' + header + '</thead><tbody>' + rows + '</tbody></table></div>' +
+      '</div>';
+  }
+
+  // 完整画像。第五参 degradedNote：商家明细加载失败时注入警告条（可选）。
+  function renderPublisherProfileHtml(query, pub, merchants, language, degradedNote) {
+    const zh = language === "zh";
+    const parsed = parsePublisherProfileQuery(query, { publishers: [pub], merchantNameMap: {} });
+    const market = parsed.market;
+    const metric = publisherProfileMetricFor(pub, market);
+    const rows = publisherProfileRowsForMarket(merchants, market || "all");
+    const summary = _publisherAffinitySummary(rows, market || "all");
+
+    // 头部
+    const head = '<div class="publisher-profile-head">' +
+      '<span class="publisher-profile-avatar">' + escapeHtml(String(pub.userName || pub.userId || "?").slice(0, 1).toUpperCase()) + '</span>' +
+      '<div><strong>' + escapeHtml(String(pub.userName || pub.userId || "")) + '</strong>' +
+      '<small>ID ' + escapeHtml(String(pub.userId)) + ' · ' + escapeHtml(String(pub.adminName || "Unknown")) + ' · ' +
+      escapeHtml(Array.isArray(pub.networks) ? pub.networks.join(", ") : "Unknown") + '</small></div></div>';
+
+    const conditionNote = market ? '<p><small>' + (zh ? "站点 " : "market ") + escapeHtml(market) + '</small></p>' : "";
+
+    // 6 个 publisher 级 KPI（复用 PUBLISHER_KPI_METRICS 定义与 .metric 结构）
+    const kpiCards = PUBLISHER_KPI_METRICS.map(function (m, index) {
+      const val = metric[m.key] != null ? metric[m.key] : 0;
+      return '<article class="metric" style="--i:' + index + '">' +
+        '<div class="metric-icon ' + escapeHtml(m.tone) + '">' + escapeHtml(m.icon) + '</div>' +
+        '<div class="metric-body">' +
+          '<span class="metric-label">' + escapeHtml(m.label) + '</span>' +
+          '<strong class="metric-value">' + m.format(val) + '</strong>' +
+          '<span class="metric-full">' + escapeHtml(m.fullFormat(val)) + '</span>' +
+        '</div></article>';
+    }).join("");
+
+    // 4 个画像指标卡（复用 .publisher-affinity-metric 结构）
+    const topCategory = summary.categories[0] ? summary.categories[0].category : "N/A";
+    const affinityCards = [
+      {
+        label: zh ? "活跃商家" : "Active merchants",
+        value: String(summary.merchantCount),
+        note: zh ? "当前口径" : "in current view",
+      },
+      {
+        label: "AOV",
+        value: _publisherAovText(summary.aov),
+        note: String(summary.orders) + " " + (zh ? "订单" : "orders"),
+      },
+      {
+        label: zh ? "Top 品类" : "Top category",
+        value: topCategory,
+        note: summary.categories[0]
+          ? (summary.categories[0].salesShare * 100).toFixed(1) + "% " + (zh ? "销售占比" : "of sales")
+          : (zh ? "无活跃数据" : "No activity"),
+      },
+      {
+        label: zh ? "加权 AFF 佣金率" : "AFF weighted commission rate",
+        value: _publisherRateText(summary.weightedCommissionRate),
+        note: zh ? "按商家销售额加权" : "weighted by merchant sales",
+      },
+    ].map(function (card) {
+      return '<article class="publisher-affinity-metric">' +
+        '<span>' + escapeHtml(card.label) + '</span>' +
+        '<strong title="' + escapeHtml(card.value) + '">' + escapeHtml(card.value) + '</strong>' +
+        '<small>' + escapeHtml(card.note) + '</small></article>';
+    }).join("");
+
+    // 品类偏好 Top 6
+    const categories = summary.categories.slice(0, 6);
+    const categoryBlock = categories.length
+      ? categories.map(function (item, index) {
+          const share = summary.sales > 0
+            ? item.salesShare
+            : item.merchantCount / Math.max(1, summary.merchantCount);
+          return '<div class="publisher-category-row">' +
+            '<div class="publisher-category-copy">' +
+              '<span class="publisher-category-rank">' + (index + 1) + '</span>' +
+              '<strong title="' + escapeHtml(item.category) + '">' + escapeHtml(item.category) + '</strong>' +
+              '<small>' + String(item.merchantCount) + ' ' + (zh ? "个商家" : "merchants") + '</small>' +
+            '</div>' +
+            '<div class="publisher-category-track" aria-label="' + escapeHtml(item.category) + ' ' + (share * 100).toFixed(1) + '%">' +
+              '<span style="width:' + Math.max(2, share * 100).toFixed(1) + '%"></span>' +
+            '</div>' +
+            '<span class="publisher-category-share">' + (share * 100).toFixed(1) + '%</span>' +
+          '</div>';
+        }).join("")
+      : '<div class="publisher-affinity-inline-empty">' +
+        (zh ? "该口径下无品类活跃数据" : "No category activity in this view") + '</div>';
+
+    // 偏好信号 4 行
+    const topBand = summary.aovBands.filter(function (band) { return band.label !== "N/A"; })[0] || summary.aovBands[0] || null;
+    const topMarket = summary.markets[0] || null;
+    const signals = [
+      {
+        label: zh ? "典型 AOV 区间" : "Typical AOV band",
+        value: topBand ? topBand.label : "N/A",
+        note: topBand ? (topBand.salesShare * 100).toFixed(1) + "% " + (zh ? "销售占比" : "of sales") : (zh ? "无活跃数据" : "No activity"),
+      },
+      {
+        label: zh ? "品类集中度" : "Category concentration",
+        value: summary.categories[0] ? (summary.categories[0].salesShare * 100).toFixed(1) + "%" : "N/A",
+        note: summary.categories[0] ? summary.categories[0].category : (zh ? "无活跃数据" : "No activity"),
+      },
+      {
+        label: zh ? "AFF 佣金画像" : "AFF commission profile",
+        value: _publisherRateText(summary.weightedCommissionRate),
+        note: _publisherRateText(summary.effectiveCommissionRate) + " " + (zh ? "有效 AFF 费率" : "effective AFF rate"),
+      },
+      {
+        label: zh ? "市场覆盖" : "Market reach",
+        value: String(summary.markets.length),
+        note: topMarket ? (zh ? "领跑市场 " : "Leads with ") + topMarket.market : (zh ? "无活跃数据" : "No activity"),
+      },
+    ].map(function (signal, index) {
+      return '<div class="publisher-signal-row">' +
+        '<span class="publisher-signal-index">0' + (index + 1) + '</span>' +
+        '<div><small>' + escapeHtml(signal.label) + '</small><strong>' + escapeHtml(signal.value) + '</strong><p>' +
+          escapeHtml(signal.note) + '</p></div></div>';
+    }).join("");
+
+    // 合作商家明细表（12 列，对齐独立页 _renderPublisherPortfolioTable 结构）
+    const merchantHeader = "<tr>" +
+      "<th>" + (zh ? "商家" : "Merchant") + "</th>" +
+      "<th>" + (zh ? "联盟 / 市场" : "Network / Market") + "</th>" +
+      "<th>" + (zh ? "品类" : "Category") + "</th>" +
+      "<th>Tier</th>" +
+      "<th>AOV</th><th>EPC</th><th>CVR</th>" +
+      "<th>" + (zh ? "佣金率" : "Rate") + "</th>" +
+      "<th>" + (zh ? "订单" : "Orders") + "</th>" +
+      "<th>" + (zh ? "销售" : "Sales") + "</th>" +
+      "<th>" + (zh ? "AFF 佣金" : "AFF Comm") + "</th>" +
+      "<th>" + (zh ? "份额" : "Share") + "</th>" +
+      "</tr>";
+    const merchantBody = rows.length
+      ? rows.map(function (row) {
+          const merchant = row.merchant;
+          const m = row.metrics;
+          const marketNames = Object.keys(merchant.markets || {}).filter(function (marketName) {
+            return _publisherMetricIsActive(merchant.markets[marketName]);
+          });
+          const visibleMarkets = market ? marketNames.filter(function (marketName) { return marketName === market; }) : marketNames;
+          let marketText = visibleMarkets.slice(0, 2).join(" · ");
+          if (visibleMarkets.length > 2) marketText += " +" + (visibleMarkets.length - 2);
+          const share = summary.sales > 0 ? Number(m.sales || 0) / summary.sales : 0;
+          return '<tr>' +
+            '<td><div class="publisher-merchant-cell"><strong>' +
+              escapeHtml(merchant.merchantName || String(merchant.merchantId)) +
+            '</strong><small>ID ' + escapeHtml(String(merchant.merchantId)) + '</small></div></td>' +
+            '<td><div class="publisher-network-market"><span>' +
+              escapeHtml(merchant.network || "Unknown") +
+            '</span><small>' + escapeHtml(marketText || "Unknown") + '</small></div></td>' +
+            '<td><span class="publisher-category-pill">' + escapeHtml(merchant.category || "Uncategorized") + '</span></td>' +
+            '<td><span class="publisher-tier-pill ' + _publisherTierTone(merchant.tier) + '">' +
+              escapeHtml(merchant.tier || "Unknown") + '</span></td>' +
+            '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(m.aov)) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricAffEpc(m))) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(m))) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(_publisherMetricAffCommissionRate(m))) + '</td>' +
+            '<td class="publisher-numeric">' + String(Number(m.orders || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortMoney(m.sales)) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortMoney(_publisherMetricAffCommission(m) || 0)) + '</td>' +
+            '<td class="publisher-numeric publisher-share-column"><div class="publisher-share-cell"><span>' +
+              (share * 100).toFixed(1) + '%</span><i><b style="width:' + Math.max(1, share * 100).toFixed(1) + '%"></b></i></div></td>' +
+          '</tr>';
+        }).join("")
+      : '<tr><td colspan="12" class="publisher-portfolio-empty">' +
+        (zh ? "无商家数据" : "No merchant data") + '</td></tr>';
+
+    const degradedWarning = degradedNote ? '<p class="warning">' + escapeHtml(degradedNote) + '</p>' : "";
+
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      conditionNote + degradedWarning + head +
+      '<div class="publisher-profile-kpis">' + kpiCards + '</div>' +
+      '<div class="publisher-affinity-metrics">' + affinityCards + '</div>' +
+      '<h5>' + (zh ? "品类偏好" : "Category affinity") + '</h5>' + categoryBlock +
+      '<h5>' + (zh ? "偏好信号" : "Affinity signals") + '</h5>' + signals +
+      '<h5>' + (zh ? "合作商家（" : "Partner merchants (") + String(rows.length) + "）</h5>" +
+      '<div class="table-wrap"><table><thead>' + merchantHeader + '</thead><tbody>' + merchantBody + '</tbody></table></div>' +
+      '<p><small>' + (zh ? "共 " : "Total: ") + String(rows.length) + (zh ? " 个商家 · 按销售额降序" : " merchants · ranked by sales desc") + '</small></p>' +
+      '</div>';
+  }
+
   let publisherRecordsPlaceholderCounter = 0;
 
   function updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml) {
@@ -23644,6 +23870,10 @@ var _NUMERIC_COL_PATTERNS = [
       hasPublisherProfileIntent,
       parsePublisherProfileQuery,
       publisherProfileRowsForMarket,
+      renderPublisherProfileHtml,
+      renderPublisherProfileCandidatesHtml,
+      renderPublisherProfileNotFoundHtml,
+      renderPublisherProfileUsageHtml,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
