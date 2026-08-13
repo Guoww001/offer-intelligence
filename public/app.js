@@ -7767,6 +7767,16 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return true;
   }
 
+  // Publisher 画像意图检测：publisherprofile 前缀或中文「媒体画像」表述触发。
+  // 不做分析词让位（前缀显式、语义明确），但须在 hasPublisherIntent 之前检查
+  // （publisherprofile 文本同时含 publisher 触发词）。
+  function hasPublisherProfileIntent(prompt) {
+    const lower = String(prompt || "").toLowerCase();
+    if (/publisherprofile/i.test(lower)) return true;
+    if (/媒体画像/.test(String(prompt || ""))) return true;
+    return false;
+  }
+
   // ── Publishers 查询解析 ──────────────────────────────
   // 站点别名按具体域名优先；短国家代码只在单词边界内匹配，避免误识别 sales 等英文词。
   const PUBLISHER_MARKET_ALIASES = [
@@ -8123,11 +8133,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       if ((intent === "merchant" || intent === "keyword") && (/趋势|trend/i.test(userMessage) || /\b(?:analyze|analyse|analysis|performance|health\s*check)\b/i.test(userMessage))) {
         return "analysis";
       }
+      // 媒体画像前缀在 publisher 列表意图之前检查：publisherprofile 文本同时含 publisher 触发词。
+      if (hasPublisherProfileIntent(userMessage)) return "publisherprofile";
       // Publishers 尚未纳入旧版 LLM 意图集合时，仍以本地规则保证媒体查询进入专用路由。
       if (hasPublisherIntent(userMessage)) return "publisher";
       return intent;
     }
     const lower = userMessage.toLowerCase().trim();
+    if (hasPublisherProfileIntent(userMessage)) return "publisherprofile";
     if (hasPublisherIntent(userMessage)) return "publisher";
     if (findByAsin(userMessage)) return "asin";
     if (findByMerchantId(userMessage)) return "merchant";
@@ -23570,6 +23583,7 @@ var _NUMERIC_COL_PATTERNS = [
       parseChatIntentPrefix,
       detectQueryIntent,
       hasPublisherIntent,
+      hasPublisherProfileIntent,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
