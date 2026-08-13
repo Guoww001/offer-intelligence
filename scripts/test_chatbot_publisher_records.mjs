@@ -18,7 +18,7 @@ assertMatch(html, /data-chat-intent="publisher"/, "提问类型菜单应包含 p
 assertMatch(html, /data-chat-intent="asin"[\s\S]{0,600}data-chat-intent="publisher"/, "publisher 选项应位于 asin 之后");
 assertMatch(html, /data-chat-intent="publisher"[\s\S]{0,300}>Publisher</, "publisher 选项显示应首字母大写");
 assertMatch(app, /\{ key: "publisher", intent: "publisher" \}/, "CHAT_INTENT_OPTIONS 应注册 publisher 意图");
-assertMatch(app, /categorytier\|merchant\|category\|tier\|trend\|payment\|asin\|publisher/, "命令解析应支持 publisher 前缀");
+assertMatch(app, /categorytier\|category\\s\*&\\s\*tier\|品类\\s\*\[\+＋\]\\s\*tier\|merchant\|category\|tier\|trend\|payment\|asin\|publisher/, "命令解析应支持 publisher 前缀");
 assertMatch(app, /"chat\.intent\.publisher": "媒体"/, "中文 i18n 应提供 publisher 菜单文案");
 
 // ── Task 2-4：意图、解析、渲染与回答入口 ──
@@ -38,9 +38,9 @@ assertMatch(app, /### 6\. 媒体记录查询/, "中文说明书应提供媒体�
 assertMatch(app, /### 1\.6 Publisher Records/, "英文说明书应提供 Publisher Records 小节");
 
 // ── Task 6：缓存版本 ──
-assertMatch(html, /styles\.css\?v=20260813-publisherprofile1/, "样式应提升缓存版本");
-assertMatch(html, /auth\.js\?v=20260813-publisherprofile1/, "认证脚本应提升缓存版本");
-assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-publisherprofile1"/, "app.js 缓存版本应与 auth.js 一致");
+assertMatch(html, /styles\.css\?v=20260813-prefixlabel1/, "样式应提升缓存版本");
+assertMatch(html, /auth\.js\?v=20260813-prefixlabel1/, "认证脚本应提升缓存版本");
+assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-prefixlabel1"/, "app.js 缓存版本应与 auth.js 一致");
 
 const storageValues = new Map();
 const elementStub = {

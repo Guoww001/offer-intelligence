@@ -13,7 +13,7 @@ assertMatch(html, /data-chat-intent="publisherprofile"/, "提问类型菜单应�
 assertMatch(html, /data-chat-intent="publisher"[\s\S]{0,600}data-chat-intent="publisherprofile"/, "publisherprofile 选项应位于 publisher 之后");
 assertMatch(html, /data-chat-intent="publisherprofile"[\s\S]{0,200}>Publisher Profile</, "publisherprofile 选项显示应为 Publisher Profile");
 assertMatch(app, /\{ key: "publisherprofile", intent: "publisherprofile" \}/, "CHAT_INTENT_OPTIONS 应注册 publisherprofile 意图");
-assertMatch(app, /categorytier\|merchant\|category\|tier\|trend\|payment\|asin\|publisherprofile\|publisher/, "命令解析应支持 publisherprofile 前缀（且在 publisher 之前）");
+assertMatch(app, /categorytier\|category\\s\*&\\s\*tier\|品类\\s\*\[\+＋\]\\s\*tier\|merchant\|category\|tier\|trend\|payment\|asin\|publisherprofile\|publisher/, "命令解析应支持 publisherprofile 前缀（且在 publisher 之前）");
 assertMatch(app, /"chat\.intent\.publisherProfile": "媒体画像"/, "中文 i18n 应提供 publisherprofile 菜单文案");
 assertMatch(app, /"chat\.intent\.publisherProfileHint": "媒体画像查询"/, "中文 i18n 应提供 publisherprofile 提示文案");
 
@@ -27,9 +27,9 @@ assertMatch(app, /### 7\. 媒体画像查询/, "中文说明书应提供媒体�
 assertMatch(app, /### 1\.7 Publisher Profile/, "英文说明书应提供 Publisher Profile 小节");
 
 // ── Task 8: 缓存版本 ──
-assertMatch(html, /styles\.css\?v=20260813-publisherprofile1/, "样式应提升缓存版本");
-assertMatch(html, /auth\.js\?v=20260813-publisherprofile1/, "认证脚本应提升缓存版本");
-assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-publisherprofile1"/, "app.js 缓存版本应与 auth.js 一致");
+assertMatch(html, /styles\.css\?v=20260813-prefixlabel1/, "样式应提升缓存版本");
+assertMatch(html, /auth\.js\?v=20260813-prefixlabel1/, "认证脚本应提升缓存版本");
+assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-prefixlabel1"/, "app.js 缓存版本应与 auth.js 一致");
 
 // ── Task 2: 意图检测（vm 沙箱） ──
 import vm from "node:vm";
@@ -104,6 +104,31 @@ if (hooks.detectQueryIntent("publisherprofile: 1022") !== "publisherprofile") th
 if (hooks.detectQueryIntent("publisher: 1022") !== "publisher") throw new Error("publisher 前缀仍应路由到 publisher 意图");
 if (hooks.parseChatIntentPrefix("publisherprofile: 1022")?.intent !== "publisherprofile") throw new Error("parseChatIntentPrefix 应解析 publisherprofile");
 if (hooks.parseChatIntentPrefix("publisher: 1022")?.intent !== "publisher") throw new Error("parseChatIntentPrefix 不应破坏 publisher");
+
+// ── 命令前缀显示名（Category & Tier）行为断言 ──
+const ctEn = hooks.parseChatIntentPrefix("Category & Tier: beauty");
+if (!ctEn || ctEn.key !== "categorytier" || ctEn.intent !== "category" || ctEn.text !== "beauty") {
+  throw new Error("英文显示名前缀 Category & Tier 应解析为 categorytier/category");
+}
+const ctZh = hooks.parseChatIntentPrefix("品类 + Tier：美妆");
+if (!ctZh || ctZh.key !== "categorytier" || ctZh.intent !== "category" || ctZh.text !== "美妆") {
+  throw new Error("中文显示名前缀 品类 + Tier 应解析为 categorytier/category");
+}
+const ctSpace = hooks.parseChatIntentPrefix("Category &  Tier: beauty");
+if (!ctSpace || ctSpace.key !== "categorytier") throw new Error("显示名前缀应容忍多余空格");
+const ctLegacy = hooks.parseChatIntentPrefix("categorytier: beauty");
+if (!ctLegacy || ctLegacy.key !== "categorytier") throw new Error("原有 categorytier 前缀应继续可用");
+const catPlain = hooks.parseChatIntentPrefix("category: beauty");
+if (!catPlain || catPlain.key !== "category") throw new Error("category 前缀不应被别名影响");
+// 前缀文本函数：跟随界面语言
+if (!hooks.chatIntentPrefixText) throw new Error("应导出 chatIntentPrefixText");
+const ctOption = { key: "categorytier", prefixLabelI18n: "chat.intent.categoryTier", prefixLabelFallback: "Category & Tier" };
+hooks.setLanguage("zh");
+if (hooks.chatIntentPrefixText(ctOption) !== "品类 + Tier") throw new Error("中文界面前缀文本应为 品类 + Tier");
+hooks.setLanguage("en");
+if (hooks.chatIntentPrefixText(ctOption) !== "Category & Tier") throw new Error("英文界面前缀文本应为 Category & Tier");
+if (hooks.chatIntentPrefixText({ key: "merchant" }) !== "merchant") throw new Error("无显示名标记的选项应原样返回 key");
+hooks.setLanguage("zh");
 
 // ── Task 3: 媒体匹配解析 ──
 const pubData = publishersCache;

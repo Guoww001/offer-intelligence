@@ -24,8 +24,8 @@ assertMatch(html, /Category &amp; Tier/, "菜单应提供 Category & Tier 组合
 assertMatch(html, /data-chat-intent="merchant"[\s\S]{0,200}>Merchant</, "菜单选项显示应首字母大写");
 assertMatch(html, /data-chat-intent="category"[\s\S]{0,200}>Category</, "品类选项显示应首字母大写");
 assertMatch(html, /data-chat-intent="trend"[\s\S]{0,200}>Trend</, "趋势选项显示应首字母大写");
-assertMatch(app, /\{ key: "categorytier", intent: "category" \}/, "Category & Tier 应映射到 category 意图");
-assertMatch(app, /categorytier\|merchant\|category\|tier\|trend\|payment\|asin/, "命令解析应支持 categorytier 前缀");
+assertMatch(app, /\{ key: "categorytier", intent: "category", prefixLabelI18n: /, "Category & Tier 应映射到 category 意图");
+assertMatch(app, /categorytier\|category\\s\*&\\s\*tier\|品类\\s\*\[\+＋\]\\s\*tier\|merchant\|category\|tier\|trend\|payment\|asin/, "命令解析应支持 categorytier 前缀");
 assertMatch(app, /!forcedCategoryTier\s*&&\s*!llmIndicatesRecommendation[\s\S]{0,200}keywordSearchAnswer/, "categorytier 应跳过 keyword 搜索分支");
 
 assertMatch(app, /function showChatIntentMenu\s*\(/, "应提供打开提问类型菜单的函数");
@@ -51,7 +51,7 @@ assertMatch(styles, /\.chat-intent-option:hover,[\s\S]*?\.chat-intent-option\.ac
   assertMatch(styles, /body\.dashboard-mode[\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?background-image:\s*none\s*!important;/, "深色主题的高优先级蓝色背景规则也应被命令面板覆盖");
   assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?background:\s*transparent\s*!important;/, "浅色主题的高优先级蓝色背景规则也应被命令面板覆盖");
   assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-input \.chat-intent-option[\s\S]*?color:\s*#5e5474;/, "浅色主题的非选中命令选项应保持可读文字颜色");
-  assertMatch(html, /styles\.css\?v=20260813-publisherprofile1/, "菜单样式更新应提升缓存版本");
+  assertMatch(html, /styles\.css\?v=20260813-prefixlabel1/, "菜单样式更新应提升缓存版本");
 
 assertMatch(styles, /\.chat-intent-option\.active \.chat-intent-option-label\s*\{[^}]*font-weight:\s*800;/, "选中命令选项标签应加粗");
 assertMatch(styles, /body\.dashboard-mode\[data-dash-theme="light"\][\s\S]*?\.chat-intent-option\.active \.chat-intent-option-label\s*\{[^}]*color:\s*#513b91;/, "浅色主题的选中标签应使用紫色区分");
@@ -66,7 +66,13 @@ assertMatch(styles, /\.chat-input-command-overlay \.command-caret\s*\{/, "输入
 assertMatch(styles, /\.chat-input input\.has-command-overlay\s*\{[^}]*caret-color:\s*transparent\s*!important;/, "输入框原生光标应隐藏以避免与自定义光标错位");
 
 // 命令格式：xxx: <问题>（如 "trend: shokz"），替代旧的 /xxx 斜杠格式
-assertMatch(app, /selected\.key\s*\+\s*":\s*"/, "选择类型后应写入 xxx: 前缀");
+assertMatch(app, /chatIntentPrefixText\(selected\)\s*\+\s*":\s*"/, "选择类型后应写入显示名前缀");
+// 菜单显示名与 key 不一致的项（Category & Tier）应写入显示名，解析器兼容两种写法
+assertMatch(app, /categorytier\|category\\s\*&\\s\*tier\|品类\\s\*\[\+＋\]\\s\*tier\|merchant/, "命令视觉层正则应支持 Category & Tier 显示名前缀");
+assertMatch(app, /"category&tier":\s*"categorytier"/, "命令前缀别名应归一化 Category & Tier 到 categorytier");
+assertMatch(app, /"品类\+tier":\s*"categorytier"/, "命令前缀别名应归一化 品类 + Tier 到 categorytier");
+assertMatch(app, /function chatIntentPrefixText\s*\(/, "应提供菜单显示名前缀文本函数");
+assertMatch(app, /prefixLabelI18n/, "CHAT_INTENT_OPTIONS 应标记使用显示名的选项");
 assertMatch(app, /function parseChatIntentPrefix[\s\S]{0,400}\[:：\]/, "命令解析应支持半角与全角冒号");
 assertNotMatch(app, /els\.chatInput\.value\s*=\s*"\/"\s*\+\s*selected\.key/, "不应再写入旧式 /xxx 前缀");
 assertNotMatch(app, /parseChatIntentPrefix[\s\S]{0,200}\\\/\(merchant/, "命令解析不应再依赖斜杠格式");
