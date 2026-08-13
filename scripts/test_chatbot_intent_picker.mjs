@@ -17,7 +17,7 @@ assertMatch(html, /role="listbox"/, "提问类型菜单应支持列表语义");
 assertMatch(html, /class="chat-intent-menu-title"/, "提问类型菜单应提供简洁标题");
 assertMatch(html, /class="chat-intent-option-prefix"/, "提问类型选项应显示命令前缀");
 assertMatch(html, /class="chat-intent-option-hint"/, "提问类型选项应提供简短说明");
-for (const intent of ["merchant", "category", "tier", "categorytier", "trend", "payment", "asin", "publisher"]) {
+for (const intent of ["merchant", "category", "tier", "categorytier", "trend", "payment", "asin", "publisher", "publisherprofile"]) {
   assertMatch(html, new RegExp(`data-chat-intent="${intent}"`), `提问类型菜单应包含 ${intent}`);
 }
 assertMatch(html, /Category &amp; Tier/, "菜单应提供 Category & Tier 组合选项");
@@ -84,10 +84,10 @@ assertMatch(app, /analysisTarget:\s*trendTargetCleaned\s*\|\|\s*trendTarget/, "t
 assertMatch(app, /## 一、提问类型命令/, "中文说明书应介绍提问类型命令");
 assertMatch(app, /输入\s*\/\s*弹出提问类型菜单/, "中文说明书应说明 / 快捷菜单");
 assertMatch(app, /categorytier: electronics in tier2/, "中文说明书应提供 Category & Tier 示例");
-assertMatch(app, /8 种提问类型/, "中文说明书应列出全部 8 种提问类型");
+assertMatch(app, /9 种提问类型/, "中文说明书应列出全部 9 种提问类型");
 assertMatch(app, /紫色加粗/, "中文说明书应说明前缀的紫色加粗显示");
 assertMatch(app, /## 1\. Question Type Commands/, "英文说明书应介绍提问类型命令");
-assertMatch(app, /The 8 Question Types/, "英文说明书应列出全部 8 种提问类型");
+assertMatch(app, /The 9 Question Types/, "英文说明书应列出全部 9 种提问类型");
 assertMatch(app, /categorytier: electronics in tier2/, "英文说明书应提供 Category & Tier 示例");
 
 // 交互增强：键盘高亮滑轨、光轨层、按压物理、交错浮现

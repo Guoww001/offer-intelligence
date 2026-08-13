@@ -17,6 +17,15 @@ assertMatch(app, /categorytier\|merchant\|category\|tier\|trend\|payment\|asin\|
 assertMatch(app, /"chat\.intent\.publisherProfile": "媒体画像"/, "中文 i18n 应提供 publisherprofile 菜单文案");
 assertMatch(app, /"chat\.intent\.publisherProfileHint": "媒体画像查询"/, "中文 i18n 应提供 publisherprofile 提示文案");
 
+// ── Task 7: 说明书 9 类型 ──
+assertMatch(app, /### 9 种提问类型/, "中文说明书应列出全部 9 种提问类型");
+assertMatch(app, /### The 9 Question Types/, "英文说明书应列出全部 9 种提问类型");
+assertMatch(app, /\| Publisher Profile（媒体画像） \| publisherprofile: \|/, "中文说明书应提供 Publisher Profile 行");
+assertMatch(app, /\| Publisher Profile \| publisherprofile: \|/, "英文说明书应提供 Publisher Profile 行");
+assertMatch(app, /publisherprofile: 1022/, "说明书应提供 publisherprofile 示例");
+assertMatch(app, /### 7\. 媒体画像查询/, "中文说明书应提供媒体画像查询小节");
+assertMatch(app, /### 1\.7 Publisher Profile/, "英文说明书应提供 Publisher Profile 小节");
+
 // ── Task 2: 意图检测（vm 沙箱） ──
 import vm from "node:vm";
 

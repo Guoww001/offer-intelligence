@@ -28,9 +28,9 @@ assertMatch(app, /function renderPublisherRecordsHtml\s*\(/, "应提供 publishe
 assertMatch(app, /function publisherRecordsAnswer\s*\(/, "应提供 publisher records 回答函数");
 assertMatch(app, /intent === "publisher"/, "answerPrompt 应路由 publisher 意图");
 
-// ── Task 5：说明书 8 类型 ──
-assertMatch(app, /### 8 种提问类型/, "中文说明书应列出全部 8 种提问类型");
-assertMatch(app, /### The 8 Question Types/, "英文说明书应列出全部 8 种提问类型");
+// ── Task 5：说明书类型数（publisherprofile 加入后为 9 种）──
+assertMatch(app, /### 9 种提问类型/, "中文说明书应列出全部 9 种提问类型");
+assertMatch(app, /### The 9 Question Types/, "英文说明书应列出全部 9 种提问类型");
 assertMatch(app, /\| Publisher（媒体） \| publisher: \|/, "中文说明书应提供 Publisher 行");
 assertMatch(app, /\| Publisher \| publisher: \|/, "英文说明书应提供 Publisher 行");
 assertMatch(app, /publisher: amazon\.de Amazon 张三/, "说明书应提供 Publisher 示例");

@@ -2398,10 +2398,10 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 - 在输入框输入 / 弹出提问类型菜单，继续输入字母可快速过滤；用 **↑ / ↓** 选择，**Enter** 确认，**Esc** 关闭。
 - 选择后输入框自动写入 **类型: ** 前缀（如 **trend: shokz**），接着输入问题即可。
-- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**、**publisher:**，支持半角与全角冒号（: 与 ：）。
+- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**、**publisher:**、**publisherprofile:**，支持半角与全角冒号（: 与 ：）。
 - 命令前缀在输入框中以**紫色加粗**显示。
 
-### 8 种提问类型
+### 9 种提问类型
 
 | 类型 | 命令前缀 | 用途 | 示例 |
 | --- | --- | --- | --- |
@@ -2413,6 +2413,7 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 | Payment（付款） | payment: | 付款查询 | payment: 逾期商户 |
 | ASIN | asin: | ASIN 查询 | asin: B0015S8FPI |
 | Publisher（媒体） | publisher: | 按站点 / 联盟 / 商家 / 经理筛选媒体记录 | publisher: amazon.de Amazon 张三 |
+| Publisher Profile（媒体画像） | publisherprofile: | 输入媒体名称或 ID 查看合作商家与偏好 | publisherprofile: 1022 |
 
 Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查询 Tier 2 的 Beauty 品类：**categorytier: beauty in tier2**。
 
@@ -2469,6 +2470,14 @@ Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查�
 | 和 Shokz 合作的媒体 | 按商家筛选 |
 | 经理张三的媒体 | 按经理筛选 |
 | 销售最高的 5 个媒体 | 排序 + 限额 |
+
+### 7. 媒体画像查询
+
+| 标准提问 | 说明 |
+| --- | --- |
+| publisherprofile: 1022 | 按媒体 ID 查看画像 |
+| publisherprofile: 媒体名称 | 按名称查看（多匹配时列出候选） |
+| publisherprofile: 1022 amazon.de | 按站点口径查看画像 |
 
 ## 三、交互说明
 
@@ -2532,10 +2541,10 @@ The input box supports both a **/ quick menu** and **type: command prefixes** to
 
 - Type **/** in the input box to open the question type menu; keep typing letters to filter instantly. Use **↑ / ↓** to navigate, **Enter** to select, **Esc** to close.
 - Selecting an option writes a **type: ** prefix automatically (e.g. **trend: shokz**); then type your question.
-- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**, **publisher:**. Both half-width (:) and full-width (：) colons work.
+- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**, **publisher:**, **publisherprofile:**. Both half-width (:) and full-width (：) colons work.
 - The prefix is shown in **bold purple** in the input box.
 
-### The 8 Question Types
+### The 9 Question Types
 
 | Type | Command prefix | Use | Example |
 | --- | --- | --- | --- |
@@ -2547,6 +2556,7 @@ The input box supports both a **/ quick menu** and **type: command prefixes** to
 | Payment | payment: | Payment queries | payment: overdue merchants |
 | ASIN | asin: | ASIN lookup | asin: B0015S8FPI |
 | Publisher | publisher: | Filter publisher records by site / network / merchant / manager | publisher: amazon.de Amazon 张三 |
+| Publisher Profile | publisherprofile: | View partner merchants and preferences by publisher name or ID | publisherprofile: 1022 |
 
 Category & Tier fits combined "category within a tier" queries, e.g. the Beauty category in Tier 2: **categorytier: beauty in tier2**.
 
@@ -2603,6 +2613,14 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 | Publishers partnering with Shokz | Filter by merchant |
 | Publishers managed by Zhang San | Filter by manager |
 | Top 5 publishers by sales | Sort + limit |
+
+### 1.7 Publisher Profile
+
+| Standard question | Description |
+| --- | --- |
+| publisherprofile: 1022 | Profile by publisher ID |
+| publisherprofile: publisher name | Profile by name (candidates listed on multiple matches) |
+| publisherprofile: 1022 amazon.de | Profile scoped to a site |
 
 ## 3. Interactions
 
