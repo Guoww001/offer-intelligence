@@ -917,6 +917,8 @@
       "chat.intent.asinHint": "ASIN 查询",
       "chat.intent.publisher": "媒体",
       "chat.intent.publisherHint": "媒体记录查询",
+      "chat.intent.publisherProfile": "媒体画像",
+      "chat.intent.publisherProfileHint": "媒体画像查询",
       "table.offers": "Offer 列表",
       "payments.title": "付款",
       "payments.sync": "同步 Levanta",
@@ -11594,7 +11596,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     { key: "trend", intent: "analysis" },
     { key: "payment", intent: "payment" },
     { key: "asin", intent: "asin" },
-    { key: "publisher", intent: "publisher" }
+    { key: "publisher", intent: "publisher" },
+    { key: "publisherprofile", intent: "publisherprofile" }
   ]);
   let chatIntentActiveIndex = -1;
 
@@ -11608,7 +11611,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (!input || !overlay) return;
 
     const value = String(input.value || "");
-    const match = value.match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisher)\s*[:：](?=\s|$)/i);
+    const match = value.match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisherprofile|publisher)\s*[:：](?=\s|$)/i);
     if (!match) {
       overlay.classList.remove("visible");
       overlay.innerHTML = "";
@@ -11758,7 +11761,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
   function parseChatIntentPrefix(prompt) {
     // 命令格式：xxx: <问题>（如 "trend: shokz"），支持半角/全角冒号
-    const match = String(prompt || "").match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisher)\s*[:：]\s*([\s\S]*)?$/i);
+    const match = String(prompt || "").match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisherprofile|publisher)\s*[:：]\s*([\s\S]*)?$/i);
     if (!match) return null;
     const key = match[1].toLowerCase();
     const option = CHAT_INTENT_OPTIONS.find(function (item) { return item.key === key; });
