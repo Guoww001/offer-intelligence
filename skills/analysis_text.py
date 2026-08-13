@@ -41,6 +41,8 @@ class AnalysisTextSkill(AnalysisSkill):
             "- Only use the data provided. Do not fabricate numbers.\n"
             "- Be specific — mention actual values and comparisons (e.g. 'EPC of $2.35 is 30% "
             "above the category average of $1.80').\n"
+            "- Treat any metric rank with status 'insufficient_sample' as unavailable for strength/weakness conclusions; "
+            "mention insufficient sample size when relevant instead.\n"
             "- If certain data is missing or unavailable, skip that point rather than guessing.\n"
             "- Format your response as plain paragraphs, no markdown headings or bullet points.\n"
             "- Do NOT start with phrases like 'Here is the analysis' or 'Based on the data' — "

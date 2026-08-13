@@ -7085,7 +7085,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     html += "<tr><td>" + (zh ? "总收入" : "Total Revenue") + "</td><td>" + money(s.aggregates.totalRevenue) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总佣金" : "Total Commission") + "</td><td>" + money(s.aggregates.totalCommission) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总订单" : "Total Orders") + "</td><td>" + number(s.aggregates.totalOrders).toLocaleString() + "</td></tr>";
-    html += "<tr><td>Avg EPC</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
+    html += "<tr><td>Avg EPC(Aff)</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
     html += "<tr><td>Avg AOV</td><td>" + money(s.aggregates.avgAov) + "</td></tr>";
     html += "<tr><td>Avg CVR</td><td>" + pct(s.aggregates.avgCvr / 100) + "</td></tr>";
     html += "<tr><td>" + (zh ? "平均佣金率" : "Avg Comm Rate") + "</td><td>" + pct(s.aggregates.avgCommissionRate / 100) + "</td></tr>";
@@ -7127,7 +7127,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     html += "<tr><td>" + (zh ? "总收入" : "Total Revenue") + "</td><td>" + money(s.aggregates.totalRevenue) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总佣金" : "Total Commission") + "</td><td>" + money(s.aggregates.totalCommission) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总订单" : "Total Orders") + "</td><td>" + number(s.aggregates.totalOrders).toLocaleString() + "</td></tr>";
-    html += "<tr><td>Avg EPC</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
+    html += "<tr><td>Avg EPC(Aff)</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
     html += "<tr><td>Avg AOV</td><td>" + money(s.aggregates.avgAov) + "</td></tr>";
     html += "<tr><td>Avg CVR</td><td>" + pct(s.aggregates.avgCvr / 100) + "</td></tr>";
     html += "</tbody></table></div>";
@@ -7195,7 +7195,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       { key: "revenue", label: zh ? "总收入" : "Revenue", fmt: "money" },
       { key: "commission", label: zh ? "总佣金" : "Commission", fmt: "money" },
       { key: "orders", label: zh ? "总订单" : "Orders", fmt: "number" },
-      { key: "epc", label: "Avg EPC", fmt: "epc" },
+      { key: "epc", label: "Avg EPC(Aff)", fmt: "epc" },
       { key: "aov", label: "Avg AOV", fmt: "money" },
       { key: "cvr", label: "Avg CVR", fmt: "pct" },
       { key: "commissionRate", label: zh ? "佣金率" : "Comm Rate", fmt: "pct" },
@@ -7262,7 +7262,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       var byEpc = entities.slice().sort(function(a, b) { return b.averages.epc - a.averages.epc; });
       if (byEpc[0].averages.epc > 0 && byEpc[1].averages.epc > 0) {
         var epcDelta = ((byEpc[0].averages.epc - byEpc[1].averages.epc) / byEpc[1].averages.epc * 100).toFixed(1);
-        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
+        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC(Aff) (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
       }
       // Compare AOV
       var byAov = entities.slice().sort(function(a, b) { return b.averages.aov - a.averages.aov; });
@@ -7299,7 +7299,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       { key: "revenue", label: zh ? "总收入" : "Revenue", fmt: "money" },
       { key: "commission", label: zh ? "总佣金" : "Commission", fmt: "money" },
       { key: "orders", label: zh ? "总订单" : "Orders", fmt: "number" },
-      { key: "epc", label: "Avg EPC", fmt: "epc" },
+      { key: "epc", label: "Avg EPC(Aff)", fmt: "epc" },
       { key: "aov", label: "Avg AOV", fmt: "money" },
       { key: "cvr", label: "Avg CVR", fmt: "pct" },
     ];
@@ -7380,7 +7380,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       var byEpc = entities.slice().sort(function(a, b) { return b.averages.epc - a.averages.epc; });
       if (byEpc[0].averages.epc > 0 && byEpc[1].averages.epc > 0) {
         var epcDelta = ((byEpc[0].averages.epc - byEpc[1].averages.epc) / byEpc[1].averages.epc * 100).toFixed(1);
-        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
+        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC(Aff) (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
       }
       html += "</ul></div>";
     }
@@ -24163,7 +24163,7 @@ var _NUMERIC_COL_PATTERNS = [
           : filters.tier;
       },
       publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
-      _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
+        _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
       analyzeMerchant,
       analyzeCategory,
       analyzeTier,
