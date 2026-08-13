@@ -187,7 +187,7 @@
 
 .offer-tracker-filter-grid {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(190px, 1.25fr) minmax(205px, 1.2fr) minmax(205px, 1.2fr) minmax(140px, 0.9fr);
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 10px;
 }
 

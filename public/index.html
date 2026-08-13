@@ -1108,6 +1108,22 @@
                 <span data-i18n="label.Network">Network</span>
                 <select id="offerTrackerNetwork"><option value="all">All networks</option></select>
               </label>
+              <label>
+                <span data-i18n="offerTracker.revenueStatus">Revenue status</span>
+                <select id="offerTrackerRevenueStatus">
+                  <option value="all" data-i18n="offerTracker.revenueAll">All revenue</option>
+                  <option value="positive" data-i18n="offerTracker.revenuePositive">Revenue generated</option>
+                  <option value="none" data-i18n="offerTracker.revenueNone">No revenue</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="offerTracker.revenueSort">Revenue order</span>
+                <select id="offerTrackerRevenueSort">
+                  <option value="priority" data-i18n="offerTracker.sortPriority">Priority order</option>
+                  <option value="revenue-desc" data-i18n="offerTracker.sortRevenueDesc">Revenue: high to low</option>
+                  <option value="revenue-asc" data-i18n="offerTracker.sortRevenueAsc">Revenue: low to high</option>
+                </select>
+              </label>
             </div>
             <div class="offer-tracker-filter-footer">
               <div class="offer-tracker-filter-chips" id="offerTrackerFilterChips" aria-live="polite"></div>
