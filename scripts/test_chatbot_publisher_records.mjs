@@ -18,7 +18,7 @@ assertMatch(html, /data-chat-intent="publisher"/, "提问类型菜单应包含 p
 assertMatch(html, /data-chat-intent="asin"[\s\S]{0,600}data-chat-intent="publisher"/, "publisher 选项应位于 asin 之后");
 assertMatch(html, /data-chat-intent="publisher"[\s\S]{0,300}>Publisher</, "publisher 选项显示应首字母大写");
 assertMatch(app, /\{ key: "publisher", intent: "publisher" \}/, "CHAT_INTENT_OPTIONS 应注册 publisher 意图");
-assertMatch(app, /categorytier\|merchant\|category\|tier\|trend\|payment\|asin\|publisher/, "命令解析应支持 publisher 前缀");
+assertMatch(app, /categorytier\|category\\s\*&\\s\*tier\|品类\\s\*\[\+＋\]\\s\*tier\|merchant\|category\|tier\|trend\|payment\|asin\|publisher/, "命令解析应支持 publisher 前缀");
 assertMatch(app, /"chat\.intent\.publisher": "媒体"/, "中文 i18n 应提供 publisher 菜单文案");
 
 // ── Task 2-4：意图、解析、渲染与回答入口 ──
@@ -28,9 +28,9 @@ assertMatch(app, /function renderPublisherRecordsHtml\s*\(/, "应提供 publishe
 assertMatch(app, /function publisherRecordsAnswer\s*\(/, "应提供 publisher records 回答函数");
 assertMatch(app, /intent === "publisher"/, "answerPrompt 应路由 publisher 意图");
 
-// ── Task 5：说明书 8 类型 ──
-assertMatch(app, /### 8 种提问类型/, "中文说明书应列出全部 8 种提问类型");
-assertMatch(app, /### The 8 Question Types/, "英文说明书应列出全部 8 种提问类型");
+// ── Task 5：说明书类型数（publisherprofile 加入后为 9 种）──
+assertMatch(app, /### 9 种提问类型/, "中文说明书应列出全部 9 种提问类型");
+assertMatch(app, /### The 9 Question Types/, "英文说明书应列出全部 9 种提问类型");
 assertMatch(app, /\| Publisher（媒体） \| publisher: \|/, "中文说明书应提供 Publisher 行");
 assertMatch(app, /\| Publisher \| publisher: \|/, "英文说明书应提供 Publisher 行");
 assertMatch(app, /publisher: amazon\.de Amazon 张三/, "说明书应提供 Publisher 示例");
@@ -38,9 +38,9 @@ assertMatch(app, /### 6\. 媒体记录查询/, "中文说明书应提供媒体�
 assertMatch(app, /### 1\.6 Publisher Records/, "英文说明书应提供 Publisher Records 小节");
 
 // ── Task 6：缓存版本 ──
-assertMatch(html, /styles\.css\?v=20260807-publisher1/, "样式应提升缓存版本");
-assertMatch(html, /auth\.js\?v=20260807-publisher2/, "认证脚本应提升缓存版本");
-assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260807-publisher2"/, "app.js 缓存版本应与 auth.js 一致");
+assertMatch(html, /styles\.css\?v=20260813-profile-visual1/, "样式应提升缓存版本");
+assertMatch(html, /auth\.js\?v=20260813-profile-visual1/, "认证脚本应提升缓存版本");
+assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260813-profile-visual1"/, "app.js 缓存版本应与 auth.js 一致");
 
 const storageValues = new Map();
 const elementStub = {

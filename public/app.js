@@ -944,6 +944,8 @@
       "chat.intent.asinHint": "ASIN 查询",
       "chat.intent.publisher": "媒体",
       "chat.intent.publisherHint": "媒体记录查询",
+      "chat.intent.publisherProfile": "媒体画像",
+      "chat.intent.publisherProfileHint": "媒体画像查询",
       "table.offers": "Offer 列表",
       "payments.title": "付款",
       "payments.sync": "同步 Levanta",
@@ -2423,21 +2425,22 @@ Report Mode（报告模式）用自然语言查询与分析**商户 / 品类 / T
 
 - 在输入框输入 / 弹出提问类型菜单，继续输入字母可快速过滤；用 **↑ / ↓** 选择，**Enter** 确认，**Esc** 关闭。
 - 选择后输入框自动写入 **类型: ** 前缀（如 **trend: shokz**），接着输入问题即可。
-- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**、**publisher:**，支持半角与全角冒号（: 与 ：）。
+- 也可手动输入前缀：**merchant:**、**category:**、**tier:**、**categorytier:**、**trend:**、**payment:**、**asin:**、**publisher:**、**publisherprofile:**，支持半角与全角冒号（: 与 ：）。
 - 命令前缀在输入框中以**紫色加粗**显示。
 
-### 8 种提问类型
+### 9 种提问类型
 
 | 类型 | 命令前缀 | 用途 | 示例 |
 | --- | --- | --- | --- |
 | Merchant（商户） | merchant: | 查询单个商户 | merchant: shokz |
 | Category（品类） | category: | 查询品类 | category: beauty |
 | Tier | tier: | 查询层级 | tier: tier 2 |
-| Category & Tier（品类 + Tier） | categorytier: | 查询某 Tier 下的品类 | categorytier: electronics in tier2 |
+| Category & Tier（品类 + Tier） | Category & Tier: / categorytier: | 查询某 Tier 下的品类 | categorytier: electronics in tier2 |
 | Trend（趋势） | trend: | 趋势分析 | trend: shokz |
 | Payment（付款） | payment: | 付款查询 | payment: 逾期商户 |
 | ASIN | asin: | ASIN 查询 | asin: B0015S8FPI |
 | Publisher（媒体） | publisher: | 按站点 / 联盟 / 商家 / 经理筛选媒体记录 | publisher: amazon.de Amazon 张三 |
+| Publisher Profile（媒体画像） | publisherprofile: | 输入媒体名称或 ID 查看合作商家与偏好 | publisherprofile: 1022 |
 
 Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查询 Tier 2 的 Beauty 品类：**categorytier: beauty in tier2**。
 
@@ -2494,6 +2497,14 @@ Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查�
 | 和 Shokz 合作的媒体 | 按商家筛选 |
 | 经理张三的媒体 | 按经理筛选 |
 | 销售最高的 5 个媒体 | 排序 + 限额 |
+
+### 7. 媒体画像查询
+
+| 标准提问 | 说明 |
+| --- | --- |
+| publisherprofile: 1022 | 按媒体 ID 查看画像 |
+| publisherprofile: 媒体名称 | 按名称查看（多匹配时列出候选） |
+| publisherprofile: 1022 amazon.de | 按站点口径查看画像 |
 
 ## 三、交互说明
 
@@ -2557,21 +2568,22 @@ The input box supports both a **/ quick menu** and **type: command prefixes** to
 
 - Type **/** in the input box to open the question type menu; keep typing letters to filter instantly. Use **↑ / ↓** to navigate, **Enter** to select, **Esc** to close.
 - Selecting an option writes a **type: ** prefix automatically (e.g. **trend: shokz**); then type your question.
-- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**, **publisher:**. Both half-width (:) and full-width (：) colons work.
+- You can also type a prefix manually: **merchant:**, **category:**, **tier:**, **categorytier:**, **trend:**, **payment:**, **asin:**, **publisher:**, **publisherprofile:**. Both half-width (:) and full-width (：) colons work.
 - The prefix is shown in **bold purple** in the input box.
 
-### The 8 Question Types
+### The 9 Question Types
 
 | Type | Command prefix | Use | Example |
 | --- | --- | --- | --- |
 | Merchant | merchant: | Look up a single merchant | merchant: shokz |
 | Category | category: | Query a category | category: beauty |
 | Tier | tier: | Query a tier | tier: tier 2 |
-| Category & Tier | categorytier: | Query a category within a tier | categorytier: electronics in tier2 |
+| Category & Tier | Category & Tier: / categorytier: | Query a category within a tier | categorytier: electronics in tier2 |
 | Trend | trend: | Trend analysis | trend: shokz |
 | Payment | payment: | Payment queries | payment: overdue merchants |
 | ASIN | asin: | ASIN lookup | asin: B0015S8FPI |
 | Publisher | publisher: | Filter publisher records by site / network / merchant / manager | publisher: amazon.de Amazon 张三 |
+| Publisher Profile | publisherprofile: | View partner merchants and preferences by publisher name or ID | publisherprofile: 1022 |
 
 Category & Tier fits combined "category within a tier" queries, e.g. the Beauty category in Tier 2: **categorytier: beauty in tier2**.
 
@@ -2628,6 +2640,14 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 | Publishers partnering with Shokz | Filter by merchant |
 | Publishers managed by Zhang San | Filter by manager |
 | Top 5 publishers by sales | Sort + limit |
+
+### 1.7 Publisher Profile
+
+| Standard question | Description |
+| --- | --- |
+| publisherprofile: 1022 | Profile by publisher ID |
+| publisherprofile: publisher name | Profile by name (candidates listed on multiple matches) |
+| publisherprofile: 1022 amazon.de | Profile scoped to a site |
 
 ## 3. Interactions
 
@@ -5220,6 +5240,93 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
   // ── Analysis utility functions ──────────────────────────────────────────────
 
+  const ANALYSIS_MIN_CLICKS = 100;
+  const ANALYSIS_MIN_ORDERS = 10;
+  const ANALYSIS_FIELDS = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
+  const ANALYSIS_SAMPLE_RULES = {
+    epc: { field: "clicks", minimum: ANALYSIS_MIN_CLICKS },
+    conversionRate: { field: "clicks", minimum: ANALYSIS_MIN_CLICKS },
+    aov: { field: "orders", minimum: ANALYSIS_MIN_ORDERS },
+    commissionRate: { field: "orders", minimum: ANALYSIS_MIN_ORDERS }
+  };
+
+  function analysisAffiliateCommission(offer) {
+    if (!offer) return null;
+    if (isAvailable(offer.affCommission) && Number.isFinite(Number(offer.affCommission))) {
+      return Number(offer.affCommission);
+    }
+    if (isAvailable(offer.affiliatePayout) && Number.isFinite(Number(offer.affiliatePayout))) {
+      return Number(offer.affiliatePayout);
+    }
+    return null;
+  }
+
+  // Chat Mode 分析统一使用 Affiliate EPC；返回值单位为美元/点击。
+  function analysisMetricValueForOffer(offer, field) {
+    if (!offer) return null;
+    if (field === "epc") {
+      var clicks = Number(offer.clicks);
+      var commission = analysisAffiliateCommission(offer);
+      return clicks > 0 && commission !== null ? commission / clicks : null;
+    }
+    if (field === "commissionRate") {
+      var revenue = Number(offer.salesAmount);
+      var affiliateCommission = analysisAffiliateCommission(offer);
+      if (revenue > 0 && affiliateCommission !== null) {
+        return affiliateCommission / revenue * 100;
+      }
+      var fallbackRate = isAvailable(offer.affCommissionRate)
+        ? offer.affCommissionRate
+        : offer.commissionRate;
+      var normalizedRate = normalizedCommissionRate(fallbackRate);
+      return normalizedRate === null ? null : normalizedRate * 100;
+    }
+    if (field === "conversionRate") {
+      if (isAvailable(offer.conversionRate) && Number.isFinite(Number(offer.conversionRate))) {
+        return Number(offer.conversionRate) * 100;
+      }
+      var fallbackClicks = Number(offer.clicks);
+      var fallbackOrders = Number(offer.orders);
+      return fallbackClicks > 0 && Number.isFinite(fallbackOrders)
+        ? fallbackOrders / fallbackClicks * 100
+        : null;
+    }
+    if (!isAvailable(offer[field]) || !Number.isFinite(Number(offer[field]))) return null;
+    return Number(offer[field]);
+  }
+
+  function analysisMetricSampleSize(offer, field) {
+    var rule = ANALYSIS_SAMPLE_RULES[field];
+    if (!rule || !offer) return null;
+    var sample = Number(offer[rule.field]);
+    return Number.isFinite(sample) ? sample : 0;
+  }
+
+  function analysisMetricSampleEligible(offer, field) {
+    var rule = ANALYSIS_SAMPLE_RULES[field];
+    if (!rule) return true;
+    return analysisMetricSampleSize(offer, field) >= rule.minimum;
+  }
+
+  function analysisComparableOffers(offList, field) {
+    return (offList || []).filter(function(offer) {
+      var value = analysisMetricValueForOffer(offer, field);
+      return value !== null
+        && Number.isFinite(Number(value))
+        && analysisMetricSampleEligible(offer, field);
+    });
+  }
+
+  function analysisAverage(offList, field) {
+    var comparable = analysisComparableOffers(offList, field);
+    if (!comparable.length) return null;
+    var total = 0;
+    for (var i = 0; i < comparable.length; i++) {
+      total += analysisMetricValueForOffer(comparable[i], field);
+    }
+    return total / comparable.length;
+  }
+
   function percentileRank(value, values) {
     if (!values || !values.length) return 0;
     var sorted = values.slice().sort(function(a, b) { return a - b; });
@@ -5251,22 +5358,20 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   function metricLabel(field) {
-    var labels = { epc: "EPC", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Commission", commissionRate: "Comm %", salesAmount: "Sales", revenue: "Revenue", affiliatePayout: "Commission", dpv: "DPV", atc: "ATC", payout: "Payout", directSales: "Direct Sales", haloSales: "Halo Sales" };
+    var labels = { epc: "EPC(Aff)", aov: "AOV", conversionRate: "CVR", orders: "Orders", clicks: "Clicks", affCommission: "Aff Commission", commissionRate: "AFF Comm %", salesAmount: "Sales", revenue: "Revenue", affiliatePayout: "Commission", dpv: "DPV", atc: "ATC", payout: "Payout", directSales: "Direct Sales", haloSales: "Halo Sales" };
     return labels[field] || field;
   }
 
   function pctDelta(selfVal, otherVal) {
-    if (otherVal == null || otherVal === 0) return "N/A";
+    if (selfVal == null || otherVal == null || !Number.isFinite(Number(selfVal)) || !Number.isFinite(Number(otherVal)) || otherVal === 0) return "N/A";
     var delta = ((selfVal - otherVal) / Math.abs(otherVal)) * 100;
     var sign = delta >= 0 ? "+" : "";
     return sign + delta.toFixed(1) + "%";
   }
 
   function metricValueForOffer(offer, field) {
-    if (!offer) return 0;
-    if (field === "conversionRate") return (offer.conversionRate || 0) * 100;
-    if (field === "commissionRate") return (offer.commissionRate || 0);
-    return offer[field] || 0;
+    var value = analysisMetricValueForOffer(offer, field);
+    return value === null ? 0 : value;
   }
 
   function formatAnalysisMetric(value, field) {
@@ -5523,35 +5628,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
   }
 
   function globalAverages() {
-    var metrics = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
     var result = {};
-    // 比率字段使用加权汇总，非比率字段使用算术平均
-    for (var m = 0; m < metrics.length; m++) {
-      var field = metrics[m];
-      if (field === "epc") {
-        var _rev = 0, _cls = 0;
-        for (var _i = 0; _i < offers.length; _i++) { _rev += Number(offers[_i].salesAmount || 0); _cls += Number(offers[_i].clicks || 0); }
-        result[field] = _cls > 0 ? _rev / _cls : 0;
-      } else if (field === "aov") {
-        var _rev = 0, _ord = 0;
-        for (var _i = 0; _i < offers.length; _i++) { _rev += Number(offers[_i].salesAmount || 0); _ord += Number(offers[_i].orders || 0); }
-        result[field] = _ord > 0 ? _rev / _ord : 0;
-      } else if (field === "conversionRate") {
-        var _ord = 0, _cls = 0;
-        for (var _i = 0; _i < offers.length; _i++) { _ord += Number(offers[_i].orders || 0); _cls += Number(offers[_i].clicks || 0); }
-        result[field] = _cls > 0 ? (_ord / _cls) * 100 : 0;
-      } else if (field === "commissionRate") {
-        var _comm = 0, _rev = 0;
-        for (var _i = 0; _i < offers.length; _i++) { _comm += Number(offers[_i].affCommission || 0); _rev += Number(offers[_i].salesAmount || 0); }
-        result[field] = _rev > 0 ? _comm / _rev : 0;
-      } else {
-        var values = [];
-        for (var i = 0; i < offers.length; i++) {
-          var v = offers[i][field] || 0;
-          if (v > 0) values.push(v);
-        }
-        result[field] = values.length ? values.reduce(function(a, b) { return a + b; }, 0) / values.length : 0;
-      }
+    for (var i = 0; i < ANALYSIS_FIELDS.length; i++) {
+      var field = ANALYSIS_FIELDS[i];
+      result[field] = analysisAverage(offers, field);
     }
     return result;
   }
@@ -5566,7 +5646,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var tierOffers = offersInTier(tier);
     var globals = globalAverages();
 
-    var fields = ["epc", "aov", "conversionRate", "orders", "clicks", "affCommission", "commissionRate", "salesAmount"];
+    var fields = ANALYSIS_FIELDS;
     var metrics = {};
     for (var f = 0; f < fields.length; f++) {
       metrics[fields[f]] = metricValueForOffer(offer, fields[f]);
@@ -5576,46 +5656,27 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var ranks = {};
     for (var f = 0; f < fields.length; f++) {
       var field = fields[f];
-      var catValues = [];
-      for (var i = 0; i < categoryOffers.length; i++) {
-        catValues.push(metricValueForOffer(categoryOffers[i], field));
-      }
+      var comparableOffers = analysisComparableOffers(categoryOffers, field);
+      var catValues = comparableOffers.map(function(comparableOffer) {
+        return metricValueForOffer(comparableOffer, field);
+      });
+      var sampleEligible = analysisMetricSampleEligible(offer, field);
+      var percentile = sampleEligible && catValues.length
+        ? percentileRank(metrics[field], catValues)
+        : null;
+      var rankStatus = !sampleEligible
+        ? "insufficient_sample"
+        : (catValues.length ? "ok" : "no_comparison");
       ranks[field] = {
         value: metrics[field],
-        percentile: percentileRank(metrics[field], catValues),
-        totalInCategory: categoryOffers.length
+        percentile: percentile,
+        totalInCategory: comparableOffers.length,
+        comparisonCount: comparableOffers.length,
+        sampleSize: analysisMetricSampleSize(offer, field),
+        sampleEligible: sampleEligible,
+        status: rankStatus
       };
     }
-
-
-	    // Comparisons
-	    function avgField(offList, field) {
-	      if (!offList.length) return 0;
-	      // 比率字段使用加权汇总（整体值相除），而非各商家比率的算术平均
-	      if (field === "epc") {
-	        var _rev = 0, _cls = 0;
-	        for (var _i = 0; _i < offList.length; _i++) { _rev += Number(offList[_i].salesAmount || 0); _cls += Number(offList[_i].clicks || 0); }
-	        return _cls > 0 ? _rev / _cls : 0;
-	      }
-	      if (field === "aov") {
-	        var _rev = 0, _ord = 0;
-	        for (var _i = 0; _i < offList.length; _i++) { _rev += Number(offList[_i].salesAmount || 0); _ord += Number(offList[_i].orders || 0); }
-	        return _ord > 0 ? _rev / _ord : 0;
-	      }
-	      if (field === "conversionRate") {
-	        var _ord = 0, _cls = 0;
-	        for (var _i = 0; _i < offList.length; _i++) { _ord += Number(offList[_i].orders || 0); _cls += Number(offList[_i].clicks || 0); }
-	        return _cls > 0 ? (_ord / _cls) * 100 : 0;
-	      }
-	      if (field === "commissionRate") {
-	        var _comm = 0, _rev = 0;
-	        for (var _i = 0; _i < offList.length; _i++) { _comm += Number(offList[_i].affCommission || 0); _rev += Number(offList[_i].salesAmount || 0); }
-	        return _rev > 0 ? _comm / _rev : 0;
-	      }
-	      var sum = 0;
-	      for (var i = 0; i < offList.length; i++) sum += metricValueForOffer(offList[i], field);
-	      return sum / offList.length;
-	    }
 
     function compare(selfVal, otherAvg) {
       return { self: selfVal, avg: otherAvg, delta: pctDelta(selfVal, otherAvg) };
@@ -5624,8 +5685,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var comparisons = { vsCategory: {}, vsTier: {}, vsGlobal: {} };
     for (var f = 0; f < fields.length; f++) {
       var field = fields[f];
-      comparisons.vsCategory[field] = compare(metrics[field], avgField(categoryOffers, field));
-      comparisons.vsTier[field] = compare(metrics[field], avgField(tierOffers, field));
+      comparisons.vsCategory[field] = compare(metrics[field], analysisAverage(categoryOffers, field));
+      comparisons.vsTier[field] = compare(metrics[field], analysisAverage(tierOffers, field));
       comparisons.vsGlobal[field] = compare(metrics[field], globals[field]);
     }
 
@@ -5633,6 +5694,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var strengths = [];
     var weaknesses = [];
     for (var f = 0; f < fields.length; f++) {
+      if (!ranks[fields[f]].sampleEligible || ranks[fields[f]].percentile === null) continue;
       if (ranks[fields[f]].percentile >= 70) strengths.push(fields[f]);
       if (ranks[fields[f]].percentile <= 30) weaknesses.push(fields[f]);
     }
@@ -5856,7 +5918,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         month: months[i],
         revenue: Math.round(rev * 100) / 100,
         orders: Math.round(ord),
-        epc: clk > 0 ? Math.round((rev / clk) * 10000) / 10000 : 0,
+        epc: clk > 0 ? Math.round((comm / clk) * 10000) / 10000 : 0,
         aov: ord > 0 ? Math.round((rev / ord) * 100) / 100 : 0,
         clicks: Math.round(clk),
         affiliatePayout: Math.round(comm * 100) / 100
@@ -5888,28 +5950,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return s;
     }
     function avgField(list, field) {
-      if (!list.length) return 0;
-      if (field === "epc") {
-        var _rev = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? _rev / _cls : 0;
-      }
-      if (field === "aov") {
-        var _rev = 0, _ord = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _ord += Number(list[_i].orders || 0); }
-        return _ord > 0 ? _rev / _ord : 0;
-      }
-      if (field === "conversionRate") {
-        var _ord = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _ord += Number(list[_i].orders || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? (_ord / _cls) * 100 : 0;
-      }
-      if (field === "commissionRate") {
-        var _comm = 0, _rev = 0;
-        for (var _i = 0; _i < list.length; _i++) { _comm += Number(list[_i].affCommission || 0); _rev += Number(list[_i].salesAmount || 0); }
-        return _rev > 0 ? _comm / _rev : 0;
-      }
-      return sumField(list, field) / list.length;
+      return analysisAverage(list, field);
     }
 
     var aggregates = {
@@ -5972,28 +6013,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       return s;
     }
     function avgField(list, field) {
-      if (!list.length) return 0;
-      if (field === "epc") {
-        var _rev = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? _rev / _cls : 0;
-      }
-      if (field === "aov") {
-        var _rev = 0, _ord = 0;
-        for (var _i = 0; _i < list.length; _i++) { _rev += Number(list[_i].salesAmount || 0); _ord += Number(list[_i].orders || 0); }
-        return _ord > 0 ? _rev / _ord : 0;
-      }
-      if (field === "conversionRate") {
-        var _ord = 0, _cls = 0;
-        for (var _i = 0; _i < list.length; _i++) { _ord += Number(list[_i].orders || 0); _cls += Number(list[_i].clicks || 0); }
-        return _cls > 0 ? (_ord / _cls) * 100 : 0;
-      }
-      if (field === "commissionRate") {
-        var _comm = 0, _rev = 0;
-        for (var _i = 0; _i < list.length; _i++) { _comm += Number(list[_i].affCommission || 0); _rev += Number(list[_i].salesAmount || 0); }
-        return _rev > 0 ? _comm / _rev : 0;
-      }
-      return sumField(list, field) / list.length;
+      return analysisAverage(list, field);
     }
 
     var aggregates = {
@@ -6034,8 +6054,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var outliers = [];
     for (var i = 0; i < tierOffers.length; i++) {
       var o = tierOffers[i];
-      var oEpc = o.epc || 0;
-      var oCvr = (o.conversionRate || 0) * 100;
+      var oEpc = metricValueForOffer(o, "epc") || 0;
+      var oCvr = metricValueForOffer(o, "conversionRate") || 0;
       var nameO = o.brand || o.merchantName || "Unknown";
       if (tierAvgEpc > 0 && oEpc > tierAvgEpc * 3) {
         outliers.push({ name: nameO, reason: "EPC " + epc(oEpc) + "远超同级均值 " + epc(tierAvgEpc) });
@@ -6080,10 +6100,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         totalClicks += Number(o.clicks || 0);
         totalOrders += Number(o.orders || 0);
       }
-      var avgEpc = commissionEpcFromTotals(totalRevenue, totalCommission, totalClicks);
-      var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-      var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
-      var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
+      var avgEpc = analysisAverage(catOffers, "epc") || 0;
+      var avgAov = analysisAverage(catOffers, "aov") || 0;
+      var avgCvr = analysisAverage(catOffers, "conversionRate") || 0;
+      var avgCommRate = analysisAverage(catOffers, "commissionRate") || 0;
 
       // Top 5 brands by commission
       var sorted = catOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
@@ -6156,10 +6176,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         totalClicks += Number(o.clicks || 0);
         totalOrders += Number(o.orders || 0);
       }
-      var avgEpc = commissionEpcFromTotals(totalRevenue, totalCommission, totalClicks);
-      var avgAov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-      var avgCvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
-      var avgCommRate = totalRevenue > 0 ? totalCommission / totalRevenue : 0;
+      var avgEpc = analysisAverage(tierOffers, "epc") || 0;
+      var avgAov = analysisAverage(tierOffers, "aov") || 0;
+      var avgCvr = analysisAverage(tierOffers, "conversionRate") || 0;
+      var avgCommRate = analysisAverage(tierOffers, "commissionRate") || 0;
 
       // Top 5 brands by commission
       var sorted = tierOffers.slice().sort(function(a, b) { return (b.affCommission || 0) - (a.affCommission || 0); });
@@ -6244,7 +6264,10 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     for (var f = 0; f < fields.length; f++) {
       var field = fields[f];
       var rank = s.ranks[field];
-      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + (zh ? "前" : "Top ") + (100 - rank.percentile) + "%</td></tr>";
+      var rankText = rank.percentile === null
+        ? (zh ? "样本不足" : "Insufficient sample")
+        : ((zh ? "前" : "Top ") + (100 - rank.percentile) + "%");
+      html += "<tr><td>" + metricLabel(field) + "</td><td>" + formatAnalysisMetric(rank.value, field) + "</td><td>" + rankText + "</td></tr>";
     }
     html += "</tbody></table></div>";
 
@@ -6274,6 +6297,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     }
     if (!s.strengths.length && !s.weaknesses.length) {
       html += "<p>" + (zh ? "该商户各项指标处于品类中等水平。" : "All metrics are near the category median.") + "</p>";
+    }
+    var insufficientFields = Object.keys(s.ranks || {}).filter(function(field) {
+      return s.ranks[field] && s.ranks[field].status === "insufficient_sample";
+    });
+    if (insufficientFields.length) {
+      html += "<p class=\"analysis-sample-note\"><strong>" + (zh ? "样本提示：" : "Sample note: ") + "</strong>" +
+        (zh ? "部分指标样本量不足，未将其判定为亮点或短板。" : "Some metrics have insufficient sample size and were not classified as strengths or weaknesses.") +
+        "</p>";
     }
     html += "<p><strong>" + (zh ? "支付状态：" : "Payment: ") + "</strong>" + escapeHtml(s.paymentRisk.riskText || (zh ? "无风险" : "No risk")) + "</p>";
     html += "</div>";
@@ -7081,7 +7112,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     html += "<tr><td>" + (zh ? "总收入" : "Total Revenue") + "</td><td>" + money(s.aggregates.totalRevenue) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总佣金" : "Total Commission") + "</td><td>" + money(s.aggregates.totalCommission) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总订单" : "Total Orders") + "</td><td>" + number(s.aggregates.totalOrders).toLocaleString() + "</td></tr>";
-    html += "<tr><td>Avg EPC</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
+    html += "<tr><td>Avg EPC(Aff)</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
     html += "<tr><td>Avg AOV</td><td>" + money(s.aggregates.avgAov) + "</td></tr>";
     html += "<tr><td>Avg CVR</td><td>" + pct(s.aggregates.avgCvr / 100) + "</td></tr>";
     html += "<tr><td>" + (zh ? "平均佣金率" : "Avg Comm Rate") + "</td><td>" + pct(s.aggregates.avgCommissionRate / 100) + "</td></tr>";
@@ -7123,7 +7154,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     html += "<tr><td>" + (zh ? "总收入" : "Total Revenue") + "</td><td>" + money(s.aggregates.totalRevenue) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总佣金" : "Total Commission") + "</td><td>" + money(s.aggregates.totalCommission) + "</td></tr>";
     html += "<tr><td>" + (zh ? "总订单" : "Total Orders") + "</td><td>" + number(s.aggregates.totalOrders).toLocaleString() + "</td></tr>";
-    html += "<tr><td>Avg EPC</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
+    html += "<tr><td>Avg EPC(Aff)</td><td>" + epc(s.aggregates.avgEpc) + "</td></tr>";
     html += "<tr><td>Avg AOV</td><td>" + money(s.aggregates.avgAov) + "</td></tr>";
     html += "<tr><td>Avg CVR</td><td>" + pct(s.aggregates.avgCvr / 100) + "</td></tr>";
     html += "</tbody></table></div>";
@@ -7191,7 +7222,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       { key: "revenue", label: zh ? "总收入" : "Revenue", fmt: "money" },
       { key: "commission", label: zh ? "总佣金" : "Commission", fmt: "money" },
       { key: "orders", label: zh ? "总订单" : "Orders", fmt: "number" },
-      { key: "epc", label: "Avg EPC", fmt: "epc" },
+      { key: "epc", label: "Avg EPC(Aff)", fmt: "epc" },
       { key: "aov", label: "Avg AOV", fmt: "money" },
       { key: "cvr", label: "Avg CVR", fmt: "pct" },
       { key: "commissionRate", label: zh ? "佣金率" : "Comm Rate", fmt: "pct" },
@@ -7258,7 +7289,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       var byEpc = entities.slice().sort(function(a, b) { return b.averages.epc - a.averages.epc; });
       if (byEpc[0].averages.epc > 0 && byEpc[1].averages.epc > 0) {
         var epcDelta = ((byEpc[0].averages.epc - byEpc[1].averages.epc) / byEpc[1].averages.epc * 100).toFixed(1);
-        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
+        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC(Aff) (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
       }
       // Compare AOV
       var byAov = entities.slice().sort(function(a, b) { return b.averages.aov - a.averages.aov; });
@@ -7295,7 +7326,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       { key: "revenue", label: zh ? "总收入" : "Revenue", fmt: "money" },
       { key: "commission", label: zh ? "总佣金" : "Commission", fmt: "money" },
       { key: "orders", label: zh ? "总订单" : "Orders", fmt: "number" },
-      { key: "epc", label: "Avg EPC", fmt: "epc" },
+      { key: "epc", label: "Avg EPC(Aff)", fmt: "epc" },
       { key: "aov", label: "Avg AOV", fmt: "money" },
       { key: "cvr", label: "Avg CVR", fmt: "pct" },
     ];
@@ -7376,7 +7407,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       var byEpc = entities.slice().sort(function(a, b) { return b.averages.epc - a.averages.epc; });
       if (byEpc[0].averages.epc > 0 && byEpc[1].averages.epc > 0) {
         var epcDelta = ((byEpc[0].averages.epc - byEpc[1].averages.epc) / byEpc[1].averages.epc * 100).toFixed(1);
-        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
+        html += "<li>" + escapeHtml(byEpc[0].name) + " Avg EPC(Aff) (" + epc(byEpc[0].averages.epc) + (zh ? ") 比 " : ") is ") + epcDelta + "% " + (zh ? "高于 " : "higher than ") + escapeHtml(byEpc[1].name) + " (" + epc(byEpc[1].averages.epc) + ")</li>";
       }
       html += "</ul></div>";
     }
@@ -7430,6 +7461,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
         var wNames = [];
         for (var i = 0; i < summary.weaknesses.length; i++) wNames.push(metricLabel(summary.weaknesses[i]));
         lines.push(zh ? ("关注点：" + wNames.join("、") + " 低于品类均值，建议优化。") : ("Areas to watch: " + wNames.join(", ") + " are below category average."));
+      }
+      var insufficientFields = Object.keys(summary.ranks || {}).filter(function(field) {
+        return summary.ranks[field] && summary.ranks[field].status === "insufficient_sample";
+      });
+      if (insufficientFields.length) {
+        lines.push(zh
+          ? "部分指标样本量不足，未将其判定为亮点或短板。"
+          : "Some metrics have insufficient sample size and were not classified as strengths or weaknesses.");
       }
       if (!lines.length) {
         lines.push(zh ? (escapeHtml(name) + " 各项指标处于品类中等水平，表现稳定。") : (escapeHtml(name) + " metrics are near the category median — stable performance."));
@@ -7792,6 +7831,62 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return true;
   }
 
+  // Publisher 画像意图检测：publisherprofile 前缀或中文「媒体画像」表述触发。
+  // 不做分析词让位（前缀显式、语义明确），但须在 hasPublisherIntent 之前检查
+  // （publisherprofile 文本同时含 publisher 触发词）。
+  function hasPublisherProfileIntent(prompt) {
+    const lower = String(prompt || "").toLowerCase();
+    if (/publisherprofile/i.test(lower)) return true;
+    if (/媒体画像/.test(String(prompt || ""))) return true;
+    return false;
+  }
+
+  // 解析 publisherprofile 查询：去前缀文本 → 媒体 ID / 名称匹配 + 可选站点。
+  // 返回 { mode: "id"|"name"|"empty"|"none", publisher, candidates, market, queryText }。
+  // mode=id: 数字精确匹配；mode=name: 名称包含匹配（唯一→publisher，多个→candidates）；
+  // mode=empty: 前缀后无文本；mode=none: 无任何匹配。
+  function parsePublisherProfileQuery(prompt, data) {
+    const text = String(prompt || "").replace(/^\s*publisherprofile\s*[:：]\s*/i, "").trim();
+    const source = data || {};
+    const publishers = Array.isArray(source.publishers) ? source.publishers : [];
+    const base = { market: null, queryText: text };
+
+    // 站点解析（复用 PUBLISHER_MARKET_ALIASES 与 publisherAliasMatches）
+    for (const entry of PUBLISHER_MARKET_ALIASES) {
+      if (entry.aliases.some(function (alias) { return publisherAliasMatches(text, alias); })) {
+        base.market = entry.key;
+        break;
+      }
+    }
+
+    if (!text) return Object.assign({ mode: "empty", publisher: null, candidates: [] }, base);
+
+    // 数字 → 精确 ID 匹配（真实数据 ID 长度 1-4 位，逐 token 精确匹配，失败则回落名称匹配）
+    const idMatches = text.match(/\b\d{1,10}\b/g) || [];
+    if (idMatches.length) {
+      for (const idStr of idMatches) {
+        const publisher = _publisherById(source, idStr);
+        if (publisher) return Object.assign({ mode: "id", publisher: publisher, candidates: [] }, base);
+      }
+    }
+
+    // 名称 → 忽略大小写包含匹配
+    const lowered = text.toLowerCase();
+    const matches = publishers.filter(function (pub) {
+      return String(pub.userName || "").toLowerCase().indexOf(lowered) !== -1;
+    });
+    if (matches.length === 1) {
+      return Object.assign({ mode: "name", publisher: matches[0], candidates: [] }, base);
+    }
+    if (matches.length > 1) {
+      matches.sort(function (a, b) {
+        return Number((b.total || {}).sales || 0) - Number((a.total || {}).sales || 0);
+      });
+      return Object.assign({ mode: "name", publisher: null, candidates: matches }, base);
+    }
+    return Object.assign({ mode: "none", publisher: null, candidates: [] }, base);
+  }
+
   // ── Publishers 查询解析 ──────────────────────────────
   // 站点别名按具体域名优先；短国家代码只在单词边界内匹配，避免误识别 sales 等英文词。
   const PUBLISHER_MARKET_ALIASES = [
@@ -8091,6 +8186,233 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       '</div>';
   }
 
+  // ── 媒体画像渲染（publisherprofile 意图）──────────────────
+  // 输出结构与 Publishers 独立页选中媒体后的画像面板对齐：
+  // 头部 + 6 个 publisher 级 KPI + 4 个画像指标卡 + 品类偏好 + 偏好信号 + 合作商家明细表。
+  // 纯函数：接收数据返回 HTML 字符串，复用独立页样式类（styles.css 全局类，Deep Window 内可用）。
+
+  function publisherProfileMetricFor(pub, market) {
+    return (market && pub.markets && pub.markets[market]) || pub.total || {};
+  }
+
+  function publisherProfileTitle(language) {
+    return language === "zh" ? "媒体画像" : "Publisher Profile";
+  }
+
+  // 用法提示（前缀后为空）
+  function renderPublisherProfileUsageHtml(language) {
+    const zh = language === "zh";
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      '<p class="warning">' + (zh ? "请提供媒体名称或 ID，例如：" : "Provide a publisher name or ID, e.g.: ") +
+      '<code>publisherprofile: 1022</code>' + (zh ? " 或 " : " or ") +
+      '<code>publisherprofile: ' + (zh ? "媒体名 amazon.de" : "name amazon.de") + '</code></p></div>';
+  }
+
+  // 未找到提示
+  function renderPublisherProfileNotFoundHtml(queryText, language) {
+    const zh = language === "zh";
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      '<p class="warning">' + (zh ? "未找到匹配的媒体。" : "No matching publisher found.") + '</p>' +
+      (queryText ? '<p><small>' + escapeHtml(queryText) + '</small></p>' : "") +
+      '</div>';
+  }
+
+  // 名称多匹配候选列表（按销售降序）
+  function renderPublisherProfileCandidatesHtml(candidates, queryText, language) {
+    const zh = language === "zh";
+    const rows = (candidates || []).map(function (pub) {
+      return "<tr>" +
+        "<td>" + escapeHtml(String(pub.userName || "")) + "</td>" +
+        "<td>" + escapeHtml(String(pub.userId || "")) + "</td>" +
+        "<td class=\"num\">" + money(Number((pub.total || {}).sales || 0)) + "</td>" +
+        "</tr>";
+    }).join("");
+    const header = "<tr><th>" + (zh ? "媒体名称" : "Publisher Name") + "</th><th>" +
+      (zh ? "媒体 ID" : "Publisher ID") + "</th><th>" + (zh ? "销售额" : "Sales") + "</th></tr>";
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      '<p><small>' + escapeHtml(queryText || "") + (zh ? " · 匹配到多个媒体，请用媒体 ID 再次提问" : " · multiple matches, use the publisher ID instead") + '</small></p>' +
+      '<div class="table-wrap"><table><thead>' + header + '</thead><tbody>' + rows + '</tbody></table></div>' +
+      '</div>';
+  }
+
+  // 完整画像。第五参 degradedNote：商家明细加载失败时注入警告条（可选）。
+  function renderPublisherProfileHtml(query, pub, merchants, language, degradedNote) {
+    const zh = language === "zh";
+    const parsed = parsePublisherProfileQuery(query, { publishers: [pub], merchantNameMap: {} });
+    const market = parsed.market;
+    const metric = publisherProfileMetricFor(pub, market);
+    const rows = publisherProfileRowsForMarket(merchants, market || "all");
+    const summary = _publisherAffinitySummary(rows, market || "all");
+
+    // 头部
+    const head = '<div class="publisher-profile-head">' +
+      '<span class="publisher-profile-avatar">' + escapeHtml(String(pub.userName || pub.userId || "?").slice(0, 1).toUpperCase()) + '</span>' +
+      '<div><strong>' + escapeHtml(String(pub.userName || pub.userId || "")) + '</strong>' +
+      '<small>ID ' + escapeHtml(String(pub.userId)) + ' · ' + escapeHtml(String(pub.adminName || "Unknown")) + ' · ' +
+      escapeHtml(Array.isArray(pub.networks) ? pub.networks.join(", ") : "Unknown") + '</small></div></div>';
+
+    const conditionNote = market ? '<p><small>' + (zh ? "站点 " : "market ") + escapeHtml(market) + '</small></p>' : "";
+
+    // 6 个 publisher 级 KPI（复用 PUBLISHER_KPI_METRICS 定义与 .metric 结构）
+    const kpiCards = PUBLISHER_KPI_METRICS.map(function (m, index) {
+      const val = metric[m.key] != null ? metric[m.key] : 0;
+      return '<article class="metric" style="--i:' + index + '">' +
+        '<div class="metric-icon ' + escapeHtml(m.tone) + '">' + escapeHtml(m.icon) + '</div>' +
+        '<div class="metric-body">' +
+          '<span class="metric-label">' + escapeHtml(m.label) + '</span>' +
+          '<strong class="metric-value">' + m.format(val) + '</strong>' +
+          '<span class="metric-full">' + escapeHtml(m.fullFormat(val)) + '</span>' +
+        '</div></article>';
+    }).join("");
+
+    // 4 个画像指标卡（复用 .publisher-affinity-metric 结构）
+    const topCategory = summary.categories[0] ? summary.categories[0].category : "N/A";
+    const affinityCards = [
+      {
+        label: zh ? "活跃商家" : "Active merchants",
+        value: String(summary.merchantCount),
+        note: zh ? "当前口径" : "in current view",
+      },
+      {
+        label: "AOV",
+        value: _publisherAovText(summary.aov),
+        note: String(summary.orders) + " " + (zh ? "订单" : "orders"),
+      },
+      {
+        label: zh ? "Top 品类" : "Top category",
+        value: topCategory,
+        note: summary.categories[0]
+          ? (summary.categories[0].salesShare * 100).toFixed(1) + "% " + (zh ? "销售占比" : "of sales")
+          : (zh ? "无活跃数据" : "No activity"),
+      },
+      {
+        label: zh ? "加权 AFF 佣金率" : "AFF weighted commission rate",
+        value: _publisherRateText(summary.weightedCommissionRate),
+        note: zh ? "按商家销售额加权" : "weighted by merchant sales",
+      },
+    ].map(function (card) {
+      return '<article class="publisher-affinity-metric">' +
+        '<span>' + escapeHtml(card.label) + '</span>' +
+        '<strong title="' + escapeHtml(card.value) + '">' + escapeHtml(card.value) + '</strong>' +
+        '<small>' + escapeHtml(card.note) + '</small></article>';
+    }).join("");
+
+    // 品类偏好 Top 6
+    const categories = summary.categories.slice(0, 6);
+    const categoryBlock = categories.length
+      ? categories.map(function (item, index) {
+          const share = summary.sales > 0
+            ? item.salesShare
+            : item.merchantCount / Math.max(1, summary.merchantCount);
+          return '<div class="publisher-category-row">' +
+            '<div class="publisher-category-copy">' +
+              '<span class="publisher-category-rank">' + (index + 1) + '</span>' +
+              '<strong title="' + escapeHtml(item.category) + '">' + escapeHtml(item.category) + '</strong>' +
+              '<small>' + String(item.merchantCount) + ' ' + (zh ? "个商家" : "merchants") + '</small>' +
+            '</div>' +
+            '<div class="publisher-category-track" aria-label="' + escapeHtml(item.category) + ' ' + (share * 100).toFixed(1) + '%">' +
+              '<span style="width:' + Math.max(2, share * 100).toFixed(1) + '%"></span>' +
+            '</div>' +
+            '<span class="publisher-category-share">' + (share * 100).toFixed(1) + '%</span>' +
+          '</div>';
+        }).join("")
+      : '<div class="publisher-affinity-inline-empty">' +
+        (zh ? "该口径下无品类活跃数据" : "No category activity in this view") + '</div>';
+
+    // 偏好信号 4 行
+    const topBand = summary.aovBands.filter(function (band) { return band.label !== "N/A"; })[0] || summary.aovBands[0] || null;
+    const topMarket = summary.markets[0] || null;
+    const signals = [
+      {
+        label: zh ? "典型 AOV 区间" : "Typical AOV band",
+        value: topBand ? topBand.label : "N/A",
+        note: topBand ? (topBand.salesShare * 100).toFixed(1) + "% " + (zh ? "销售占比" : "of sales") : (zh ? "无活跃数据" : "No activity"),
+      },
+      {
+        label: zh ? "品类集中度" : "Category concentration",
+        value: summary.categories[0] ? (summary.categories[0].salesShare * 100).toFixed(1) + "%" : "N/A",
+        note: summary.categories[0] ? summary.categories[0].category : (zh ? "无活跃数据" : "No activity"),
+      },
+      {
+        label: zh ? "AFF 佣金画像" : "AFF commission profile",
+        value: _publisherRateText(summary.weightedCommissionRate),
+        note: _publisherRateText(summary.effectiveCommissionRate) + " " + (zh ? "有效 AFF 费率" : "effective AFF rate"),
+      },
+      {
+        label: zh ? "市场覆盖" : "Market reach",
+        value: String(summary.markets.length),
+        note: topMarket ? (zh ? "领跑市场 " : "Leads with ") + topMarket.market : (zh ? "无活跃数据" : "No activity"),
+      },
+    ].map(function (signal, index) {
+      return '<div class="publisher-signal-row">' +
+        '<span class="publisher-signal-index">0' + (index + 1) + '</span>' +
+        '<div><small>' + escapeHtml(signal.label) + '</small><strong>' + escapeHtml(signal.value) + '</strong><p>' +
+          escapeHtml(signal.note) + '</p></div></div>';
+    }).join("");
+
+    // 合作商家明细表（12 列，对齐独立页 _renderPublisherPortfolioTable 结构）
+    const merchantHeader = "<tr>" +
+      "<th>" + (zh ? "商家" : "Merchant") + "</th>" +
+      "<th>" + (zh ? "联盟 / 市场" : "Network / Market") + "</th>" +
+      "<th>" + (zh ? "品类" : "Category") + "</th>" +
+      "<th>Tier</th>" +
+      "<th>AOV</th><th>EPC</th><th>CVR</th>" +
+      "<th>" + (zh ? "佣金率" : "Rate") + "</th>" +
+      "<th>" + (zh ? "订单" : "Orders") + "</th>" +
+      "<th>" + (zh ? "销售" : "Sales") + "</th>" +
+      "<th>" + (zh ? "AFF 佣金" : "AFF Comm") + "</th>" +
+      "<th>" + (zh ? "份额" : "Share") + "</th>" +
+      "</tr>";
+    const merchantBody = rows.length
+      ? rows.map(function (row) {
+          const merchant = row.merchant;
+          const m = row.metrics;
+          const marketNames = Object.keys(merchant.markets || {}).filter(function (marketName) {
+            return _publisherMetricIsActive(merchant.markets[marketName]);
+          });
+          const visibleMarkets = market ? marketNames.filter(function (marketName) { return marketName === market; }) : marketNames;
+          let marketText = visibleMarkets.slice(0, 2).join(" · ");
+          if (visibleMarkets.length > 2) marketText += " +" + (visibleMarkets.length - 2);
+          const share = summary.sales > 0 ? Number(m.sales || 0) / summary.sales : 0;
+          return '<tr>' +
+            '<td><div class="publisher-merchant-cell"><strong>' +
+              escapeHtml(merchant.merchantName || String(merchant.merchantId)) +
+            '</strong><small>ID ' + escapeHtml(String(merchant.merchantId)) + '</small></div></td>' +
+            '<td><div class="publisher-network-market"><span>' +
+              escapeHtml(merchant.network || "Unknown") +
+            '</span><small>' + escapeHtml(marketText || "Unknown") + '</small></div></td>' +
+            '<td><span class="publisher-category-pill">' + escapeHtml(merchant.category || "Uncategorized") + '</span></td>' +
+            '<td><span class="publisher-tier-pill ' + _publisherTierTone(merchant.tier) + '">' +
+              escapeHtml(merchant.tier || "Unknown") + '</span></td>' +
+            '<td class="publisher-numeric publisher-aov-cell">' + escapeHtml(_publisherAovText(m.aov)) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortEpc(_publisherMetricAffEpc(m))) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortPct(_publisherMetricConversionRate(m))) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(_publisherRateText(_publisherMetricAffCommissionRate(m))) + '</td>' +
+            '<td class="publisher-numeric">' + String(Number(m.orders || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortMoney(m.sales)) + '</td>' +
+            '<td class="publisher-numeric">' + escapeHtml(shortMoney(_publisherMetricAffCommission(m) || 0)) + '</td>' +
+            '<td class="publisher-numeric publisher-share-column"><div class="publisher-share-cell"><span>' +
+              (share * 100).toFixed(1) + '%</span><i><b style="width:' + Math.max(1, share * 100).toFixed(1) + '%"></b></i></div></td>' +
+          '</tr>';
+        }).join("")
+      : '<tr><td colspan="12" class="publisher-portfolio-empty">' +
+        (zh ? "无商家数据" : "No merchant data") + '</td></tr>';
+
+    const degradedWarning = degradedNote ? '<p class="warning">' + escapeHtml(degradedNote) + '</p>' : "";
+
+    return '<div class="analysis-section publisher-profile-section"><h4>' + publisherProfileTitle(language) + '</h4>' +
+      conditionNote + degradedWarning + head +
+      '<div class="publisher-profile-kpis">' + kpiCards + '</div>' +
+      '<div class="publisher-affinity-metrics">' + affinityCards + '</div>' +
+      '<h5>' + (zh ? "品类偏好" : "Category affinity") + '</h5>' + categoryBlock +
+      '<h5>' + (zh ? "偏好信号" : "Affinity signals") + '</h5>' +
+      '<div class="publisher-affinity-signals">' + signals + '</div>' +
+      '<h5>' + (zh ? "合作商家（" : "Partner merchants (") + String(rows.length) + "）</h5>" +
+      '<div class="table-wrap"><table><thead>' + merchantHeader + '</thead><tbody>' + merchantBody + '</tbody></table></div>' +
+      '<p><small>' + (zh ? "共 " : "Total: ") + String(rows.length) + (zh ? " 个商家 · 按销售额降序" : " merchants · ranked by sales desc") + '</small></p>' +
+      '</div>';
+  }
+
   let publisherRecordsPlaceholderCounter = 0;
 
   function updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml) {
@@ -8133,6 +8455,66 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return renderPublisherRecordsHtml(prompt, data, language);
   }
 
+  let publisherProfilePlaceholderCounter = 0;
+
+  // 媒体画像回答入口：
+  // 缓存未加载 → 占位 + loadPublishersData + 重走匹配流程（trend 占位模式，复用 updatePublisherRecordsDeepCache）。
+  // 已加载 → 解析匹配：空/无匹配/多匹配同步返回；唯一匹配 → 占位 + portfolio 请求 + 渲染替换。
+  function publisherProfileAnswer(prompt) {
+    const language = responseLanguageFor(prompt);
+    const zh = language === "zh";
+    const source = _publishersCache;
+
+    const placeholderHtml = function (placeholderId, text) {
+      return '<div id="' + placeholderId + '" class="analysis-section publisher-profile-section"><p><em>' + text + '</em></p></div>';
+    };
+    const replacePlaceholder = function (placeholderId, renderedHtml) {
+      const container = document.getElementById(placeholderId);
+      if (container) container.innerHTML = renderedHtml;
+      updatePublisherRecordsDeepCache(placeholderId, container, renderedHtml);
+    };
+    const renderFromCache = function (cache) {
+      const parsed = parsePublisherProfileQuery(prompt, cache);
+      if (parsed.mode === "empty") return renderPublisherProfileUsageHtml(language);
+      if (parsed.mode === "none") return renderPublisherProfileNotFoundHtml(parsed.queryText, language);
+      if (parsed.mode === "name" && !parsed.publisher) {
+        return renderPublisherProfileCandidatesHtml(parsed.candidates, parsed.queryText, language);
+      }
+      // 唯一匹配 → 需要 portfolio 商家明细（异步占位）
+      const publisher = parsed.publisher;
+      const placeholderId = "publisher-profile-" + Date.now() + "-" + (++publisherProfilePlaceholderCounter);
+      setTimeout(function () {
+        loadPublisherPortfolioData(publisher.userId)
+          .then(function (portfolio) {
+            const html = renderPublisherProfileHtml(prompt, publisher, (portfolio && portfolio.merchants) || [], language);
+            replacePlaceholder(placeholderId, html);
+          })
+          .catch(function () {
+            // 商家明细失败：头部 + KPI 正常渲染，商家表空 + 警告条（第五参 degradedNote）
+            const html = renderPublisherProfileHtml(prompt, publisher, [], language,
+              zh ? "媒体商家数据暂时不可用。" : "Publisher merchant data is temporarily unavailable.");
+            replacePlaceholder(placeholderId, html);
+          });
+      }, 0);
+      return placeholderHtml(placeholderId, zh ? "正在加载媒体画像…" : "Loading publisher profile…");
+    };
+
+    if (!source) {
+      const placeholderId = "publisher-profile-" + Date.now() + "-" + (++publisherProfilePlaceholderCounter);
+      setTimeout(function () {
+        loadPublishersData()
+          .then(function () { replacePlaceholder(placeholderId, renderFromCache(_publishersCache)); })
+          .catch(function () {
+            replacePlaceholder(placeholderId,
+              '<div class="analysis-section publisher-profile-section"><p class="warning">' +
+              (zh ? "Publishers 数据暂时不可用。" : "Publisher data is temporarily unavailable.") + '</p></div>');
+          });
+      }, 0);
+      return placeholderHtml(placeholderId, zh ? "正在加载媒体数据…" : "Loading publisher data…");
+    }
+    return renderFromCache(source);
+  }
+
   function detectQueryIntent(userMessage) {
     if (state.chatIntentOverride) {
       const explicitIntent = state.chatIntentOverride;
@@ -8148,11 +8530,14 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       if ((intent === "merchant" || intent === "keyword") && (/趋势|trend/i.test(userMessage) || /\b(?:analyze|analyse|analysis|performance|health\s*check)\b/i.test(userMessage))) {
         return "analysis";
       }
+      // 媒体画像前缀在 publisher 列表意图之前检查：publisherprofile 文本同时含 publisher 触发词。
+      if (hasPublisherProfileIntent(userMessage)) return "publisherprofile";
       // Publishers 尚未纳入旧版 LLM 意图集合时，仍以本地规则保证媒体查询进入专用路由。
       if (hasPublisherIntent(userMessage)) return "publisher";
       return intent;
     }
     const lower = userMessage.toLowerCase().trim();
+    if (hasPublisherProfileIntent(userMessage)) return "publisherprofile";
     if (hasPublisherIntent(userMessage)) return "publisher";
     if (findByAsin(userMessage)) return "asin";
     if (findByMerchantId(userMessage)) return "merchant";
@@ -10174,6 +10559,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (isRecommendationReplacementPrompt(prompt)) return recommendationBundleReplacementAnswer(prompt);
     // detectQueryIntent will consume state.llmClassifyResult and return LLM intent if present
     const intent = explicitChatIntent ? explicitChatIntent.intent : detectQueryIntent(prompt);
+    if (intent === "publisherprofile") {
+      return publisherProfileAnswer(prompt);
+    }
     if (intent === "publisher") {
       return publisherRecordsAnswer(prompt);
     }
@@ -11617,11 +12005,12 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     { key: "merchant", intent: "merchant" },
     { key: "category", intent: "category" },
     { key: "tier", intent: "tier" },
-    { key: "categorytier", intent: "category" },
+    { key: "categorytier", intent: "category", prefixLabelI18n: "chat.intent.categoryTier", prefixLabelFallback: "Category & Tier" },
     { key: "trend", intent: "analysis" },
     { key: "payment", intent: "payment" },
     { key: "asin", intent: "asin" },
-    { key: "publisher", intent: "publisher" }
+    { key: "publisher", intent: "publisher" },
+    { key: "publisherprofile", intent: "publisherprofile" }
   ]);
   let chatIntentActiveIndex = -1;
 
@@ -11635,7 +12024,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     if (!input || !overlay) return;
 
     const value = String(input.value || "");
-    const match = value.match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisher)\s*[:：](?=\s|$)/i);
+    const match = value.match(/^\s*(categorytier|category\s*&\s*tier|品类\s*[+＋]\s*tier|merchant|category|tier|trend|payment|asin|publisherprofile|publisher)\s*[:：](?=\s|$)/i);
     if (!match) {
       overlay.classList.remove("visible");
       overlay.innerHTML = "";
@@ -11733,10 +12122,28 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     else hideChatIntentMenu();
   }
 
+  // 菜单选中后写入输入框的前缀文本：与菜单显示一致。
+  // 菜单 label 与 key 不同的项（Category & Tier）用当前语言的显示名，其余项用 key。
+  function chatIntentPrefixText(option) {
+    if (!option) return "";
+    if (option.prefixLabelI18n) return t(option.prefixLabelI18n, option.prefixLabelFallback || option.key);
+    return option.key;
+  }
+
+  // 命令前缀别名归一化：菜单显示名（Category & Tier / 品类 + Tier）→ 正式 key。
+  // 先压缩 & 与 + 两侧空格再查表，容忍空格变体；未命中原样返回。
+  function canonicalChatIntentKey(rawKey) {
+    const normalized = String(rawKey || "").toLowerCase()
+      .replace(/\s*&\s*/g, "&")
+      .replace(/\s*[+＋]\s*/g, "+");
+    const aliases = { "category&tier": "categorytier", "品类+tier": "categorytier" };
+    return aliases[normalized] || normalized;
+  }
+
   function selectChatIntent(intentKey) {
     const selected = CHAT_INTENT_OPTIONS.find(function (option) { return option.key === intentKey; });
     if (!selected || !els.chatInput) return;
-    els.chatInput.value = selected.key + ": ";
+    els.chatInput.value = chatIntentPrefixText(selected) + ": ";
     syncChatInputCommandOverlay();
     hideChatIntentMenu();
     els.chatInput.focus();
@@ -11785,9 +12192,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
   function parseChatIntentPrefix(prompt) {
     // 命令格式：xxx: <问题>（如 "trend: shokz"），支持半角/全角冒号
-    const match = String(prompt || "").match(/^\s*(categorytier|merchant|category|tier|trend|payment|asin|publisher)\s*[:：]\s*([\s\S]*)?$/i);
+    const match = String(prompt || "").match(/^\s*(categorytier|category\s*&\s*tier|品类\s*[+＋]\s*tier|merchant|category|tier|trend|payment|asin|publisherprofile|publisher)\s*[:：]\s*([\s\S]*)?$/i);
     if (!match) return null;
-    const key = match[1].toLowerCase();
+    const key = canonicalChatIntentKey(match[1]);
     const option = CHAT_INTENT_OPTIONS.find(function (item) { return item.key === key; });
     return option ? { key: option.key, intent: option.intent, text: String(match[2] || "").trim() } : null;
   }
@@ -15114,6 +15521,17 @@ var _NUMERIC_COL_PATTERNS = [
     return rows;
   }
 
+  // 画像商家行构建：仅按站点口径取指标 + 活跃过滤。
+  // 不复用 _publisherPortfolioRowsForState——它读取 state.publisherNetwork / state.publisherMerchantSearch，
+  // 页面残留状态会污染 chatbot 画像；画像场景不需要这些页面级筛选。
+  function publisherProfileRowsForMarket(merchants, market) {
+    return (merchants || []).map(function (merchant) {
+      return { merchant: merchant, metrics: _publisherMetricForMarket(merchant, market) };
+    }).filter(function (row) {
+      return _publisherMetricIsActive(row.metrics);
+    });
+  }
+
   function _publisherAovBand(aov) {
     if (aov == null || !Number.isFinite(Number(aov))) return "N/A";
     var value = Number(aov);
@@ -15123,7 +15541,7 @@ var _NUMERIC_COL_PATTERNS = [
     return "$200+";
   }
 
-  function _publisherAffinitySummary(rows) {
+  function _publisherAffinitySummary(rows, marketOverride) {
     var summary = {
       merchantCount: rows.length,
       clicks: 0,
@@ -15191,8 +15609,9 @@ var _NUMERIC_COL_PATTERNS = [
         }
       }
 
-      var marketNames = state.publisherMarket && state.publisherMarket !== "all"
-        ? [state.publisherMarket]
+      const marketKey = marketOverride !== undefined ? marketOverride : state.publisherMarket;
+      var marketNames = marketKey && marketKey !== "all"
+        ? [marketKey]
         : Object.keys(merchant.markets || {});
       marketNames.forEach(function (marketName) {
         var marketMetric = merchant.markets[marketName];
@@ -23932,8 +24351,18 @@ var _NUMERIC_COL_PATTERNS = [
       hideChatIntentMenu,
       selectChatIntent,
       parseChatIntentPrefix,
+      chatIntentPrefixText,
       detectQueryIntent,
       hasPublisherIntent,
+      hasPublisherProfileIntent,
+      parsePublisherProfileQuery,
+      publisherProfileRowsForMarket,
+      renderPublisherProfileHtml,
+      renderPublisherProfileCandidatesHtml,
+      renderPublisherProfileNotFoundHtml,
+      renderPublisherProfileUsageHtml,
+      publisherProfileAnswer,
+      loadPublishersData,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
@@ -24107,6 +24536,13 @@ var _NUMERIC_COL_PATTERNS = [
       },
       publisherPortfolioRowsForState: (merchants, includePortfolioControls = true) =>
         _publisherPortfolioRowsForState(merchants || [], includePortfolioControls),
+      analyzeMerchant,
+      analyzeCategory,
+      analyzeTier,
+      analysisMetricValueForOffer,
+      analysisMetricSampleSize,
+      analysisMetricSampleEligible,
+      analysisAverage,
       offerAllCommission,
       offerAffCommission,
       commissionEpcFromTotals,
