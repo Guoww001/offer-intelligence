@@ -82,6 +82,7 @@ const high = {
   mainCategory: "Beauty & Personal Care",
   affCommissionRate: 20,
   commissionRate: 12,
+  salesAmount: 1200,
   aov: 100,
   aovType: "actual",
   recommendation: "Source recommendation should not be exported",
@@ -97,6 +98,7 @@ const lowAov = {
   network: "Levanta",
   mainCategory: "Home & Kitchen",
   affCommissionRate: 12,
+  salesAmount: 0,
   aov: 80,
   aovType: "tentative",
   aovSampleProductCount: 5,
@@ -109,6 +111,7 @@ const recommended = {
   network: "Amazon Associates",
   mainCategory: "Sports & Outdoors",
   affCommissionRate: 12,
+  salesAmount: 450,
   aov: 180,
   aovType: "actual"
 };
@@ -131,6 +134,8 @@ const tierTwoSecond = {
 };
 
 assertEqual(hooks.offerTrackerCommissionRate(high), 20, "affiliate commission should be preferred for tracker filtering");
+assertEqual(hooks.offerTrackerRevenue(high), 1200, "tracker revenue should use the offer salesAmount field");
+assertEqual(hooks.offerTrackerRevenue({ salesAmount: null }), 0, "missing tracker revenue should be treated as zero");
 assertEqual(hooks.offerTrackerCommissionRate({ commissionRate: 30 }), 0, "generic commission should never be presented as AFF Commission");
 assertEqual(hooks.offerTrackerAovType(high), "actual", "actual AOV provenance should remain explicit");
 assertEqual(hooks.offerTrackerAovType(lowAov), "estimated", "tentative AOV provenance should display as estimated");
@@ -169,6 +174,30 @@ const filtered = hooks.filterOfferTrackerRows(
 );
 assertEqual(filtered.map((offer) => offer.merchantId), ["101", "202"], "commercial filters should combine inclusively and keep priority order");
 assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, lowAov, high],
+    { tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-desc" }
+  ).map((offer) => offer.merchantId),
+  ["101", "303"],
+  "positive-revenue filter should exclude zero revenue and sort high to low"
+);
+assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, lowAov, high],
+    { tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-asc" }
+  ).map((offer) => offer.merchantId),
+  ["303", "101"],
+  "revenue sorting should support low to high"
+);
+assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, lowAov, high],
+    { tier: "all", category: "all", network: "all", revenueStatus: "none", revenueSort: "priority" }
+  ).map((offer) => offer.merchantId),
+  ["202"],
+  "no-revenue filter should keep only zero-revenue offers"
+);
+assertEqual(
   hooks.filterOfferTrackerRows([recommended, lowAov, high], { tier: "all", category: "all", network: "all" }, "303").map((offer) => offer.merchantId),
   ["303"],
   "search should match merchant IDs"
@@ -176,6 +205,10 @@ assertEqual(
 assert(
   hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", network: "all", minCommission: "10", maxCommission: "25" }).includes("AFF 10%–25%"),
   "commission filter chips should identify AFF Commission"
+);
+assert(
+  hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", network: "all", revenueStatus: "positive", revenueSort: "revenue-desc" }).includes("已产生 Revenue"),
+  "revenue filter chips should identify positive revenue"
 );
 
 const exportSourceRows = [tierTwoFirst, tierTwoSecond, lowAov, recommended, high];
@@ -231,12 +264,12 @@ assertEqual(
 
 assertEqual(
   hooks.offerTrackerOfferExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "AOV Type", "BB Preference", "Category", "Recommendation"],
+  ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "Revenue", "AOV Type", "BB Preference", "Category", "Recommendation"],
   "offer worksheet should preserve the approved business columns"
 );
 assertEqual(
   hooks.offerTrackerProductExportColumns().map(([header]) => header),
-  ["Priority", "Merchant ID", "Merchant Name", "AOV", "AOV Type", "BB Preference", "Category", "Top Rank ASINs"],
+  ["Priority", "Merchant ID", "Merchant Name", "AOV", "Revenue", "AOV Type", "BB Preference", "Category", "Top Rank ASINs"],
   "product worksheet should preserve the reference workbook columns"
 );
 
@@ -279,6 +312,8 @@ assert(targetIndex >= 0 && trackerIndex > targetIndex && reportsIndex > trackerI
 assert(html.includes('id="offerListTrackerPage"'), "Offer List Tracker page should exist");
 assert(html.includes('id="offerTrackerExportSelected"'), "selected-row workbook export should exist");
 assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission range</span>'), "commission filters should be labeled as AFF Commission");
+assert(html.includes('id="offerTrackerRevenueStatus"'), "revenue status filter should exist");
+assert(html.includes('id="offerTrackerRevenueSort"'), "revenue sort control should exist");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
 assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
