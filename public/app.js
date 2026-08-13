@@ -193,6 +193,8 @@
   const OFFER_TRACKER_RULES_KEY = "offerListTrackerRulesV1";
   const OFFER_TRACKER_COLUMNS_KEY = "offerListTrackerColumnsV1";
   const OFFER_TRACKER_SAVED_VIEWS_KEY = "offerListTrackerSavedViewsV1";
+  const OFFER_TRACKER_EXPORT_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
+  const OFFER_TRACKER_EXPORT_COLORS = ["#D6EEDD", "#CCFFFF", "#FFF2CC", "#FCE4D6", "#E4DFEC"];
   const DEFAULT_OFFER_TRACKER_RULES = Object.freeze({ highScore: 8, lowAovMax: 100 });
   const OFFER_TRACKER_BB_POLICY_BRANDS = Object.freeze({
     mind: Object.freeze([
@@ -330,6 +332,13 @@
       visibleColumns: loadOfferTrackerVisibleColumns(),
       rules: loadOfferTrackerRules(),
       savedViews: loadOfferTrackerSavedViews(),
+      exportDialogOpen: false,
+      exportSelectedOnly: false,
+      exportSourceRows: [],
+      exportTierQuantities: {},
+      exportBackgroundRanges: [],
+      exportRangeSequence: 0,
+      exportRestoreFocus: null,
       controlsReady: false,
       animated: false
     },
@@ -596,6 +605,16 @@
     offerTrackerExportSelected: document.getElementById("offerTrackerExportSelected"),
     offerTrackerSelectedCount: document.getElementById("offerTrackerSelectedCount"),
     offerTrackerNotice: document.getElementById("offerTrackerNotice"),
+    offerTrackerExportDialog: document.getElementById("offerTrackerExportDialog"),
+    offerTrackerExportDialogClose: document.getElementById("offerTrackerExportDialogClose"),
+    offerTrackerExportScope: document.getElementById("offerTrackerExportScope"),
+    offerTrackerExportTiers: document.getElementById("offerTrackerExportTiers"),
+    offerTrackerExportRowsPreview: document.getElementById("offerTrackerExportRowsPreview"),
+    offerTrackerBackgroundRanges: document.getElementById("offerTrackerBackgroundRanges"),
+    offerTrackerAddBackgroundRange: document.getElementById("offerTrackerAddBackgroundRange"),
+    offerTrackerExportDialogNotice: document.getElementById("offerTrackerExportDialogNotice"),
+    offerTrackerExportDialogCancel: document.getElementById("offerTrackerExportDialogCancel"),
+    offerTrackerExportDialogSubmit: document.getElementById("offerTrackerExportDialogSubmit"),
     monthlyNewMerchantsMonth: document.getElementById("monthlyNewMerchantsMonth"),
     monthlyNewMerchantImport: document.getElementById("monthlyNewMerchantImport"),
     monthlyNewMerchantAdd: document.getElementById("monthlyNewMerchantAdd"),
@@ -828,6 +847,14 @@
       "offerTracker.resetRules": "重置规则",
       "offerTracker.saveRules": "保存规则",
       "offerTracker.exportSelected": "导出已选",
+      "offerTracker.exportSetupEyebrow": "Excel 导出设置",
+      "offerTracker.exportSetupTitle": "配置导出内容",
+      "offerTracker.exportTierTitle": "Tier 输出数量",
+      "offerTracker.exportTierHelp": "选择需要包含的 Tier，并设置每个 Tier 的输出数量。",
+      "offerTracker.exportHighlightTitle": "输出行背景色",
+      "offerTracker.exportHighlightHelp": "行号按导出的数据行计算，不包含表头；背景色会同时应用到两个工作表。",
+      "offerTracker.exportAddRange": "+ 添加区间",
+      "offerTracker.exportWorkbook": "导出工作簿",
       "monthlyNewMerchants.title": "本月上新商家",
       "monthlyNewMerchants.subtitle": "手动新增本月商家，每条记录都会直接保存到数据库",
       "monthlyNewMerchants.add": "新增商家",
@@ -14022,20 +14049,32 @@ var _NUMERIC_COL_PATTERNS = [
 
   function worksheetXml(rows, context = {}) {
     const columns = context.columns || recommendationExportColumns();
+    const backgroundColors = context.workbookBackgroundColors || [];
+    const backgroundRanges = context.rowBackgroundRanges || [];
+    const referenceStyle = Boolean(context.referenceStyle);
     const sheetRows = [
       columns.map(([header]) => header),
       ...rows.map((offer, index) => columns.map(([, getter]) => getter(offer, index, context)))
     ];
     const rowXml = sheetRows.map((row, rowIndex) => {
+      const backgroundColor = rowIndex > 0
+        ? worksheetRowBackgroundColor(rowIndex, backgroundRanges)
+        : "";
+      const backgroundIndex = backgroundColors.indexOf(backgroundColor);
       const cells = row.map((value, colIndex) => {
         const ref = `${columnName(colIndex)}${rowIndex + 1}`;
         const columnFormat = columns[colIndex] ? columns[colIndex][3] : "";
-        const styleId = columnFormat === "percentage" ? 1 : columnFormat === "integer" ? 2 : 0;
+        const formatOffset = columnFormat === "percentage" ? 1 : columnFormat === "integer" ? 2 : 0;
+        const styleId = rowIndex === 0 && referenceStyle
+          ? 3
+          : backgroundIndex >= 0
+            ? 4 + backgroundIndex * 3 + formatOffset
+            : formatOffset;
         const style = styleId ? ` s="${styleId}"` : "";
         const formattedNumber = rowIndex > 0 ? exportNumberForFormat(value, columnFormat) : null;
         if (formattedNumber !== null) return `<c r="${ref}"${style}><v>${formattedNumber}</v></c>`;
         if (typeof value === "number" && Number.isFinite(value)) return `<c r="${ref}"${style}><v>${value}</v></c>`;
-        return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
+        return `<c r="${ref}"${style} t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
       }).join("");
       return `<row r="${rowIndex + 1}">${cells}</row>`;
     }).join("");
@@ -14045,6 +14084,14 @@ var _NUMERIC_COL_PATTERNS = [
   <cols>${widths}</cols>
   <sheetData>${rowXml}</sheetData>
 </worksheet>`;
+  }
+
+  function worksheetRowBackgroundColor(dataRowNumber, ranges = []) {
+    const match = ranges.find((range) => (
+      dataRowNumber >= number(range.start)
+      && dataRowNumber <= number(range.end)
+    ));
+    return match ? normalizeOfferTrackerExportColor(match.color) : "";
   }
 
   function exportNumberForFormat(value, format) {
@@ -14104,17 +14151,42 @@ var _NUMERIC_COL_PATTERNS = [
 </Types>`;
   }
 
-  function stylesXml() {
+  function stylesXml(backgroundColors = []) {
+    const colors = backgroundColors
+      .map(normalizeOfferTrackerExportColor)
+      .filter((color, index, values) => color && values.indexOf(color) === index);
+    const colorFills = colors.map((color) => (
+      `<fill><patternFill patternType="solid"><fgColor rgb="FF${color.slice(1)}"/><bgColor indexed="64"/></patternFill></fill>`
+    )).join("");
+    const colorCellXfs = colors.map((color, index) => {
+      const fillId = index + 3;
+      return `<xf numFmtId="0" fontId="0" fillId="${fillId}" borderId="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="10" fontId="0" fillId="${fillId}" borderId="1" applyNumberFormat="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="1" fontId="0" fillId="${fillId}" borderId="1" applyNumberFormat="1" applyFill="1" applyBorder="1"/>`;
+    }).join("\n    ");
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
-  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
-  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="${colors.length + 3}">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill>
+    ${colorFills}
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFD9E2F3"/></left><right style="thin"><color rgb="FFD9E2F3"/></right><top style="thin"><color rgb="FFD9E2F3"/></top><bottom style="thin"><color rgb="FFD9E2F3"/></bottom><diagonal/></border>
+  </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="3">
+  <cellXfs count="${4 + colors.length * 3}">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
     <xf numFmtId="10" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>
     <xf numFmtId="1" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+    ${colorCellXfs}
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -14224,13 +14296,19 @@ var _NUMERIC_COL_PATTERNS = [
   function createWorkbookSheets(sheets) {
     const normalizedSheets = normalizeWorkbookSheets(sheets);
     const sheetCount = normalizedSheets.length;
+    const workbookBackgroundColors = normalizedSheets
+      .flatMap((sheet) => (sheet.rowBackgroundRanges || []).map((range) => normalizeOfferTrackerExportColor(range.color)))
+      .filter((color, index, values) => color && values.indexOf(color) === index);
     return createZip([
       { name: "[Content_Types].xml", data: contentTypesXml(sheetCount) },
       { name: "_rels/.rels", data: rootRelsXml() },
       { name: "xl/workbook.xml", data: workbookXml(normalizedSheets.map((sheet) => sheet.sheetName)) },
       { name: "xl/_rels/workbook.xml.rels", data: workbookRelsXml(sheetCount) },
-      { name: "xl/styles.xml", data: stylesXml() },
-      ...normalizedSheets.map((sheet, index) => ({ name: `xl/worksheets/sheet${index + 1}.xml`, data: worksheetXml(sheet.rows, sheet) }))
+      { name: "xl/styles.xml", data: stylesXml(workbookBackgroundColors) },
+      ...normalizedSheets.map((sheet, index) => ({
+        name: `xl/worksheets/sheet${index + 1}.xml`,
+        data: worksheetXml(sheet.rows, { ...sheet, workbookBackgroundColors })
+      }))
     ]);
   }
 
@@ -21945,6 +22023,234 @@ var _NUMERIC_COL_PATTERNS = [
     ];
   }
 
+  function offerTrackerTierCounts(rows) {
+    return OFFER_TRACKER_EXPORT_TIERS.reduce((result, tier) => {
+      result[tier] = rows.filter((offer) => canonicalTierName(offer.tier) === tier).length;
+      return result;
+    }, {});
+  }
+
+  function normalizeOfferTrackerTierQuantity(value, available) {
+    const parsed = Math.floor(number(value));
+    return Math.min(Math.max(0, parsed), Math.max(0, available));
+  }
+
+  function offerTrackerExportRows(sourceRows, tierQuantities) {
+    const counts = offerTrackerTierCounts(sourceRows || []);
+    return OFFER_TRACKER_EXPORT_TIERS.flatMap((tier) => {
+      const config = tierQuantities && tierQuantities[tier];
+      if (!config || !config.enabled) return [];
+      const quantity = normalizeOfferTrackerTierQuantity(config.quantity, counts[tier]);
+      return (sourceRows || [])
+        .filter((offer) => canonicalTierName(offer.tier) === tier)
+        .slice(0, quantity);
+    });
+  }
+
+  function offerTrackerExportTierSpans(sourceRows, tierQuantities) {
+    const counts = offerTrackerTierCounts(sourceRows || []);
+    let start = 1;
+    return OFFER_TRACKER_EXPORT_TIERS.reduce((result, tier) => {
+      const config = tierQuantities && tierQuantities[tier];
+      const quantity = config && config.enabled
+        ? normalizeOfferTrackerTierQuantity(config.quantity, counts[tier])
+        : 0;
+      result[tier] = quantity > 0 ? { start, end: start + quantity - 1, quantity } : null;
+      start += quantity;
+      return result;
+    }, {});
+  }
+
+  function normalizeOfferTrackerExportColor(value) {
+    const color = String(value || "").trim().toUpperCase();
+    return /^#[0-9A-F]{6}$/.test(color) ? color : "";
+  }
+
+  function validateOfferTrackerBackgroundRanges(ranges, totalRows) {
+    const normalized = [];
+    for (const range of ranges || []) {
+      const start = Math.floor(number(range.start));
+      const end = Math.floor(number(range.end));
+      const color = normalizeOfferTrackerExportColor(range.color);
+      if (!start || !end || start < 1 || start > end || end > totalRows) {
+        return {
+          ok: false,
+          message: offerTrackerText(
+            `Highlight rows must stay between 1 and ${totalRows}, with the start before the end.`,
+            `高亮行必须位于 1–${totalRows} 之间，且起始行不能大于结束行。`
+          )
+        };
+      }
+      if (!color) {
+        return { ok: false, message: offerTrackerText("Choose a valid highlight color.", "请选择有效的高亮颜色。") };
+      }
+      normalized.push({ start, end, color });
+    }
+    const ordered = normalized.slice().sort((a, b) => a.start - b.start || a.end - b.end);
+    for (let index = 1; index < ordered.length; index += 1) {
+      if (ordered[index].start <= ordered[index - 1].end) {
+        return { ok: false, message: offerTrackerText("Highlight ranges cannot overlap.", "高亮行区间不能重叠。") };
+      }
+    }
+    return { ok: true, ranges: normalized };
+  }
+
+  function setOfferTrackerExportDialogNotice(message = "") {
+    if (!els.offerTrackerExportDialogNotice) return;
+    els.offerTrackerExportDialogNotice.textContent = message;
+    els.offerTrackerExportDialogNotice.classList.toggle("hidden", !message);
+  }
+
+  function renderOfferTrackerExportPreview() {
+    const tracker = state.offerListTracker;
+    const outputRows = offerTrackerExportRows(tracker.exportSourceRows, tracker.exportTierQuantities);
+    const spans = offerTrackerExportTierSpans(tracker.exportSourceRows, tracker.exportTierQuantities);
+    if (els.offerTrackerExportRowsPreview) {
+      els.offerTrackerExportRowsPreview.textContent = offerTrackerText(
+        `${outputRows.length.toLocaleString()} output rows`,
+        `输出 ${outputRows.length.toLocaleString()} 行`
+      );
+    }
+    if (els.offerTrackerExportTiers) {
+      els.offerTrackerExportTiers.querySelectorAll("[data-offer-tracker-tier-span]").forEach((element) => {
+        const span = spans[element.dataset.offerTrackerTierSpan];
+        element.textContent = span
+          ? offerTrackerText(`Output rows ${span.start}–${span.end}`, `输出第 ${span.start}–${span.end} 行`)
+          : offerTrackerText("Not included", "不输出");
+      });
+    }
+  }
+
+  function renderOfferTrackerExportTiers() {
+    if (!els.offerTrackerExportTiers) return;
+    const tracker = state.offerListTracker;
+    const counts = offerTrackerTierCounts(tracker.exportSourceRows);
+    els.offerTrackerExportTiers.innerHTML = OFFER_TRACKER_EXPORT_TIERS.map((tier) => {
+      const config = tracker.exportTierQuantities[tier] || { enabled: false, quantity: 0 };
+      const available = counts[tier];
+      const disabled = available === 0;
+      return `<article class="offer-tracker-export-tier-row ${config.enabled && !disabled ? "" : "is-disabled"}" data-offer-tracker-tier-row="${escapeHtml(tier)}">
+        <input type="checkbox" data-offer-tracker-tier-toggle="${escapeHtml(tier)}" ${config.enabled && !disabled ? "checked" : ""} ${disabled ? "disabled" : ""} aria-label="${escapeHtml(offerTrackerText(`Include ${tier}`, `包含 ${tier}`))}"/>
+        <strong>${escapeHtml(tier)}</strong>
+        <small data-offer-tracker-tier-span="${escapeHtml(tier)}"></small>
+        <label><span>${escapeHtml(offerTrackerText(`of ${available}`, `共 ${available} 个`))}</span><input type="number" min="0" max="${available}" step="1" value="${normalizeOfferTrackerTierQuantity(config.quantity, available)}" data-offer-tracker-tier-quantity="${escapeHtml(tier)}" ${config.enabled && !disabled ? "" : "disabled"}/></label>
+      </article>`;
+    }).join("");
+    renderOfferTrackerExportPreview();
+  }
+
+  function renderOfferTrackerBackgroundRanges() {
+    if (!els.offerTrackerBackgroundRanges) return;
+    const ranges = state.offerListTracker.exportBackgroundRanges;
+    els.offerTrackerBackgroundRanges.innerHTML = ranges.length
+      ? ranges.map((range) => `<article class="offer-tracker-background-range" data-offer-tracker-background-id="${range.id}">
+          <label><span>${escapeHtml(offerTrackerText("Start data row", "起始数据行"))}</span><input type="number" min="1" step="1" value="${escapeHtml(range.start)}" data-offer-tracker-background-start="${range.id}"/></label>
+          <label><span>${escapeHtml(offerTrackerText("End data row", "结束数据行"))}</span><input type="number" min="1" step="1" value="${escapeHtml(range.end)}" data-offer-tracker-background-end="${range.id}"/></label>
+          <label><span>${escapeHtml(offerTrackerText("Background color", "背景颜色"))}</span><span class="offer-tracker-background-color"><input type="color" value="${escapeHtml(range.color)}" data-offer-tracker-background-color="${range.id}"/><output>${escapeHtml(range.color)}</output></span></label>
+          <button type="button" data-offer-tracker-remove-background="${range.id}" aria-label="${escapeHtml(offerTrackerText("Remove highlight range", "移除高亮区间"))}">×</button>
+        </article>`).join("")
+      : `<p class="offer-tracker-background-empty">${escapeHtml(offerTrackerText("No row highlights. Add a range when you want to color-code levels in the workbook.", "暂未设置行高亮；需要在工作簿中区分等级时，请添加区间。"))}</p>`;
+  }
+
+  function renderOfferTrackerExportDialog() {
+    const tracker = state.offerListTracker;
+    if (!els.offerTrackerExportDialog) return;
+    els.offerTrackerExportDialog.classList.toggle("hidden", !tracker.exportDialogOpen);
+    if (!tracker.exportDialogOpen) return;
+    if (els.offerTrackerExportScope) {
+      els.offerTrackerExportScope.textContent = tracker.exportSelectedOnly
+        ? offerTrackerText("Configure the selected offers before export.", "配置已选 Offer 的各 Tier 输出数量与背景色。")
+        : offerTrackerText("Configure the filtered offers before export.", "配置筛选结果的各 Tier 输出数量与背景色。");
+    }
+    renderOfferTrackerExportTiers();
+    renderOfferTrackerBackgroundRanges();
+    setOfferTrackerExportDialogNotice("");
+  }
+
+  function openOfferTrackerExportDialog(selectedOnly = false, triggerElement = null) {
+    const filteredRows = offerTrackerFilteredRows();
+    const sourceRows = selectedOnly
+      ? filteredRows.filter((offer) => state.offerListTracker.selectedKeys.has(offerKey(offer)))
+      : filteredRows;
+    if (!sourceRows.length) {
+      setOfferTrackerNotice(offerTrackerText("No matching offers are available to export.", "当前没有可导出的匹配 Offer。"));
+      return;
+    }
+    const counts = offerTrackerTierCounts(sourceRows);
+    state.offerListTracker.exportSelectedOnly = selectedOnly;
+    state.offerListTracker.exportSourceRows = sourceRows;
+    state.offerListTracker.exportTierQuantities = OFFER_TRACKER_EXPORT_TIERS.reduce((result, tier) => {
+      result[tier] = { enabled: counts[tier] > 0, quantity: counts[tier] };
+      return result;
+    }, {});
+    state.offerListTracker.exportBackgroundRanges = [];
+    state.offerListTracker.exportDialogOpen = true;
+    state.offerListTracker.exportRestoreFocus = triggerElement;
+    renderOfferTrackerExportDialog();
+    const firstInput = els.offerTrackerExportDialog.querySelector("input:not([disabled])");
+    if (firstInput) firstInput.focus();
+  }
+
+  function closeOfferTrackerExportDialog() {
+    const restoreFocus = state.offerListTracker.exportRestoreFocus;
+    state.offerListTracker.exportDialogOpen = false;
+    state.offerListTracker.exportRestoreFocus = null;
+    renderOfferTrackerExportDialog();
+    if (restoreFocus && typeof restoreFocus.focus === "function") restoreFocus.focus();
+  }
+
+  function addOfferTrackerBackgroundRange() {
+    const totalRows = offerTrackerExportRows(
+      state.offerListTracker.exportSourceRows,
+      state.offerListTracker.exportTierQuantities
+    ).length;
+    if (!totalRows) {
+      setOfferTrackerExportDialogNotice(offerTrackerText("Select at least one Tier and quantity first.", "请先选择至少一个 Tier 并设置输出数量。"));
+      return;
+    }
+    const index = state.offerListTracker.exportBackgroundRanges.length;
+    state.offerListTracker.exportRangeSequence += 1;
+    state.offerListTracker.exportBackgroundRanges.push({
+      id: state.offerListTracker.exportRangeSequence,
+      start: 1,
+      end: totalRows,
+      color: OFFER_TRACKER_EXPORT_COLORS[index % OFFER_TRACKER_EXPORT_COLORS.length]
+    });
+    setOfferTrackerExportDialogNotice("");
+    renderOfferTrackerBackgroundRanges();
+  }
+
+  function confirmOfferTrackerExport() {
+    const tracker = state.offerListTracker;
+    const rows = offerTrackerExportRows(tracker.exportSourceRows, tracker.exportTierQuantities);
+    if (!rows.length) {
+      setOfferTrackerExportDialogNotice(offerTrackerText("Select at least one Tier with an output quantity above zero.", "请至少选择一个 Tier，并将输出数量设为大于 0。"));
+      return;
+    }
+    const validation = validateOfferTrackerBackgroundRanges(tracker.exportBackgroundRanges, rows.length);
+    if (!validation.ok) {
+      setOfferTrackerExportDialogNotice(validation.message);
+      return;
+    }
+    const offerColumns = offerTrackerOfferExportColumns();
+    const productColumns = offerTrackerProductExportColumns();
+    const workbook = createRecommendationWorkbook(rows, {
+      referenceStyle: true,
+      rowBackgroundRanges: validation.ranges,
+      sheets: [
+        { sheetName: "List of Offers", rows, columns: offerColumns },
+        { sheetName: "Brand Product List", rows, columns: productColumns }
+      ]
+    });
+    const scope = tracker.exportSelectedOnly ? "selected" : "filtered";
+    triggerWorkbookDownload(workbook, `YP_Amazon_Offer_List_Tracker_${scope}_${rows.length}_${todayFileStamp()}.xlsx`);
+    closeOfferTrackerExportDialog();
+    setOfferTrackerNotice(offerTrackerText(
+      `Exported ${rows.length.toLocaleString()} offers in two worksheets.`,
+      `已导出 ${rows.length.toLocaleString()} 个 Offer，共两个工作表。`
+    ));
+  }
+
   function setOfferTrackerNotice(message = "") {
     if (!els.offerTrackerNotice) return;
     els.offerTrackerNotice.textContent = message;
@@ -21952,28 +22258,10 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function downloadOfferTrackerWorkbook(selectedOnly = false) {
-    const filteredRows = offerTrackerFilteredRows();
-    const rows = selectedOnly
-      ? filteredRows.filter((offer) => state.offerListTracker.selectedKeys.has(offerKey(offer)))
-      : filteredRows;
-    if (!rows.length) {
-      setOfferTrackerNotice(offerTrackerText("No matching offers are available to export.", "当前没有可导出的匹配 Offer。"));
-      return;
-    }
-    const offerColumns = offerTrackerOfferExportColumns();
-    const productColumns = offerTrackerProductExportColumns();
-    const workbook = createRecommendationWorkbook(rows, {
-      sheets: [
-        { sheetName: "List of Offers", rows, columns: offerColumns },
-        { sheetName: "Brand Product List", rows, columns: productColumns }
-      ]
-    });
-    const scope = selectedOnly ? "selected" : "filtered";
-    triggerWorkbookDownload(workbook, `YP_Amazon_Offer_List_Tracker_${scope}_${rows.length}_${todayFileStamp()}.xlsx`);
-    setOfferTrackerNotice(offerTrackerText(
-      `Exported ${rows.length.toLocaleString()} offers in two worksheets.`,
-      `已导出 ${rows.length.toLocaleString()} 个 Offer，共两个工作表。`
-    ));
+    openOfferTrackerExportDialog(
+      selectedOnly,
+      selectedOnly ? els.offerTrackerExportSelected : els.offerTrackerExport
+    );
   }
 
   function initializeOfferTrackerControls() {
@@ -22684,6 +22972,81 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (els.offerTrackerExport) els.offerTrackerExport.addEventListener("click", () => downloadOfferTrackerWorkbook(false));
     if (els.offerTrackerExportSelected) els.offerTrackerExportSelected.addEventListener("click", () => downloadOfferTrackerWorkbook(true));
+    if (els.offerTrackerExportTiers) {
+      els.offerTrackerExportTiers.addEventListener("change", (event) => {
+        const toggle = event.target.closest("[data-offer-tracker-tier-toggle]");
+        const quantityInput = event.target.closest("[data-offer-tracker-tier-quantity]");
+        if (toggle) {
+          const tier = toggle.dataset.offerTrackerTierToggle;
+          const counts = offerTrackerTierCounts(state.offerListTracker.exportSourceRows);
+          const config = state.offerListTracker.exportTierQuantities[tier];
+          if (!config) return;
+          config.enabled = toggle.checked;
+          if (config.enabled && config.quantity === 0) config.quantity = counts[tier];
+          renderOfferTrackerExportTiers();
+          return;
+        }
+        if (quantityInput) {
+          const tier = quantityInput.dataset.offerTrackerTierQuantity;
+          const counts = offerTrackerTierCounts(state.offerListTracker.exportSourceRows);
+          const config = state.offerListTracker.exportTierQuantities[tier];
+          if (!config) return;
+          config.quantity = normalizeOfferTrackerTierQuantity(quantityInput.value, counts[tier]);
+          quantityInput.value = config.quantity;
+          renderOfferTrackerExportPreview();
+        }
+      });
+    }
+    if (els.offerTrackerBackgroundRanges) {
+      els.offerTrackerBackgroundRanges.addEventListener("input", (event) => {
+        const startInput = event.target.closest("[data-offer-tracker-background-start]");
+        const endInput = event.target.closest("[data-offer-tracker-background-end]");
+        const colorInput = event.target.closest("[data-offer-tracker-background-color]");
+        const input = startInput || endInput || colorInput;
+        if (!input) return;
+        const id = number(
+          input.dataset.offerTrackerBackgroundStart
+          || input.dataset.offerTrackerBackgroundEnd
+          || input.dataset.offerTrackerBackgroundColor
+        );
+        const range = state.offerListTracker.exportBackgroundRanges.find((item) => item.id === id);
+        if (!range) return;
+        if (startInput) range.start = startInput.value;
+        if (endInput) range.end = endInput.value;
+        if (colorInput) {
+          range.color = colorInput.value.toUpperCase();
+          const output = colorInput.parentElement.querySelector("output");
+          if (output) output.textContent = range.color;
+        }
+        setOfferTrackerExportDialogNotice("");
+      });
+      els.offerTrackerBackgroundRanges.addEventListener("click", (event) => {
+        const removeButton = event.target.closest("[data-offer-tracker-remove-background]");
+        if (!removeButton) return;
+        const id = number(removeButton.dataset.offerTrackerRemoveBackground);
+        state.offerListTracker.exportBackgroundRanges = state.offerListTracker.exportBackgroundRanges
+          .filter((range) => range.id !== id);
+        renderOfferTrackerBackgroundRanges();
+        setOfferTrackerExportDialogNotice("");
+      });
+    }
+    if (els.offerTrackerAddBackgroundRange) {
+      els.offerTrackerAddBackgroundRange.addEventListener("click", addOfferTrackerBackgroundRange);
+    }
+    if (els.offerTrackerExportDialogClose) {
+      els.offerTrackerExportDialogClose.addEventListener("click", closeOfferTrackerExportDialog);
+    }
+    if (els.offerTrackerExportDialogCancel) {
+      els.offerTrackerExportDialogCancel.addEventListener("click", closeOfferTrackerExportDialog);
+    }
+    if (els.offerTrackerExportDialogSubmit) {
+      els.offerTrackerExportDialogSubmit.addEventListener("click", confirmOfferTrackerExport);
+    }
+    if (els.offerTrackerExportDialog) {
+      els.offerTrackerExportDialog.addEventListener("click", (event) => {
+        if (event.target === els.offerTrackerExportDialog) closeOfferTrackerExportDialog();
+      });
+    }
     if (els.monthlyNewMerchantsMonth) {
       els.monthlyNewMerchantsMonth.value = state.monthlyNewMerchants.month;
       els.monthlyNewMerchantsMonth.addEventListener("click", openMonthlyNewMerchantMonthPicker);
@@ -22878,6 +23241,10 @@ var _NUMERIC_COL_PATTERNS = [
       if (trapMonthlyNewMerchantDrawerFocus(event)) return;
       if (trapTier1AdditionsOverlayFocus(event)) return;
       if (trapTier1MerchantDialogFocus(event)) return;
+      if (event.key === "Escape" && state.offerListTracker.exportDialogOpen) {
+        closeOfferTrackerExportDialog();
+        return;
+      }
       if (event.key === "Escape" && state.monthlyNewMerchants.importOpen) {
         closeMonthlyNewMerchantImport();
         return;
@@ -23715,6 +24082,11 @@ var _NUMERIC_COL_PATTERNS = [
       offerTrackerOfferExportColumns,
       offerTrackerProductExportColumns,
       offerTrackerFilterChipLabels,
+      offerTrackerTierCounts,
+      offerTrackerExportRows,
+      offerTrackerExportTierSpans,
+      validateOfferTrackerBackgroundRanges,
+      worksheetRowBackgroundColor,
       createRecommendationWorkbook,
       defaultOfferTrackerRules: () => ({ ...DEFAULT_OFFER_TRACKER_RULES }),
       setPublisherPortfolioFilters: (filters = {}) => {

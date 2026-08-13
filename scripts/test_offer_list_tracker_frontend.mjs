@@ -115,6 +115,20 @@ const recommended = {
 const bbMind = { merchantName: "Mammotion US" };
 const bbOpen = { merchantName: "Ottocast" };
 const bbUnknown = { merchantName: "Unlisted Brand" };
+const tierTwoFirst = {
+  merchantId: "401",
+  merchantName: "Tier Two First",
+  tier: "Tier 2",
+  affCommissionRate: 20,
+  aov: 140
+};
+const tierTwoSecond = {
+  merchantId: "402",
+  merchantName: "Tier Two Second",
+  tier: "Tier 2",
+  affCommissionRate: 15,
+  aov: 120
+};
 
 assertEqual(hooks.offerTrackerCommissionRate(high), 20, "affiliate commission should be preferred for tracker filtering");
 assertEqual(hooks.offerTrackerCommissionRate({ commissionRate: 30 }), 0, "generic commission should never be presented as AFF Commission");
@@ -164,6 +178,57 @@ assert(
   "commission filter chips should identify AFF Commission"
 );
 
+const exportSourceRows = [tierTwoFirst, tierTwoSecond, lowAov, recommended, high];
+const tierQuantities = {
+  "Tier 1": { enabled: false, quantity: 1 },
+  "Tier 2": { enabled: true, quantity: 1 },
+  "Tier 3": { enabled: true, quantity: 2 },
+  "Tier 4": { enabled: false, quantity: 0 },
+  "BLACK TIER": { enabled: false, quantity: 0 }
+};
+assertEqual(
+  hooks.offerTrackerTierCounts(exportSourceRows),
+  { "Tier 1": 1, "Tier 2": 2, "Tier 3": 2, "Tier 4": 0, "BLACK TIER": 0 },
+  "export setup should count the available offers in each Tier"
+);
+assertEqual(
+  hooks.offerTrackerExportRows(exportSourceRows, tierQuantities).map((offer) => offer.merchantId),
+  ["401", "202", "303"],
+  "per-Tier quantities should keep the current within-Tier order"
+);
+assertEqual(
+  hooks.offerTrackerExportTierSpans(exportSourceRows, tierQuantities),
+  {
+    "Tier 1": null,
+    "Tier 2": { start: 1, end: 1, quantity: 1 },
+    "Tier 3": { start: 2, end: 3, quantity: 2 },
+    "Tier 4": null,
+    "BLACK TIER": null
+  },
+  "Tier output spans should use exported data row numbers"
+);
+assertEqual(
+  hooks.validateOfferTrackerBackgroundRanges([
+    { start: 1, end: 1, color: "#D6EEDD" },
+    { start: 2, end: 3, color: "#CCFFFF" }
+  ], 3).ok,
+  true,
+  "valid non-overlapping row highlights should pass"
+);
+assertEqual(
+  hooks.validateOfferTrackerBackgroundRanges([
+    { start: 1, end: 2, color: "#D6EEDD" },
+    { start: 2, end: 3, color: "#CCFFFF" }
+  ], 3).ok,
+  false,
+  "overlapping row highlights should be rejected"
+);
+assertEqual(
+  hooks.worksheetRowBackgroundColor(1, [{ start: 1, end: 1, color: "#D6EEDD" }]),
+  "#D6EEDD",
+  "worksheet row backgrounds should resolve from exported data row numbers"
+);
+
 assertEqual(
   hooks.offerTrackerOfferExportColumns().map(([header]) => header),
   ["Priority", "Merchant ID", "Merchant Name", "Tier", "AFF Commission", "AOV", "AOV Type", "BB Preference", "Category", "Recommendation"],
@@ -176,17 +241,35 @@ assertEqual(
 );
 
 const workbook = hooks.createRecommendationWorkbook([high, lowAov], {
+  rowBackgroundRanges: [
+    { start: 1, end: 1, color: "#D6EEDD" },
+    { start: 2, end: 2, color: "#CCFFFF" }
+  ],
   sheets: [
     { sheetName: "List of Offers", rows: [high, lowAov], columns: hooks.offerTrackerOfferExportColumns() },
     { sheetName: "Brand Product List", rows: [high, lowAov], columns: hooks.offerTrackerProductExportColumns() }
   ]
 });
 const workbookText = new TextDecoder().decode(workbook);
+const styledWorksheetXml = hooks.worksheetXml([high, lowAov], {
+  columns: hooks.offerTrackerOfferExportColumns(),
+  rowBackgroundRanges: [
+    { start: 1, end: 1, color: "#D6EEDD" },
+    { start: 2, end: 2, color: "#CCFFFF" }
+  ],
+  workbookBackgroundColors: ["#D6EEDD", "#CCFFFF"]
+});
+assert(styledWorksheetXml.includes('r="A2" s="4"'), "worksheet XML should style the first highlighted data row");
+assert(styledWorksheetXml.includes('r="A3" s="7"'), "worksheet XML should style the second highlighted data row");
 assert(workbookText.includes("List of Offers"), "workbook should contain the List of Offers worksheet");
 assert(workbookText.includes("Brand Product List"), "workbook should contain the Brand Product List worksheet");
 assert(workbookText.includes("B099887766"), "workbook should include the fifth Top Rank ASIN");
 assert(!workbookText.includes("B000000001"), "workbook should omit ASINs after the top five");
 assert(!workbookText.includes("Source recommendation should not be exported"), "workbook recommendation cells should remain blank");
+assert(workbookText.includes("FFD6EEDD"), "workbook styles should include the first configured row background");
+assert(workbookText.includes("FFCCFFFF"), "workbook styles should include the second configured row background");
+assert(workbookText.includes('r="A2" s="4"'), "the first data row should use the first configured background style");
+assert(workbookText.includes('r="A3" s="7"'), "the second data row should use the second configured background style");
 
 const html = fs.readFileSync("public/index.html", "utf8");
 const targetIndex = html.indexOf('id="targetNav"');
@@ -209,5 +292,36 @@ assert(styles.includes(".offer-tracker-aov-badge.estimated"), "estimated AOV bad
 assert(styles.includes(".offer-tracker-bb-badge.mind"), "BB-sensitive brands should have red badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.open"), "BB-open brands should have green badge styling");
 assert(styles.includes(".offer-tracker-bb-badge.unknown"), "unknown BB policies should have gray badge styling");
+assert(html.includes('id="offerTrackerExportDialog"'), "workbook export setup dialog should exist");
+assert(html.includes('id="offerTrackerExportTiers"'), "per-Tier export quantity controls should exist");
+assert(html.includes('id="offerTrackerBackgroundRanges"'), "row background range controls should exist");
+
+if (process.env.OFFER_TRACKER_FIXTURE_PATH) {
+  const fixtureSource = hooks.filterOfferTrackerRows(
+    sandbox.window.CHATBOT_DATA.offers,
+    { tier: "all", category: "all", network: "all" },
+    "",
+    hooks.defaultOfferTrackerRules()
+  );
+  const fixtureRows = hooks.offerTrackerExportRows(fixtureSource, {
+    "Tier 1": { enabled: false, quantity: 0 },
+    "Tier 2": { enabled: true, quantity: 20 },
+    "Tier 3": { enabled: true, quantity: 15 },
+    "Tier 4": { enabled: false, quantity: 0 },
+    "BLACK TIER": { enabled: false, quantity: 0 }
+  });
+  const fixtureWorkbook = hooks.createRecommendationWorkbook(fixtureRows, {
+    referenceStyle: true,
+    rowBackgroundRanges: [
+      { start: 1, end: 20, color: "#D6EEDD" },
+      { start: 21, end: 35, color: "#CCFFFF" }
+    ],
+    sheets: [
+      { sheetName: "List of Offers", rows: fixtureRows, columns: hooks.offerTrackerOfferExportColumns() },
+      { sheetName: "Brand Product List", rows: fixtureRows, columns: hooks.offerTrackerProductExportColumns() }
+    ]
+  });
+  fs.writeFileSync(process.env.OFFER_TRACKER_FIXTURE_PATH, fixtureWorkbook);
+}
 
 console.log("Offer List Tracker frontend checks passed");
