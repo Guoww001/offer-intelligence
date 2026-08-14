@@ -1080,14 +1080,26 @@
               <span class="offer-tracker-live-source" data-i18n="offerTracker.liveSource">Live offer cache</span>
             </div>
             <div class="offer-tracker-filter-grid">
-              <label>
+              <div class="offer-tracker-filter-field">
                 <span data-i18n="label.Tier">Tier</span>
-                <select id="offerTrackerTier"><option value="all">All tiers</option></select>
-              </label>
-              <label>
+                <div class="offer-tracker-network-multiselect" id="offerTrackerTier">
+                  <button class="offer-tracker-network-toggle" id="offerTrackerTierToggle" type="button" aria-expanded="false" aria-controls="offerTrackerTierMenu">
+                    <span id="offerTrackerTierSummary">All tiers</span>
+                    <span class="offer-tracker-network-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="offer-tracker-network-menu hidden" id="offerTrackerTierMenu" role="group" aria-label="Tiers"></div>
+                </div>
+              </div>
+              <div class="offer-tracker-filter-field">
                 <span data-i18n="label.Category">Category</span>
-                <select id="offerTrackerCategory"><option value="all">All categories</option></select>
-              </label>
+                <div class="offer-tracker-network-multiselect" id="offerTrackerCategory">
+                  <button class="offer-tracker-network-toggle" id="offerTrackerCategoryToggle" type="button" aria-expanded="false" aria-controls="offerTrackerCategoryMenu">
+                    <span id="offerTrackerCategorySummary">All categories</span>
+                    <span class="offer-tracker-network-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="offer-tracker-network-menu hidden" id="offerTrackerCategoryMenu" role="group" aria-label="Categories"></div>
+                </div>
+              </div>
               <label class="offer-tracker-range-field">
                 <span data-i18n="offerTracker.aovRange">AOV range</span>
                 <span class="offer-tracker-range-inputs">

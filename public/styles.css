@@ -328,6 +328,11 @@
   accent-color: var(--tracker-blue);
 }
 
+.offer-tracker-network-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .offer-tracker-range-inputs {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

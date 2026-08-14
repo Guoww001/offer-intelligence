@@ -223,6 +223,26 @@ assertEqual(
   ["Levanta", "Wayward"],
   "network selections should be normalized and deduplicated"
 );
+assertEqual(
+  hooks.filterOfferTrackerRows(
+    [recommended, tierTwoFirst, lowAov, high],
+    { tiers: ["Tier 1", "Tier 2"], categories: ["Beauty & Personal Care", "Uncategorized"] }
+  ).map((offer) => offer.merchantId),
+  ["101", "401"],
+  "tier and category filters should OR within each multi-select and AND across filters"
+);
+assertEqual(hooks.offerTrackerSelectedTiers({ tier: "tier 2" }), ["Tier 2"], "legacy single-tier saved views should remain compatible");
+assertEqual(hooks.offerTrackerSelectedCategories({ category: "Home & Kitchen" }), ["Home & Kitchen"], "legacy single-category saved views should remain compatible");
+assertEqual(
+  hooks.offerTrackerSelectedTiers({ tiers: ["Tier 1", "tier 2", "Tier 1", "all"] }),
+  ["Tier 1", "Tier 2"],
+  "tier selections should be canonicalized and deduplicated"
+);
+assertEqual(
+  hooks.offerTrackerSelectedCategories({ categories: ["Home & Kitchen", "Sports & Outdoors", "Home & Kitchen", "all"] }),
+  ["Home & Kitchen", "Sports & Outdoors"],
+  "category selections should be normalized and deduplicated"
+);
 const preexistingSelection = hooks.updateOfferTrackerRowSelection([wayward], true, new Set());
 const pageSelection = hooks.updateOfferTrackerRowSelection([high, lowAov], true, preexistingSelection);
 assert(hooks.offerTrackerRowsAreSelected([high, lowAov], pageSelection), "current-page rows should remain selectable as a group");
@@ -254,6 +274,11 @@ assertEqual(
   hooks.offerTrackerFilterChipLabels({ tier: "all", category: "all", networks: ["Levanta", "Wayward"] }),
   ["Levanta", "Wayward"],
   "each selected network should be visible in the applied-filter chips"
+);
+assertEqual(
+  hooks.offerTrackerFilterChipLabels({ tiers: ["Tier 1", "Tier 2"], categories: ["Beauty & Personal Care", "Home & Kitchen"], networks: [] }),
+  ["Tier 1", "Tier 2", "Beauty & Personal Care", "Home & Kitchen"],
+  "each selected tier and category should be visible in the applied-filter chips"
 );
 
 const exportSourceRows = [tierTwoFirst, tierTwoSecond, lowAov, recommended, high];
@@ -359,6 +384,10 @@ assert(html.includes('id="offerTrackerExportSelected"'), "selected-row workbook 
 assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission range</span>'), "commission filters should be labeled as AFF Commission");
 assert(html.includes('id="offerTrackerRevenueStatus"'), "revenue status filter should exist");
 assert(html.includes('id="offerTrackerRevenueSort"'), "revenue sort control should exist");
+assert(html.includes('id="offerTrackerTierMenu"'), "tier filter should provide a checkbox menu");
+assert(html.includes('aria-controls="offerTrackerTierMenu"'), "tier filter toggle should expose its menu to assistive technology");
+assert(html.includes('id="offerTrackerCategoryMenu"'), "category filter should provide a checkbox menu");
+assert(html.includes('aria-controls="offerTrackerCategoryMenu"'), "category filter toggle should expose its menu to assistive technology");
 assert(html.includes('id="offerTrackerNetworkMenu"'), "network filter should provide a checkbox menu");
 assert(html.includes('aria-controls="offerTrackerNetworkMenu"'), "network filter toggle should expose its menu to assistive technology");
 assert(html.includes('id="offerTrackerSelectAllFiltered"'), "tracker should provide an all-matching cross-page selection action");
