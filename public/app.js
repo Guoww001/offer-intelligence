@@ -11093,6 +11093,170 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       '</div>';
   }
 
+  // === 记忆报告类型推断：Chat Mode 拿到 Report Mode 报告后，按报告类型给出不同的提问示例卡片 ===
+  // 类型取值对应 docs/chat-mode-analysis-types.md 第 2 节：
+  // merchant / merchant_comparison / category / multi_category / tier / multi_tier /
+  // trend / publisher / publisherprofile / recommendation / payment；无法识别返回 null。
+  // llmResult 可选：传入 classifyWithLLM 的结果可提升判断准确度（analysisType、多实体等）。
+  function _inferReportType(prompt, llmResult) {
+    const text = String(prompt || "").trim();
+    if (!text) return null;
+
+    // 1. LLM 分类结果优先（Report Mode 提交路径已有 classifyWithLLM 结果）
+    if (llmResult && llmResult.intent) {
+      const intent = llmResult.intent;
+      const params = (llmResult.params && typeof llmResult.params === "object") ? llmResult.params : {};
+      if (intent === "publisherprofile") return "publisherprofile";
+      if (intent === "publisher") return "publisher";
+      if (intent === "payment") return "payment";
+      if (intent === "recommendation") return "recommendation";
+      const analysisType = params.analysisType;
+      const targets = params.analysisTargets;
+      const multiTargets = Array.isArray(targets) && targets.length > 1;
+      if (analysisType === "merchant") return multiTargets ? "merchant_comparison" : "merchant";
+      if (analysisType === "category") return multiTargets ? "multi_category" : "category";
+      if (analysisType === "tier") return multiTargets ? "multi_tier" : "tier";
+      if (analysisType === "trend") return "trend";
+      // LLM 只给了基础 intent，没有更细的 analysisType → 落到前端关键词分析
+      if (intent === "merchant") return "merchant";
+      if (intent === "category") return "category";
+      if (intent === "tier") return "tier";
+      if (intent === "analysis") { /* 继续前端判断 */ }
+      else return null;
+    }
+
+    // 2. 显式前缀命令（与 parseChatIntentPrefix 同源）
+    const prefix = parseChatIntentPrefix(text);
+    if (prefix) {
+      const key = prefix.key;
+      if (key === "merchant") return "merchant";
+      if (key === "category" || key === "categorytier") return "category";
+      if (key === "tier") return "tier";
+      if (key === "trend") return "trend";
+      if (key === "payment") return "payment";
+      if (key === "publisher") return "publisher";
+      if (key === "publisherprofile") return "publisherprofile";
+      return null;
+    }
+
+    // 3. 前端关键词 fallback（顺序与 detectQueryIntent 一致）
+    const lower = text.toLowerCase();
+    // 媒体画像前缀在媒体列表之前检查：publisherprofile 文本同时含 publisher 触发词
+    if (hasPublisherProfileIntent(text)) return "publisherprofile";
+    if (hasPublisherIntent(text)) return "publisher";
+    if (promptHasPaymentTerms(text)) return "payment";
+    // 推荐/筛选
+    if (/recommend|push|focus|best|should we/.test(lower) || /推荐|排行|排名|最好|最佳|主推|重点|应该|筛选|前\s*\d+/.test(text)) return "recommendation";
+    // 分析关键词（含趋势、对比）——没有则不是分析类报告
+    const hasAnalysisKeywords = /分析|评估|诊断|怎么样|表现如何|趋势|健康度|状态|评测|测测|看看|升级|降级|升降级|提升到|对比|比较|和.*对比|与.*相比/.test(text)
+      || /\b(?:analyze|analyse|analysis|evaluate|diagnose|assess|how\s+is|how\s+are|how\s+about|performance|health\s+check|trend|promotion|demotion|upgrade|downgrade|compare|comparison|vs|versus)\b/i.test(lower);
+    if (!hasAnalysisKeywords) return null;
+    // 趋势：时间范围或趋势词（与 analysisAnswer 的前端 fallback 一致）
+    if (extractMonthCount(text) > 0 || /趋势|trend/i.test(lower)) return "trend";
+    // 多实体：品类/Tier 多值
+    const catParts = categoriesForPrompt(text);
+    const tierParts = tiersFromPrompt(text);
+    if (catParts.length > 1) return "multi_category";
+    if (tierParts.length > 1) return "multi_tier";
+    if (tierParts.length === 1) return "tier";
+    if (catParts.length === 1) return "category";
+    // 多商户对比：对比词 + 至少两个可识别商户
+    if (/对比|比较|谁更好|谁更强|difference|compare|better/.test(text) || /\b(?:vs|versus)\b/i.test(lower)) {
+      if (_merchantNamesInPrompt(text).length >= 2) return "merchant_comparison";
+    }
+    if (findLiveOffer(text)) return "merchant";
+    return null;
+  }
+
+  // 从 prompt 中提取可识别的商户名（按 和/与/、/and/vs 等分隔符切分后逐段匹配）
+  function _merchantNamesInPrompt(text) {
+    const cleaned = String(text || "")
+      .replace(/趋势|trend|分析|analysis|评估|诊断|对比|比较|谁更好|谁更强|怎么样|表现如何|difference|compare|better|versus/gi, " ");
+    const parts = cleaned.split(/\s*(?:和|与|、|,|，|及|and|vs\.?)\s*/i)
+      .map(function (s) { return s.trim(); }).filter(Boolean);
+    const names = [];
+    for (const part of parts) {
+      const offer = findLiveOffer(part);
+      if (offer) {
+        const name = offer.brand || offer.merchantName;
+        if (name && names.indexOf(name) === -1) names.push(name);
+      }
+    }
+    return names;
+  }
+
+  // 报告类型 → 组头类型徽章文案（提问示例卡片）。未知/非分析类报告 → 通用「报告/Report」。
+  const REPORT_TYPE_LABELS = {
+    merchant: { zh: "商户分析", en: "Merchant" },
+    merchant_comparison: { zh: "商户对比", en: "Comparison" },
+    category: { zh: "品类分析", en: "Category" },
+    multi_category: { zh: "品类对比", en: "Category vs" },
+    tier: { zh: "Tier 分析", en: "Tier" },
+    multi_tier: { zh: "Tier 对比", en: "Tier vs" },
+    trend: { zh: "趋势分析", en: "Trend" },
+    publisher: { zh: "媒体记录", en: "Publishers" },
+    publisherprofile: { zh: "媒体画像", en: "Publisher" },
+    recommendation: { zh: "推荐筛选", en: "Recommendation" },
+    payment: { zh: "付款分析", en: "Payment" }
+  };
+
+  // 报告类型 → 提问示例卡片。文案取自 docs/chat-mode-analysis-types.md 各节
+  // 「Chat Mode 可以继续追问什么」，并遵守文档边界（多 Tier 不问自动迁移、
+  // 多商户对比不假装有品类基准、媒体记录没有健康分等）。
+  const REPORT_STARTER_QUESTIONS = {
+    merchant: [
+      { zh: "它的 EPC 为什么低于品类均值？", en: "Why is its EPC below the category average?" },
+      { zh: "这个商户更适合提升订单还是提升转化？", en: "Should this merchant focus on orders or conversion?" },
+      { zh: "它和 Peer 的差距主要在哪里？", en: "Where is the main gap versus its peers?" },
+      { zh: "样本量是否足以支持这个判断？", en: "Is the sample size enough to support this?" }
+    ],
+    merchant_comparison: [
+      { zh: "这两个商户的主要差距在哪里？", en: "Where are the key differences between these merchants?" },
+      { zh: "谁的 EPC 更高，原因可能是什么？", en: "Who has a higher EPC and why might that be?" },
+      { zh: "哪一家更适合优先投入资源？", en: "Which one deserves priority investment?" }
+    ],
+    category: [
+      { zh: "这个品类的主要问题是流量、转化还是订单？", en: "Is the main issue traffic, conversion, or orders?" },
+      { zh: "Top 商户和 Bottom 商户差在哪里？", en: "How do top and bottom merchants differ?" },
+      { zh: "这个品类是否集中在某个 Tier？", en: "Is this category concentrated in one tier?" },
+      { zh: "这个品类相对于全站的优势是什么？", en: "What is this category's edge over the whole site?" }
+    ],
+    multi_category: [
+      { zh: "这两个品类的差异主要体现在哪里？", en: "Where do the key differences lie between these categories?" },
+      { zh: "哪个品类更适合优先投入？", en: "Which category deserves priority?" }
+    ],
+    tier: [
+      { zh: "这个 Tier 的 Head/Mid/Tail 分布说明了什么？", en: "What does the Head/Mid/Tail distribution suggest?" },
+      { zh: "有哪些明显高于 Tier 均值的异常商户？", en: "Which merchants stand out above the tier average?" },
+      { zh: "这个 Tier 与其他 Tier 相比表现如何？", en: "How does this tier compare to others?" }
+    ],
+    multi_tier: [
+      { zh: "Tier 之间的主要指标差异是什么？", en: "What are the main metric differences between tiers?" },
+      { zh: "哪些商户的品类分布值得注意？", en: "Which category distributions stand out?" }
+    ],
+    trend: [
+      { zh: "这个趋势的主要驱动因素是什么？", en: "What drives this trend?" },
+      { zh: "哪个月的波动最大？", en: "Which month had the biggest swing?" },
+      { zh: "首末月的整体变化说明了什么？", en: "What does the first-to-last change suggest?" }
+    ],
+    publisher: [
+      { zh: "这些媒体中哪个表现最好？", en: "Which publisher performs best here?" },
+      { zh: "可以怎么调整筛选条件？", en: "How should I adjust the filters?" }
+    ],
+    publisherprofile: [
+      { zh: "这个媒体偏好什么类型的商家？", en: "What kind of merchants does this publisher prefer?" },
+      { zh: "它的品类集中度如何？", en: "How concentrated is its category mix?" }
+    ],
+    recommendation: [
+      { zh: "推荐结果里哪些商户值得优先投入？", en: "Which recommended merchants deserve priority?" },
+      { zh: "为什么推荐这几个商户？", en: "Why were these merchants recommended?" }
+    ],
+    payment: [
+      { zh: "哪些商户存在付款风险？", en: "Which merchants carry payment risk?" },
+      { zh: "逾期未付的金额有多少？", en: "How much is overdue and unpaid?" }
+    ]
+  };
+
   function _createDeepPanel(prompt) {
     var id = "deep-panel-" + (++_deepPanelIdCounter);
     var zIndex = ++_deepMaxZIndex;
@@ -11116,6 +11280,9 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       id: id,
       el: div,
       prompt: prompt,
+      // 报告类型：提交时从 prompt 分析（_inferReportType），供记忆栏提问示例卡片使用；
+      // Report Mode 提交路径拿到 classifyWithLLM 结果后会覆盖更新。
+      _reportType: _inferReportType(prompt),
       abortController: null,
       state: "loading",
       minimized: false,
@@ -12286,6 +12453,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       bar.classList.add("hidden");
       chips.innerHTML = "";
     }
+    // 统一刷新入口：记忆增减、模式切换都会经过这里 → 底部提问示例卡片同步
+    _refreshMemoryStarterCards();
   }
 
   function _removeReportMemory(id) {
@@ -12352,6 +12521,8 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     var memory = {
       id: "mem-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
       title: title,
+      // 报告类型（_inferReportType 推断）：驱动聊天区提问示例卡片
+      type: panel._reportType || null,
       textContent: (textContent + (extraText ? "\n\n" + extraText : "")).slice(0, 8000),
       html: htmlContent,
       timestamp: Date.now(),
@@ -12394,7 +12565,6 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       btn.textContent = t("deep.chatAdded", "Added");
     }
     _switchToChatMode();
-    _injectChatStarter(panel.title || panel.prompt || "Report");
     if (window.ONBOARDING_TOUR) window.ONBOARDING_TOUR.notify("chat-add");
     if (window.CHATBOT_WELCOME) {
       window.CHATBOT_WELCOME.notify("chat-add", {
@@ -12403,53 +12573,148 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       });
     }
   }
-  function _injectChatStarter(title) {
+  // 记忆栏报告 → 聊天区底部「继续追问」示例卡片（Double-Bezel：外壳 + 内芯）：
+  // 常驻在记忆栏之下、输入框之上，按记忆分组；组头 = 类型徽章 + 报告标题，
+  // 每组展示该报告类型的示例问题 chips（类型未知 → 通用 2 卡 fallback）。
+  // 头部行可折叠/展开（localStorage 记忆状态，key: oi_starter_collapsed；折叠动画
+  // 只动 transform/opacity，动画结束后隐藏主体归零布局，防 tab 进入隐藏 chips）。
+  // 可见性跟随模式（Chat Mode 显示 / Report Mode 隐藏），记忆清空时整体移除。
+  // 刷新时机：加入对话、拖入记忆栏、移除记忆、模式切换（_renderMemoryBar 统一入口）、语言切换。
+  function _starterCollapsedState() {
+    try { return localStorage.getItem("oi_starter_collapsed") === "1"; } catch (e) { return false; }
+  }
+  function _setStarterCollapsed(el, collapsed) {
     try {
-      var log = els.chatLogChat;
-      if (!log) return;
-      var old = log.querySelector(".chat-memory-starter");
-      if (old) {
-        // 语言切换刷新（_refreshChatStarterLanguage）：读回缓存 title 并整体重注入，跟随当前语言
-        title = title || old.getAttribute("data-title") || "";
-        old.parentNode.removeChild(old);
-      }
-      var starter = document.createElement("div");
-      starter.className = "chat-memory-starter";
-      starter.setAttribute("data-title", title);
-      var p = document.createElement("p");
-      p.textContent = t("chat.addedMessage", "Report “{title}” added to chat — try asking:").replace("{title}", title);
-      starter.appendChild(p);
-      var wrap = document.createElement("div");
-      wrap.className = "chat-memory-starter-chips";
-      var chips = [
-        t("chat.starterAsk", "Analyze the report and give me suggestions"),
-        t("chat.starterPlan", "Summarize the data and plan next month's direction")
-      ];
-      chips.forEach(function (text) {
-        var chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "welcome-chip";
-        chip.textContent = text;
-        chip.addEventListener("click", function () {
-          if (window.CHATBOT_WELCOME && window.CHATBOT_WELCOME.fillInput) {
-            window.CHATBOT_WELCOME.fillInput(text);
-          }
+      if (!el) return;
+      el.classList.toggle("collapsed", !!collapsed);
+      var btn = el.querySelector(".chat-memory-starter-toggle");
+      if (btn) btn.setAttribute("aria-expanded", String(!collapsed));
+      if (collapsed) {
+        // 收起：先播放压缩淡出动画，播完再隐藏主体（布局归零，跳变不可见）
+        setTimeout(function () { el.classList.add("is-hidden"); }, 460);
+      } else {
+        // 展开：先恢复主体布局（此刻 collapsed 仍在 → 不可见），再移除 collapsed 触发展开动画
+        el.classList.remove("is-hidden");
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { el.classList.remove("collapsed"); });
         });
-        wrap.appendChild(chip);
+      }
+      try { localStorage.setItem("oi_starter_collapsed", collapsed ? "1" : "0"); } catch (e) {}
+    } catch (e) {}
+  }
+  function _refreshMemoryStarterCards() {
+    try {
+      var bar = els.chatMemoryBar;
+      if (!bar) return;
+      var old = bar.parentNode.querySelector(".chat-memory-starter");
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+
+      var memories = state.reportMemory || [];
+      if (!memories.length) return;
+
+      var language = state.language === "zh" ? "zh" : "en";
+      var collapsed = _starterCollapsedState();
+      var starter = document.createElement("div");
+      starter.className = "chat-memory-starter" +
+        (state.deepMode ? " hidden" : "") +
+        (collapsed ? " collapsed is-hidden" : "");
+      starter.setAttribute("role", "region");
+      starter.setAttribute("aria-label", language === "zh" ? "继续追问建议" : "Continue asking suggestions");
+
+      var core = document.createElement("div");
+      core.className = "chat-memory-starter-core";
+
+      // 头部行：eyebrow 微标签（含记忆份数）+ 折叠按钮（chevron），点击整行切换折叠
+      var headRow = document.createElement("div");
+      headRow.className = "chat-memory-starter-head";
+      var eyebrow = document.createElement("span");
+      eyebrow.className = "chat-memory-starter-eyebrow";
+      eyebrow.textContent = language === "zh"
+        ? "继续追问 · " + memories.length + " 份报告"
+        : "Keep asking · " + memories.length + (memories.length > 1 ? " reports" : " report");
+      headRow.appendChild(eyebrow);
+      var toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "chat-memory-starter-toggle";
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.setAttribute("aria-label", language === "zh" ? "切换提问示例" : "Toggle question examples");
+      toggle.innerHTML = '<span class="chat-memory-starter-chevron" aria-hidden="true"></span>';
+      toggle.addEventListener("click", function (e) {
+        e.stopPropagation();
+        _setStarterCollapsed(starter, !starter.classList.contains("collapsed"));
       });
-      starter.appendChild(wrap);
-      var reminder = log.querySelector(".chat-reminder");
-      if (reminder && reminder.nextSibling) log.insertBefore(starter, reminder.nextSibling);
-      else log.insertBefore(starter, log.firstChild || null);
+      headRow.appendChild(toggle);
+      core.appendChild(headRow);
+
+      // 主体：分组区（可折叠）
+      var body = document.createElement("div");
+      body.className = "chat-memory-starter-body";
+
+      memories.forEach(function (m, gi) {
+        var group = document.createElement("div");
+        group.className = "chat-memory-starter-group";
+        group.style.setProperty("--gi", gi);
+
+        var head = document.createElement("div");
+        head.className = "chat-memory-starter-group-head";
+        var typeLabel = REPORT_TYPE_LABELS[m.type];
+        var badge = document.createElement("span");
+        badge.className = "chat-memory-starter-type" + (typeLabel ? "" : " is-generic");
+        badge.innerHTML = '<span class="chat-memory-starter-type-dot"></span>' +
+          '<span class="chat-memory-starter-type-text">' +
+          escapeHtml(typeLabel ? (language === "zh" ? typeLabel.zh : typeLabel.en) : (language === "zh" ? "报告" : "Report")) +
+          "</span>";
+        head.appendChild(badge);
+        var p = document.createElement("span");
+        p.className = "chat-memory-starter-title";
+        p.textContent = m.title || "Report";
+        head.appendChild(p);
+        group.appendChild(head);
+
+        var wrap = document.createElement("div");
+        wrap.className = "chat-memory-starter-chips";
+        var questions = REPORT_STARTER_QUESTIONS[m.type] || null;
+        var chips = questions
+          ? questions.map(function (q) { return language === "zh" ? q.zh : q.en; })
+          : [
+              t("chat.starterAsk", "Analyze the report and give me suggestions"),
+              t("chat.starterPlan", "Summarize the data and plan next month's direction")
+            ];
+        chips.forEach(function (text) {
+          var chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "starter-chip";
+          chip.textContent = text;
+          chip.addEventListener("click", function () {
+            if (window.CHATBOT_WELCOME && window.CHATBOT_WELCOME.fillInput) {
+              window.CHATBOT_WELCOME.fillInput(text);
+            }
+          });
+          wrap.appendChild(chip);
+        });
+        group.appendChild(wrap);
+        body.appendChild(group);
+      });
+
+      core.appendChild(body);
+      starter.appendChild(core);
+      bar.parentNode.insertBefore(starter, bar.nextSibling);
+
+      // 头部行点击（折叠按钮区域除外）也切换折叠
+      headRow.addEventListener("click", function (e) {
+        if (e.target.closest && e.target.closest(".chat-memory-starter-toggle")) return;
+        _setStarterCollapsed(starter, !starter.classList.contains("collapsed"));
+      });
+
+      // 入场动效：双 rAF 后加 .is-in，触发 transform/opacity 过渡（GPU-safe，组间 --gi 错峰）
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { starter.classList.add("is-in"); });
+      });
     } catch (e) {}
   }
   // 语言切换时刷新「已加入对话」starter（文案跟随 UI 语言；无 starter 时无操作）
   function _refreshChatStarterLanguage() {
-    try {
-      var log = els.chatLogChat;
-      if (!log || !log.querySelector(".chat-memory-starter")) return;
-      _injectChatStarter();
-    } catch (e) {}
+    _refreshMemoryStarterCards();
   }
 
   function _updateMemoryContext() {
@@ -12751,6 +13016,11 @@ var _NUMERIC_COL_PATTERNS = [
       const result = await classifyWithLLM(effectivePrompt, collectCategories());
       loadingMsg.remove();
       state.llmClassifyResult = result;
+      // LLM 分类结果更可靠（analysisType / 多实体）→ 覆盖面板报告类型，供记忆栏提问示例卡片使用
+      if (panel && result) {
+        const inferredType = _inferReportType(effectivePrompt, result);
+        if (inferredType) panel._reportType = inferredType;
+      }
       if (!explicitChatIntent && result && result.intent) questionLogIntent = String(result.intent).trim().toLowerCase() || questionLogIntent;
     } else {
       state.llmClassifyResult = null;
