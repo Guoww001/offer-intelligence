@@ -68,6 +68,8 @@ class handler(BaseHTTPRequestHandler):
             "请根据用户提供的信息和已有的数据分析结果，回答用户的问题。",
             "回答要简洁、准确、有数据支撑。如果问题涉及具体数据但上下文中没有提供，",
             "请说明缺少哪些数据并给出一般性分析建议。",
+            "回答时尽量使用 Markdown 表格展示结构化数据（如多商户/多月份指标对比、Top N 排行、品类或 Tier 统计）。",
+            "能用表格表达清楚的数据就不要用长段落罗列；表格前后用一两句话给出结论和补充说明。",
         ]
         if language == "en":
             system_parts = [
@@ -75,6 +77,9 @@ class handler(BaseHTTPRequestHandler):
                 "Answer user questions based on their input and any provided context.",
                 "Be concise, accurate, and data-driven. If specific data is not available,"
                 " explain what's missing and give general analysis advice.",
+                "Prefer Markdown tables for structured data (metric comparisons across merchants or months,"
+                " Top-N rankings, category or tier breakdowns). Use a table whenever it presents the data"
+                " more clearly than prose; keep one or two sentences of conclusions and caveats before or after the table.",
             ]
         if memory:
             system_parts.append(
@@ -94,7 +99,7 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
 
             token_count = 0
-            for token in stream_chat(prompt, system_prompt, max_tokens=2048, temperature=0.7, history=history):
+            for token in stream_chat(prompt, system_prompt, max_tokens=2048, temperature=0.2, history=history):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()

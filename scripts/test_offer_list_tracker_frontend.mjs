@@ -413,6 +413,11 @@ assert(styles.includes(".offer-tracker-bb-badge.open"), "BB-open brands should h
 assert(styles.includes(".offer-tracker-bb-badge.unknown"), "unknown BB policies should have gray badge styling");
 assert(styles.includes(".offer-tracker-network-option"), "network checkbox options should have dedicated styling");
 assert(styles.includes(".offer-tracker-select-filtered"), "all-matching selection action should have dedicated styling");
+const trackerTableRule = styles.slice(styles.indexOf(".offer-tracker-table {"), styles.indexOf("}", styles.indexOf(".offer-tracker-table {")) + 1);
+const trackerTableHeadRule = styles.slice(styles.indexOf(".offer-tracker-table th {"), styles.indexOf("}", styles.indexOf(".offer-tracker-table th {")) + 1);
+assert(trackerTableRule.includes("font-size: 12px;"), "tracker table body text should remain comfortably readable");
+assert(trackerTableHeadRule.includes("font-size: 10px;"), "tracker table headers should remain readable");
+assert(trackerTableRule.includes("line-height: 1.45;"), "tracker table cells should use a readable line height");
 assert(html.includes('id="offerTrackerExportDialog"'), "workbook export setup dialog should exist");
 assert(html.includes('id="offerTrackerExportTiers"'), "per-Tier export quantity controls should exist");
 assert(html.includes('id="offerTrackerBackgroundRanges"'), "row background range controls should exist");

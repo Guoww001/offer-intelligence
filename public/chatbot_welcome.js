@@ -746,9 +746,33 @@
   // ── Chat Mode 聊天区顶部提醒卡片 ──────────────────────
   // 常驻 sticky 卡片（.chat-reminder），用与 Report Mode 相同的层级说明 Chat 的使用方式。
   // 渲染进 #chatLogChat 顶部；Chat Mode（mode === "chat"）显示，Report Mode 移除。
+  // 头部行（kicker + chevron）可折叠/展开主体（localStorage 记忆状态，key: oi_reminder_collapsed；
+  // 折叠动画只动 transform/opacity，动画结束后隐藏主体归零布局）。
   // 与欢迎屏独立卡片解耦——它挂在聊天区内部，作为该模式下的使用方式提示。
   function _chatLogChatElement() {
     try { return document.getElementById("chatLogChat"); } catch (e) { return null; }
+  }
+  function _reminderCollapsedState() {
+    try { return localStorage.getItem("oi_reminder_collapsed") === "1"; } catch (e) { return false; }
+  }
+  function _setReminderCollapsed(el, collapsed) {
+    try {
+      if (!el) return;
+      el.classList.toggle("collapsed", !!collapsed);
+      var btn = el.querySelector(".chat-reminder-toggle");
+      if (btn) btn.setAttribute("aria-expanded", String(!collapsed));
+      if (collapsed) {
+        // 收起：先播放压缩淡出动画，播完再隐藏主体（布局归零，跳变不可见）
+        setTimeout(function () { el.classList.add("is-hidden"); }, 460);
+      } else {
+        // 展开：先恢复主体布局（此刻 collapsed 仍在 → 不可见），再移除 collapsed 触发展开动画
+        el.classList.remove("is-hidden");
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { el.classList.remove("collapsed"); });
+        });
+      }
+      try { localStorage.setItem("oi_reminder_collapsed", collapsed ? "1" : "0"); } catch (e) {}
+    } catch (e) {}
   }
   function _renderChatReminder(force) {
     try {
@@ -756,20 +780,33 @@
       if (!log) return;
       if (force) _removeChatReminder();
       if (log.querySelector && log.querySelector(".chat-reminder")) return;
-      var card = makeEl("chat-reminder",
+      var collapsed = _reminderCollapsedState();
+      var card = makeEl("chat-reminder" + (collapsed ? " collapsed is-hidden" : ""),
         '<div class="chat-reminder-mark" aria-hidden="true">◈</div>' +
         '<div class="chat-reminder-content">' +
+        '<div class="chat-reminder-head">' +
         '<span class="chat-reminder-kicker">' + escapeHtml(currentCopy("chatReminderKicker")) + '</span>' +
+        '<button type="button" class="chat-reminder-toggle" aria-expanded="' + String(!collapsed) +
+        '" aria-label="' + escapeHtml(currentCopy("collapse")) + '">' +
+        '<span class="chat-reminder-chevron" aria-hidden="true"></span>' +
+        '</button>' +
+        '</div>' +
+        '<div class="chat-reminder-fold">' +
         '<h3 class="chat-reminder-title" id="chatModeReminderTitle">' + escapeHtml(currentCopy("chatReminderTitle")) + '</h3>' +
         '<p class="chat-reminder-body">' + escapeHtml(currentCopy("chatReminderBody")) + '</p>' +
         '<p class="chat-reminder-reminder"><span aria-hidden="true">→</span>' +
         '<strong>' + escapeHtml(currentCopy("chatReminderReminder")) + '</strong>' +
         '<button type="button" class="chat-reminder-action">' + escapeHtml(currentCopy("goReport")) + '</button></p>' +
+        '</div>' +
         '</div>');
       card.setAttribute("role", "note");
       card.setAttribute("aria-labelledby", "chatModeReminderTitle");
       var actionBtn = card.querySelector(".chat-reminder-action");
       if (actionBtn) actionBtn.addEventListener("click", _goReportFromReminder);
+      var toggleBtn = card.querySelector(".chat-reminder-toggle");
+      if (toggleBtn) toggleBtn.addEventListener("click", function () {
+        _setReminderCollapsed(card, !card.classList.contains("collapsed"));
+      });
       if (log.insertBefore) log.insertBefore(card, log.firstChild || null);
     } catch (e) {}
   }
