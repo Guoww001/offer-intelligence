@@ -280,6 +280,7 @@
     try {
       const session = await fetchJson("/api/auth/session");
       window.__OI_LLM_ENABLED = session.llmEnabled !== false;
+      window.__OI_AGENT_ENABLED = session.agentEnabled !== false;
       await unlockDashboard();
     } catch (error) {
       if (error.status === 503) {
@@ -308,6 +309,7 @@
         })
       });
       window.__OI_LLM_ENABLED = loginResult.llmEnabled !== false;
+      window.__OI_AGENT_ENABLED = loginResult.agentEnabled !== false;
       if (password) password.value = "";
       await unlockDashboard();
     } catch (error) {

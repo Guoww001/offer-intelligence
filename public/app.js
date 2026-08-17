@@ -5574,7 +5574,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     }
     // Try fuzzy match via existing lookup
     var matches = findMerchantMatches(name);
-    if (matches && matches.length) return matches[0];
+    if (matches && matches.length) return matches[0].offer;
     return null;
   }
 
@@ -12788,6 +12788,416 @@ var _NUMERIC_COL_PATTERNS = [
   }
   // renderDeepReport 和 deepSummaryHtml 已移至 _renderPanelReport 和 _deepPanelSummaryHtml
 
+  // ════════════════════════════════════════════════════════
+  // Chat Agent：工具注册表 + 结果压缩 + 步骤卡片 + 流式回复
+  // ════════════════════════════════════════════════════════
+  var AGENT_MAX_PLANNING_ROUNDS = 2;
+  var AGENT_MAX_TOOL_CALLS = 6;
+  var AGENT_MAX_TOOLS_PER_ROUND = 4;
+  var AGENT_MAX_RESULT_CHARS = 6000;
+
+  var AGENT_METRIC_NOTE_ZH = "口径：EPC(Aff)=affCommission/clicks；AFF Comm%=affCommission/salesAmount*100；CVR=conversionRate*100。样本门槛：EPC/CVR 需 clicks≥100，AOV/AFF Comm% 需 orders≥10；样本不足不参与百分位与强弱项。百分位≥70 为亮点、≤30 为短板。以上数值为最终计算结果，请直接引用，不要重新计算或外推新排名。";
+  var AGENT_METRIC_NOTE_EN = "Metrics: EPC(Aff)=affCommission/clicks; AFF Comm%=affCommission/salesAmount*100; CVR=conversionRate*100. Sample gates: EPC/CVR need clicks>=100, AOV/AFF Comm% need orders>=10; below-gate samples get no percentile. Percentile>=70 highlight, <=30 weakness. Values are final computed results; quote them, do not recompute or extrapolate.";
+
+  function agentStepCopy(language) {
+    var zh = language !== "en";
+    return {
+      planning: zh ? "正在规划分析步骤…" : "Planning analysis steps…",
+      running: zh ? "正在生成" : "Generating",
+      reportDone: zh ? "报告完成" : "report ready",
+      failed: zh ? "失败" : "failed",
+      fallbackNote: zh ? "数据获取失败，已降级为通用回答。" : "Data fetch failed; fell back to a generic answer."
+    };
+  }
+
+  function renderAgentStepCard(chatLogEl, payload) {
+    var card = document.createElement("div");
+    card.className = "agent-step agent-step-" + (payload.status || "running");
+    var icon = payload.status === "done" ? "✓" : (payload.status === "error" ? "✗" : "⋯");
+    card.innerHTML = '<span class="agent-step-icon">' + icon + '</span><span class="agent-step-text">' +
+      escapeHtml(payload.text || "") + '</span>';
+    chatLogEl.appendChild(card);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    return card;
+  }
+
+  function agentRoundNumber(value) {
+    if (value === null || value === undefined || typeof value !== "number") return value;
+    return Math.round(value * 1000) / 1000;
+  }
+
+  function agentRoundMetrics(metrics) {
+    var out = {};
+    Object.keys(metrics || {}).forEach(function (k) { out[k] = agentRoundNumber(metrics[k]); });
+    return out;
+  }
+
+  function compactAgentToolResult(toolName, summary, language) {
+    var note = language === "en" ? AGENT_METRIC_NOTE_EN : AGENT_METRIC_NOTE_ZH;
+    if (toolName === "merchant_analysis") {
+      var target = summary.target || {};
+      var out = {
+        tool: "merchant_analysis",
+        merchant: target.name || "Unknown",
+        tier: target.tier || "Unknown",
+        category: target.category || "Uncategorized",
+        metrics: agentRoundMetrics(summary.metrics || {}),
+        ranks: {},
+        comparisons: {},
+        strengths: summary.strengths || [],
+        weaknesses: summary.weaknesses || [],
+        paymentRisk: summary.paymentRisk || null,
+        peers: (summary.peers || []).slice(0, 3).map(function (p) {
+          return { name: p.name, metrics: agentRoundMetrics(p.metrics || {}) };
+        })
+      };
+      Object.keys(summary.ranks || {}).forEach(function (f) {
+        var r = summary.ranks[f];
+        out.ranks[f] = {
+          value: agentRoundNumber(r.value),
+          percentile: r.percentile === null || r.percentile === undefined ? null : Math.round(r.percentile),
+          sampleEligible: !!r.sampleEligible,
+          totalInCategory: r.totalInCategory || 0
+        };
+      });
+      ["vsCategory", "vsTier", "vsGlobal"].forEach(function (group) {
+        out.comparisons[group] = {};
+        Object.keys((summary.comparisons || {})[group] || {}).forEach(function (f) {
+          var row = summary.comparisons[group][f];
+          out.comparisons[group][f] = {
+            self: agentRoundNumber(row.self),
+            avg: agentRoundNumber(row.avg),
+            delta: row.delta === null || row.delta === undefined ? null : Math.round(row.delta)
+          };
+        });
+      });
+      out.headline = out.merchant + "（" + out.category + " · " + out.tier + "）";
+      out.note = note;
+      if (JSON.stringify(out).length > AGENT_MAX_RESULT_CHARS) {
+        out.peers = out.peers.slice(0, 1);
+        delete out.comparisons.vsGlobal;
+      }
+      return out;
+    }
+    if (toolName === "category_analysis") {
+      var t2 = summary.target || {};
+      var agg = summary.aggregates || {};
+      var out2 = {
+        tool: "category_analysis",
+        category: t2.name || "Unknown",
+        merchantCount: t2.merchantCount !== undefined && t2.merchantCount !== null ? t2.merchantCount : agg.merchantCount,
+        tierDistribution: t2.tierDistribution || {},
+        aggregates: agentRoundMetrics(agg),
+        vsGlobal: summary.vsGlobal || {},
+        topMerchants: (summary.topMerchants || []).slice(0, 5)
+      };
+      out2.headline = out2.category + "（" + out2.merchantCount + " 个商户）";
+      out2.note = note;
+      if (JSON.stringify(out2).length > AGENT_MAX_RESULT_CHARS) {
+        out2.topMerchants = out2.topMerchants.slice(0, 3);
+      }
+      return out2;
+    }
+    return summary;
+  }
+
+  function agentExecuteTool(name, args) {
+    args = args || {};
+    if (name === "merchant_analysis") {
+      var merchant = typeof args.merchant === "string" ? args.merchant.trim().slice(0, 80) : "";
+      if (!merchant) return { ok: false, error: "merchant 参数缺失" };
+      var lowerName = merchant.toLowerCase().replace(/\s+/g, " ").trim();
+      var exactOffer = offers.filter(function (o) {
+        return normalizedOfferName(o, "brand") === lowerName ||
+          normalizedOfferName(o, "merchantName") === lowerName ||
+          String(o.merchantId || "").trim() === merchant;
+      })[0];
+      // 简称/带后缀名称走包含匹配（如 "Shokz" → "Shokz Official"），
+      // 但不启用 fuzzy 层，避免垃圾字符串误命中。
+      var containedOffer = exactOffer || offers.filter(function (o) {
+        return normalizedOfferName(o, "brand").indexOf(lowerName) !== -1 ||
+          normalizedOfferName(o, "merchantName").indexOf(lowerName) !== -1;
+      })[0];
+      if (!containedOffer) return { ok: false, error: "未找到商户 '" + merchant + "'" };
+      var summary = analyzeMerchant(merchant);
+      if (!summary) return { ok: false, error: "未找到商户 '" + merchant + "'" };
+      return { ok: true, data: compactAgentToolResult("merchant_analysis", summary, state.language || "zh") };
+    }
+    if (name === "category_analysis") {
+      var category = typeof args.category === "string" ? args.category.trim().slice(0, 80) : "";
+      if (!category) return { ok: false, error: "category 参数缺失" };
+      var catSummary = analyzeCategory(category);
+      if (!catSummary) return { ok: false, error: "未找到品类 '" + category + "'" };
+      return { ok: true, data: compactAgentToolResult("category_analysis", catSummary, state.language || "zh") };
+    }
+    return { ok: false, error: "未知工具 '" + name + "'" };
+  }
+
+  function agentToolDefinitions() {
+    return [
+      {
+        name: "merchant_analysis",
+        description: "获取单个商户的核心指标及其在同品类中的百分位、品类/Tier/全站均值对比、强弱项、Top3 同行(Peer)和付款风险。参数 merchant 为品牌名或商户ID。",
+        parameters: {
+          type: "object",
+          properties: { merchant: { type: "string", description: "商户品牌名或商户ID，如 Shokz" } },
+          required: ["merchant"]
+        }
+      },
+      {
+        name: "category_analysis",
+        description: "获取某个品类的汇总统计：商户数、总Sales/Commission/Orders、平均EPC/AOV/CVR/佣金率、Tier分布、vs全站对比、按佣金排序的Top5商户。参数 category 为品类名。",
+        parameters: {
+          type: "object",
+          properties: { category: { type: "string", description: "品类名，如 Electronics / 美妆" } },
+          required: ["category"]
+        }
+      }
+    ];
+  }
+
+  async function streamAssistantReply(requestBody, opts) {
+    // opts: {chatLogEl, language, viewContext:{prompt, recommendationResult}, onError}
+    var language = opts.language || "zh";
+    var chatLogEl = opts.chatLogEl;
+    var loadingText = language === "zh" ? "正在思考…" : "Thinking…";
+    var loadingMsg = document.createElement("div");
+    loadingMsg.className = "message assistant loading-indicator";
+    loadingMsg.textContent = loadingText;
+    chatLogEl.appendChild(loadingMsg);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+
+    var responseStream;
+    try {
+      responseStream = await fetch("/api/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (error) {
+      loadingMsg.remove();
+      if (opts.onError) opts.onError(error);
+      return { ok: false, error: error };
+    }
+    loadingMsg.remove();
+
+    if (!responseStream.ok) {
+      var httpError = new Error("HTTP " + responseStream.status);
+      if (opts.onError) opts.onError(httpError);
+      return { ok: false, error: httpError };
+    }
+
+    var msgEl = document.createElement("div");
+    msgEl.className = "message assistant";
+    var msgContent = document.createElement("div");
+    msgContent.className = "chat-stream-text";
+    msgEl.appendChild(msgContent);
+    var statusBar = document.createElement("div");
+    statusBar.className = "chat-stream-status";
+    msgEl.appendChild(statusBar);
+    chatLogEl.appendChild(msgEl);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+
+    var tokenCount = 0;
+    var fullResponse = "";
+    var streamHadError = false;
+    var streamStartTime = Date.now();
+    var thinkingZh = ["思考中", "分析中", "处理中", "生成中", "整合中"];
+    var thinkingEn = ["thinking", "analyzing", "processing", "generating", "compiling"];
+    var thinkIdx = 0;
+    var thinkTicks = 0;
+    var timerTick = setInterval(function () {
+      var e = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+      thinkTicks++;
+      if (thinkTicks % 30 === 0) {
+        thinkIdx = (thinkIdx + 1) % (language === "zh" ? thinkingZh.length : thinkingEn.length);
+      }
+      var word = language === "zh" ? thinkingZh[thinkIdx] : thinkingEn[thinkIdx];
+      var timeUnit = language === "zh" ? "秒" : "s";
+      statusBar.textContent = "\u23f1 " + e + timeUnit + " \u00b7 " + word + "…";
+    }, 100);
+
+    try {
+      var reader = responseStream.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = "";
+      var doneReading = false;
+
+      while (!doneReading) {
+        var readResult = await reader.read();
+        if (readResult.done) break;
+        buffer += decoder.decode(readResult.value, { stream: true });
+        var lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (var j = 0; j < lines.length; j++) {
+          var line = lines[j];
+          if (line.startsWith("data: ")) {
+            var payload = line.slice(6).trim();
+            if (payload === "[DONE]") { doneReading = true; break; }
+            try {
+              var parsed = JSON.parse(payload);
+              if (parsed.token) {
+                msgContent.textContent += parsed.token;
+                fullResponse += parsed.token;
+                tokenCount++;
+                chatLogEl.scrollTop = chatLogEl.scrollHeight;
+              }
+              if (parsed.error) streamHadError = true;
+            } catch (e) { /* skip malformed SSE */ }
+          }
+        }
+      }
+    } catch (error) {
+      streamHadError = true;
+      if (opts.onError) opts.onError(error);
+    } finally {
+      clearInterval(timerTick);
+    }
+    if (fullResponse.trim()) {
+      var renderedHtml = markdownToHtml(fullResponse);
+      if (renderedHtml) msgContent.innerHTML = renderedHtml;
+    }
+    var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+    statusBar.textContent = language === "zh"
+      ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
+      : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens";
+    if (fullResponse && fullResponse.trim() && opts.viewContext) {
+      var viewBtn = document.createElement("button");
+      viewBtn.className = "chat-to-deep-btn";
+      viewBtn.textContent = language === "zh" ? "转为 View" : "Open as View";
+      viewBtn._chatPrompt = opts.viewContext.prompt;
+      viewBtn._fullResponse = fullResponse;
+      viewBtn._recommendationResult = opts.viewContext.recommendationResult;
+      viewBtn.addEventListener("click", function (e) {
+        var btn = e.currentTarget;
+        var _prompt = btn._chatPrompt || "";
+        var _html = btn._fullResponse ? '<div class="chat-stream-text">' + markdownToHtml(btn._fullResponse) + '</div>' : "";
+        if (!_html) return;
+        var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
+        if (existing && existing._hidden) {
+          _showDeepPanel(existing.id);
+        } else if (existing) {
+          _bringPanelToFront(existing);
+        } else {
+          var p = _createDeepPanel(_prompt);
+          p._mode = "chat";
+          p.el.classList.add("source-chat");
+          p._viewBtn = btn;
+          _showQuickResultInDeepPanel(p, _html, _prompt, {
+            recommendationResult: btn._recommendationResult
+          });
+        }
+      });
+      statusBar.appendChild(viewBtn);
+    }
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    var ok = !!fullResponse.trim() && !streamHadError;
+    return { ok: ok, fullResponse: fullResponse, msgEl: msgEl, statusBar: statusBar };
+  }
+
+  async function runChatAgent(prompt, opts) {
+    var language = opts.language || "zh";
+    var chatLogEl = opts.chatLogEl;
+    var copy = agentStepCopy(language);
+    var memoryText = opts.memoryText || "";
+    var history = opts.history || [];
+
+    var messages = [];
+    if (memoryText) messages.push({ role: "user", content: "[上下文]\n" + memoryText });
+    var historyTrimmed = history.slice(-8);
+    for (var i = 0; i < historyTrimmed.length; i++) {
+      messages.push({ role: historyTrimmed[i].role, content: historyTrimmed[i].content });
+    }
+    messages.push({ role: "user", content: prompt });
+
+    var toolCallsTotal = 0;
+    var toolResults = [];
+
+    for (var round = 0; round < AGENT_MAX_PLANNING_ROUNDS; round++) {
+      var planCard = renderAgentStepCard(chatLogEl, { status: "running", text: copy.planning });
+      var plan;
+      try {
+        var planResp = await fetch("/api/chat/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: messages, tools: agentToolDefinitions(), language: language })
+        });
+        plan = planResp.ok ? await planResp.json() : { ok: false, error: "HTTP " + planResp.status };
+      } catch (error) {
+        plan = { ok: false, error: String((error && error.message) || error) };
+      }
+      if (planCard.remove) planCard.remove();
+
+      if (!plan || plan.ok !== true || !Array.isArray(plan.toolCalls) || !plan.toolCalls.length) {
+        if (plan && typeof plan.content === "string" && plan.content.trim()) {
+          return { handled: true, ok: true, directContent: plan.content };
+        }
+        return { handled: false, error: plan && plan.error };
+      }
+
+      var calls = plan.toolCalls.slice(0, AGENT_MAX_TOOLS_PER_ROUND);
+      var results = await Promise.all(calls.map(async function (call) {
+        if (toolCallsTotal >= AGENT_MAX_TOOL_CALLS) return null;
+        toolCallsTotal++;
+        var kind = call.name === "category_analysis" ? "品类" : "商户";
+        var card = renderAgentStepCard(chatLogEl, { status: "running", text: copy.running + " " + kind + "报告…" });
+        var result = agentExecuteTool(call.name, call.arguments || {});
+        var text = result.ok
+          ? ("✓ " + kind + copy.reportDone + "：" + result.data.headline)
+          : ("✗ " + copy.failed + "：" + result.error);
+        card.className = "agent-step " + (result.ok ? "agent-step-done" : "agent-step-error");
+        card.innerHTML = '<span class="agent-step-icon">' + (result.ok ? "✓" : "✗") + '</span><span class="agent-step-text">' + escapeHtml(text) + '</span>';
+        return { id: call.id, name: call.name, result: result };
+      }));
+
+      var finished = results.filter(function (r) { return r !== null; });
+      finished.forEach(function (r) { toolResults.push(r); });
+      var allOk = finished.every(function (r) { return r.result.ok; });
+      if (allOk) break;
+
+      var failedCount = finished.filter(function (r) { return !r.result.ok; }).length;
+      for (var f = 0; f < finished.length; f++) {
+        var item = finished[f];
+        var content = item.result.ok
+          ? ("工具 " + item.name + " 结果：\n" + JSON.stringify(item.result.data))
+          : ("工具 " + item.name + " 失败：" + item.result.error);
+        messages.push({ role: "user", content: content });
+      }
+      messages.push({
+        role: "user",
+        content: "有 " + failedCount + " 个工具失败。请修正参数后重试（这是最后一轮），或停止调用工具并基于已有结果回答。"
+      });
+    }
+
+    var synthMessages = [];
+    if (memoryText) synthMessages.push({ role: "user", content: "[上下文]\n" + memoryText });
+    var historyTrimmed = history.slice(-8);
+    for (var h = 0; h < historyTrimmed.length; h++) {
+      synthMessages.push({ role: historyTrimmed[h].role, content: historyTrimmed[h].content });
+    }
+    synthMessages.push({ role: "user", content: prompt });
+    if (toolResults.length) {
+      var resultsBlock = toolResults.map(function (r) {
+        return r.result.ok
+          ? ("工具 " + r.name + " 结果：\n" + JSON.stringify(r.result.data))
+          : ("工具 " + r.name + " 失败：" + r.result.error);
+      }).join("\n---\n");
+      synthMessages.push({ role: "user", content: "工具执行结果：\n" + resultsBlock + "\n\n请基于以上工具结果回答最初的问题；工具失败的部分请如实说明。" });
+    }
+
+    var reply = await streamAssistantReply(
+      { messages: synthMessages, language: language },
+      {
+        chatLogEl: chatLogEl,
+        language: language,
+        viewContext: opts.viewContext || null,
+        onError: opts.onError || null
+      }
+    );
+    if (!reply.ok) return { handled: true, ok: false, error: reply.error || "stream error" };
+    return { handled: true, ok: true, fullResponse: reply.fullResponse, statusBar: reply.statusBar };
+  }
+
   async function applyPrompt(prompt) {
     const submittedPrompt = prompt;
     var isDeep = state.deepMode;
@@ -12816,13 +13226,6 @@ var _NUMERIC_COL_PATTERNS = [
       _chatLog.appendChild(_userMsg);
       _chatLog.scrollTop = _chatLog.scrollHeight;
 
-      const loadingText = language === "zh" ? "正在思考…" : "Thinking…";
-      var loadingMsg = document.createElement("div");
-      loadingMsg.className = "message assistant loading-indicator";
-      loadingMsg.textContent = loadingText;
-      _chatLog.appendChild(loadingMsg);
-      _chatLog.scrollTop = _chatLog.scrollHeight;
-
       // 记忆上下文
       var memoryText = null;
       if (state.reportMemory.length > 0) {
@@ -12834,167 +13237,87 @@ var _NUMERIC_COL_PATTERNS = [
       memoryText = appendChatMemoryRecommendationContext(memoryText, chatRecommendationResult);
 
       try {
-        var responseStream = await fetch("/api/chat/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: prompt,
-            memory: memoryText,
-            language: language,
-            history: state.chatHistory.slice(0, -1)
-          })
+      if (state.agentEnabled !== false) {
+        var agentOutcome = await runChatAgent(prompt, {
+          language: language,
+          chatLogEl: _chatLog,
+          memoryText: memoryText,
+          history: state.chatHistory.slice(0, -1),
+          viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
+          onError: null
         });
-        loadingMsg.remove();
-
-        if (!responseStream.ok) {
-          var _failMsg = document.createElement("div");
-          _failMsg.className = "message assistant";
-          _failMsg.textContent = language === "zh" ? "请求失败，请稍后重试。" : "Request failed, please retry.";
-          _chatLog.appendChild(_failMsg);
-          _chatLog.scrollTop = _chatLog.scrollHeight;
-          completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
-          return;
-        }
-
-        var msgEl = document.createElement("div");
-        msgEl.className = "message assistant";
-        var msgContent = document.createElement("div");
-        msgContent.className = "chat-stream-text";
-        msgEl.appendChild(msgContent);
-        var statusBar = document.createElement("div");
-        statusBar.className = "chat-stream-status";
-        msgEl.appendChild(statusBar);
-        _chatLog.appendChild(msgEl);
-        _chatLog.scrollTop = _chatLog.scrollHeight;
-
-        var tokenCount = 0;
-        var fullResponse = "";
-        var streamHadError = false;
-        var streamStartTime = Date.now();
-
-        var thinkingZh = ["思考中", "分析中", "处理中", "生成中", "整合中"];
-        var thinkingEn = ["thinking", "analyzing", "processing", "generating", "compiling"];
-        var thinkIdx = 0;
-        var thinkTicks = 0;
-        var timerTick = setInterval(function () {
-          var e = ((Date.now() - streamStartTime) / 1000).toFixed(1);
-          thinkTicks++;
-          if (thinkTicks % 30 === 0) {
-            thinkIdx = (thinkIdx + 1) % (language === "zh" ? thinkingZh.length : thinkingEn.length);
+        if (agentOutcome && agentOutcome.handled) {
+          if (agentOutcome.directContent) {
+            var directMsg = document.createElement("div");
+            directMsg.className = "message assistant";
+            directMsg.innerHTML = markdownToHtml(agentOutcome.directContent) || escapeHtml(agentOutcome.directContent);
+            _chatLog.appendChild(directMsg);
+            _chatLog.scrollTop = _chatLog.scrollHeight;
+            state.chatHistory.push({ role: "assistant", content: agentOutcome.directContent });
+            completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+            return;
           }
-          var word = language === "zh" ? thinkingZh[thinkIdx] : thinkingEn[thinkIdx];
-          var timeUnit = language === "zh" ? "秒" : "s";
-          statusBar.textContent = "\u23f1 " + e + timeUnit + " \u00b7 " + word + "…";
-        }, 100);
+          if (agentOutcome.ok) {
+            state.chatHistory.push({ role: "assistant", content: agentOutcome.fullResponse });
+            var agentQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+            attachAnswerFeedbackButton(agentOutcome.statusBar, {
+              questionPromise: agentQuestionCompletion,
+              questionEventId: questionEventId,
+              mode: "chat",
+              prompt: prompt,
+              language: language,
+              intent: questionLogIntent,
+              getAnswer: function () { return agentOutcome.fullResponse; }
+            });
+            return;
+          }
+          // agent 综合失败 → 继续走下方单发 fallback
+        }
+      }
 
-        var reader = responseStream.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
-        var doneReading = false;
-
-        while (!doneReading) {
-          var readResult = await reader.read();
-          if (readResult.done) break;
-          buffer += decoder.decode(readResult.value, { stream: true });
-          var lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (var j = 0; j < lines.length; j++) {
-            var line = lines[j];
-            if (line.startsWith("data: ")) {
-              var payload = line.slice(6).trim();
-              if (payload === "[DONE]") { doneReading = true; break; }
-              try {
-                var parsed = JSON.parse(payload);
-                if (parsed.token) {
-                  msgContent.textContent += parsed.token;
-                  fullResponse += parsed.token;
-                  tokenCount++;
-                  _chatLog.scrollTop = _chatLog.scrollHeight;
-                }
-                if (parsed.error) streamHadError = true;
-              } catch (e) { /* skip malformed SSE */ }
-            }
+      var replyOutcome = await streamAssistantReply(
+        { prompt: prompt, memory: memoryText, language: language, history: state.chatHistory.slice(0, -1) },
+        {
+          chatLogEl: _chatLog,
+          language: language,
+          viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
+          onError: function (error) {
+            var _errMsg = document.createElement("div");
+            _errMsg.className = "message assistant";
+            _errMsg.textContent = (language === "zh" ? "网络错误，请稍后重试。" : "Network error, please retry.")
+              + " (" + (error.message || "") + ")";
+            _chatLog.appendChild(_errMsg);
+            _chatLog.scrollTop = _chatLog.scrollHeight;
           }
         }
-
-        state.chatHistory.push({ role: "assistant", content: fullResponse });
-        clearInterval(timerTick);
-        
-
-        // 流式完成后将 Markdown 渲染为 HTML
-        if (fullResponse.trim()) {
-          var renderedHtml = markdownToHtml(fullResponse);
-          if (renderedHtml) {
-            msgContent.innerHTML = renderedHtml;
-          }
-        }
-        var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
-        statusBar.textContent = language === "zh"
-          ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
-          : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens";
-        // ── 追加「转为 View」按钮 ──
-        if (fullResponse && fullResponse.trim()) {
-          var viewBtn = document.createElement("button");
-          viewBtn.className = "chat-to-deep-btn";
-          viewBtn.textContent = language === "zh" ? "转为 View" : "Open as View";
-          viewBtn._chatPrompt = prompt;
-          viewBtn._fullResponse = fullResponse;
-          viewBtn._recommendationResult = chatRecommendationResult;
-          viewBtn.addEventListener("click", function (e) {
-            var btn = e.currentTarget;
-            var _prompt = btn._chatPrompt || "";
-            // Chat Mode View: 用 .chat-stream-text 包裹，确保深层面板内渲染样式与聊天一致
-            var _html = btn._fullResponse ? '<div class="chat-stream-text">' + markdownToHtml(btn._fullResponse) + '</div>' : "";
-            if (!_html) return;
-            // 查找是否已有与此按钮关联的面板
-            var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
-            if (existing && existing._hidden) {
-              _showDeepPanel(existing.id);
-            } else if (existing) {
-              _bringPanelToFront(existing);
-            } else {
-              var p = _createDeepPanel(_prompt);
-              p._mode = "chat";
-              p.el.classList.add("source-chat");
-              p._viewBtn = btn;
-              _showQuickResultInDeepPanel(p, _html, _prompt, {
-                recommendationResult: btn._recommendationResult
-              });
-            }
-          });
-          statusBar.appendChild(viewBtn);
-        }
-        _chatLog.scrollTop = _chatLog.scrollHeight;
-        var chatAnswerSucceeded = fullResponse.trim() && !streamHadError;
-        var chatQuestionCompletion = completeQuestionLog(
-          questionLogPromise,
-          chatAnswerSucceeded ? "success" : "failed",
-          questionLogIntent
-        );
-        if (chatAnswerSucceeded) {
-          attachAnswerFeedbackButton(statusBar, {
-            questionPromise: chatQuestionCompletion,
-            questionEventId,
-            mode: "chat",
-            prompt,
-            language,
-            intent: questionLogIntent,
-            getAnswer: function () { return fullResponse; }
-          });
-        }
+      );
+      if (!replyOutcome.ok) {
+        completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        return;
+      }
+      state.chatHistory.push({ role: "assistant", content: replyOutcome.fullResponse });
+      var chatQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+      attachAnswerFeedbackButton(replyOutcome.statusBar, {
+        questionPromise: chatQuestionCompletion,
+        questionEventId: questionEventId,
+        mode: "chat",
+        prompt: prompt,
+        language: language,
+        intent: questionLogIntent,
+        getAnswer: function () { return replyOutcome.fullResponse; }
+      });
+      return;
       } catch (error) {
-        loadingMsg.remove();
-        console.error("[chat-stream] fetch error:", error);
-        var _errMsg = document.createElement("div");
-        _errMsg.className = "message assistant";
-        _errMsg.textContent = (language === "zh" ? "网络错误，请稍后重试。" : "Network error, please retry.")
-          + " (" + (error.message || "") + ")";
-        _chatLog.appendChild(_errMsg);
+        console.error("[chat-agent] applyPrompt error:", error);
+        var _agentErrMsg = document.createElement("div");
+        _agentErrMsg.className = "message assistant";
+        _agentErrMsg.textContent = (language === "zh" ? "处理过程出错，请稍后重试。" : "Something went wrong, please retry.")
+          + " (" + (error && error.message || "unknown") + ")";
+        _chatLog.appendChild(_agentErrMsg);
         _chatLog.scrollTop = _chatLog.scrollHeight;
         completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        return;
       }
-      return;
     }
 
     // ════════════════════════════════════════
@@ -23744,6 +24067,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
+    state.agentEnabled = window.__OI_AGENT_ENABLED !== false;
 
     // 模式切换
     els.chatModeToggle = document.getElementById("chatModeToggle");
@@ -24966,6 +25290,13 @@ var _NUMERIC_COL_PATTERNS = [
 
   if (window.__OFFER_INTELLIGENCE_TEST__) {
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
+      agentToolDefinitions,
+      agentExecuteTool,
+      compactAgentToolResult,
+      runChatAgent,
+      firstOfferName: function () {
+        return offers.length ? (offers[0].brand || offers[0].merchantName || "") : "";
+      },
       setLanguage: function(lang) { state.language = lang; },
       switchToChatMode: _switchToChatMode,
       switchToReportMode: _switchToReportMode,

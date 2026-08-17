@@ -3968,6 +3968,26 @@ body.dashboard-mode[data-dash-theme="light"] .report-mode-guide {
   white-space: nowrap;
 }
 
+/* ── Chat Agent 步骤卡片 ── */
+.agent-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  border: 1px solid var(--oi-border, #e2e8f0);
+  background: var(--oi-surface, #f8fafc);
+  color: var(--oi-text, #334155);
+}
+.agent-step-running { border-color: var(--oi-accent, #2563eb); background: var(--oi-accent-soft, #eff6ff); }
+.agent-step-done { border-color: var(--oi-success, #16a34a); background: var(--oi-success-soft, #f0fdf4); }
+.agent-step-error { border-color: var(--oi-danger, #dc2626); background: var(--oi-danger-soft, #fef2f2); }
+.agent-step-icon { flex: 0 0 auto; font-weight: 700; }
+.agent-step-text { overflow-wrap: anywhere; }
+
 /* ═══════════════════════════════════════
    Chat Input — Double-Bezel + Button-in-Button
    ═══════════════════════════════════════ */

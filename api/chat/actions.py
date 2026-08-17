@@ -1,10 +1,11 @@
 from http.server import BaseHTTPRequestHandler
 
 from auth import _read_json_body, require_auth, send_json
+from chat_agent_http import handle_agent_request
 from llm_classify import classify_intent, generate_analysis_text
 
 
-CHAT_ROUTES = {"analyze", "classify"}
+CHAT_ROUTES = {"analyze", "classify", "agent"}
 
 
 def handle_analyze(target):
@@ -81,6 +82,8 @@ def dispatch_request(target, method, route):
 
     if route == "classify":
         handle_classify(target)
+    elif route == "agent":
+        handle_agent_request(target)
     else:
         handle_analyze(target)
 

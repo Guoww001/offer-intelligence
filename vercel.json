@@ -220,6 +220,18 @@
           "args": "analyze"
         }
       ]
+    },
+    {
+      "src": "^/api/chat/agent/?$",
+      "dest": "/api/chat/actions",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-chat-route" },
+          "args": "agent"
+        }
+      ]
     }
   ],
   "functions": {

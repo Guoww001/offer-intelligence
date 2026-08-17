@@ -1,0 +1,129 @@
+"""Shared HTTP handling for the Chat Mode agent planning endpoint.
+
+Imported by both server.py (local) and api/chat/actions.py (Vercel), following
+the chatbot_question_log_http.py pattern.  Callers perform require_auth().
+"""
+
+from __future__ import annotations
+
+from auth import _read_json_body, send_json
+from llm_provider import call_llm_tools
+
+AGENT_MAX_REQUEST_BYTES = 32768
+AGENT_PLAN_TIMEOUT_SECONDS = 30.0
+
+PLANNING_PROMPT_ZH = (
+    "你是一个亚马逊联盟营销数据分析助手，可以调用工具获取数据报告。\n"
+    "规则：\n"
+    "1. 只有当用户问题需要具体数据（商户指标、品类统计）时才调用工具；闲聊、概念问题直接回答。\n"
+    "2. 相互独立的工具调用必须在同一次回复中并行给出。\n"
+    "3. 从用户话语中提取工具参数；不确定商户名或品类名时仍调用工具，工具会返回\"未找到\"。\n"
+    "4. 不要编造数值；工具结果中的数值是最终值，直接引用。"
+)
+
+PLANNING_PROMPT_EN = (
+    "You are an Amazon affiliate marketing data analysis assistant that can call tools to fetch data reports.\n"
+    "Rules:\n"
+    "1. Only call tools when the question needs concrete data (merchant metrics, category statistics); answer chit-chat and conceptual questions directly.\n"
+    "2. Independent tool calls must be issued in parallel in a single reply.\n"
+    "3. Extract tool arguments from the user's words; when unsure about a merchant or category name, still call the tool — it will report \"not found\".\n"
+    "4. Never invent numbers; values in tool results are final, quote them."
+)
+
+SYNTHESIS_PROMPT_ZH = (
+    "你是一个亚马逊联盟营销数据分析助手。\n"
+    "对话中包含了工具（数据分析函数）的执行结果，请基于这些结果回答用户最初的问题。\n"
+    "先给出结论，再用 Markdown 表格展示关键数据，表格前后用一两句话补充说明。\n"
+    "工具结果中的数值是计算好的最终值，直接引用，不要重新计算或外推新排名。\n"
+    "某个工具失败时，如实说明该部分数据缺失，不得编造。"
+)
+
+SYNTHESIS_PROMPT_EN = (
+    "You are an Amazon affiliate marketing data analysis assistant.\n"
+    "The conversation contains tool (data analysis function) results; answer the user's original question based on them.\n"
+    "Lead with the conclusion, then present key numbers in Markdown tables with one or two sentences of context.\n"
+    "Values in tool results are final computed values; quote them and do not recompute or extrapolate new rankings.\n"
+    "When a tool failed, state plainly that this part of the data is missing; do not fabricate."
+)
+
+
+def agent_planning_system_prompt(language: str) -> str:
+    return PLANNING_PROMPT_EN if language == "en" else PLANNING_PROMPT_ZH
+
+
+def agent_synthesis_system_prompt(language: str) -> str:
+    return SYNTHESIS_PROMPT_EN if language == "en" else SYNTHESIS_PROMPT_ZH
+
+
+def _validated_agent_body(body) -> tuple[dict | None, str | None]:
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None, "messages must be a non-empty array"
+    cleaned = []
+    for msg in messages:
+        if not isinstance(msg, dict) or not isinstance(msg.get("content"), str):
+            return None, "each message must have a string content"
+        cleaned.append({"role": str(msg.get("role") or "user"), "content": msg["content"]})
+    tools = body.get("tools")
+    if not isinstance(tools, list):
+        return None, "tools must be an array"
+    cleaned_tools = []
+    for tool in tools:
+        if not isinstance(tool, dict) or not tool.get("name"):
+            return None, "each tool must have a name"
+        cleaned_tools.append(
+            {
+                "name": str(tool["name"]),
+                "description": str(tool.get("description") or ""),
+                "parameters": tool.get("parameters") if isinstance(tool.get("parameters"), dict) else {"type": "object", "properties": {}},
+            }
+        )
+    return {"messages": cleaned, "tools": cleaned_tools}, None
+
+
+def handle_agent_request(target) -> None:
+    length = int(target.headers.get("Content-Length") or 0)
+    if length <= 0 or length > AGENT_MAX_REQUEST_BYTES:
+        send_json(target, 400, {"ok": False, "error": "Request body is too large"})
+        return
+    try:
+        body = _read_json_body(target)
+    except Exception:
+        send_json(target, 400, {"ok": False, "error": "Invalid JSON body"})
+        return
+    if not isinstance(body, dict):
+        send_json(target, 400, {"ok": False, "error": "JSON body must be an object"})
+        return
+
+    language = str(body.get("language") or "zh").strip()
+    if language not in ("en", "zh"):
+        language = "zh"
+
+    validated, error = _validated_agent_body(body)
+    if error:
+        send_json(target, 400, {"ok": False, "error": error})
+        return
+
+    request_messages = [{"role": "system", "content": agent_planning_system_prompt(language)}]
+    request_messages.extend(validated["messages"])
+
+    result = call_llm_tools(
+        request_messages,
+        validated["tools"],
+        max_tokens=400,
+        timeout=AGENT_PLAN_TIMEOUT_SECONDS,
+        temperature=0.1,
+    )
+    if result is None:
+        send_json(target, 200, {"ok": False, "error": "LLM unavailable"})
+        return
+    send_json(
+        target,
+        200,
+        {
+            "ok": True,
+            "content": result.get("content"),
+            "toolCalls": result.get("tool_calls") or [],
+            "finishReason": "tool_calls" if result.get("tool_calls") else "stop",
+        },
+    )

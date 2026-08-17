@@ -68,4 +68,8 @@ jobs:
           node scripts/test_sheet_categories.mjs
           node scripts/test_category_drilldown.mjs
           node scripts/test_zh_chatbot.mjs
+          python scripts/test_llm_agent.py
+          python scripts/test_agent_http.py
+          python scripts/test_agent_config.py
+          node scripts/test_chat_agent.mjs
           python scripts/test_payment_placeholders.py

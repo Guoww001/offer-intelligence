@@ -64,6 +64,7 @@ from offer_db import (
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
 from llm_provider import stream_chat
+from chat_agent_http import agent_synthesis_system_prompt, handle_agent_request
 
 
 from levanta_payments import (
@@ -191,6 +192,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.handle_llm_analyze()
             return
+        if parsed.path == "/api/chat/agent":
+            if not require_auth(self):
+                return
+            handle_agent_request(self)
+            return
         if parsed.path == "/api/chat/stream":
             if operation == "feedback":
                 handle_chatbot_answer_feedback(self, "POST")
@@ -263,14 +269,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"ok": False, "error": "Invalid JSON body"})
             return
 
+        language = str(body.get("language") or "zh").strip()
+        if language not in ("en", "zh"):
+            language = "zh"
+
+        messages = body.get("messages")
+        if isinstance(messages, list) and messages:
+            self._chat_stream_messages(messages, language)
+            return
+
         prompt = str(body.get("prompt") or "").strip()
         if not prompt:
             self.send_json(400, {"ok": False, "error": "prompt is required"})
             return
         memory = str(body.get("memory") or "").strip() or None
-        language = str(body.get("language") or "zh").strip()
-        if language not in ("en", "zh"):
-            language = "zh"
         history = body.get("history") or None
 
         # Build system prompt
@@ -324,6 +336,39 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[chat_stream] client disconnected: {prompt[:60]!r}", file=sys.stderr)
         except Exception as exc:
             print(f"[chat_stream] error: {exc}", file=sys.stderr)
+            try:
+                self.wfile.write(f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n".encode("utf-8"))
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass
+
+    def _chat_stream_messages(self, messages, language):
+        """SSE streaming for agent synthesis: full message list passthrough."""
+        system_prompt = agent_synthesis_system_prompt(language)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+
+            token_count = 0
+            for token in stream_chat("", system_prompt, max_tokens=2048, temperature=0.2, messages=messages):
+                if token:
+                    self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                    token_count += 1
+
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+            print(f"[chat_stream_messages] sent {token_count} tokens", file=sys.stderr)
+
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            print("[chat_stream_messages] client disconnected", file=sys.stderr)
+        except Exception as exc:
+            print(f"[chat_stream_messages] error: {exc}", file=sys.stderr)
             try:
                 self.wfile.write(f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n".encode("utf-8"))
                 self.wfile.write(b"data: [DONE]\n\n")

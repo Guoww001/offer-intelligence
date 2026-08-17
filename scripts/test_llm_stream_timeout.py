@@ -33,7 +33,8 @@ def main():
         assert_equal(llm_provider.stream_timeout(), 50.0, "invalid stream timeout fallback")
 
         source = (ROOT / "llm_provider.py").read_text(encoding="utf-8")
-        if source.count("max_retries=0") != 2:
+        stream_fn = source.split("def stream_chat(", 1)[1].split("\ndef ", 1)[0]
+        if stream_fn.count("max_retries=0") != 2:
             raise AssertionError("both streaming providers must disable automatic retries")
         if "deadline = time.monotonic() + timeout" not in source:
             raise AssertionError("streaming must enforce an application deadline")
