@@ -108,8 +108,8 @@ def _clean_text(value: Any, field_name: str, max_bytes: int, *, required: bool =
 
 def _clean_mode(value: Any) -> str:
     mode = str(value or "").strip().lower()
-    if mode not in {"report", "chat"}:
-        raise AnswerFeedbackValidationError("mode must be report or chat")
+    if mode not in {"report", "chat", "agent"}:
+        raise AnswerFeedbackValidationError("mode must be report, chat, or agent")
     return mode
 
 

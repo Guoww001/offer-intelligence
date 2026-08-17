@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 spec = importlib.util.spec_from_file_location("llm_provider", ROOT / "llm_provider.py")
 llm_provider = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(llm_provider)
+import chat_agent_http
 
 
 def test_normalize_deepseek_tool_calls():
@@ -86,8 +87,10 @@ def test_call_llm_tools_deepseek_payload():
     sys.modules["openai"] = fake_openai
     old_provider = os.environ.get("OI_LLM_PROVIDER")
     old_key = os.environ.get("DEEPSEEK_API_KEY")
+    old_model = os.environ.get("OI_LLM_MODEL_DEEPSEEK")
     os.environ["OI_LLM_PROVIDER"] = "deepseek"
     os.environ["DEEPSEEK_API_KEY"] = "test-key"
+    os.environ["OI_LLM_MODEL_DEEPSEEK"] = "deepseek-v4-flash"
     try:
         result = llm_provider.call_llm_tools(
             [{"role": "system", "content": "sys"}, {"role": "user", "content": "Shokz 表现"}],
@@ -103,6 +106,8 @@ def test_call_llm_tools_deepseek_payload():
         else: os.environ["OI_LLM_PROVIDER"] = old_provider
         if old_key is None: os.environ.pop("DEEPSEEK_API_KEY", None)
         else: os.environ["DEEPSEEK_API_KEY"] = old_key
+        if old_model is None: os.environ.pop("OI_LLM_MODEL_DEEPSEEK", None)
+        else: os.environ["OI_LLM_MODEL_DEEPSEEK"] = old_model
 
 
 def test_stream_chat_messages_passthrough():
@@ -131,8 +136,10 @@ def test_stream_chat_messages_passthrough():
     sys.modules["openai"] = SimpleNamespace(OpenAI=FakeOpenAI)
     old_provider = os.environ.get("OI_LLM_PROVIDER")
     old_key = os.environ.get("DEEPSEEK_API_KEY")
+    old_model = os.environ.get("OI_LLM_MODEL_DEEPSEEK")
     os.environ["OI_LLM_PROVIDER"] = "deepseek"
     os.environ["DEEPSEEK_API_KEY"] = "test-key"
+    os.environ["OI_LLM_MODEL_DEEPSEEK"] = "deepseek-v4-flash"
     try:
         tokens = list(llm_provider.stream_chat(
             "ignored",
@@ -145,12 +152,22 @@ def test_stream_chat_messages_passthrough():
         assert sent[1] == {"role": "user", "content": "Q"}
         assert sent[2] == {"role": "assistant", "content": "A"}
         assert len(sent) == 3  # user_message 未被追加
+        assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
     finally:
         del sys.modules["openai"]
         if old_provider is None: os.environ.pop("OI_LLM_PROVIDER", None)
         else: os.environ["OI_LLM_PROVIDER"] = old_provider
         if old_key is None: os.environ.pop("DEEPSEEK_API_KEY", None)
         else: os.environ["DEEPSEEK_API_KEY"] = old_key
+        if old_model is None: os.environ.pop("OI_LLM_MODEL_DEEPSEEK", None)
+        else: os.environ["OI_LLM_MODEL_DEEPSEEK"] = old_model
+
+
+def test_agent_synthesis_budget_is_shared_by_local_and_vercel():
+    assert chat_agent_http.AGENT_SYNTHESIS_MAX_TOKENS == 4096
+    for relative in ("server.py", "api/chat/stream.py"):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        assert "max_tokens=AGENT_SYNTHESIS_MAX_TOKENS" in source, f"{relative} must use the shared Agent synthesis budget"
 
 
 def main():

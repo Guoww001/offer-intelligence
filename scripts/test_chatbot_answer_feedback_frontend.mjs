@@ -8,6 +8,10 @@ function assertMatch(text, pattern, label) {
 const app = fs.readFileSync("public/app.js", "utf8");
 const html = fs.readFileSync("public/index.html", "utf8");
 const styles = fs.readFileSync("public/styles.css", "utf8");
+const agentHandlerStart = app.indexOf("async function handleAgentPageSubmit");
+const agentHandlerEnd = app.indexOf("async function applyPrompt", agentHandlerStart);
+if (agentHandlerStart < 0 || agentHandlerEnd < 0) throw new Error("应能定位 Agent 提交处理函数");
+const agentHandler = app.slice(agentHandlerStart, agentHandlerEnd);
 
 assertMatch(app, /function createChatQuestionEventId\s*\(/, "应生成稳定提问 UUID");
 assertMatch(app, /eventId:\s*questionEventId/, "创建提问日志应提交浏览器 UUID");
@@ -36,6 +40,8 @@ assertMatch(app, /context\.answerSnapshot/, "点击反馈时应冻结回答快�
 assertMatch(app, /const submission = activeAnswerFeedback/, "异步提交应捕获局部反馈上下文");
 assertMatch(app, /activeAnswerFeedback === submission/, "异步响应不得关闭或覆盖另一反馈面板");
 assertMatch(app, /function ensureQuestionLogSuccess\s*\(/, "反馈重试应能幂等恢复提问日志");
+assertMatch(agentHandler, /attachAnswerFeedbackButton\s*\(/, "Agent 成功回答应复用反馈按钮");
+assertMatch(agentHandler, /mode:\s*["']agent["']/, "Agent 反馈上下文应标记 agent 模式");
 assertMatch(app, /feedback_already_exists/, "已存在反馈的 409 应转为已反馈状态");
 assertMatch(app, /function trapAnswerFeedbackFocus\s*\(/, "模态反馈框应约束 Tab 焦点");
 assertMatch(app, /e\.key === "Tab"[\s\S]+trapAnswerFeedbackFocus\(e\)/, "键盘 Tab 应留在反馈框内");
@@ -47,8 +53,8 @@ assertMatch(styles, /\.answer-feedback-dialog\s*\{/, "应提供反馈对话框�
 assertMatch(styles, /data-dash-theme="light"[\s\S]+\.answer-feedback-card/, "反馈对话框应支持浅色主题");
 assertMatch(html, /class="answer-feedback-mood"[^>]*>😡<\/span>/, "反馈面板应显示愤怒表情");
 assertMatch(styles, /\.answer-feedback-mood\s*\{/, "愤怒表情应有专属样式");
-assertMatch(html, /styles\.css\?v=20260807-publisher1/, "反馈样式应提升缓存版本");
-assertMatch(html, /auth\.js\?v=20260807-publisher2/, "反馈脚本应提升缓存版本");
+assertMatch(html, /styles\.css\?v=20260817-[^"]+/, "反馈样式应使用当前缓存版本");
+assertMatch(html, /auth\.js\?v=20260817-[^"]+/, "反馈脚本应使用当前缓存版本");
 
 const storageValues = new Map();
 const requests = [];

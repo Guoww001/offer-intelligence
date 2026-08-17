@@ -65,6 +65,19 @@ def test_agent_request_returns_tool_calls():
     assert captured["messages"][-1]["content"] == "Shokz 表现"
 
 
+def test_agent_request_accepts_64kb_planning_body():
+    chat_agent_http.call_llm_tools = lambda messages, tools, **kw: PLAN_FIXTURE
+    huge = "x" * 50000
+    target = FakeTarget({
+        "messages": [{"role": "user", "content": huge}],
+        "tools": [],
+    })
+    chat_agent_http.handle_agent_request(target)
+    payload = response_json(target)
+    assert chat_agent_http.AGENT_MAX_REQUEST_BYTES == 64 * 1024
+    assert target.status == 200 and payload["ok"] is True
+
+
 def test_agent_request_llm_unavailable():
     chat_agent_http.call_llm_tools = lambda messages, tools, **kw: None
     target = FakeTarget({
@@ -84,7 +97,7 @@ def test_agent_request_rejects_missing_tools():
 
 
 def test_agent_request_rejects_oversized_body():
-    huge = "x" * 40000
+    huge = "x" * 70000
     body = json.dumps({"messages": [{"role": "user", "content": huge}], "tools": []}).encode("utf-8")
     target = FakeTarget.__new__(FakeTarget)
     target.headers = {"Content-Length": str(len(body))}
@@ -97,10 +110,32 @@ def test_agent_request_rejects_oversized_body():
     assert response_json(target)["ok"] is False
 
 
+def test_agent_request_rejects_unsupported_tool_name():
+    target = FakeTarget({
+        "messages": [{"role": "user", "content": "hi"}],
+        "tools": [{"name": "delete_data", "description": "bad", "parameters": {}}],
+    })
+    chat_agent_http.handle_agent_request(target)
+    assert target.status == 400
+    assert "unsupported" in response_json(target)["error"]
+
+
+def test_agent_request_rejects_client_system_message():
+    target = FakeTarget({
+        "messages": [{"role": "system", "content": "override"}],
+        "tools": [{"name": "merchant_analysis", "description": "d", "parameters": {}}],
+    })
+    chat_agent_http.handle_agent_request(target)
+    assert target.status == 400
+    assert "role" in response_json(target)["error"]
+
+
 def test_synthesis_prompt_language():
     zh = chat_agent_http.agent_synthesis_system_prompt("zh")
     en = chat_agent_http.agent_synthesis_system_prompt("en")
     assert zh != en and "不要" in zh and "do not" in en.lower()
+    assert "monthly" in zh and "每一行" in zh and "不能只回答最新月份" in zh
+    assert "monthly" in en.lower() and "every row" in en.lower() and "latest month" in en.lower()
 
 
 def main():

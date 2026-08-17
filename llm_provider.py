@@ -260,7 +260,15 @@ def stream_chat(
                 temperature=temperature,
                 stream=True,
                 messages=final_messages,
+                **(
+                    {"extra_body": {"thinking": {"type": "disabled"}}}
+                    if messages is not None and _model_name().lower().startswith("deepseek-v4")
+                    else {}
+                ),
             )
+            content_chunks = 0
+            reasoning_chunks = 0
+            finish_reasons = []
             for chunk in response:
                 if time.monotonic() >= deadline:
                     print(
@@ -269,7 +277,25 @@ def stream_chat(
                     )
                     return
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    content_chunks += 1
                     yield chunk.choices[0].delta.content
+                if chunk.choices:
+                    choice = chunk.choices[0]
+                    finish_reason = getattr(choice, "finish_reason", None)
+                    if finish_reason:
+                        finish_reasons.append(finish_reason)
+                    delta = choice.delta
+                    reasoning = getattr(delta, "reasoning_content", None)
+                    if not reasoning:
+                        extra = getattr(delta, "model_extra", None) or {}
+                        reasoning = extra.get("reasoning_content")
+                    if reasoning:
+                        reasoning_chunks += 1
+            print(
+                f"[llm_provider] ← {provider} complete content_chunks={content_chunks} "
+                f"reasoning_chunks={reasoning_chunks} finish={finish_reasons or ['unknown']}",
+                file=sys.stderr,
+            )
         else:
             import anthropic
 

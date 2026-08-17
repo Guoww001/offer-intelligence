@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from auth import _read_json_body, require_auth
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
+from chat_agent_http import AGENT_SYNTHESIS_MAX_REQUEST_BYTES, AGENT_SYNTHESIS_MAX_TOKENS, agent_synthesis_system_prompt
 from llm_provider import stream_chat
 
 
@@ -41,7 +42,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0 or length > 65536:
+        if length <= 0 or length > AGENT_SYNTHESIS_MAX_REQUEST_BYTES:
             self._send_json(400, {"ok": False, "error": "Request body is too large"})
             return
 
@@ -125,8 +126,6 @@ class handler(BaseHTTPRequestHandler):
 
     def _chat_stream_messages(self, messages, language):
         """SSE streaming for agent synthesis: full message list passthrough."""
-        from chat_agent_http import agent_synthesis_system_prompt
-
         system_prompt = agent_synthesis_system_prompt(language)
         try:
             self.send_response(200)
@@ -137,7 +136,7 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
 
             token_count = 0
-            for token in stream_chat("", system_prompt, max_tokens=2048, temperature=0.2, messages=messages):
+            for token in stream_chat("", system_prompt, max_tokens=AGENT_SYNTHESIS_MAX_TOKENS, temperature=0.2, messages=messages):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()

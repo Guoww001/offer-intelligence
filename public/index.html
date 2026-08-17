@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260813-profile-visual1" />
+      <link rel="stylesheet" href="./styles.css?v=20260817-agent-timeline-elegance2" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -99,12 +99,31 @@
         <button class="language-toggle auth-logout" id="logoutButton" type="button">Sign out</button>
 
         <nav class="page-nav" aria-label="Pages">
-          <button class="page-nav-button active" id="dashboardNav" type="button">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
-            </span>
-            <span data-i18n="nav.dashboard">Dashboard</span>
-          </button>
+          <div class="nav-group dashboard-nav-group">
+            <button class="page-nav-button report-nav active" id="dashboardNav" type="button" aria-expanded="true" aria-controls="dashboardSubnav">
+              <span class="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+              </span>
+              <span data-i18n="nav.dashboard">Dashboard</span>
+              <span class="nav-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg>
+              </span>
+            </button>
+            <div class="nav-subnav" id="dashboardSubnav" aria-label="Dashboard pages">
+              <button class="page-nav-button active" id="chatbotNav" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 6h14v10H9l-4 3z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+                </span>
+                <span data-i18n="nav.chatbot">Chatbot</span>
+              </button>
+              <button class="page-nav-button" id="agentNav" type="button">
+                <span class="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 0-7 7v2a7 7 0 0 0 7 7 7 7 0 0 0 7-7v-2a7 7 0 0 0-7-7z"/><path d="M9 11h.01M15 11h.01M9 15c1.8 1.2 4.2 1.2 6 0"/><path d="M5 12H3M21 12h-2"/></svg>
+                </span>
+                <span data-i18n="nav.agent">Agent</span>
+              </button>
+            </div>
+          </div>
           <button class="page-nav-button" id="paymentsNav" type="button">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 7h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 9h16"/><path d="M8 14h4"/></svg>
@@ -416,6 +435,87 @@
               </button>
             </form>
           </section>
+        </section>
+
+        <section class="dashboard-agent-page hidden" id="dashboardAgentPage" aria-label="Conversation Agent">
+          <header class="agent-page-header">
+            <div class="agent-page-heading">
+              <div class="agent-page-title-row">
+                <span class="agent-page-title-mark" aria-hidden="true"><span></span></span>
+                <div>
+                  <span class="agent-page-kicker">DASHBOARD / AGENT</span>
+                  <h2 data-i18n="agent.title">Conversation Agent</h2>
+                </div>
+                <span class="agent-page-status-chip">
+                  <span class="agent-page-status-dot" aria-hidden="true"></span>
+                  <span data-i18n="agent.status">Read-only data</span>
+                </span>
+              </div>
+              <p data-i18n="agent.subtitle">Ask directly about merchants, categories, tiers, payments, and trends.</p>
+            </div>
+            <div class="agent-page-actions">
+              <button class="secondary-button agent-new-button" id="agentNewConversation" type="button" data-i18n="agent.new">New conversation</button>
+              <button class="secondary-button agent-stop-button hidden" id="agentStopConversation" type="button" data-i18n="agent.stop" disabled>Stop</button>
+            </div>
+          </header>
+
+          <div class="agent-page-layout">
+            <aside class="agent-page-rail panel" aria-label="Agent capabilities">
+              <span class="agent-page-rail-eyebrow" data-i18n="agent.rail.eyebrow">CAPABILITIES</span>
+              <div class="agent-page-rail-heading">
+                <span class="agent-page-rail-index">01</span>
+                <div>
+                  <strong data-i18n="agent.rail.title">Data Agent</strong>
+                  <p data-i18n="agent.rail.body">The Agent plans the lookup, runs read-only tools, and explains the returned data.</p>
+                </div>
+              </div>
+              <div class="agent-capability-list">
+                <div class="agent-capability-item"><span>01</span><strong data-i18n="agent.cap.merchant">Merchant analysis</strong></div>
+                <div class="agent-capability-item"><span>02</span><strong data-i18n="agent.cap.category">Category and tier</strong></div>
+                <div class="agent-capability-item"><span>03</span><strong data-i18n="agent.cap.compare">Comparisons</strong></div>
+                <div class="agent-capability-item"><span>04</span><strong data-i18n="agent.cap.payment">Payments and trends</strong></div>
+              </div>
+              <p class="agent-page-rail-note" data-i18n="agent.rail.note">Read-only analysis. Use Chatbot for the original Report Mode workflow and Deep Window reports.</p>
+            </aside>
+
+            <section class="chat-panel agent-page-chat-panel" data-agent-surface="workspace" aria-label="Conversation Agent chat">
+              <div class="agent-chat-context" aria-label="Agent workspace context">
+                <span class="agent-chat-context-mark" aria-hidden="true"></span>
+                <span data-i18n="agent.context">Read-only data workspace</span>
+              </div>
+              <div class="chat-log agent-chat-log" id="agentChatLog" aria-live="polite">
+                <div class="agent-page-welcome">
+                  <span class="agent-page-welcome-logo" role="img" aria-label="Yeah">Yeah</span>
+                  <div>
+                    <span class="agent-page-welcome-kicker" data-i18n="agent.welcome.kicker">START WITH A DATA QUESTION</span>
+                    <h3 data-i18n="agent.welcome.title">What would you like to query?</h3>
+                    <p data-i18n="agent.welcome.body">Ask for a merchant analysis, a category comparison, payment status, or a multi-month trend.</p>
+                    <button class="agent-example-prompt" type="button" data-agent-example-prompt-key="agent.example.prompt" data-agent-example-prompt="Tapo，ID398679，epc和conversion帮我查询下" data-agent-example-prompt-fallback="Look up EPC and conversion for Tapo (ID398679)">
+                      <span class="agent-example-prompt-icon" aria-hidden="true">↗</span>
+                      <span class="agent-example-prompt-content">
+                        <span class="agent-example-prompt-label" data-i18n="agent.example.label" data-i18n-fallback="Example prompt">Example prompt</span>
+                        <span class="agent-example-prompt-text" data-i18n="agent.example.prompt" data-i18n-fallback="Look up EPC and conversion for Tapo (ID398679)">Tapo，ID398679，epc和conversion帮我查询下</span>
+                      </span>
+                      <span class="agent-example-prompt-arrow" aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <form class="chat-input agent-page-input" id="agentChatForm">
+                <div class="chat-input-field">
+                  <input id="agentChatInput" autocomplete="off" placeholder="Ask the Agent about merchants, tiers, payments, or trends..." data-i18n-placeholder="agent.placeholder" />
+                  <div class="agent-input-meta">
+                    <span data-i18n="agent.inputHint">Enter to send · multi-month data ready</span>
+                    <span class="agent-input-scope" data-i18n="agent.inputScope">Read-only</span>
+                  </div>
+                </div>
+                <button id="agentChatSubmit" type="submit" aria-label="Send">
+                  <span class="agent-send-label" data-i18n="action.send">Send</span>
+                  <span class="agent-send-icon" aria-hidden="true">↑</span>
+                </button>
+              </form>
+            </section>
+          </div>
         </section>
 
         <section class="payments-page hidden" id="paymentsPage" aria-label="Payments">
@@ -1627,7 +1727,7 @@
     <script src="./chatbot_welcome.js?v=20260813-chat-reminder-copy1"></script>
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260813-profile-visual1"></script>
+    <script src="./auth.js?v=20260817-tier-merchant-list1"></script>
     <script>
       // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
       // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。

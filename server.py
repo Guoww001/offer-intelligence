@@ -64,7 +64,7 @@ from offer_db import (
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
 from llm_provider import stream_chat
-from chat_agent_http import agent_synthesis_system_prompt, handle_agent_request
+from chat_agent_http import AGENT_SYNTHESIS_MAX_REQUEST_BYTES, AGENT_SYNTHESIS_MAX_TOKENS, agent_synthesis_system_prompt, handle_agent_request
 
 
 from levanta_payments import (
@@ -260,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle_chat_stream(self):
         """SSE streaming endpoint for Chat Mode LLM conversation."""
         length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0 or length > 65536:
+        if length <= 0 or length > AGENT_SYNTHESIS_MAX_REQUEST_BYTES:
             self.send_json(400, {"ok": False, "error": "Request body is too large"})
             return
         try:
@@ -355,7 +355,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
             token_count = 0
-            for token in stream_chat("", system_prompt, max_tokens=2048, temperature=0.2, messages=messages):
+            for token in stream_chat("", system_prompt, max_tokens=AGENT_SYNTHESIS_MAX_TOKENS, temperature=0.2, messages=messages):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()

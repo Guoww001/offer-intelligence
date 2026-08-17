@@ -9,31 +9,48 @@ from __future__ import annotations
 from auth import _read_json_body, send_json
 from llm_provider import call_llm_tools
 
-AGENT_MAX_REQUEST_BYTES = 32768
+AGENT_MAX_REQUEST_BYTES = 64 * 1024
+AGENT_SYNTHESIS_MAX_REQUEST_BYTES = 128 * 1024
 AGENT_PLAN_TIMEOUT_SECONDS = 30.0
+AGENT_SYNTHESIS_MAX_TOKENS = 4096
+AGENT_ALLOWED_TOOL_NAMES = frozenset(
+    {
+        "merchant_analysis",
+        "category_analysis",
+        "merchant_comparison",
+        "tier_analysis",
+        "category_comparison",
+        "payment_status",
+        "trend",
+    }
+)
 
 PLANNING_PROMPT_ZH = (
     "你是一个亚马逊联盟营销数据分析助手，可以调用工具获取数据报告。\n"
     "规则：\n"
-    "1. 只有当用户问题需要具体数据（商户指标、品类统计）时才调用工具；闲聊、概念问题直接回答。\n"
+    "1. 只有当用户问题需要具体数据（商户、品类、Tier、对比、付款或趋势）时才调用工具；闲聊、概念问题直接回答。\n"
     "2. 相互独立的工具调用必须在同一次回复中并行给出。\n"
-    "3. 从用户话语中提取工具参数；不确定商户名或品类名时仍调用工具，工具会返回\"未找到\"。\n"
-    "4. 不要编造数值；工具结果中的数值是最终值，直接引用。"
+    "3. 从用户话语中提取工具参数；Tier 商家列表使用 tier_analysis，默认第一页最多100个商户；用户要求下一页时使用 offset/limit。\n"
+    "4. 不确定商户名或品类名时仍调用工具，工具会返回\"未找到\"。\n"
+    "5. 付款月份未写年份时按当前年份理解，不要根据历史数据猜年份；只有用户明确写出历史年份时才使用历史月份。不要编造数值；工具结果中的数值是最终值，直接引用。"
 )
 
 PLANNING_PROMPT_EN = (
     "You are an Amazon affiliate marketing data analysis assistant that can call tools to fetch data reports.\n"
     "Rules:\n"
-    "1. Only call tools when the question needs concrete data (merchant metrics, category statistics); answer chit-chat and conceptual questions directly.\n"
+    "1. Only call tools when the question needs concrete data (merchant, category, tier, comparison, payment, or trend metrics); answer chit-chat and conceptual questions directly.\n"
     "2. Independent tool calls must be issued in parallel in a single reply.\n"
-    "3. Extract tool arguments from the user's words; when unsure about a merchant or category name, still call the tool — it will report \"not found\".\n"
-    "4. Never invent numbers; values in tool results are final, quote them."
+    "3. For a Tier merchant list, use tier_analysis; it returns up to 100 merchants per page by default, and offset/limit fetch the next page.\n"
+    "4. Extract tool arguments from the user's words; when unsure about a merchant or category name, still call the tool — it will report \"not found\".\n"
+    "5. When a payment month has no year, use the current calendar year rather than guessing from historical rows; use a historical year only when the user explicitly says so. Never invent numbers; values in tool results are final, quote them."
 )
 
 SYNTHESIS_PROMPT_ZH = (
     "你是一个亚马逊联盟营销数据分析助手。\n"
     "对话中包含了工具（数据分析函数）的执行结果，请基于这些结果回答用户最初的问题。\n"
     "先给出结论，再用 Markdown 表格展示关键数据，表格前后用一两句话补充说明。\n"
+    "merchant_analysis 结果中的 metrics 是当前缓存汇总，monthly 是真实数据库月度序列；如果 monthly 非空，必须把其中每一行都按月份展示，不能只回答最新月份。monthly 为空时才说明月度数据不可用。\n"
+    "tier_analysis 结果中的 merchants 是按 Report Mode Tier 查询排序的当前商户页；必须展示用户要求的商户列表和关键指标，并结合 merchantList 的 total/offset/returned/hasMore 说明列表是否完整。hasMore 为 true 时不能声称已经列出全部商户。\n"
     "工具结果中的数值是计算好的最终值，直接引用，不要重新计算或外推新排名。\n"
     "某个工具失败时，如实说明该部分数据缺失，不得编造。"
 )
@@ -42,6 +59,8 @@ SYNTHESIS_PROMPT_EN = (
     "You are an Amazon affiliate marketing data analysis assistant.\n"
     "The conversation contains tool (data analysis function) results; answer the user's original question based on them.\n"
     "Lead with the conclusion, then present key numbers in Markdown tables with one or two sentences of context.\n"
+    "In merchant_analysis results, metrics is the current cached summary and monthly is the real database monthly sequence; when monthly is non-empty, display every row by month and do not answer with only the latest month. An empty monthly array is the only indication that monthly data is unavailable.\n"
+    "In tier_analysis results, merchants is the current merchant page ordered like the Report Mode Tier query; show the requested merchant list and key metrics, and use merchantList total/offset/returned/hasMore to state whether the page is complete. Never claim the full Tier list when hasMore is true.\n"
     "Values in tool results are final computed values; quote them and do not recompute or extrapolate new rankings.\n"
     "When a tool failed, state plainly that this part of the data is missing; do not fabricate."
 )
@@ -63,7 +82,10 @@ def _validated_agent_body(body) -> tuple[dict | None, str | None]:
     for msg in messages:
         if not isinstance(msg, dict) or not isinstance(msg.get("content"), str):
             return None, "each message must have a string content"
-        cleaned.append({"role": str(msg.get("role") or "user"), "content": msg["content"]})
+        role = str(msg.get("role") or "user").strip().lower()
+        if role not in {"user", "assistant"}:
+            return None, "message role must be user or assistant"
+        cleaned.append({"role": role, "content": msg["content"]})
     tools = body.get("tools")
     if not isinstance(tools, list):
         return None, "tools must be an array"
@@ -71,9 +93,12 @@ def _validated_agent_body(body) -> tuple[dict | None, str | None]:
     for tool in tools:
         if not isinstance(tool, dict) or not tool.get("name"):
             return None, "each tool must have a name"
+        tool_name = str(tool["name"]).strip()
+        if tool_name not in AGENT_ALLOWED_TOOL_NAMES:
+            return None, f"unsupported tool: {tool_name}"
         cleaned_tools.append(
             {
-                "name": str(tool["name"]),
+                "name": tool_name,
                 "description": str(tool.get("description") or ""),
                 "parameters": tool.get("parameters") if isinstance(tool.get("parameters"), dict) else {"type": "object", "properties": {}},
             }

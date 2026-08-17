@@ -1,5 +1,5 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260813-profile-visual1";
+  const APP_SCRIPT = "./app.js?v=20260817-tier-merchant-list1";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
