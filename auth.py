@@ -44,6 +44,11 @@ def llm_enabled() -> bool:
     return value not in {"0", "false", "no", "off"}
 
 
+def agent_enabled() -> bool:
+    value = os.environ.get("OI_AGENT_ENABLED", "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
 def admin_username() -> str:
     return os.environ.get("OI_ADMIN_USERNAME", "admin").strip() or "admin"
 
@@ -276,7 +281,7 @@ def handle_auth_options(target) -> None:
 
 def handle_auth_session(target) -> None:
     if not auth_enabled():
-        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "user": {"role": "admin"}, "llmEnabled": llm_enabled()})
+        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "user": {"role": "admin"}, "llmEnabled": llm_enabled(), "agentEnabled": agent_enabled()})
         return
     status = auth_config_status()
     if not status["configured"]:
@@ -304,6 +309,7 @@ def handle_auth_session(target) -> None:
             "authenticated": True,
             "configured": True,
             "llmEnabled": llm_enabled(),
+            "agentEnabled": agent_enabled(),
             "user": {
                 "username": payload.get("sub"),
                 "role": payload.get("role"),
@@ -315,7 +321,7 @@ def handle_auth_session(target) -> None:
 
 def handle_auth_login(target) -> None:
     if not auth_enabled():
-        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "llmEnabled": llm_enabled()})
+        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "llmEnabled": llm_enabled(), "agentEnabled": agent_enabled()})
         return
     status = auth_config_status()
     if not status["configured"]:
@@ -349,6 +355,7 @@ def handle_auth_login(target) -> None:
         "ok": True,
         "authenticated": True,
         "llmEnabled": llm_enabled(),
+        "agentEnabled": agent_enabled(),
         "user": {"username": username, "role": "admin", "expiresAt": expires_at},
     }
     body_bytes = _json_bytes(response)

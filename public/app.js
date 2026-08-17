@@ -428,12 +428,18 @@
     excludedRecommendationKeys: new Set(),
     recommendationDownloads: {},
     downloadSequence: 0,
+    dashboardOpen: true,
     reportsOpen: true,
     language: localStorage.getItem("offerLanguage") === "en" ? "en" : "zh",
     deepMode: true,
     deepReport: null,
     deepHistory: [],
     chatHistory: [],
+    agentPage: {
+      history: [],
+      submitting: false,
+      abortController: null
+    },
     reportMemory: [],
     reportMemoryContext: null,
     chatIntentOverride: null
@@ -450,6 +456,9 @@
     navDrawerBackdrop: document.getElementById("navDrawerBackdrop"),
     mobileCurrentPage: document.getElementById("mobileCurrentPage"),
     dashboardNav: document.getElementById("dashboardNav"),
+    dashboardSubnav: document.getElementById("dashboardSubnav"),
+    chatbotNav: document.getElementById("chatbotNav"),
+    agentNav: document.getElementById("agentNav"),
     paymentsNav: document.getElementById("paymentsNav"),
     sheetsNav: document.getElementById("sheetsNav"),
     targetNav: document.getElementById("targetNav"),
@@ -480,6 +489,13 @@
     tableCount: document.getElementById("tableCount"),
     chatLog: document.getElementById("chatLog"),
     chatLogChat: document.getElementById("chatLogChat"),
+    dashboardAgentPage: document.getElementById("dashboardAgentPage"),
+    agentChatLog: document.getElementById("agentChatLog"),
+    agentChatForm: document.getElementById("agentChatForm"),
+    agentChatInput: document.getElementById("agentChatInput"),
+    agentChatSubmit: document.getElementById("agentChatSubmit"),
+    agentNewConversation: document.getElementById("agentNewConversation"),
+    agentStopConversation: document.getElementById("agentStopConversation"),
     chatForm: document.getElementById("chatForm"),
     chatInput: document.getElementById("chatInput"),
     chatInputCommandOverlay: document.getElementById("chatInputCommandOverlay"),
@@ -837,6 +853,8 @@
     zh: {
       "brand.subtitle": "亚马逊分层分析",
       "nav.dashboard": "仪表盘",
+      "nav.chatbot": "Chatbot",
+      "nav.agent": "Agent",
       "nav.payments": "付款",
       "nav.publishers": "媒体",
       "nav.reports": "报表",
@@ -941,6 +959,44 @@
       "source.payments": "2-6月付款",
       "source.sheets": "分层逻辑已加载",
       "dashboard.title": "推荐聊天机器人",
+      "agent.title": "对话 Agent",
+      "agent.subtitle": "直接询问商户、品类、Tier、付款和趋势数据。",
+      "agent.status": "只读数据层",
+      "agent.new": "新建对话",
+      "agent.stop": "停止",
+      "agent.stopped": "本次 Agent 分析已停止。",
+      "agent.execution.title": "Agent 工作过程",
+      "agent.execution.planning": "理解问题并规划查询",
+      "agent.execution.planningDetail": "正在识别商户、Tier、时间范围和指标",
+      "agent.execution.replanning": "修正查询计划",
+      "agent.execution.tool": "执行数据查询",
+      "agent.execution.synthesis": "整理分析结果",
+      "agent.execution.synthesisDetail": "正在基于工具结果生成结论",
+      "agent.execution.direct": "直接回答",
+      "agent.execution.done": "已完成",
+      "agent.execution.running": "执行中",
+      "agent.execution.failed": "执行失败",
+      "agent.execution.stopped": "已停止",
+      "agent.execution.monthlyUnavailable": "月度数据暂不可用",
+      "agent.execution.estimated": "估算趋势",
+      "agent.rail.title": "数据 Agent",
+      "agent.rail.body": "Agent 会规划取数、执行只读工具，并解释返回的数据。",
+      "agent.rail.eyebrow": "能力范围",
+      "agent.rail.note": "只读分析。需要原有 Report Mode 流程和 Deep Window 报告时，请使用 Chatbot。",
+      "agent.cap.merchant": "商户分析",
+      "agent.cap.category": "品类与 Tier",
+      "agent.cap.compare": "商户 / 品类对比",
+      "agent.cap.payment": "付款与趋势",
+      "agent.welcome.kicker": "从数据问题开始",
+      "agent.welcome.title": "你想查询什么？",
+      "agent.welcome.body": "可以询问商户分析、品类对比、付款状态或多个月份的趋势。",
+      "agent.example.label": "示例提问",
+      "agent.example.prompt": "Tapo，ID398679，epc和conversion帮我查询下",
+      "agent.context": "只读数据工作区",
+      "agent.inputHint": "回车发送 · 支持多月份数据",
+      "agent.inputScope": "只读",
+      "agent.placeholder": "询问商户、Tier、付款或趋势...",
+      "agent.error": "Agent 暂时无法回答，请稍后重试。",
       "filters.dashboard": "仪表盘筛选",
       "filter.minEpc": "最低 EPC",
       "filter.minAov": "最低 AOV",
@@ -1634,6 +1690,8 @@
       renderMonthlyNewMerchantsPage();
     } else if (state.page === "offer-list-tracker") {
       renderOfferListTrackerPage();
+    } else if (state.page === "agent") {
+      // Agent 页面内容由独立会话状态维护，语言切换只需更新静态文案。
     } else {
       renderAll();
       if (state.currentContext.type !== "default") renderContextPanel(state.currentContext);
@@ -1894,11 +1952,11 @@
     return id ? offersByMerchantId.get(id) || null : null;
   }
 
-  async function fetchMerchantMonthlyRows(offer) {
+  async function fetchMerchantMonthlyRows(offer, signal) {
     if (!offer) return null;
     const merchantId = String(offer.merchantId || "").trim();
     if (!merchantId) return null;
-    const payload = await fetchMerchantMetrics(merchantId, 12);
+    const payload = await fetchMerchantMetrics(merchantId, 12, signal);
     const rows = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
     return rows && rows.length ? rows : null;
   }
@@ -2554,9 +2612,9 @@ Category & Tier 适合「某 Tier 下的品类」这类组合查询，例如查�
 
 # Chat Mode 使用说明
 
-Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提问、逐步追问，适合开放式问题与多轮讨论。
+Chat Mode（聊天模式）是一个只读数据分析 Agent，支持连续提问、逐步追问和多轮讨论。
 
-**使用前提：用数据，必须先注入记忆栏。** Chat Mode 的对话依赖记忆栏中的数据上下文——没有报告在记忆栏里，AI 无法正确回答商户 / 品类的数据问题。
+**记忆栏不是取数前提。** Agent 可以直接查询当前缓存中的商户、品类、Tier、付款和趋势数据；将 Report Mode 报告加入记忆栏后，可以继续围绕完整报告追问，或补充 Agent 尚未覆盖的领域。
 
 ## 1. 基本用法
 
@@ -2568,22 +2626,25 @@ Chat Mode（聊天模式）提供一个自由的 AI 对话助手，可连续提�
 
 - **多轮对话**：自动记住本段对话历史，可基于前文连续追问，无需重复上下文。
 - **记忆上下文**：将 Report Mode 生成的报告面板拖入聊天区上方的记忆栏，即可把它作为当前讨论的背景数据。
-- **开放问答**：分析商家表现、佣金、付款、选品策略等各类问题。
-- **注意**：Chat Mode 不生成结构化分析报告，也不会自动弹出 Deep Window；需要结构化报告请用 Report Mode。
+- **Agent 数据分析**：支持商户、品类、商户对比、Tier、品类对比、付款和趋势 7 类只读工具；商户分析在数据库可用时附带最近 12 个月真实月度明细。
+- **月度数据口径**：商户 metrics 是当前缓存汇总，monthly 是按最新月份在前排列的数据库月度数据；月度接口不可用时返回空数组，不生成伪造月份。
+- **结果降级**：工具成功但自然语言综合失败时，仍会展示确定性数据摘要，不编造结论。
+- **职责边界**：Report Mode 仍提供更完整的结构化报告、Deep Window 和 Excel 导出；ASIN、推荐、关键词、媒体和写入操作暂不由 Agent 执行。
 
 ## 3. 与 Report Mode 的区别
 
 | 维度 | Report Mode | Chat Mode |
 | --- | --- | --- |
-| 定位 | 结构化查询与分析报告 | 自由对话助手 |
-| 回答 | 即时分析 + Deep Window 浮窗 | 流式 AI 对话 |
+| 定位 | 结构化查询与完整分析报告 | Agent 数据对话与多轮追问 |
+| 回答 | 即时分析 + Deep Window 浮窗 | 工具取数 + 流式综合回答 |
 | 追问 | 对上一商户的基础追问 | 完整多轮上下文 |
 | 导出 | 一键 Excel | 转 View 后可导出 |
 
 ## 4. 提示词技巧
 
 - 提问具体：带上指标与时间范围（如"过去 3 个月 revenue 趋势"）比笼统提问更有效。
-- 需要数据支撑时：先拖入相关报告面板作为上下文，再提问。`;
+- 需要完整报告、ASIN、推荐或媒体数据时：先在 Report Mode 生成报告并加入记忆栏。
+- 趋势问题至少需要 2 个月数据；没有真实月度数据时，回答会标记为估算。`;
 
   // ── Report Mode 使用说明书（英文版 Markdown）───────────────────────────
   // 与 REPORT_MODE_HELP_MD 内容一一对应，供说明面板语言切换按钮切换显示。
@@ -2697,9 +2758,9 @@ Formula: **entity + time range + metric + trend**, supporting monthly trends for
 
 # Chat Mode User Guide
 
-Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig deeper in an open-ended, multi-turn discussion.
+Chat Mode is a read-only data analysis Agent for multi-turn questions and follow-ups.
 
-**Prerequisite: to use data, you MUST drag a report into the memory bar first.** Chat Mode answers are grounded in the memory bar's context — without a report in memory, the AI cannot correctly answer data questions about merchants/categories.
+**The memory bar is optional for data lookup.** The Agent can query supported merchant, category, tier, payment, comparison, and trend data directly. Drag a Report Mode panel into the memory bar when you want to discuss a complete report or a domain not yet covered by Agent tools.
 
 ## 1. Basic Usage
 
@@ -2711,22 +2772,25 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
 - **Multi-turn conversation**: remembers the current thread, so you can follow up without restating context.
 - **Memory context**: drag a Report Mode report panel into the memory bar above the chat area to use it as background data for the discussion.
-- **Open Q&A**: analyze merchant performance, commission, payments, product selection, and more.
-- **Note**: Chat Mode does not produce structured analysis reports or auto-open a Deep Window; for structured reports use Report Mode.
+- **Agent data analysis**: supports seven read-only tools for merchants, categories, merchant comparisons, tiers, category comparisons, payments, and trends; merchant analysis includes the latest 12 real monthly rows when the database is available.
+- **Monthly data contract**: merchant metrics is the current cached summary, while monthly contains newest-first database rows; an unavailable monthly endpoint returns an empty array instead of fabricated months.
+- **Graceful fallback**: if synthesis fails after a tool succeeds, the completed tool data remains visible as a deterministic summary.
+- **Boundary**: Report Mode remains the full structured-report, Deep Window, and Excel-export path; ASIN, recommendations, keywords, publishers, and write actions are not Agent tools yet.
 
 ## 3. Report Mode vs Chat Mode
 
 | Dimension | Report Mode | Chat Mode |
 | --- | --- | --- |
-| Focus | Structured queries & analysis reports | Free-form conversation assistant |
-| Answer | Instant analysis + Deep Window | Streaming AI conversation |
+| Focus | Structured queries & full analysis reports | Agent data conversation and follow-ups |
+| Answer | Instant analysis + Deep Window | Tool execution + streaming synthesis |
 | Follow-up | Basic follow-ups on the last merchant | Full multi-turn context |
 | Export | One-click Excel | Open as View, then export |
 
 ## 4. Prompting Tips
 
 - Be specific: include metrics and time ranges (e.g., "revenue trend for the last 3 months") for better answers than vague questions.
-- For data-backed answers: drag in a relevant report panel as context first, then ask.`;
+- For full reports, ASINs, recommendations, or publisher data: create a Report Mode report and add it to memory first.
+- Trend questions need at least two months of data; answers based on aggregate estimation are marked accordingly.`;
 
   // 当前说明书面板语言（"zh" | "en"），默认跟随界面语言
   function reportHelpLang() {
@@ -5576,7 +5640,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     }
     // Try fuzzy match via existing lookup
     var matches = findMerchantMatches(name);
-    if (matches && matches.length) return matches[0];
+    if (matches && matches.length) return matches[0].offer;
     return null;
   }
 
@@ -5810,12 +5874,43 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       }
     }
 
+    // 保留原有两实体 deltas 供 Report Mode 表格使用；Agent 额外拿到
+    // 参考商户与每个同行的完整差异，避免 3+ 商户时只比较第二个实体。
+    var pairwiseDeltas = [];
+    if (entities.length >= 2) {
+      var reference = entities[0];
+      for (var p = 1; p < entities.length; p++) {
+        var peer = entities[p];
+        var peerMetrics = {};
+        for (var pf = 0; pf < fields.length; pf++) {
+          var peerField = fields[pf];
+          var referenceValue = reference.metrics[peerField];
+          var peerValue = peer.metrics[peerField];
+          var peerAbs = peerValue - referenceValue;
+          var peerPct = referenceValue !== 0
+            ? ((peerValue - referenceValue) / Math.abs(referenceValue)) * 100
+            : 0;
+          peerMetrics[peerField] = {
+            abs: peerAbs,
+            pct: peerPct,
+            better: peerAbs > 0 ? peer.name : (peerAbs < 0 ? reference.name : "tie")
+          };
+        }
+        pairwiseDeltas.push({
+          reference: reference.name,
+          target: peer.name,
+          metrics: peerMetrics
+        });
+      }
+    }
+
     return {
       type: "merchant_comparison",
       entities: entities,
       targetCount: entities.length,
       notFound: notFound.length ? notFound : null,
-      deltas: deltas
+      deltas: deltas,
+      pairwiseDeltas: pairwiseDeltas
     };
   }
 
@@ -6521,7 +6616,7 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
     return 0;
   }
 
-  async function fetchMerchantMetrics(merchantId, months) {
+  async function fetchMerchantMetrics(merchantId, months, signal) {
     if (!merchantId || typeof fetch !== "function") return null;
     var id = String(merchantId).trim();
     if (!id) return null;
@@ -6545,7 +6640,16 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
       // 20s 超时：DB 不可用/慢时避免趋势占位无限挂起，回退到估算趋势
       // minimal=1：只取月度指标，跳过慢的 products/base 查询（否则 ~40s 超过超时，
       // 会 fallback 到估算趋势，数据与 Tier Sheet 不一致）。超时放宽到 60s 兜底。
-      var response = await fetch(DB_MERCHANT_UI_API + "?merchantId=" + encodeURIComponent(id) + "&limit=1&months=" + months + "&minimal=1", { cache: "no-store", signal: AbortSignal.timeout(60000) });
+      var timeoutSignal = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+        ? AbortSignal.timeout(60000) : null;
+      var requestSignal = timeoutSignal;
+      if (signal) {
+        requestSignal = timeoutSignal && typeof AbortSignal.any === "function"
+          ? AbortSignal.any([signal, timeoutSignal]) : signal;
+      }
+      var fetchOptions = { cache: "no-store" };
+      if (requestSignal) fetchOptions.signal = requestSignal;
+      var response = await fetch(DB_MERCHANT_UI_API + "?merchantId=" + encodeURIComponent(id) + "&limit=1&months=" + months + "&minimal=1", fetchOptions);
       if (!response.ok) return null;
       var payload = await response.json();
       if (payload && payload.ok !== false) {
@@ -6944,12 +7048,15 @@ Chat Mode is a free-form AI conversation assistant. Ask away, follow up, and dig
 
   // ── Trend helper: wrap a promise with a timeout ──
   function timeoutPromise(promise, ms, fallback) {
-    return Promise.race([
-      promise,
-      new Promise(function(_, reject) {
-        setTimeout(function() { reject(new Error("timeout")); }, ms);
-      })
-    ]).catch(function() { return fallback; });
+    var timer = null;
+    var timeout = new Promise(function(_, reject) {
+      timer = setTimeout(function() { reject(new Error("timeout")); }, ms);
+    });
+    return Promise.race([promise, timeout])
+      .catch(function() { return fallback; })
+      .finally(function() {
+        if (timer !== null) clearTimeout(timer);
+      });
   }
 
   // ── Trend helper: fetch aggregated monthly metrics from DB for multiple offers ──
@@ -12790,6 +12897,1968 @@ var _NUMERIC_COL_PATTERNS = [
   }
   // renderDeepReport 和 deepSummaryHtml 已移至 _renderPanelReport 和 _deepPanelSummaryHtml
 
+  // ════════════════════════════════════════════════════════
+  // Chat Agent：工具注册表 + 结果压缩 + 步骤卡片 + 流式回复
+  // ════════════════════════════════════════════════════════
+  var AGENT_MAX_PLANNING_ROUNDS = 2;
+  var AGENT_MAX_TOOL_CALLS = 6;
+  var AGENT_MAX_TOOLS_PER_ROUND = 4;
+  var AGENT_MAX_RESULT_CHARS = 6000;
+  var AGENT_TIER_MERCHANT_PAGE_LIMIT = 100;
+  var AGENT_MAX_TIER_RESULT_CHARS = 18000;
+  var AGENT_PLANNING_HISTORY_LIMIT = 6;
+  var AGENT_SYNTHESIS_HISTORY_LIMIT = 4;
+  var AGENT_PLANNING_MESSAGE_CHARS = 1800;
+  var AGENT_SYNTHESIS_MESSAGE_CHARS = 1200;
+  var AGENT_PLANNING_MEMORY_CHARS = 12000;
+  var AGENT_SYNTHESIS_MEMORY_CHARS = 8000;
+  var AGENT_PROMPT_CHARS = 4000;
+
+  var AGENT_TOOL_PROMPT_FIELDS = {
+    merchant_analysis: ["merchant", "tier", "category", "metrics", "ranks", "comparisons", "strengths", "weaknesses", "paymentRisk", "peers", "latestMonth", "monthly", "monthlyDataAvailable", "monthlyDataSource", "monthlyNote", "headline", "note"],
+    category_analysis: ["category", "merchantCount", "tierDistribution", "aggregates", "vsGlobal", "topMerchants", "headline", "note"],
+    merchant_comparison: ["entities", "notFound", "deltas", "pairwiseDeltas", "headline", "note"],
+    tier_analysis: ["tier", "merchantCount", "aggregates", "vsOtherTiers", "segments", "outliers", "merchantList", "merchants", "headline", "note"],
+    category_comparison: ["tierFilter", "entities", "headline", "note"],
+    payment_status: ["filter", "summary", "rows", "headline", "note"],
+    trend: ["entityType", "target", "estimated", "metric", "metrics", "months", "summary", "headline", "note"]
+  };
+
+  var AGENT_METRIC_NOTE_ZH = "口径：EPC(Aff)=affCommission/clicks；AFF Comm%=affCommission/salesAmount*100；CVR=conversionRate*100。样本门槛：EPC/CVR 需 clicks≥100，AOV/AFF Comm% 需 orders≥10；样本不足不参与百分位与强弱项。百分位≥70 为亮点、≤30 为短板。以上数值为最终计算结果，请直接引用，不要重新计算或外推新排名。";
+  var AGENT_METRIC_NOTE_EN = "Metrics: EPC(Aff)=affCommission/clicks; AFF Comm%=affCommission/salesAmount*100; CVR=conversionRate*100. Sample gates: EPC/CVR need clicks>=100, AOV/AFF Comm% need orders>=10; below-gate samples get no percentile. Percentile>=70 highlight, <=30 weakness. Values are final computed results; quote them, do not recompute or extrapolate.";
+
+  var AGENT_COMPARISON_NOTE_ZH = "对比为目标商户指标直接并列；deltas 以第一个商户为基准的差异（abs 与 pct）。无百分位、无样本门槛（与单商户分析口径不同）。数值为最终结果，直接引用，勿重算。";
+  var AGENT_COMPARISON_NOTE_EN = "Comparison lists target merchants' metrics side by side; deltas are differences vs the first merchant (abs and pct). No percentiles, no sample gates (unlike single-merchant analysis). Values are final; quote, do not recompute.";
+  var AGENT_TIER_NOTE_ZH = "Head=佣金前20%、Tail=后20%（商户过少时保证各至少1个）；vsOtherTiers 为各指标相对其他层级均值的差异；merchants 按 Report Mode Tier 查询的排序返回，merchantList 标明本页范围与是否还有下一页；异常商户是诊断提示，非升降级决策规则。数值为最终结果，直接引用。";
+  var AGENT_TIER_NOTE_EN = "Head=top 20% by commission, Tail=bottom 20% (each kept to at least 1 merchant when few); vsOtherTiers = metric deltas vs other tier averages; merchants use the Report Mode Tier ordering, and merchantList states the current page and whether more pages exist; outlier merchants are diagnostic hints, not tier-move rules. Values are final; quote them.";
+  var AGENT_CATEGORY_COMPARISON_NOTE_ZH = "平均值为商户级算术平均，非加权混合；支持可选 Tier 过滤；无百分位。数值为最终结果，直接引用。";
+  var AGENT_CATEGORY_COMPARISON_NOTE_EN = "Averages are merchant-level arithmetic means, not weighted aggregates; optional tier filter; no percentiles. Values are final; quote them.";
+  var AGENT_PAYMENT_NOTE_ZH = "状态：Paid/Pending/Unpaid/Partial；逾期=应付日已过且未付清（派生状态）；金额为原始货币。数值为最终结果，直接引用。";
+  var AGENT_PAYMENT_NOTE_EN = "Statuses: Paid/Pending/Unpaid/Partial; overdue is derived (due date passed and not fully paid). Amounts in original currency. Values are final; quote them.";
+  var AGENT_TREND_NOTE_ZH = "需要至少 2 个月数据；estimated=true 表示基于当前汇总的估算（非真实月度），只能作方向参考。品类趋势排除 Tier 4/BLACK TIER。趋势口径：EPC=affiliatePayout/clicks，AOV=revenue/orders。数值为最终结果，直接引用。";
+  var AGENT_TREND_NOTE_EN = "Requires at least 2 months; estimated=true means derived from current totals (not real monthly data), directional only. Category trends exclude Tier 4/BLACK TIER. Trend metrics: EPC=affiliatePayout/clicks, AOV=revenue/orders. Values are final; quote them.";
+  var AGENT_MERCHANT_MONTHLY_NOTE_ZH = "monthly 为数据库返回的真实月度数据，按最新月份在前排列；空数组表示月度数据暂不可用。metrics 仍表示当前缓存商户汇总。";
+  var AGENT_MERCHANT_MONTHLY_NOTE_EN = "monthly contains the latest real DB rows, newest first; an empty array means monthly data was unavailable. metrics remains the current cached merchant summary.";
+
+  function agentStepCopy(language) {
+    var zh = language !== "en";
+    return {
+      planning: zh ? "正在规划分析步骤…" : "Planning analysis steps…",
+      running: zh ? "正在生成" : "Generating",
+      reportDone: zh ? "报告完成" : "report ready",
+      failed: zh ? "失败" : "failed",
+      fallbackNote: zh ? "数据获取失败，已降级为通用回答。" : "Data fetch failed; fell back to a generic answer."
+    };
+  }
+
+  function agentExecutionCopy(language) {
+    var zh = language !== "en";
+    return {
+      title: zh ? "Agent 工作过程" : "Agent run",
+      planning: zh ? "理解问题并规划查询" : "Understand the question and plan the lookup",
+      planningDetail: zh ? "正在识别商户、Tier、时间范围和指标" : "Identifying merchants, tiers, date ranges, and metrics",
+      replanning: zh ? "修正查询计划" : "Adjust the lookup plan",
+      tool: zh ? "执行数据查询" : "Run data lookup",
+      synthesis: zh ? "整理分析结果" : "Synthesize the analysis",
+      synthesisDetail: zh ? "正在基于工具结果生成结论" : "Generating a conclusion from the tool results",
+      direct: zh ? "直接回答" : "Direct answer",
+      directDetail: zh ? "这是口径或对话追问，不需要读取新数据" : "This is a methodology or conversational follow-up; no new data lookup is needed",
+      done: zh ? "已完成" : "Completed",
+      running: zh ? "执行中" : "Running",
+      failed: zh ? "执行失败" : "Failed",
+      stopped: zh ? "已停止" : "Stopped",
+      monthlyUnavailable: zh ? "月度数据暂不可用" : "Monthly data unavailable",
+      estimated: zh ? "估算趋势" : "Estimated trend",
+      database: zh ? "数据库月度数据" : "Database monthly data",
+      allMonths: zh ? "全部月份" : "All months",
+      months: zh ? "个月" : " months",
+      elapsed: zh ? "已用时" : "Elapsed",
+      seconds: zh ? "秒" : "s"
+    };
+  }
+
+  function agentElapsedText(elapsedMs, language) {
+    if (!Number.isFinite(Number(elapsedMs))) return "";
+    var copy = agentExecutionCopy(language);
+    return (Number(elapsedMs) / 1000).toFixed(1) + copy.seconds;
+  }
+
+  function agentToolLabel(name, language) {
+    var zh = language !== "en";
+    var labels = zh
+      ? {
+          merchant_analysis: "商户分析",
+          merchant_comparison: "商户对比",
+          tier_analysis: "Tier 分析",
+          category_analysis: "品类分析",
+          category_comparison: "品类对比",
+          payment_status: "付款查询",
+          trend: "趋势查询"
+        }
+      : {
+          merchant_analysis: "Merchant analysis",
+          merchant_comparison: "Merchant comparison",
+          tier_analysis: "Tier analysis",
+          category_analysis: "Category analysis",
+          category_comparison: "Category comparison",
+          payment_status: "Payment lookup",
+          trend: "Trend lookup"
+        };
+    return labels[name] || (zh ? "数据分析" : "Data analysis");
+  }
+
+  function agentToolScopeText(name, args, data, language) {
+    var copy = agentExecutionCopy(language);
+    args = args || {};
+    data = data || {};
+    if (name === "merchant_analysis") {
+      var merchant = data.merchant || args.merchant || (language === "en" ? "merchant" : "商户");
+      var monthly = Array.isArray(data.monthly) ? data.monthly.length : 12;
+      return monthly
+        ? String(merchant) + " · " + (language === "en" ? "latest " : "最近 ") + monthly + copy.months + " · " + copy.database
+        : String(merchant) + " · " + copy.monthlyUnavailable;
+    }
+    if (name === "trend") {
+      var target = data.target || args.target || (language === "en" ? "target" : "目标");
+      var requested = typeof args.months === "number" ? args.months : parseInt(args.months, 10);
+      var actual = Array.isArray(data.months) && data.months.length ? data.months.length : requested;
+      var range = actual ? (language === "en" ? "latest " : "最近 ") + actual + copy.months : copy.monthlyUnavailable;
+      return String(target) + " · " + range + (data.estimated ? " · " + copy.estimated : "");
+    }
+    if (name === "payment_status") {
+      var filter = data.filter || args;
+      var month = filter.month || copy.allMonths;
+      var tier = filter.tier ? " · " + filter.tier : "";
+      return (language === "en" ? "Month: " : "月份：") + month + tier;
+    }
+    if (name === "tier_analysis") {
+      var tier = String(data.tier || args.tier || "Tier");
+      var merchantList = data.merchantList || {};
+      if (merchantList.total !== undefined) {
+        var listOffset = Math.max(0, Number(merchantList.offset) || 0);
+        var listReturned = Math.max(0, Number(merchantList.returned) || 0);
+        var listRange = listReturned ? listOffset + "-" + (listOffset + listReturned - 1) : "0";
+        return tier + " · " + listRange
+          + (language === "en" ? " of " : "/") + merchantList.total + (merchantList.hasMore ? (language === "en" ? " · more pages" : " · 还有下一页") : "");
+      }
+      return tier;
+    }
+    if (name === "category_analysis") return String(data.category || args.category || (language === "en" ? "category" : "品类"));
+    if (name === "merchant_comparison") return (language === "en" ? "Compare " : "对比：") + ((data.entities || args.merchants || []).length || 0) + (language === "en" ? " merchants" : " 个商户");
+    if (name === "category_comparison") return (language === "en" ? "Compare " : "对比：") + ((data.entities || args.categories || []).length || 0) + (language === "en" ? " categories" : " 个品类");
+    return language === "en" ? "Current data scope" : "当前数据范围";
+  }
+
+  function agentToolResultDetail(name, args, result, language) {
+    var data = result && result.data ? result.data : {};
+    var scope = agentToolScopeText(name, args, data, language);
+    if (!result || !result.ok) return scope + " · " + String(result && result.error || (language === "en" ? "Unknown error" : "未知错误"));
+    return String(data.headline || agentToolLabel(name, language)) + " · " + scope;
+  }
+
+  function createAgentExecutionTimeline(chatLogEl, language) {
+    if (!chatLogEl || typeof document === "undefined" || typeof document.createElement !== "function") return null;
+    var copy = agentExecutionCopy(language);
+    var root = document.createElement("details");
+    root.className = "agent-run-timeline agent-run-timeline-running";
+    root.open = true;
+    root.setAttribute("data-status", "running");
+    root.setAttribute("aria-live", "polite");
+    root.setAttribute("aria-busy", "true");
+    root.setAttribute("aria-atomic", "false");
+    var runStartedAt = Date.now();
+    var clockTimer = null;
+
+    var summary = document.createElement("summary");
+    summary.className = "agent-run-summary";
+    var icon = document.createElement("span");
+    icon.className = "agent-run-status-icon";
+    icon.textContent = "⋯";
+    var title = document.createElement("span");
+    title.className = "agent-run-title";
+    title.textContent = copy.title;
+    var status = document.createElement("span");
+    status.className = "agent-run-status";
+    status.textContent = copy.running;
+    var meta = document.createElement("span");
+    meta.className = "agent-run-meta";
+    meta.setAttribute("aria-hidden", "true");
+    meta.textContent = copy.elapsed + " " + agentElapsedText(0, language);
+    var activityTrack = document.createElement("span");
+    activityTrack.className = "agent-run-activity-track";
+    activityTrack.setAttribute("aria-hidden", "true");
+    var activityBar = document.createElement("span");
+    activityBar.className = "agent-run-activity-bar";
+    activityTrack.appendChild(activityBar);
+    summary.appendChild(icon);
+    summary.appendChild(title);
+    summary.appendChild(status);
+    summary.appendChild(meta);
+    summary.appendChild(activityTrack);
+
+    var steps = document.createElement("div");
+    steps.className = "agent-run-steps";
+    steps.setAttribute("role", "list");
+    root.appendChild(summary);
+    root.appendChild(steps);
+    chatLogEl.appendChild(root);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+
+    function stepIcon(stepStatus) {
+      return stepStatus === "done" ? "✓" : (stepStatus === "error" ? "✗" : (stepStatus === "stopped" ? "■" : "⋯"));
+    }
+
+    function addStep(payload) {
+      payload = payload || {};
+      var step = document.createElement("div");
+      step.className = "agent-run-step agent-run-step-" + (payload.status || "running");
+      step.setAttribute("role", "listitem");
+      step.setAttribute("data-status", payload.status || "running");
+      var stepIcon = document.createElement("span");
+      stepIcon.className = "agent-run-step-icon";
+      var body = document.createElement("div");
+      body.className = "agent-run-step-body";
+      var label = document.createElement("strong");
+      label.className = "agent-run-step-label";
+      var detail = document.createElement("span");
+      detail.className = "agent-run-step-detail";
+      var stepMeta = document.createElement("span");
+      stepMeta.className = "agent-run-step-meta";
+      stepMeta.setAttribute("aria-hidden", "true");
+      body.appendChild(label);
+      body.appendChild(detail);
+      step.appendChild(stepIcon);
+      step.appendChild(body);
+      step.appendChild(stepMeta);
+      steps.appendChild(step);
+      step._icon = stepIcon;
+      step._label = label;
+      step._detail = detail;
+      step._meta = stepMeta;
+      step._startedAt = Date.now();
+      updateStep(step, payload);
+      chatLogEl.scrollTop = chatLogEl.scrollHeight;
+      return step;
+    }
+
+    function updateStep(step, payload) {
+      if (!step) return null;
+      payload = payload || {};
+      var stepStatus = payload.status || "running";
+      step.className = "agent-run-step agent-run-step-" + stepStatus;
+      step.setAttribute("data-status", stepStatus);
+      if (stepStatus === "running") {
+        step.setAttribute("aria-current", "step");
+        if (!Number.isFinite(Number(step._startedAt))) step._startedAt = Date.now();
+      } else {
+        step.removeAttribute("aria-current");
+      }
+      if (step._icon) step._icon.textContent = stepIcon(stepStatus);
+      if (step._label) step._label.textContent = payload.label || "";
+      if (step._detail) step._detail.textContent = payload.detail || "";
+      if (step._meta) step._meta.textContent = payload.elapsedMs !== undefined
+        ? agentElapsedText(payload.elapsedMs, language)
+        : (stepStatus === "running"
+          ? copy.elapsed + " " + agentElapsedText(Date.now() - step._startedAt, language)
+          : "");
+      return step;
+    }
+
+    function refreshRunningState() {
+      if (root.getAttribute("data-status") !== "running") return;
+      var now = Date.now();
+      meta.textContent = copy.elapsed + " " + agentElapsedText(now - runStartedAt, language);
+      Array.prototype.forEach.call(steps.children || [], function (step) {
+        if (!step || step.getAttribute("data-status") !== "running" || !step._meta) return;
+        step._meta.textContent = copy.elapsed + " " + agentElapsedText(now - step._startedAt, language);
+      });
+    }
+
+    function finish(runStatus, elapsedMs) {
+      var finalStatus = runStatus || "done";
+      if (clockTimer !== null) {
+        clearInterval(clockTimer);
+        clockTimer = null;
+      }
+      if (finalStatus === "error" || finalStatus === "stopped") {
+        Array.prototype.forEach.call(steps.children || [], function (step) {
+          if (!step || step.getAttribute("data-status") !== "running") return;
+          updateStep(step, {
+            status: finalStatus,
+            label: step._label ? step._label.textContent : "",
+            detail: step._detail ? step._detail.textContent : ""
+          });
+        });
+      }
+      root.className = "agent-run-timeline agent-run-timeline-" + finalStatus;
+      root.setAttribute("data-status", finalStatus);
+      root.setAttribute("aria-busy", "false");
+      icon.textContent = stepIcon(finalStatus);
+      status.textContent = finalStatus === "done" ? copy.done
+        : (finalStatus === "stopped" ? copy.stopped : copy.failed);
+      meta.textContent = agentElapsedText(elapsedMs, language);
+      root.open = finalStatus !== "done";
+      return root;
+    }
+
+    refreshRunningState();
+    clockTimer = setInterval(refreshRunningState, 100);
+    return { root: root, addStep: addStep, updateStep: updateStep, finish: finish };
+  }
+
+  function renderAgentStepCard(chatLogEl, payload) {
+    var card = document.createElement("div");
+    card.className = "agent-step agent-step-" + (payload.status || "running");
+    var icon = payload.status === "done" ? "✓" : (payload.status === "error" ? "✗" : "⋯");
+    card.innerHTML = '<span class="agent-step-icon">' + icon + '</span><span class="agent-step-text">' +
+      escapeHtml(payload.text || "") + '</span>';
+    chatLogEl.appendChild(card);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    return card;
+  }
+
+  function agentRequestWasStopped(error, signal) {
+    return !!(signal && signal.aborted) || !!(error && error.name === "AbortError");
+  }
+
+  function agentClipText(value, limit) {
+    var text = String(value === null || value === undefined ? "" : value);
+    if (!limit || text.length <= limit) return text;
+    var headLength = Math.max(1, Math.floor(limit * 0.65));
+    var tailLength = Math.max(1, limit - headLength - 28);
+    return text.slice(0, headLength) + "\n…（历史内容已截断）…\n" + text.slice(-tailLength);
+  }
+
+  function agentRecentHistory(history, limit, messageChars) {
+    var source = Array.isArray(history) ? history : [];
+    var valid = [];
+    for (var i = 0; i < source.length; i++) {
+      var message = source[i];
+      if (!message || typeof message.content !== "string") continue;
+      var role = String(message.role || "user").trim().toLowerCase();
+      if (role !== "user" && role !== "assistant") continue;
+      valid.push({ role: role, content: agentClipText(message.content, messageChars) });
+    }
+    return valid.slice(-limit);
+  }
+
+  function agentHistoryContextText(history, limit, messageChars) {
+    return agentRecentHistory(history, limit, messageChars).map(function (message) {
+      var label = message.role === "assistant" ? "助手" : "用户";
+      return "[" + label + "] " + message.content;
+    }).join("\n\n");
+  }
+
+  function buildAgentPlanningMessages(memoryText, history, prompt) {
+    var messages = [];
+    var memory = agentClipText(memoryText, AGENT_PLANNING_MEMORY_CHARS);
+    if (memory) messages.push({ role: "user", content: "[上下文]\n" + memory });
+    var recent = agentRecentHistory(history, AGENT_PLANNING_HISTORY_LIMIT, AGENT_PLANNING_MESSAGE_CHARS);
+    for (var i = 0; i < recent.length; i++) messages.push(recent[i]);
+    messages.push({ role: "user", content: agentClipText(prompt, AGENT_PROMPT_CHARS) });
+    return messages;
+  }
+
+  function agentToolPromptData(toolName, data) {
+    var source = data && typeof data === "object" ? data : {};
+    var fields = AGENT_TOOL_PROMPT_FIELDS[toolName] || ["headline", "note"];
+    var projected = {};
+    for (var i = 0; i < fields.length; i++) {
+      var field = fields[i];
+      if (Object.prototype.hasOwnProperty.call(source, field)) projected[field] = source[field];
+    }
+    return projected;
+  }
+
+  function agentToolResultPromptText(item) {
+    var name = item && item.name ? String(item.name) : "unknown";
+    var result = item && item.result;
+    if (!result || !result.ok) {
+      return "工具 " + name + " 失败：" + String(result && result.error || "未知错误");
+    }
+    return "工具 " + name + " 结果：\n" + JSON.stringify(agentToolPromptData(name, result.data));
+  }
+
+  function buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language) {
+    var messages = [];
+    var background = [];
+    var memory = agentClipText(memoryText, AGENT_SYNTHESIS_MEMORY_CHARS);
+    if (memory) background.push("[面板上下文]\n" + memory);
+    var historyText = agentHistoryContextText(history, AGENT_SYNTHESIS_HISTORY_LIMIT, AGENT_SYNTHESIS_MESSAGE_CHARS);
+    if (historyText) background.push("[对话背景]\n" + historyText);
+    if (background.length) messages.push({ role: "user", content: background.join("\n\n") });
+    messages.push({ role: "user", content: "当前问题：\n" + agentClipText(prompt, AGENT_PROMPT_CHARS) });
+    var results = Array.isArray(toolResults) ? toolResults : [];
+    if (results.length) {
+      var resultsBlock = results.map(agentToolResultPromptText).join("\n---\n");
+      var instruction = language === "en"
+        ? "Answer the current question from the selected tool fields; state missing tool data plainly."
+        : "请基于以上必要工具字段回答当前问题；工具失败的部分请如实说明。";
+      messages.push({ role: "user", content: "工具执行结果：\n" + resultsBlock + "\n\n" + instruction });
+    }
+    return messages;
+  }
+
+  function agentFallbackHistory(history) {
+    return agentRecentHistory(history, AGENT_SYNTHESIS_HISTORY_LIMIT, AGENT_SYNTHESIS_MESSAGE_CHARS);
+  }
+
+  function agentHistoryAfterOutcome(historyBeforePrompt, prompt, outcome) {
+    var next = Array.isArray(historyBeforePrompt) ? historyBeforePrompt.slice() : [];
+    if (!outcome || outcome.stopped || outcome.ok !== true) return next;
+    var answer = outcome.directContent || outcome.fullResponse || "";
+    if (!String(answer).trim()) return next;
+    next.push({ role: "user", content: String(prompt || "") });
+    next.push({ role: "assistant", content: String(answer) });
+    return next;
+  }
+
+  function agentShouldBypassPlanning(prompt) {
+    var text = String(prompt || "").trim();
+    if (!text) return true;
+    var lower = text.toLowerCase();
+
+    // 先识别明确的推荐方法/口径追问。仅出现“指标”或“推荐”不等于要重新取数。
+    var methodologyQuestion = /(?:按什么|基于什么|依据什么|什么指标|什么标准|什么规则|为什么(?:这样)?推荐|推荐(?:的)?(?:依据|逻辑|规则|标准|指标)|推荐.*(?:依据|逻辑|规则|标准)|怎么(?:推荐|判断)|如何(?:推荐|判断)|推荐机制|推荐算法|(?:what|which).*(?:criteria|metrics|factors|rules).*(?:recommend|recommendation)|why.*recommend|how.*recommend)/i.test(text);
+    var explicitDataRequest = /(?:给我|列出|展示|提供|查询|统计|具体|数值|数据|多少|每个|分别|哪些|哪几个|名单|列表|top\s*\d+|\b(?:payment|revenue|sales|orders|clicks|trend|epc|aov|cvr)\b|付款|收入|销售额|订单|点击|趋势|EPC|AOV|CVR|佣金率|转化率)/i.test(text)
+      || /\d{1,3}\s*(?:个|家|位)?\s*(?:商户|merchant|品类|category)/i.test(text);
+    if (methodologyQuestion && !explicitDataRequest) return true;
+
+    // 礼貌语、能力说明等没有数据边界的对话，也不需要先调用规划模型。
+    if (/^(?:你好|嗨|哈喽|您好|谢谢|感谢|再见|帮助|你是谁|你能做什么|能做什么|hello|hi|hey|thanks|thank you|help|who are you|what can you do)[\s!?。！？]*$/i.test(text)) {
+      return true;
+    }
+    return false;
+  }
+
+  function agentRoundNumber(value) {
+    if (value === null || value === undefined || typeof value !== "number") return value;
+    return Math.round(value * 1000) / 1000;
+  }
+
+  function agentRoundMetrics(metrics) {
+    var out = {};
+    Object.keys(metrics || {}).forEach(function (k) { out[k] = agentRoundNumber(metrics[k]); });
+    return out;
+  }
+
+  async function fetchMerchantMonthlyRowsForAgent(offer, signal) {
+    return timeoutPromise(fetchMerchantMonthlyRows(offer, signal), 8000, null);
+  }
+
+  function compactMerchantMonthlyRows(offer, monthlyRows) {
+    if (!offer || !Array.isArray(monthlyRows)) return [];
+    return monthlyRows.slice(0, 12).map(function (row) {
+      var active = mergeMonthIntoOffer(offer, row);
+      return {
+        month: row.month || "",
+        revenue: agentRoundNumber(active.salesAmount),
+        aov: agentRoundNumber(active.aov),
+        epcAll: agentRoundNumber(offerAllEpc(active)),
+        epcAff: agentRoundNumber(offerAffEpc(active)),
+        conversionRate: agentRoundNumber(active.conversionRate),
+        payout: agentRoundNumber(offerAllCommission(active)),
+        affiliatePayout: agentRoundNumber(offerAffCommission(active)),
+        orders: agentRoundNumber(active.orders),
+        clicks: agentRoundNumber(active.clicks),
+        dpv: agentRoundNumber(active.dpv),
+        atc: agentRoundNumber(active.atc)
+      };
+    });
+  }
+
+  function compactAgentTierMerchantRows(rows) {
+    return (rows || []).map(function (offer) {
+      return {
+        merchant: offer.brand || offer.merchantName || "Unknown",
+        merchantId: offer.merchantId || "",
+        tier: offer.tier || "Unknown",
+        category: displayCategory(offer),
+        epc: agentRoundNumber(analysisMetricValueForOffer(offer, "epc")),
+        epcAll: agentRoundNumber(offerAllEpc(offer)),
+        epcAff: agentRoundNumber(offerAffEpc(offer)),
+        commissionRate: agentRoundNumber(analysisMetricValueForOffer(offer, "commissionRate")),
+        aov: agentRoundNumber(offer.aov),
+        conversionRate: agentRoundNumber(offer.conversionRate),
+        orders: agentRoundNumber(offer.orders),
+        revenue: agentRoundNumber(offer.salesAmount),
+        commission: agentRoundNumber(offerAllCommission(offer)),
+        affiliateCommission: agentRoundNumber(offerAffCommission(offer))
+      };
+    });
+  }
+
+  function compactAgentToolResult(toolName, summary, language, opts) {
+    var note = language === "en" ? AGENT_METRIC_NOTE_EN : AGENT_METRIC_NOTE_ZH;
+    if (toolName === "merchant_analysis") {
+      opts = opts || {};
+      var target = summary.target || {};
+      var monthly = compactMerchantMonthlyRows(opts.offer, opts.monthlyRows);
+      var out = {
+        tool: "merchant_analysis",
+        merchant: target.name || "Unknown",
+        tier: target.tier || "Unknown",
+        category: target.category || "Uncategorized",
+        metrics: agentRoundMetrics(summary.metrics || {}),
+        ranks: {},
+        comparisons: {},
+        strengths: summary.strengths || [],
+        weaknesses: summary.weaknesses || [],
+        paymentRisk: summary.paymentRisk || null,
+        peers: (summary.peers || []).slice(0, 3).map(function (p) {
+          return { name: p.name, metrics: agentRoundMetrics(p.metrics || {}) };
+        }),
+        latestMonth: monthly.length ? monthly[0].month : null,
+        monthly: monthly,
+        monthlyDataAvailable: monthly.length > 0,
+        monthlyDataSource: monthly.length ? "db" : "unavailable",
+        monthlyNote: language === "en" ? AGENT_MERCHANT_MONTHLY_NOTE_EN : AGENT_MERCHANT_MONTHLY_NOTE_ZH
+      };
+      Object.keys(summary.ranks || {}).forEach(function (f) {
+        var r = summary.ranks[f];
+        out.ranks[f] = {
+          value: agentRoundNumber(r.value),
+          percentile: r.percentile === null || r.percentile === undefined ? null : Math.round(r.percentile),
+          sampleEligible: !!r.sampleEligible,
+          totalInCategory: r.totalInCategory || 0
+        };
+      });
+      ["vsCategory", "vsTier", "vsGlobal"].forEach(function (group) {
+        out.comparisons[group] = {};
+        Object.keys((summary.comparisons || {})[group] || {}).forEach(function (f) {
+          var row = summary.comparisons[group][f];
+          out.comparisons[group][f] = {
+            self: agentRoundNumber(row.self),
+            avg: agentRoundNumber(row.avg),
+            delta: row.delta === null || row.delta === undefined ? null : Math.round(row.delta)
+          };
+        });
+      });
+      out.headline = out.merchant + "（" + out.category + " · " + out.tier + "）";
+      out.note = note;
+      if (JSON.stringify(out).length > AGENT_MAX_RESULT_CHARS) {
+        out.peers = out.peers.slice(0, 1);
+        delete out.comparisons.vsGlobal;
+      }
+      return out;
+    }
+    if (toolName === "category_analysis") {
+      var t2 = summary.target || {};
+      var agg = summary.aggregates || {};
+      var out2 = {
+        tool: "category_analysis",
+        category: t2.name || "Unknown",
+        merchantCount: t2.merchantCount !== undefined && t2.merchantCount !== null ? t2.merchantCount : agg.merchantCount,
+        tierDistribution: t2.tierDistribution || {},
+        aggregates: agentRoundMetrics(agg),
+        vsGlobal: summary.vsGlobal || {},
+        topMerchants: (summary.topMerchants || []).slice(0, 5)
+      };
+      out2.headline = out2.category + "（" + out2.merchantCount + " 个商户）";
+      out2.note = note;
+      if (JSON.stringify(out2).length > AGENT_MAX_RESULT_CHARS) {
+        out2.topMerchants = out2.topMerchants.slice(0, 3);
+      }
+      return out2;
+    }
+    if (toolName === "merchant_comparison") {
+      var outC = {
+        tool: "merchant_comparison",
+        entities: (summary.entities || []).map(function (e) {
+          return {
+            name: e.name, tier: e.tier, category: e.category,
+            paymentRisk: e.paymentRisk || null,
+            metrics: agentRoundMetrics(e.metrics || {})
+          };
+        }),
+        notFound: summary.notFound || null,
+        deltas: {},
+        pairwiseDeltas: (summary.pairwiseDeltas || []).slice(0, 5).map(function (row) {
+          var metrics = {};
+          Object.keys(row.metrics || {}).forEach(function (f) {
+            var d = row.metrics[f] || {};
+            metrics[f] = {
+              abs: agentRoundNumber(d.abs),
+              pct: d.pct === null || d.pct === undefined ? null : agentRoundNumber(d.pct),
+              better: d.better
+            };
+          });
+          return { reference: row.reference, target: row.target, metrics: metrics };
+        })
+      };
+      Object.keys(summary.deltas || {}).forEach(function (f) {
+        var d = summary.deltas[f];
+        outC.deltas[f] = { abs: agentRoundNumber(d.abs), pct: d.pct === null ? null : Math.round(d.pct), better: d.better };
+      });
+      outC.headline = outC.entities.map(function (e) { return e.name; }).join(" vs ");
+      outC.note = state.language === "en" ? AGENT_COMPARISON_NOTE_EN : AGENT_COMPARISON_NOTE_ZH;
+      if (JSON.stringify(outC).length > AGENT_MAX_RESULT_CHARS) {
+        outC.deltas = null;
+      }
+      return outC;
+    }
+    if (toolName === "tier_analysis") {
+      opts = opts || {};
+      var tierMerchants = compactAgentTierMerchantRows(opts.tierRows || []);
+      var list = opts.merchantList || {};
+      var summaryMerchantCount = summary.target && summary.target.merchantCount;
+      var listTotal = Number.isFinite(Number(list.total))
+        ? Number(list.total)
+        : (Number.isFinite(Number(summaryMerchantCount)) ? Number(summaryMerchantCount) : tierMerchants.length);
+      var listOffset = Number.isFinite(Number(list.offset)) ? Number(list.offset) : 0;
+      var listLimit = Number.isFinite(Number(list.limit)) ? Number(list.limit) : tierMerchants.length;
+      var requestedRows = tierMerchants.length;
+      var outT = {
+        tool: "tier_analysis",
+        tier: summary.target && summary.target.name,
+        merchantCount: (summary.target && summary.target.merchantCount) || 0,
+        aggregates: agentRoundMetrics(summary.aggregates || {}),
+        vsOtherTiers: {},
+        segments: summary.segments || null,
+        outliers: (summary.outliers || []).slice(0, 5),
+        merchantList: {
+          total: listTotal,
+          offset: listOffset,
+          limit: listLimit,
+          returned: tierMerchants.length,
+          hasMore: !!list.hasMore
+        },
+        merchants: tierMerchants
+      };
+      Object.keys(summary.vsOtherTiers || {}).forEach(function (t) {
+        outT.vsOtherTiers[t] = {};
+        Object.keys(summary.vsOtherTiers[t] || {}).forEach(function (f) {
+          var row = summary.vsOtherTiers[t][f];
+          outT.vsOtherTiers[t][f] = { self: agentRoundNumber(row.self), other: agentRoundNumber(row.other), delta: row.delta === null ? null : Math.round(row.delta) };
+        });
+      });
+      outT.headline = outT.tier + "（" + outT.merchantCount + " 个商户）";
+      outT.note = state.language === "en" ? AGENT_TIER_NOTE_EN : AGENT_TIER_NOTE_ZH;
+      while (JSON.stringify(outT).length > AGENT_MAX_TIER_RESULT_CHARS && outT.merchants.length > 1) {
+        outT.merchants.pop();
+      }
+      outT.merchantList.returned = outT.merchants.length;
+      outT.merchantList.hasMore = !!list.hasMore || outT.merchantList.returned < requestedRows;
+      return outT;
+    }
+    if (toolName === "category_comparison") {
+      var outCC = {
+        tool: "category_comparison",
+        tierFilter: (summary.target && summary.target.tierFilter) || null,
+        entities: (summary.entities || []).map(function (e) {
+          return {
+            name: e.name, merchantCount: e.merchantCount,
+            totals: agentRoundMetrics(e.totals || {}), averages: agentRoundMetrics(e.averages || {}),
+            topBrands: (e.topBrands || []).slice(0, 3)
+          };
+        })
+      };
+      outCC.headline = outCC.entities.map(function (e) { return e.name; }).join(" vs ") + "（品类对比）";
+      outCC.note = state.language === "en" ? AGENT_CATEGORY_COMPARISON_NOTE_EN : AGENT_CATEGORY_COMPARISON_NOTE_ZH;
+      return outCC;
+    }
+    if (toolName === "trend") {
+      var o = opts || {};
+      var outTr = {
+        tool: "trend",
+        entityType: o.entityType || summary.entityType || "merchant",
+        target: o.target || summary.target || "unknown",
+        estimated: !!o.estimated || !!summary.estimated,
+        metric: o.metric || null,
+        metrics: summary.metrics || [],
+        months: (summary.months || []).map(function (m) {
+          var row = { month: m.month };
+          (summary.metrics || []).forEach(function (k) { row[k] = agentRoundNumber(m[k]); });
+          return row;
+        }),
+        summary: {}
+      };
+      Object.keys(summary.summary || {}).forEach(function (k) {
+        var s = summary.summary[k];
+        outTr.summary[k] = {
+          first: agentRoundNumber(s.first), last: agentRoundNumber(s.last),
+          abs: agentRoundNumber(s.abs), pct: s.pct === null ? null : Math.round(s.pct), dir: s.dir
+        };
+      });
+      outTr.headline = outTr.target + " 趋势" + (outTr.metric ? " · " + outTr.metric : "")
+        + (outTr.estimated ? " · 估算" : "");
+      outTr.note = language === "en" ? AGENT_TREND_NOTE_EN : AGENT_TREND_NOTE_ZH;
+      return outTr;
+    }
+    return summary;
+  }
+
+  // 商户严格解析：精确相等（品牌/商户名/商户ID）→ 子串包含；不启用 fuzzy 层。
+  function agentResolveMerchantStrict(name) {
+    if (!name) return null;
+    var raw = String(name).trim();
+    var lower = raw.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!lower) return null;
+    var exact = offers.filter(function (o) {
+      return normalizedOfferName(o, "brand") === lower ||
+        normalizedOfferName(o, "merchantName") === lower ||
+        String(o.merchantId || "").trim() === raw;
+    })[0];
+    if (exact) return exact;
+    return offers.filter(function (o) {
+      return normalizedOfferName(o, "brand").indexOf(lower) !== -1 ||
+        normalizedOfferName(o, "merchantName").indexOf(lower) !== -1;
+    })[0] || null;
+  }
+
+  var AGENT_TOOL_KIND_LABELS = {
+    merchant_analysis: "商户", merchant_comparison: "商户对比",
+    tier_analysis: "Tier", category_analysis: "品类",
+    category_comparison: "品类对比", payment_status: "付款", trend: "趋势"
+  };
+  function agentToolKindLabel(name) {
+    return AGENT_TOOL_KIND_LABELS[name] || "分析";
+  }
+
+  function agentPaymentYearFromPrompt(prompt) {
+    var text = String(prompt || "");
+    var explicit = text.match(/(20\d{2})\s*(?:年|[-\/])/);
+    if (explicit) return Number(explicit[1]);
+    if (/前年|上上年|the year before last/i.test(text)) return PAYMENT_TODAY.getFullYear() - 2;
+    if (/去年|上年|上一年|last\s+year/i.test(text)) return PAYMENT_TODAY.getFullYear() - 1;
+    if (/今年|本年|this\s+year|current\s+year/i.test(text)) return PAYMENT_TODAY.getFullYear();
+    return null;
+  }
+
+  function agentPaymentMonthForQuery(monthArg, prompt) {
+    var raw = String(monthArg || "").trim();
+    var promptText = String(prompt || "").trim();
+    var rawIso = raw.match(/^(20\d{2})[-\/](0?[1-9]|1[0-2])$/);
+    var monthIndex = rawIso
+      ? Number(rawIso[2]) - 1
+      : PAYMENT_MONTHS.indexOf(monthNameFromText(raw) || monthNameFromText(promptText));
+    if (monthIndex < 0 || monthIndex >= PAYMENT_MONTHS.length) return raw;
+
+    var promptYear = agentPaymentYearFromPrompt(promptText);
+    var rawYear = rawIso ? Number(rawIso[1]) : null;
+    // 有用户原话时，模型传入的年份只能作为候选；未明确年份一律使用当前年。
+    var year = promptText
+      ? (promptYear === null ? PAYMENT_TODAY.getFullYear() : promptYear)
+      : (rawYear === null ? PAYMENT_TODAY.getFullYear() : rawYear);
+    return year + "-" + String(monthIndex + 1).padStart(2, "0");
+  }
+
+  async function agentExecuteTool(name, args, context) {
+    args = args || {};
+    context = context || {};
+    if (name === "merchant_analysis") {
+      var merchant = typeof args.merchant === "string" ? args.merchant.trim().slice(0, 80) : "";
+      if (!merchant) return { ok: false, error: "merchant 参数缺失" };
+      var strictOffer = agentResolveMerchantStrict(merchant);
+      if (!strictOffer) return { ok: false, error: "未找到商户 '" + merchant + "'" };
+      var summary = analyzeMerchant(merchant);
+      if (!summary) return { ok: false, error: "未找到商户 '" + merchant + "'" };
+      var monthlyRows = await fetchMerchantMonthlyRowsForAgent(strictOffer, context.signal || null);
+      return {
+        ok: true,
+        data: compactAgentToolResult("merchant_analysis", summary, state.language || "zh", {
+          offer: strictOffer,
+          monthlyRows: monthlyRows || []
+        })
+      };
+    }
+    if (name === "category_analysis") {
+      var category = typeof args.category === "string" ? args.category.trim().slice(0, 80) : "";
+      if (!category) return { ok: false, error: "category 参数缺失" };
+      var catSummary = analyzeCategory(category);
+      if (!catSummary) return { ok: false, error: "未找到品类 '" + category + "'" };
+      return { ok: true, data: compactAgentToolResult("category_analysis", catSummary, state.language || "zh") };
+    }
+    if (name === "merchant_comparison") {
+      var mList = Array.isArray(args.merchants)
+        ? args.merchants.filter(function (x) { return typeof x === "string" && x.trim(); }).slice(0, 5)
+        : [];
+      if (mList.length < 2) return { ok: false, error: "merchants 至少需要 2 个商户" };
+      var resolved = [];
+      var notFound = [];
+      mList.forEach(function (m) {
+        var o = agentResolveMerchantStrict(m);
+        if (o) resolved.push(o.brand || o.merchantName || m); else notFound.push(m);
+      });
+      if (resolved.length < 2) return { ok: false, error: "未找到足够的商户做对比：" + notFound.join("、") };
+      var cmpSummary = analyzeMerchantComparison(resolved);
+      if (!cmpSummary) return { ok: false, error: "无法生成商户对比结果" };
+      return { ok: true, data: compactAgentToolResult("merchant_comparison", cmpSummary, state.language || "zh") };
+    }
+    if (name === "tier_analysis") {
+      var tierRaw = typeof args.tier === "string" ? args.tier.trim() : "";
+      var canonTier = canonicalTierName(tierRaw) || tierRaw;
+      if (!canonTier) return { ok: false, error: "tier 参数缺失" };
+      var tierSummary = analyzeTier(canonTier);
+      if (!tierSummary) return { ok: false, error: "未找到层级 '" + canonTier + "'" };
+      var tierRows = offersInTier(canonTier).slice().sort(function (a, b) {
+        return compareRecommendationOffers(a, b, { includeTier4: true, includeBlack: true });
+      });
+      var tierTotal = tierRows.length;
+      var requestedLimit = Number(args.limit);
+      var tierLimit = Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.max(1, Math.min(AGENT_TIER_MERCHANT_PAGE_LIMIT, Math.floor(requestedLimit)))
+        : AGENT_TIER_MERCHANT_PAGE_LIMIT;
+      var requestedOffset = Number(args.offset);
+      var tierOffset = Number.isFinite(requestedOffset) && requestedOffset > 0
+        ? Math.min(tierTotal, Math.floor(requestedOffset))
+        : 0;
+      var tierPage = tierRows.slice(tierOffset, tierOffset + tierLimit);
+      return {
+        ok: true,
+        data: compactAgentToolResult("tier_analysis", tierSummary, state.language || "zh", {
+          tierRows: tierPage,
+          merchantList: {
+            total: tierTotal,
+            offset: tierOffset,
+            limit: tierLimit,
+            returned: tierPage.length,
+            hasMore: tierOffset + tierPage.length < tierTotal
+          }
+        })
+      };
+    }
+    if (name === "category_comparison") {
+      var cList = Array.isArray(args.categories)
+        ? args.categories.filter(function (x) { return typeof x === "string" && x.trim(); }).slice(0, 4)
+        : [];
+      if (cList.length < 2) return { ok: false, error: "categories 至少需要 2 个品类" };
+      var tierF = (typeof args.tier === "string" && args.tier.trim()) ? (canonicalTierName(args.tier) || args.tier.trim()) : null;
+      var multiCat = analyzeMultiCategory(cList, tierF);
+      if (!multiCat || !Array.isArray(multiCat.entities) || multiCat.entities.length < 2) {
+        return { ok: false, error: "未找到足够的品类数据做对比" };
+      }
+      return { ok: true, data: compactAgentToolResult("category_comparison", multiCat, state.language || "zh") };
+    }
+    if (name === "payment_status") {
+      var p = args || {};
+      var statusArg = typeof p.status === "string" ? p.status.trim() : "";
+      var monthArg = agentPaymentMonthForQuery(p.month, context.prompt);
+      var tierArg = typeof p.tier === "string" ? p.tier.trim() : "";
+      var merchantArg = typeof p.merchant === "string" ? p.merchant.trim().slice(0, 80) : "";
+      var payRows = getPaymentRecords();
+      if (statusArg) {
+        var stLower = statusArg.toLowerCase();
+        var zhStatus = /逾期|到期/.test(statusArg) ? "overdue"
+          : (/未付|没付|未支付/.test(statusArg) ? "unpaid"
+          : (/待处理|未到期|等待/.test(statusArg) ? "pending"
+          : (/已付|已支付/.test(statusArg) ? "paid"
+          : (/部分/.test(statusArg) ? "partial" : ""))));
+        var stFinal = zhStatus || stLower;
+        if (stFinal === "overdue") payRows = payRows.filter(isPaymentOverdue);
+        else if (["paid", "pending", "unpaid", "partial"].indexOf(stFinal) !== -1) {
+          payRows = payRows.filter(function (r) { return String(r.paymentStatus || "").toLowerCase() === stFinal; });
+        }
+      }
+      if (monthArg) {
+        if (/^\d{4}-\d{2}$/.test(monthArg)) {
+          payRows = payRows.filter(function (r) { return r.reportMonthKey === monthArg; });
+        } else {
+          var monthName = monthNameFromText(monthArg);
+          if (monthName) payRows = payRows.filter(function (r) { return r.reportMonth === monthName; });
+        }
+      }
+      if (tierArg) {
+        var payTier = canonicalTierName(tierArg) || tierArg;
+        payRows = payRows.filter(function (r) { return r.tier === payTier; });
+      }
+      if (merchantArg) {
+        var merchantNeedle = normalize(merchantArg);
+        var exactMerchantRows = payRows.filter(function (r) {
+          var rowName = normalize(r.merchantName);
+          var rowId = normalize(r.merchantId);
+          return rowName === merchantNeedle || rowId === merchantNeedle;
+        });
+        if (exactMerchantRows.length) {
+          payRows = exactMerchantRows;
+        } else {
+          payRows = payRows.filter(function (r) {
+            var rowName = normalize(r.merchantName);
+            var rowId = normalize(r.merchantId);
+            return rowName.indexOf(merchantNeedle) !== -1 || rowId.indexOf(merchantNeedle) !== -1;
+          });
+        }
+      }
+      var paySummary = updatePaymentSummary(payRows);
+      var payDetailRows = payRows.slice(0, 30);
+      var compactPay = {
+        tool: "payment_status",
+        filter: {
+          status: statusArg || null,
+          month: monthArg || null,
+          tier: tierArg || null,
+          merchant: merchantArg || null
+        },
+        summary: {
+          recordCount: paySummary.recordCount, merchantCount: paySummary.merchantCount,
+          unpaid: paySummary.unpaidMerchantCount, pending: paySummary.pendingMerchantCount,
+          paid: paySummary.paidMerchantCount, overdue: paySummary.overdueMerchantCount,
+          totalExpected: agentRoundNumber(paySummary.totalExpectedPayment),
+          totalRemaining: agentRoundNumber(paySummary.totalRemainingAmount)
+        },
+        rows: payDetailRows.map(function (r) {
+          return {
+            merchant: r.merchantName, tier: r.tier, month: r.reportMonthKey || r.reportMonth,
+            status: r.paymentStatus, cycle: r.paymentCycle,
+            expected: agentRoundNumber(r.expectedPaymentAmount), remaining: agentRoundNumber(r.remainingAmount),
+            due: r.paymentAvailabilityDate || r.expectedPaymentDate || ""
+          };
+        })
+      };
+      compactPay.headline = "付款记录 " + compactPay.summary.recordCount + " 条 / " + compactPay.summary.merchantCount
+        + " 商户（未付 " + compactPay.summary.unpaid + " · 逾期 " + compactPay.summary.overdue + "）";
+      compactPay.note = state.language === "en" ? AGENT_PAYMENT_NOTE_EN : AGENT_PAYMENT_NOTE_ZH;
+      return { ok: true, data: compactPay };
+    }
+    if (name === "trend") {
+      return agentRunTrendTool(args || {}, context);
+    }
+    return { ok: false, error: "未知工具 '" + name + "'" };
+  }
+
+  async function agentRunTrendTool(args, context) {
+    var target = typeof args.target === "string" ? args.target.trim().slice(0, 80) : "";
+    context = context || {};
+    var monthsArg = typeof args.months === "number" ? args.months
+      : (typeof args.months === "string" ? parseInt(args.months, 10) : 0);
+    var metric = typeof args.metric === "string" ? args.metric.trim().toLowerCase() : "";
+    var entityType = typeof args.entityType === "string" ? args.entityType.trim().toLowerCase() : "";
+    if (!target) return { ok: false, error: "target 参数缺失（商户名/品类名/Tier 名）" };
+    if (monthsArg && (monthsArg < 2 || monthsArg > 24)) monthsArg = 0;
+    var requested = monthsArg > 0 ? monthsArg : 12;
+    var language = state.language || "zh";
+
+    function estimatedResult(summary, entity, label) {
+      return {
+        ok: true,
+        data: compactAgentToolResult("trend", summary, language, {
+          target: label, entityType: entity, estimated: true, metric: metric
+        })
+      };
+    }
+
+    var entity = entityType || detectTrendEntityType(target);
+    var monthlyMetrics = null;
+    var label = target;
+
+    if (entity === "merchant") {
+      var offer = findLiveOffer(target);
+      if (!offer) return { ok: false, error: "未找到商户 '" + target + "' 的数据" };
+      label = offer.brand || offer.merchantName || target;
+      var payload = await fetchMerchantMetrics(offer.merchantId, requested, context.signal || null);
+      monthlyMetrics = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
+      if (!monthlyMetrics || monthlyMetrics.length < 2) {
+        var basic = generateTrendFromOfferSummary(offer, requested);
+        if (basic) return estimatedResult(basic, "merchant", label);
+        return { ok: false, error: "商户 '" + label + "' 的月度数据不足（需要至少 2 个月）" };
+      }
+    } else if (entity === "category") {
+      var catMetrics = await fetchCategoryTrendMetrics(target, requested);
+      if (catMetrics && catMetrics.length >= 2) {
+        monthlyMetrics = catMetrics;
+      } else {
+        var est = estimateAggregatedTrend(offersInCategory(target, { excludeTier4Black: true }), requested);
+        if (est) return estimatedResult(est, "category", target);
+        return { ok: false, error: "品类 '" + target + "' 的趋势数据不足（需要至少 2 个月）" };
+      }
+    } else if (entity === "tier") {
+      var tierOffers = offersInTier(target);
+      if (!tierOffers || !tierOffers.length) return { ok: false, error: "未找到层级 '" + target + "' 的数据" };
+      label = target;
+      monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(tierOffers, requested), 8000, null);
+      if (!monthlyMetrics || monthlyMetrics.length < 2) {
+        var tEst = estimateAggregatedTrend(tierOffers, requested);
+        if (tEst) return estimatedResult(tEst, "tier", target);
+        return { ok: false, error: "层级 '" + target + "' 的趋势数据不足（需要至少 2 个月）" };
+      }
+    } else {
+      return { ok: false, error: "无法识别目标类型：" + (entityType || "未知") };
+    }
+
+    var summary = computeTrend(monthlyMetrics, metric);
+    if (!summary) return { ok: false, error: "无法计算趋势（需要至少 2 个月的月度数据）" };
+    summary.target = label;
+    return { ok: true, data: compactAgentToolResult("trend", summary, language, {
+      target: label, entityType: entity, estimated: false, metric: metric
+    }) };
+  }
+
+  function agentToolDefinitions() {
+    return [
+      {
+        name: "merchant_analysis",
+        description: "获取单个商户的核心指标及其在同品类中的百分位、品类/Tier/全站均值对比、强弱项、Top3 同行(Peer)、付款风险和最近12个月真实月度数据（DB可用时）。参数 merchant 为品牌名或商户ID。",
+        parameters: {
+          type: "object",
+          properties: { merchant: { type: "string", description: "商户品牌名或商户ID，如 Shokz" } },
+          required: ["merchant"]
+        }
+      },
+      {
+        name: "category_analysis",
+        description: "获取某个品类的汇总统计：商户数、总Sales/Commission/Orders、平均EPC/AOV/CVR/佣金率、Tier分布、vs全站对比、按佣金排序的Top5商户。参数 category 为品类名。",
+        parameters: {
+          type: "object",
+          properties: { category: { type: "string", description: "品类名，如 Electronics / 美妆" } },
+          required: ["category"]
+        }
+      },
+      {
+        name: "merchant_comparison",
+        description: "对比 2-5 个商户的核心指标（EPC/AOV/CVR/Orders/Clicks/佣金/佣金率/Sales），返回各商户指标并列、相对第一个商户的差异(deltas)与付款风险。参数 merchants 为品牌名或商户ID数组。",
+        parameters: {
+          type: "object",
+          properties: { merchants: { type: "array", items: { type: "string" }, description: "商户名数组，至少 2 个" } },
+          required: ["merchants"]
+        }
+      },
+      {
+        name: "tier_analysis",
+        description: "获取单个 Tier 的汇总和商家列表：商户数、总量、平均 EPC/AOV/CVR/佣金率、与其他 Tier 的指标对比、Head/Mid/Tail 分段、异常商户，以及按 Report Mode 相同排序返回的 merchants 页面。merchantList 提供 total/offset/limit/returned/hasMore；默认返回前100个商户。需要下一页时传 offset 和 limit（limit 最大100）。参数 tier 如 Tier 1/Tier 2/Tier 3/Tier 4/BLACK TIER。",
+        parameters: {
+          type: "object",
+          properties: {
+            tier: { type: "string", description: "层级名，如 Tier 2" },
+            limit: { type: "number", description: "可选：本次返回的商户数，1-100，默认100" },
+            offset: { type: "number", description: "可选：商户列表起始位置，用于获取下一页，默认0" }
+          },
+          required: ["tier"]
+        }
+      },
+      {
+        name: "category_comparison",
+        description: "对比 2-4 个品类的汇总：商户数、总Revenue/Commission/Clicks/Orders、平均 EPC/AOV/CVR/佣金率、各品类 Top5 商户。可选按 Tier 过滤。参数 categories 为品类名数组。",
+        parameters: {
+          type: "object",
+          properties: {
+            categories: { type: "array", items: { type: "string" }, description: "品类名数组，至少 2 个" },
+            tier: { type: "string", description: "可选：只比较该 Tier，如 Tier 2" }
+          },
+          required: ["categories"]
+        }
+      },
+      {
+        name: "payment_status",
+        description: "查询付款记录：可按状态（paid/pending/unpaid/overdue/partial 或中文 已付款/待处理/未付款/逾期/部分付款）、月份（YYYY-MM，如 2025-04）、Tier、商户过滤。返回汇总计数与记录列表。",
+        parameters: {
+          type: "object",
+          properties: {
+            status: { type: "string", description: "可选：paid/pending/unpaid/overdue/partial" },
+            month: { type: "string", description: "可选：YYYY-MM，如 2026-06；用户未写年份时按当前年份处理，不要根据历史数据猜年份" },
+            tier: { type: "string", description: "可选：Tier 名" },
+            merchant: { type: "string", description: "可选：商户名（预留，当前按无此过滤处理）" }
+          }
+        }
+      },
+      {
+        name: "trend",
+        description: "获取商户/品类/Tier 的月度趋势（Revenue/Orders/Clicks/EPC/AOV/Payout 等），返回逐月数值与首末月变化。参数 entityType 为 merchant/category/tier（可省略，自动识别）；target 为目标名；months 为月数（2-24，默认 12）；metric 可选（如 revenue）。DB 无月度数据时返回估算趋势（estimated=true）。",
+        parameters: {
+          type: "object",
+          properties: {
+            entityType: { type: "string", description: "可选：merchant/category/tier" },
+            target: { type: "string", description: "商户名/品类名/Tier 名，如 Shokz / Electronics / Tier 2" },
+            months: { type: "number", description: "可选：月数 2-24，默认 12" },
+            metric: { type: "string", description: "可选：指标名，如 revenue/orders/epc/aov/clicks" }
+          },
+          required: ["target"]
+        }
+      },
+    ];
+  }
+
+  async function streamAssistantReply(requestBody, opts) {
+    // opts: {chatLogEl, language, viewContext:{prompt, recommendationResult}, onError}
+    var language = opts.language || "zh";
+    var chatLogEl = opts.chatLogEl;
+    var signal = opts.signal || null;
+    if (signal && signal.aborted) return { ok: false, stopped: true };
+    var loadingText = language === "zh" ? "正在思考…" : "Thinking…";
+    var loadingMsg = document.createElement("div");
+    loadingMsg.className = "message assistant loading-indicator";
+    loadingMsg.textContent = loadingText;
+    chatLogEl.appendChild(loadingMsg);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+
+    var responseStream;
+    try {
+      var streamOptions = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      };
+      if (signal) streamOptions.signal = signal;
+      responseStream = await fetch("/api/chat/stream", streamOptions);
+    } catch (error) {
+      loadingMsg.remove();
+      var stoppedBeforeResponse = agentRequestWasStopped(error, signal);
+      if (!stoppedBeforeResponse && opts.onError) opts.onError(error);
+      return { ok: false, stopped: stoppedBeforeResponse, error: error };
+    }
+    loadingMsg.remove();
+
+    if (!responseStream.ok) {
+      var httpError = new Error("HTTP " + responseStream.status);
+      if (opts.onError) opts.onError(httpError);
+      return { ok: false, error: httpError };
+    }
+
+    var msgEl = document.createElement("div");
+    msgEl.className = "message assistant";
+    var msgContent = document.createElement("div");
+    msgContent.className = "chat-stream-text";
+    msgEl.appendChild(msgContent);
+    var statusBar = document.createElement("div");
+    statusBar.className = "chat-stream-status";
+    msgEl.appendChild(statusBar);
+    chatLogEl.appendChild(msgEl);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+
+    var tokenCount = 0;
+    var fullResponse = "";
+    var streamHadError = false;
+    var streamStopped = false;
+    var streamStartTime = Date.now();
+    var thinkingZh = ["思考中", "分析中", "处理中", "生成中", "整合中"];
+    var thinkingEn = ["thinking", "analyzing", "processing", "generating", "compiling"];
+    var thinkIdx = 0;
+    var thinkTicks = 0;
+    var timerTick = setInterval(function () {
+      var e = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+      thinkTicks++;
+      if (thinkTicks % 30 === 0) {
+        thinkIdx = (thinkIdx + 1) % (language === "zh" ? thinkingZh.length : thinkingEn.length);
+      }
+      var word = language === "zh" ? thinkingZh[thinkIdx] : thinkingEn[thinkIdx];
+      var timeUnit = language === "zh" ? "秒" : "s";
+      statusBar.textContent = "\u23f1 " + e + timeUnit + " \u00b7 " + word + "…";
+    }, 100);
+
+    try {
+      var reader = responseStream.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = "";
+      var doneReading = false;
+
+      while (!doneReading) {
+        var readResult = await reader.read();
+        if (readResult.done) break;
+        buffer += decoder.decode(readResult.value, { stream: true });
+        var lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (var j = 0; j < lines.length; j++) {
+          var line = lines[j];
+          if (line.startsWith("data: ")) {
+            var payload = line.slice(6).trim();
+            if (payload === "[DONE]") { doneReading = true; break; }
+            try {
+              var parsed = JSON.parse(payload);
+              if (parsed.token) {
+                msgContent.textContent += parsed.token;
+                fullResponse += parsed.token;
+                tokenCount++;
+                chatLogEl.scrollTop = chatLogEl.scrollHeight;
+              }
+              if (parsed.error) streamHadError = true;
+            } catch (e) { /* skip malformed SSE */ }
+          }
+        }
+      }
+    } catch (error) {
+      streamStopped = agentRequestWasStopped(error, signal);
+      streamHadError = !streamStopped;
+      if (!streamStopped && opts.onError) opts.onError(error);
+    } finally {
+      clearInterval(timerTick);
+    }
+    if (agentRequestWasStopped(null, signal)) streamStopped = true;
+    if (fullResponse.trim()) {
+      var renderedHtml = markdownToHtml(fullResponse);
+      if (renderedHtml) msgContent.innerHTML = renderedHtml;
+    }
+    var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+    statusBar.textContent = streamStopped
+      ? (language === "zh" ? "■ 已停止" : "■ Stopped")
+      : (language === "zh"
+        ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
+        : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens");
+    if (!streamStopped) attachChatViewButton(statusBar, fullResponse, opts.viewContext, language);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    var ok = !!fullResponse.trim() && !streamHadError && !streamStopped;
+    return { ok: ok, stopped: streamStopped, fullResponse: fullResponse, msgEl: msgEl, statusBar: statusBar };
+  }
+
+  function attachChatViewButton(statusBar, fullResponse, viewContext, language) {
+    if (!statusBar || !fullResponse || !fullResponse.trim() || !viewContext) return;
+    var viewBtn = document.createElement("button");
+    viewBtn.className = "chat-to-deep-btn";
+    viewBtn.textContent = language === "zh" ? "转为 View" : "Open as View";
+    viewBtn._chatPrompt = viewContext.prompt;
+    viewBtn._fullResponse = fullResponse;
+    viewBtn._recommendationResult = viewContext.recommendationResult;
+    viewBtn.addEventListener("click", function (e) {
+      var btn = e.currentTarget;
+      var _prompt = btn._chatPrompt || "";
+      var _html = btn._fullResponse ? '<div class="chat-stream-text">' + markdownToHtml(btn._fullResponse) + '</div>' : "";
+      if (!_html) return;
+      var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
+      if (existing && existing._hidden) {
+        _showDeepPanel(existing.id);
+      } else if (existing) {
+        _bringPanelToFront(existing);
+      } else {
+        var p = _createDeepPanel(_prompt);
+        p._mode = "chat";
+        p.el.classList.add("source-chat");
+        p._viewBtn = btn;
+        _showQuickResultInDeepPanel(p, _html, _prompt, {
+          recommendationResult: btn._recommendationResult
+        });
+      }
+    });
+    statusBar.appendChild(viewBtn);
+  }
+
+  function agentFallbackText(toolResults, language) {
+    var zh = language !== "en";
+    var lines = [
+      zh
+        ? "自然语言综合暂时不可用，以下是已完成的数据工具结果。请以这些结果为准。"
+        : "Natural-language synthesis is unavailable. The completed tool results below are the source of truth."
+    ];
+    var results = Array.isArray(toolResults) ? toolResults : [];
+    if (!results.length) {
+      lines.push(zh ? "未获得可用的数据结果。" : "No usable data result was obtained.");
+      return lines.join("\n\n");
+    }
+    results.forEach(function (item) {
+      var result = item && item.result;
+      if (result && result.ok) {
+        var data = result.data || {};
+        lines.push("### " + String(data.headline || item.name || "Tool result"));
+        lines.push("```json\n" + JSON.stringify(data, null, 2) + "\n```");
+      } else {
+        lines.push((zh ? "- 工具失败：" : "- Tool failed: ")
+          + String(item && item.name || "unknown") + " — "
+          + String(result && result.error || (zh ? "未知错误" : "Unknown error")));
+      }
+    });
+    return lines.join("\n\n");
+  }
+
+  function agentMonthlyCell(value, language, percent) {
+    if (value === null || value === undefined || value === "") return "—";
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value);
+    if (percent) numeric *= 100;
+    return numeric.toLocaleString(language === "en" ? "en-US" : "zh-CN", {
+      maximumFractionDigits: 3
+    }) + (percent ? "%" : "");
+  }
+
+  function agentMonthlyMarkdown(data, language) {
+    var zh = language !== "en";
+    var monthly = Array.isArray(data && data.monthly) ? data.monthly : [];
+    if (!monthly.length) return "";
+    var headers = zh
+      ? ["月份", "Revenue", "AOV", "EPC(All)", "EPC(Aff)", "CVR", "Commission", "Aff Commission", "Orders", "Clicks", "DPV", "ATC"]
+      : ["Month", "Revenue", "AOV", "EPC(All)", "EPC(Aff)", "CVR", "Commission", "Aff Commission", "Orders", "Clicks", "DPV", "ATC"];
+    var separator = headers.map(function () { return "---"; });
+    var rows = monthly.map(function (row) {
+      return [
+        row.month || "—",
+        agentMonthlyCell(row.revenue, language),
+        agentMonthlyCell(row.aov, language),
+        agentMonthlyCell(row.epcAll, language),
+        agentMonthlyCell(row.epcAff, language),
+        agentMonthlyCell(row.conversionRate, language, true),
+        agentMonthlyCell(row.payout, language),
+        agentMonthlyCell(row.affiliatePayout, language),
+        agentMonthlyCell(row.orders, language),
+        agentMonthlyCell(row.clicks, language),
+        agentMonthlyCell(row.dpv, language),
+        agentMonthlyCell(row.atc, language)
+      ];
+    });
+    var tableRow = function (cells) { return "| " + cells.join(" | ") + " |"; };
+    var title = zh
+      ? "### " + String(data.merchant || "商户") + " 月度数据（数据库真实数据）"
+      : "### " + String(data.merchant || "Merchant") + " Monthly Data (real DB rows)";
+    var note = zh
+      ? "以下为工具返回的完整月度序列，按最新月份在前排列。"
+      : "The complete monthly sequence returned by the tool, newest month first.";
+    return title + "\n\n" + note + "\n\n"
+      + tableRow(headers) + "\n"
+      + tableRow(separator) + "\n"
+      + rows.map(tableRow).join("\n");
+  }
+
+  function ensureAgentMonthlyDataVisible(fullResponse, toolResults, language) {
+    var response = String(fullResponse || "");
+    var blocks = [];
+    (Array.isArray(toolResults) ? toolResults : []).forEach(function (item) {
+      var result = item && item.result;
+      var data = result && result.ok ? result.data : null;
+      var monthly = Array.isArray(data && data.monthly) ? data.monthly : [];
+      if (!monthly.length) return;
+      var missingMonth = monthly.some(function (row) {
+        return row && row.month && response.indexOf(String(row.month)) === -1;
+      });
+      if (missingMonth) blocks.push(agentMonthlyMarkdown(data, language));
+    });
+    return blocks.length ? response + "\n\n" + blocks.join("\n\n") : response;
+  }
+
+  function agentTierCell(value, language, suffix) {
+    if (value === null || value === undefined || value === "") return "—";
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value);
+    return numeric.toLocaleString(language === "en" ? "en-US" : "zh-CN", {
+      maximumFractionDigits: 3
+    }) + (suffix || "");
+  }
+
+  function agentTierMerchantMarkdown(data, language) {
+    var zh = language !== "en";
+    var merchants = Array.isArray(data && data.merchants) ? data.merchants : [];
+    if (!merchants.length) return "";
+    var list = data.merchantList || {};
+    var total = Number.isFinite(Number(list.total)) ? Number(list.total) : merchants.length;
+    var offset = Number.isFinite(Number(list.offset)) ? Number(list.offset) : 0;
+    var returned = Number.isFinite(Number(list.returned)) ? Number(list.returned) : merchants.length;
+    var hasMore = !!list.hasMore;
+    var headers = zh
+      ? ["序号", "商户", "Tier", "EPC(Aff)", "EPC(All)", "佣金率", "AFF 佣金", "Revenue", "AOV"]
+      : ["#", "Merchant", "Tier", "EPC(Aff)", "EPC(All)", "Comm Rate", "AFF Commission", "Revenue", "AOV"];
+    var separator = headers.map(function () { return "---"; });
+    var rows = merchants.map(function (merchant, index) {
+      return [
+        String(offset + index + 1),
+        merchant.merchant || "—",
+        merchant.tier || "—",
+        agentTierCell(merchant.epcAff, language, ""),
+        agentTierCell(merchant.epcAll, language, ""),
+        agentTierCell(merchant.commissionRate, language, "%"),
+        agentTierCell(merchant.affiliateCommission, language, ""),
+        agentTierCell(merchant.revenue, language, ""),
+        agentTierCell(merchant.aov, language, "")
+      ];
+    });
+    var tableRow = function (cells) { return "| " + cells.join(" | ") + " |"; };
+    var pageText = zh
+      ? "工具已返回 Tier 商户明细（第 " + (offset + 1) + "–" + (offset + returned) + " 条，共 " + total + " 条" + (hasMore ? "，还有下一页" : "") + "）。"
+      : "The tool returned Tier merchant details (rows " + (offset + 1) + "–" + (offset + returned) + " of " + total + (hasMore ? "; more pages available" : "") + ").";
+    return (zh ? "### Tier 商户明细" : "### Tier merchant details") + "\n\n"
+      + pageText + "\n\n"
+      + tableRow(headers) + "\n"
+      + tableRow(separator) + "\n"
+      + rows.map(tableRow).join("\n");
+  }
+
+  function requestedAgentMerchantCount(prompt) {
+    var text = String(prompt || "");
+    var match = text.match(/(?:前|top|推荐|列出|展示|选择)\s*(\d{1,3})/i);
+    if (!match) match = text.match(/(\d{1,3})\s*(?:个|家|位)?\s*(?:商户|merchant)/i);
+    var count = match ? Number(match[1]) : 0;
+    return Number.isFinite(count) && count > 0 ? Math.min(100, Math.floor(count)) : 0;
+  }
+
+  function ensureAgentTierMerchantDataVisible(fullResponse, toolResults, language, prompt) {
+    var response = String(fullResponse || "");
+    var blocks = [];
+    var requestedCount = requestedAgentMerchantCount(prompt);
+    (Array.isArray(toolResults) ? toolResults : []).forEach(function (item) {
+      var result = item && item.result;
+      var data = result && result.ok ? result.data : null;
+      var merchants = Array.isArray(data && data.merchants) ? data.merchants : [];
+      if (!merchants.length) return;
+      var visibleCount = merchants.reduce(function (count, merchant) {
+        var name = String(merchant && merchant.merchant || "").trim();
+        return name && response.indexOf(name) !== -1 ? count + 1 : count;
+      }, 0);
+      var requiredCount = requestedCount || (merchants.length <= 10 ? merchants.length : 1);
+      var claimsMissingRows = /(?:并未|未能|没有|无法|不能).{0,24}(?:返回|提供|列出|展示|推荐|商户列表|商户名单|具体商户)/.test(response);
+      if (visibleCount < requiredCount || claimsMissingRows) {
+        var markdown = agentTierMerchantMarkdown(data, language);
+        if (markdown) blocks.push(markdown);
+      }
+    });
+    return blocks.length
+      ? response + "\n\n" + (language === "en"
+        ? "The following deterministic table is appended from the completed Tier tool result."
+        : "以下确定性商户表直接取自已完成的 Tier 工具结果，请以此明细为准。") + "\n\n" + blocks.join("\n\n")
+      : response;
+  }
+
+  function agentPaymentPeriodLabel(month, language) {
+    var match = String(month || "").match(/^(20\d{2})-(0?[1-9]|1[0-2])$/);
+    if (!match) return String(month || "");
+    var year = Number(match[1]);
+    var monthNumber = Number(match[2]);
+    return language === "en"
+      ? year + "-" + String(monthNumber).padStart(2, "0")
+      : year + "年" + monthNumber + "月";
+  }
+
+  function agentPaymentMarkdown(data, language) {
+    var zh = language !== "en";
+    var filter = data && data.filter ? data.filter : {};
+    var month = typeof filter.month === "string" ? filter.month.trim() : "";
+    var rows = Array.isArray(data && data.rows) ? data.rows : [];
+    if (!month) return "";
+    var summary = data && data.summary ? data.summary : {};
+    var period = agentPaymentPeriodLabel(month, language);
+    var headers = zh
+      ? ["商户", "Tier", "月份", "状态", "未付金额", "应付日"]
+      : ["Merchant", "Tier", "Month", "Status", "Remaining", "Due date"];
+    var safeCell = function (value) {
+      return String(value === null || value === undefined || value === "" ? "—" : value)
+        .replace(/\|/g, "\\|")
+        .replace(/[\r\n]+/g, " ");
+    };
+    var rowsText = rows.map(function (row) {
+      return [
+        safeCell(row.merchant),
+        safeCell(row.tier),
+        safeCell(row.month || month),
+        safeCell(row.status),
+        safeCell(agentTierCell(row.remaining, language, "")),
+        safeCell(row.due)
+      ];
+    });
+    var tableRow = function (cells) { return "| " + cells.join(" | ") + " |"; };
+    var detail = rows.length
+      ? (zh
+        ? "工具实际筛选月份：**" + month + "**（" + period + "），返回 " + rows.length + " 条明细" + (summary.merchantCount ? "，涉及 " + summary.merchantCount + " 个商户" : "") + "。"
+        : "Actual tool filter: **" + month + "** (" + period + "), returning " + rows.length + " detail rows" + (summary.merchantCount ? " across " + summary.merchantCount + " merchants" : "."))
+      : (zh
+        ? "工具实际筛选月份：**" + month + "**（" + period + "），未返回匹配记录。"
+        : "Actual tool filter: **" + month + "** (" + period + "), with no matching records.");
+    var table = rows.length
+      ? "\n\n" + tableRow(headers) + "\n" + tableRow(headers.map(function () { return "---"; })) + "\n" + rowsText.map(tableRow).join("\n")
+      : "";
+    return (zh ? "### 付款月份明细" : "### Payment month details") + "\n\n" + detail + table;
+  }
+
+  function agentPaymentPeriodMentioned(response, month) {
+    var match = String(month || "").match(/^(20\d{2})-(0?[1-9]|1[0-2])$/);
+    if (!match) return true;
+    var year = match[1];
+    var monthNumber = Number(match[2]);
+    var paddedMonth = String(monthNumber).padStart(2, "0");
+    var text = String(response || "");
+    return text.indexOf(year + "-" + paddedMonth) !== -1
+      || text.indexOf(year + "年" + monthNumber + "月") !== -1
+      || text.indexOf(year + "/" + paddedMonth) !== -1;
+  }
+
+  function agentPaymentNoMatchClaim(response) {
+    return /(?:没有|无|未找到|未发现|0\s*(?:个|条|家)|no\s+(?:matching\s+)?(?:unpaid|payment|record|merchant)|not\s+found)/i.test(String(response || ""));
+  }
+
+  function ensureAgentPaymentDataVisible(fullResponse, toolResults, language) {
+    var response = String(fullResponse || "");
+    var blocks = [];
+    (Array.isArray(toolResults) ? toolResults : []).forEach(function (item) {
+      var result = item && item.result;
+      var data = result && result.ok ? result.data : null;
+      var filter = data && data.filter ? data.filter : null;
+      var month = filter && typeof filter.month === "string" ? filter.month.trim() : "";
+      if (!/^20\d{2}-(0?[1-9]|1[0-2])$/.test(month)) return;
+      var rows = Array.isArray(data.rows) ? data.rows : [];
+      var periodMissing = !agentPaymentPeriodMentioned(response, month);
+      var contradictsRows = rows.length > 0 && agentPaymentNoMatchClaim(response);
+      if (periodMissing || contradictsRows) {
+        var markdown = agentPaymentMarkdown(data, language);
+        if (markdown) blocks.push(markdown);
+      }
+    });
+    return blocks.length
+      ? response + "\n\n" + (language === "en"
+        ? "The following payment details are taken directly from the completed tool result; use this month filter as authoritative."
+        : "以下付款明细直接取自已完成的付款工具结果；月份筛选及记录请以此为准。") + "\n\n" + blocks.join("\n\n")
+      : response;
+  }
+
+  function updateAgentRenderedResponse(reply, fullResponse) {
+    if (!reply || !fullResponse) return;
+    if (reply.msgEl && typeof reply.msgEl.querySelector === "function") {
+      var content = reply.msgEl.querySelector(".chat-stream-text");
+      if (content) content.innerHTML = markdownToHtml(fullResponse) || escapeHtml(fullResponse);
+    }
+    if (reply.statusBar && typeof reply.statusBar.querySelector === "function") {
+      var viewButton = reply.statusBar.querySelector(".chat-to-deep-btn");
+      if (viewButton) viewButton._fullResponse = fullResponse;
+    }
+  }
+
+  function renderAgentFallbackReply(toolResults, opts) {
+    var language = opts.language || "zh";
+    var chatLogEl = opts.chatLogEl;
+    var fullResponse = agentFallbackText(toolResults, language);
+    var msgEl = document.createElement("div");
+    msgEl.className = "message assistant";
+    var msgContent = document.createElement("div");
+    msgContent.className = "chat-stream-text";
+    var renderedHtml = markdownToHtml(fullResponse);
+    if (renderedHtml) msgContent.innerHTML = renderedHtml;
+    else msgContent.textContent = fullResponse;
+    msgEl.appendChild(msgContent);
+    var statusBar = document.createElement("div");
+    statusBar.className = "chat-stream-status";
+    statusBar.textContent = language === "zh"
+      ? "⚠ 已保留工具数据，未生成自然语言综合"
+      : "⚠ Tool data preserved; natural-language synthesis unavailable";
+    msgEl.appendChild(statusBar);
+    chatLogEl.appendChild(msgEl);
+    attachChatViewButton(statusBar, fullResponse, opts.viewContext || null, language);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    return { fullResponse: fullResponse, msgEl: msgEl, statusBar: statusBar };
+  }
+
+  async function runChatAgent(prompt, opts) {
+    var language = opts.language || "zh";
+    var chatLogEl = opts.chatLogEl;
+    var copy = agentStepCopy(language);
+    var execution = opts.executionTimeline ? createAgentExecutionTimeline(chatLogEl, language) : null;
+    var executionCopy = agentExecutionCopy(language);
+    var executionStartedAt = Date.now();
+    var signal = opts.signal || null;
+    var memoryText = opts.memoryText || "";
+    var history = opts.history || [];
+
+    function stoppedOutcome() {
+      if (execution) execution.finish("stopped", Date.now() - executionStartedAt);
+      return { handled: true, ok: false, stopped: true };
+    }
+
+    if (signal && signal.aborted) return stoppedOutcome();
+
+    if (agentShouldBypassPlanning(prompt)) {
+      var directStep = execution ? execution.addStep({
+        status: "running",
+        label: executionCopy.direct,
+        detail: executionCopy.directDetail
+      }) : null;
+      var directReply = await streamAssistantReply(
+        { prompt: prompt, memory: memoryText, language: language, history: agentFallbackHistory(history) },
+        {
+          chatLogEl: chatLogEl,
+          language: language,
+          viewContext: opts.viewContext || null,
+          onError: opts.onError || null,
+          signal: signal
+        }
+      );
+      if (directReply.stopped) {
+        if (execution) execution.updateStep(directStep, {
+          status: "stopped",
+          label: executionCopy.direct,
+          detail: executionCopy.stopped,
+          elapsedMs: Date.now() - executionStartedAt
+        });
+        return stoppedOutcome();
+      }
+      if (!directReply.ok) {
+        if (execution) {
+          execution.updateStep(directStep, {
+            status: "error",
+            label: executionCopy.direct,
+            detail: language === "en" ? "Direct answer unavailable" : "直接回答暂时不可用",
+            elapsedMs: Date.now() - executionStartedAt
+          });
+          execution.finish("error", Date.now() - executionStartedAt);
+        }
+        return { handled: false, error: directReply.error };
+      }
+      if (execution) {
+        execution.updateStep(directStep, {
+          status: "done",
+          label: executionCopy.direct,
+          detail: executionCopy.done,
+          elapsedMs: Date.now() - executionStartedAt
+        });
+        execution.finish("done", Date.now() - executionStartedAt);
+      }
+      return {
+        handled: true,
+        ok: true,
+        fullResponse: directReply.fullResponse,
+        statusBar: directReply.statusBar
+      };
+    }
+
+    var messages = buildAgentPlanningMessages(memoryText, history, prompt);
+
+    var toolCallsTotal = 0;
+    var toolResults = [];
+
+    for (var round = 0; round < AGENT_MAX_PLANNING_ROUNDS; round++) {
+      var planStep = execution ? execution.addStep({
+        status: "running",
+        label: round ? executionCopy.replanning : executionCopy.planning,
+        detail: executionCopy.planningDetail
+      }) : null;
+      var planCard = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.planning });
+      var plan;
+      try {
+        var planOptions = {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: messages, tools: agentToolDefinitions(), language: language })
+        };
+        if (signal) planOptions.signal = signal;
+        var planResp = await fetch("/api/chat/agent", planOptions);
+        plan = planResp.ok ? await planResp.json() : { ok: false, error: "HTTP " + planResp.status };
+      } catch (error) {
+        if (agentRequestWasStopped(error, signal)) return stoppedOutcome();
+        plan = { ok: false, error: String((error && error.message) || error) };
+      }
+      if (planCard && planCard.remove) planCard.remove();
+
+      if (!plan || plan.ok !== true || !Array.isArray(plan.toolCalls) || !plan.toolCalls.length) {
+        if (plan && typeof plan.content === "string" && plan.content.trim()) {
+          if (execution) {
+            execution.updateStep(planStep, {
+              status: "done",
+              label: executionCopy.direct,
+              detail: language === "en" ? "No data tool was needed" : "无需调用数据工具",
+              elapsedMs: Date.now() - executionStartedAt
+            });
+            execution.finish("done", Date.now() - executionStartedAt);
+          }
+          return { handled: true, ok: true, directContent: plan.content };
+        }
+        if (execution) {
+          execution.updateStep(planStep, {
+            status: "error",
+            label: executionCopy.planning,
+            detail: String(plan && plan.error || (language === "en" ? "No executable plan" : "没有生成可执行计划")),
+            elapsedMs: Date.now() - executionStartedAt
+          });
+          execution.finish("error", Date.now() - executionStartedAt);
+        }
+        return { handled: false, error: plan && plan.error };
+      }
+
+      var calls = plan.toolCalls.slice(0, AGENT_MAX_TOOLS_PER_ROUND);
+      if (execution) {
+        execution.updateStep(planStep, {
+          status: "done",
+          label: executionCopy.planning,
+          detail: (language === "en" ? calls.length + " data step(s) planned" : "已规划 " + calls.length + " 个数据步骤"),
+          elapsedMs: Date.now() - executionStartedAt
+        });
+      }
+      var results = await Promise.all(calls.map(async function (call) {
+        if (signal && signal.aborted) return { stopped: true };
+        if (toolCallsTotal >= AGENT_MAX_TOOL_CALLS) return null;
+        toolCallsTotal++;
+        var kind = agentToolKindLabel(call.name);
+        var timelineStep = execution ? execution.addStep({
+          status: "running",
+          label: executionCopy.tool + " · " + agentToolLabel(call.name, language),
+          detail: agentToolScopeText(call.name, call.arguments || {}, null, language)
+        }) : null;
+        var card = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.running + " " + kind + "报告…" });
+        var toolStartedAt = Date.now();
+        var result = await agentExecuteTool(call.name, call.arguments || {}, { signal: signal, prompt: prompt });
+        if (signal && signal.aborted) {
+          if (execution) execution.updateStep(timelineStep, { status: "stopped", label: executionCopy.tool + " · " + agentToolLabel(call.name, language), detail: executionCopy.stopped, elapsedMs: Date.now() - toolStartedAt });
+          return { stopped: true };
+        }
+        var text = result.ok
+          ? ("✓ " + kind + copy.reportDone + "：" + result.data.headline)
+          : ("✗ " + copy.failed + "：" + result.error);
+        if (card) {
+          card.className = "agent-step " + (result.ok ? "agent-step-done" : "agent-step-error");
+          card.innerHTML = '<span class="agent-step-icon">' + (result.ok ? "✓" : "✗") + '</span><span class="agent-step-text">' + escapeHtml(text) + '</span>';
+        }
+        if (execution) execution.updateStep(timelineStep, {
+          status: result.ok ? "done" : "error",
+          label: executionCopy.tool + " · " + agentToolLabel(call.name, language),
+          detail: agentToolResultDetail(call.name, call.arguments || {}, result, language),
+          elapsedMs: Date.now() - toolStartedAt
+        });
+        return { id: call.id, name: call.name, result: result };
+      }));
+
+      if ((signal && signal.aborted) || results.some(function (r) { return r && r.stopped; })) return stoppedOutcome();
+
+      var finished = results.filter(function (r) { return r !== null; });
+      finished.forEach(function (r) { toolResults.push(r); });
+      var allOk = finished.every(function (r) { return r.result.ok; });
+      if (allOk) break;
+
+      var failedCount = finished.filter(function (r) { return !r.result.ok; }).length;
+      for (var f = 0; f < finished.length; f++) {
+        var item = finished[f];
+        messages.push({ role: "user", content: agentToolResultPromptText(item) });
+      }
+      messages.push({
+        role: "user",
+        content: "有 " + failedCount + " 个工具失败。请修正参数后重试（这是最后一轮），或停止调用工具并基于已有结果回答。"
+      });
+    }
+
+    var synthMessages = buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language);
+
+    var synthesisStep = execution ? execution.addStep({
+      status: "running",
+      label: executionCopy.synthesis,
+      detail: executionCopy.synthesisDetail
+    }) : null;
+    var reply = await streamAssistantReply(
+      { messages: synthMessages, language: language },
+      {
+        chatLogEl: chatLogEl,
+        language: language,
+        viewContext: opts.viewContext || null,
+        onError: opts.onError || null,
+        signal: signal
+      }
+    );
+    if (reply.stopped) {
+      if (execution) execution.updateStep(synthesisStep, {
+        status: "stopped",
+        label: executionCopy.synthesis,
+        detail: executionCopy.stopped,
+        elapsedMs: Date.now() - executionStartedAt
+      });
+      return stoppedOutcome();
+    }
+    if (!reply.ok) {
+      if (reply.msgEl && !reply.fullResponse.trim() && reply.msgEl.remove) reply.msgEl.remove();
+      if (execution) execution.updateStep(synthesisStep, {
+        status: "error",
+        label: executionCopy.synthesis,
+        detail: language === "en" ? "Tool results preserved; synthesis unavailable" : "已保留工具结果，自然语言综合不可用",
+        elapsedMs: Date.now() - executionStartedAt
+      });
+      var fallbackReply = renderAgentFallbackReply(toolResults, {
+        chatLogEl: chatLogEl,
+        language: language,
+        viewContext: opts.viewContext || null
+      });
+      if (execution) execution.finish("error", Date.now() - executionStartedAt);
+      return { handled: true, ok: true, fullResponse: fallbackReply.fullResponse, statusBar: fallbackReply.statusBar };
+    }
+    var completedResponse = ensureAgentMonthlyDataVisible(reply.fullResponse, toolResults, language);
+    completedResponse = ensureAgentTierMerchantDataVisible(completedResponse, toolResults, language, prompt);
+    completedResponse = ensureAgentPaymentDataVisible(completedResponse, toolResults, language);
+    if (completedResponse !== reply.fullResponse) updateAgentRenderedResponse(reply, completedResponse);
+    if (execution) {
+      execution.updateStep(synthesisStep, {
+        status: "done",
+        label: executionCopy.synthesis,
+        detail: language === "en" ? "Final answer ready" : "最终回答已生成",
+        elapsedMs: Date.now() - executionStartedAt
+      });
+      execution.finish("done", Date.now() - executionStartedAt);
+    }
+    return { handled: true, ok: true, fullResponse: completedResponse, statusBar: reply.statusBar };
+  }
+
+  function agentPageWelcomeHtml() {
+    var examplePrompt = t("agent.example.prompt", "Look up EPC and conversion for Tapo (ID398679)");
+    var examplePromptFallback = "Look up EPC and conversion for Tapo (ID398679)";
+    return '<div class="agent-page-welcome">'
+      + '<span class="agent-page-welcome-logo" role="img" aria-label="Yeah">Yeah</span>'
+      + '<div>'
+      + '<span class="agent-page-welcome-kicker">' + escapeHtml(t("agent.welcome.kicker", "START WITH A DATA QUESTION")) + '</span>'
+      + '<h3>' + escapeHtml(t("agent.welcome.title", "What would you like to query?")) + '</h3>'
+      + '<p>' + escapeHtml(t("agent.welcome.body", "Ask for a merchant analysis, a category comparison, payment status, or a multi-month trend.")) + '</p>'
+      + '<button class="agent-example-prompt" type="button" data-agent-example-prompt-key="agent.example.prompt" data-agent-example-prompt="' + escapeHtml(examplePrompt) + '" data-agent-example-prompt-fallback="' + escapeHtml(examplePromptFallback) + '">'
+      + '<span class="agent-example-prompt-icon" aria-hidden="true">↗</span>'
+      + '<span class="agent-example-prompt-content">'
+      + '<span class="agent-example-prompt-label" data-i18n="agent.example.label" data-i18n-fallback="Example prompt">' + escapeHtml(t("agent.example.label", "Example prompt")) + '</span>'
+      + '<span class="agent-example-prompt-text" data-i18n="agent.example.prompt" data-i18n-fallback="' + escapeHtml(examplePromptFallback) + '">' + escapeHtml(examplePrompt) + '</span>'
+      + '</span>'
+      + '<span class="agent-example-prompt-arrow" aria-hidden="true">→</span>'
+      + '</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function handleAgentExamplePromptClick(event) {
+    var target = event && event.target;
+    var button = target && typeof target.closest === "function"
+      ? target.closest("[data-agent-example-prompt-key]")
+      : null;
+    if (!button || !els.agentChatLog || !els.agentChatLog.contains(button)) return;
+    if (!els.agentChatInput || state.agentPage.submitting) return;
+    var promptKey = button.dataset.agentExamplePromptKey || "agent.example.prompt";
+    var fallback = button.dataset.agentExamplePromptFallback || button.dataset.agentExamplePrompt || "";
+    var prompt = String(t(promptKey, fallback) || "").trim();
+    if (!prompt) return;
+    els.agentChatInput.value = prompt;
+    els.agentChatInput.focus();
+  }
+
+  function appendAgentPageMessage(role, content) {
+    if (!els.agentChatLog || !content) return null;
+    els.agentChatLog.classList.add("agent-chat-log-has-messages");
+    var message = document.createElement("div");
+    message.className = "message " + role;
+    var text = document.createElement("div");
+    text.className = "chat-stream-text";
+    var rendered = markdownToHtml(String(content));
+    if (rendered) text.innerHTML = rendered;
+    else text.textContent = String(content);
+    message.appendChild(text);
+    els.agentChatLog.appendChild(message);
+    els.agentChatLog.scrollTop = els.agentChatLog.scrollHeight;
+    return message;
+  }
+
+  function resetAgentPageConversation() {
+    if (state.agentPage.submitting || !els.agentChatLog) return;
+    state.agentPage.history = [];
+    els.agentChatLog.classList.remove("agent-chat-log-has-messages");
+    els.agentChatLog.innerHTML = agentPageWelcomeHtml();
+    els.agentChatLog.scrollTop = 0;
+    if (els.agentChatInput) els.agentChatInput.focus();
+  }
+
+  function setAgentPageSubmitButtonState(isStopping) {
+    var button = els.agentChatSubmit;
+    if (!button) return;
+    var stopping = !!isStopping;
+    var label = button.querySelector(".agent-send-label");
+    var icon = button.querySelector(".agent-send-icon");
+    var labelKey = stopping ? "agent.stop" : "action.send";
+    var labelText = t(labelKey, stopping ? "Stop" : "Send");
+    button.classList.toggle("is-stopping", stopping);
+    button.setAttribute("aria-label", labelText);
+    button.setAttribute("title", labelText);
+    if (label) {
+      label.setAttribute("data-i18n", labelKey);
+      label.textContent = labelText;
+    }
+    if (icon) icon.textContent = stopping ? "■" : "↑";
+  }
+
+  function stopAgentPageConversation() {
+    if (!state.agentPage.submitting || !state.agentPage.abortController) return;
+    state.agentPage.abortController.abort();
+  }
+
+  async function handleAgentPageSubmit(event) {
+    if (event && event.preventDefault) event.preventDefault();
+    if (state.agentPage.submitting) {
+      stopAgentPageConversation();
+      return;
+    }
+    if (!els.agentChatInput) return;
+    var prompt = String(els.agentChatInput.value || "").trim();
+    if (!prompt) return;
+
+    var language = responseLanguageFor(prompt);
+    var historyBeforePrompt = state.agentPage.history.slice();
+    var questionLogIntent = detectQuestionLogIntent(prompt);
+    var questionEventId = createChatQuestionEventId();
+    var questionLogPromise = beginQuestionLog(prompt, "agent", language, questionLogIntent, questionEventId);
+    var questionLogCompletion = null;
+    var completeAgentQuestionLog = function (status) {
+      if (!questionLogCompletion) {
+        questionLogCompletion = completeQuestionLog(questionLogPromise, status, questionLogIntent);
+      }
+      return questionLogCompletion;
+    };
+    var attachAgentAnswerFeedback = function (host, answer, completionPromise) {
+      if (!host || !answer || !String(answer).trim()) return;
+      attachAnswerFeedbackButton(host, {
+        questionPromise: completionPromise,
+        questionEventId: questionEventId,
+        mode: "agent",
+        prompt: prompt,
+        language: language,
+        intent: questionLogIntent,
+        getAnswer: function () { return String(answer); }
+      });
+    };
+    appendAgentPageMessage("user", prompt);
+    els.agentChatInput.value = "";
+    state.agentPage.submitting = true;
+    state.agentPage.abortController = typeof AbortController === "function" ? new AbortController() : null;
+    setAgentPageSubmitButtonState(true);
+    els.agentChatInput.disabled = true;
+    if (els.agentNewConversation) els.agentNewConversation.disabled = true;
+    if (els.agentStopConversation && state.agentPage.abortController) {
+      els.agentStopConversation.classList.remove("hidden");
+      els.agentStopConversation.disabled = false;
+    }
+
+    try {
+      var outcome = await runChatAgent(prompt, {
+        language: language,
+        chatLogEl: els.agentChatLog,
+        memoryText: "",
+        history: historyBeforePrompt,
+        viewContext: null,
+        executionTimeline: true,
+        signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null
+      });
+      if (outcome && outcome.handled) {
+        if (outcome.stopped) {
+          appendAgentPageMessage("assistant", t("agent.stopped", "This Agent run was stopped."));
+          completeAgentQuestionLog("failed");
+          return;
+        }
+        if (outcome.directContent) {
+          var directMessage = appendAgentPageMessage("assistant", outcome.directContent);
+          var directQuestionCompletion = completeAgentQuestionLog("success");
+          attachAgentAnswerFeedback(directMessage, outcome.directContent, directQuestionCompletion);
+          state.agentPage.history = agentHistoryAfterOutcome(historyBeforePrompt, prompt, outcome);
+        } else if (outcome.ok && outcome.fullResponse) {
+          var responseQuestionCompletion = completeAgentQuestionLog("success");
+          attachAgentAnswerFeedback(outcome.statusBar, outcome.fullResponse, responseQuestionCompletion);
+          state.agentPage.history = agentHistoryAfterOutcome(historyBeforePrompt, prompt, outcome);
+        } else {
+          completeAgentQuestionLog("failed");
+        }
+        return;
+      }
+
+      var fallback = await streamAssistantReply(
+        { prompt: prompt, language: language, history: agentFallbackHistory(historyBeforePrompt) },
+        {
+          chatLogEl: els.agentChatLog,
+          language: language,
+          viewContext: null,
+          signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null
+        }
+      );
+      if (fallback.stopped) {
+        appendAgentPageMessage("assistant", t("agent.stopped", "This Agent run was stopped."));
+        completeAgentQuestionLog("failed");
+        return;
+      }
+      if (fallback.ok && fallback.fullResponse) {
+        var fallbackQuestionCompletion = completeAgentQuestionLog("success");
+        attachAgentAnswerFeedback(fallback.statusBar, fallback.fullResponse, fallbackQuestionCompletion);
+        state.agentPage.history = agentHistoryAfterOutcome(historyBeforePrompt, prompt, fallback);
+      } else {
+        appendAgentPageMessage("assistant", t("agent.error", "The Agent is temporarily unavailable. Please try again."));
+        completeAgentQuestionLog("failed");
+      }
+    } catch (error) {
+      appendAgentPageMessage("assistant", t("agent.error", "The Agent is temporarily unavailable. Please try again."));
+      completeAgentQuestionLog("failed");
+    } finally {
+      state.agentPage.submitting = false;
+      state.agentPage.abortController = null;
+      setAgentPageSubmitButtonState(false);
+      els.agentChatInput.disabled = false;
+      if (els.agentNewConversation) els.agentNewConversation.disabled = false;
+      if (els.agentStopConversation) {
+        els.agentStopConversation.classList.add("hidden");
+        els.agentStopConversation.disabled = true;
+      }
+      els.agentChatInput.focus();
+    }
+  }
+
   async function applyPrompt(prompt) {
     const submittedPrompt = prompt;
     var isDeep = state.deepMode;
@@ -12809,20 +14878,13 @@ var _NUMERIC_COL_PATTERNS = [
     if (!isDeep) {
       _syncChatLogVisibility();
       var _chatLog = els.chatLogChat || els.chatLog;
+      var chatHistoryBeforePrompt = state.chatHistory.slice();
 
       // 保存用户消息
-      state.chatHistory.push({ role: "user", content: prompt });
       var _userMsg = document.createElement("div");
       _userMsg.className = "message user";
       _userMsg.textContent = prompt;
       _chatLog.appendChild(_userMsg);
-      _chatLog.scrollTop = _chatLog.scrollHeight;
-
-      const loadingText = language === "zh" ? "正在思考…" : "Thinking…";
-      var loadingMsg = document.createElement("div");
-      loadingMsg.className = "message assistant loading-indicator";
-      loadingMsg.textContent = loadingText;
-      _chatLog.appendChild(loadingMsg);
       _chatLog.scrollTop = _chatLog.scrollHeight;
 
       // 记忆上下文
@@ -12836,167 +14898,87 @@ var _NUMERIC_COL_PATTERNS = [
       memoryText = appendChatMemoryRecommendationContext(memoryText, chatRecommendationResult);
 
       try {
-        var responseStream = await fetch("/api/chat/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: prompt,
-            memory: memoryText,
-            language: language,
-            history: state.chatHistory.slice(0, -1)
-          })
+      if (state.agentEnabled !== false) {
+        var agentOutcome = await runChatAgent(prompt, {
+          language: language,
+          chatLogEl: _chatLog,
+          memoryText: memoryText,
+          history: chatHistoryBeforePrompt,
+          viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
+          onError: null
         });
-        loadingMsg.remove();
-
-        if (!responseStream.ok) {
-          var _failMsg = document.createElement("div");
-          _failMsg.className = "message assistant";
-          _failMsg.textContent = language === "zh" ? "请求失败，请稍后重试。" : "Request failed, please retry.";
-          _chatLog.appendChild(_failMsg);
-          _chatLog.scrollTop = _chatLog.scrollHeight;
-          completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
-          return;
-        }
-
-        var msgEl = document.createElement("div");
-        msgEl.className = "message assistant";
-        var msgContent = document.createElement("div");
-        msgContent.className = "chat-stream-text";
-        msgEl.appendChild(msgContent);
-        var statusBar = document.createElement("div");
-        statusBar.className = "chat-stream-status";
-        msgEl.appendChild(statusBar);
-        _chatLog.appendChild(msgEl);
-        _chatLog.scrollTop = _chatLog.scrollHeight;
-
-        var tokenCount = 0;
-        var fullResponse = "";
-        var streamHadError = false;
-        var streamStartTime = Date.now();
-
-        var thinkingZh = ["思考中", "分析中", "处理中", "生成中", "整合中"];
-        var thinkingEn = ["thinking", "analyzing", "processing", "generating", "compiling"];
-        var thinkIdx = 0;
-        var thinkTicks = 0;
-        var timerTick = setInterval(function () {
-          var e = ((Date.now() - streamStartTime) / 1000).toFixed(1);
-          thinkTicks++;
-          if (thinkTicks % 30 === 0) {
-            thinkIdx = (thinkIdx + 1) % (language === "zh" ? thinkingZh.length : thinkingEn.length);
+        if (agentOutcome && agentOutcome.handled) {
+          if (agentOutcome.directContent) {
+            var directMsg = document.createElement("div");
+            directMsg.className = "message assistant";
+            directMsg.innerHTML = markdownToHtml(agentOutcome.directContent) || escapeHtml(agentOutcome.directContent);
+            _chatLog.appendChild(directMsg);
+            _chatLog.scrollTop = _chatLog.scrollHeight;
+            state.chatHistory = agentHistoryAfterOutcome(chatHistoryBeforePrompt, prompt, agentOutcome);
+            completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+            return;
           }
-          var word = language === "zh" ? thinkingZh[thinkIdx] : thinkingEn[thinkIdx];
-          var timeUnit = language === "zh" ? "秒" : "s";
-          statusBar.textContent = "\u23f1 " + e + timeUnit + " \u00b7 " + word + "…";
-        }, 100);
+          if (agentOutcome.ok) {
+            state.chatHistory = agentHistoryAfterOutcome(chatHistoryBeforePrompt, prompt, agentOutcome);
+            var agentQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+            attachAnswerFeedbackButton(agentOutcome.statusBar, {
+              questionPromise: agentQuestionCompletion,
+              questionEventId: questionEventId,
+              mode: "chat",
+              prompt: prompt,
+              language: language,
+              intent: questionLogIntent,
+              getAnswer: function () { return agentOutcome.fullResponse; }
+            });
+            return;
+          }
+          // agent 综合失败 → 继续走下方单发 fallback
+        }
+      }
 
-        var reader = responseStream.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
-        var doneReading = false;
-
-        while (!doneReading) {
-          var readResult = await reader.read();
-          if (readResult.done) break;
-          buffer += decoder.decode(readResult.value, { stream: true });
-          var lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (var j = 0; j < lines.length; j++) {
-            var line = lines[j];
-            if (line.startsWith("data: ")) {
-              var payload = line.slice(6).trim();
-              if (payload === "[DONE]") { doneReading = true; break; }
-              try {
-                var parsed = JSON.parse(payload);
-                if (parsed.token) {
-                  msgContent.textContent += parsed.token;
-                  fullResponse += parsed.token;
-                  tokenCount++;
-                  _chatLog.scrollTop = _chatLog.scrollHeight;
-                }
-                if (parsed.error) streamHadError = true;
-              } catch (e) { /* skip malformed SSE */ }
-            }
+      var replyOutcome = await streamAssistantReply(
+        { prompt: prompt, memory: memoryText, language: language, history: agentFallbackHistory(chatHistoryBeforePrompt) },
+        {
+          chatLogEl: _chatLog,
+          language: language,
+          viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
+          onError: function (error) {
+            var _errMsg = document.createElement("div");
+            _errMsg.className = "message assistant";
+            _errMsg.textContent = (language === "zh" ? "网络错误，请稍后重试。" : "Network error, please retry.")
+              + " (" + (error.message || "") + ")";
+            _chatLog.appendChild(_errMsg);
+            _chatLog.scrollTop = _chatLog.scrollHeight;
           }
         }
-
-        state.chatHistory.push({ role: "assistant", content: fullResponse });
-        clearInterval(timerTick);
-        
-
-        // 流式完成后将 Markdown 渲染为 HTML
-        if (fullResponse.trim()) {
-          var renderedHtml = markdownToHtml(fullResponse);
-          if (renderedHtml) {
-            msgContent.innerHTML = renderedHtml;
-          }
-        }
-        var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
-        statusBar.textContent = language === "zh"
-          ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
-          : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens";
-        // ── 追加「转为 View」按钮 ──
-        if (fullResponse && fullResponse.trim()) {
-          var viewBtn = document.createElement("button");
-          viewBtn.className = "chat-to-deep-btn";
-          viewBtn.textContent = language === "zh" ? "转为 View" : "Open as View";
-          viewBtn._chatPrompt = prompt;
-          viewBtn._fullResponse = fullResponse;
-          viewBtn._recommendationResult = chatRecommendationResult;
-          viewBtn.addEventListener("click", function (e) {
-            var btn = e.currentTarget;
-            var _prompt = btn._chatPrompt || "";
-            // Chat Mode View: 用 .chat-stream-text 包裹，确保深层面板内渲染样式与聊天一致
-            var _html = btn._fullResponse ? '<div class="chat-stream-text">' + markdownToHtml(btn._fullResponse) + '</div>' : "";
-            if (!_html) return;
-            // 查找是否已有与此按钮关联的面板
-            var existing = _deepPanels.find(function (p) { return p._viewBtn === btn; });
-            if (existing && existing._hidden) {
-              _showDeepPanel(existing.id);
-            } else if (existing) {
-              _bringPanelToFront(existing);
-            } else {
-              var p = _createDeepPanel(_prompt);
-              p._mode = "chat";
-              p.el.classList.add("source-chat");
-              p._viewBtn = btn;
-              _showQuickResultInDeepPanel(p, _html, _prompt, {
-                recommendationResult: btn._recommendationResult
-              });
-            }
-          });
-          statusBar.appendChild(viewBtn);
-        }
-        _chatLog.scrollTop = _chatLog.scrollHeight;
-        var chatAnswerSucceeded = fullResponse.trim() && !streamHadError;
-        var chatQuestionCompletion = completeQuestionLog(
-          questionLogPromise,
-          chatAnswerSucceeded ? "success" : "failed",
-          questionLogIntent
-        );
-        if (chatAnswerSucceeded) {
-          attachAnswerFeedbackButton(statusBar, {
-            questionPromise: chatQuestionCompletion,
-            questionEventId,
-            mode: "chat",
-            prompt,
-            language,
-            intent: questionLogIntent,
-            getAnswer: function () { return fullResponse; }
-          });
-        }
+      );
+      if (!replyOutcome.ok) {
+        completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        return;
+      }
+      state.chatHistory = agentHistoryAfterOutcome(chatHistoryBeforePrompt, prompt, replyOutcome);
+      var chatQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+      attachAnswerFeedbackButton(replyOutcome.statusBar, {
+        questionPromise: chatQuestionCompletion,
+        questionEventId: questionEventId,
+        mode: "chat",
+        prompt: prompt,
+        language: language,
+        intent: questionLogIntent,
+        getAnswer: function () { return replyOutcome.fullResponse; }
+      });
+      return;
       } catch (error) {
-        loadingMsg.remove();
-        console.error("[chat-stream] fetch error:", error);
-        var _errMsg = document.createElement("div");
-        _errMsg.className = "message assistant";
-        _errMsg.textContent = (language === "zh" ? "网络错误，请稍后重试。" : "Network error, please retry.")
-          + " (" + (error.message || "") + ")";
-        _chatLog.appendChild(_errMsg);
+        console.error("[chat-agent] applyPrompt error:", error);
+        var _agentErrMsg = document.createElement("div");
+        _agentErrMsg.className = "message assistant";
+        _agentErrMsg.textContent = (language === "zh" ? "处理过程出错，请稍后重试。" : "Something went wrong, please retry.")
+          + " (" + (error && error.message || "unknown") + ")";
+        _chatLog.appendChild(_agentErrMsg);
         _chatLog.scrollTop = _chatLog.scrollHeight;
         completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        return;
       }
-      return;
     }
 
     // ════════════════════════════════════════
@@ -23639,20 +25621,31 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.reportsSubnav) els.reportsSubnav.classList.toggle("collapsed", !state.reportsOpen);
   }
 
+  function updateDashboardNavState() {
+    if (els.dashboardNav) els.dashboardNav.setAttribute("aria-expanded", state.dashboardOpen ? "true" : "false");
+    if (els.dashboardSubnav) els.dashboardSubnav.classList.toggle("collapsed", !state.dashboardOpen);
+  }
+
+  function pageBelongsToDashboard(page) {
+    return page === "dashboard" || page === "agent";
+  }
+
   function pageBelongsToReports(page) {
     return page === "category" || page === "tier";
   }
 
   function updatePageModeClass(page = state.page) {
     if (!document.body) return;
-    document.body.classList.toggle("dashboard-mode", page === "dashboard");
+    document.body.classList.toggle("dashboard-mode", pageBelongsToDashboard(page));
+    document.body.classList.toggle("dashboard-agent-mode", page === "agent");
     document.body.classList.toggle("tier-scroll-mode", page === "tier");
   }
 
   function mobileCurrentPageLabel() {
     if (state.page === "tier") return state.selectedTierPage || "Tier 1";
     const labels = {
-      dashboard: t("nav.dashboard", "Dashboard"),
+      dashboard: t("nav.chatbot", "Chatbot"),
+      agent: t("nav.agent", "Agent"),
       payments: t("nav.payments", "Payments"),
       publishers: t("nav.publishers", "Publishers"),
       sheets: t("nav.targets", "Targets"),
@@ -23777,11 +25770,15 @@ var _NUMERIC_COL_PATTERNS = [
     const isTier = page === "tier";
     const isSheets = page === "sheets";
     const isCategory = page === "category";
+    const isAgent = page === "agent";
+    const isDashboardPage = pageBelongsToDashboard(page);
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isOfferListTracker = page === "offer-list-tracker";
     const isReportPage = pageBelongsToReports(page);
     if (isReportPage) state.reportsOpen = true;
+    if (isDashboardPage) state.dashboardOpen = true;
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
+    if (els.dashboardAgentPage) els.dashboardAgentPage.classList.toggle("hidden", !isAgent);
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
     els.monthlyNewMerchantsPage.classList.toggle("hidden", !isMonthlyNewMerchants);
@@ -23793,7 +25790,9 @@ var _NUMERIC_COL_PATTERNS = [
     els.sheetPage.classList.toggle("hidden", !isSheets);
     els.categoryPage.classList.toggle("hidden", !isCategory);
     els.tierPage.classList.toggle("hidden", !isTier);
-    els.dashboardNav.classList.toggle("active", page === "dashboard");
+    els.dashboardNav.classList.toggle("active", isDashboardPage);
+    if (els.chatbotNav) els.chatbotNav.classList.toggle("active", page === "dashboard");
+    if (els.agentNav) els.agentNav.classList.toggle("active", isAgent);
     els.paymentsNav.classList.toggle("active", page === "payments");
     els.publishersNav.classList.toggle("active", page === "publishers");
     els.sheetsNav.classList.toggle("active", isReportPage);
@@ -23805,6 +25804,7 @@ var _NUMERIC_COL_PATTERNS = [
       button.classList.toggle("active", isTier && button.dataset.tierPage === state.selectedTierPage);
     });
     updateReportsNavState();
+    updateDashboardNavState();
     // 切换页面时自动最小化所有非推理中的深度分析浮窗
     _deepPanels.forEach(function (p) {
       if (!p.minimized && !p.abortController) {
@@ -23832,6 +25832,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
+    state.agentEnabled = window.__OI_AGENT_ENABLED !== false;
 
     // 模式切换
     els.chatModeToggle = document.getElementById("chatModeToggle");
@@ -23861,6 +25862,7 @@ var _NUMERIC_COL_PATTERNS = [
     renderDashboardCategoryTierPicker();
     syncDashboardCategoryReportControls();
     updateReportsNavState();
+    updateDashboardNavState();
     updatePageModeClass();
     syncMobileNavigationMode();
     quickPrompts.forEach(({ key, prompt }) => {
@@ -23982,7 +25984,12 @@ var _NUMERIC_COL_PATTERNS = [
     } else if (typeof mobileNavigationMedia.addListener === "function") {
       mobileNavigationMedia.addListener(syncMobileNavigationMode);
     }
-    els.dashboardNav.addEventListener("click", () => switchPage("dashboard"));
+    els.dashboardNav.addEventListener("click", () => {
+      state.dashboardOpen = !state.dashboardOpen;
+      updateDashboardNavState();
+    });
+    if (els.chatbotNav) els.chatbotNav.addEventListener("click", () => switchPage("dashboard"));
+    if (els.agentNav) els.agentNav.addEventListener("click", () => switchPage("agent"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.publishersNav.addEventListener("click", () => switchPage("publishers"));
     els.sheetsNav.addEventListener("click", () => {
@@ -24879,6 +26886,10 @@ var _NUMERIC_COL_PATTERNS = [
       }
       applyPrompt(prompt);
     });
+    els.agentChatForm?.addEventListener("submit", handleAgentPageSubmit);
+    els.agentChatLog?.addEventListener("click", handleAgentExamplePromptClick);
+    els.agentNewConversation?.addEventListener("click", resetAgentPageConversation);
+    els.agentStopConversation?.addEventListener("click", stopAgentPageConversation);
     els.chatLog.addEventListener("click", (event) => {
       const button = event.target.closest("[data-download-id]");
       if (!button) return;
@@ -25087,6 +27098,23 @@ var _NUMERIC_COL_PATTERNS = [
 
   if (window.__OFFER_INTELLIGENCE_TEST__) {
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
+      agentToolDefinitions,
+      agentExecuteTool,
+      compactAgentToolResult,
+      ensureAgentTierMerchantDataVisible,
+      ensureAgentPaymentDataVisible,
+      agentShouldBypassPlanning,
+      agentPaymentMonthForQuery,
+      agentToolPromptData,
+      buildAgentPlanningMessages,
+      buildAgentSynthesisMessages,
+      agentFallbackHistory,
+      agentHistoryAfterOutcome,
+      createAgentExecutionTimeline,
+      runChatAgent,
+      firstOfferName: function () {
+        return offers.length ? (offers[0].brand || offers[0].merchantName || "") : "";
+      },
       setLanguage: function(lang) { state.language = lang; },
       switchToChatMode: _switchToChatMode,
       switchToReportMode: _switchToReportMode,
@@ -25352,7 +27380,8 @@ var _NUMERIC_COL_PATTERNS = [
       computeTrend,
       trendContextData: () => _trendContextData,
       activeTrendCategory: () => _activeTrendCategory,
-      categoryMonthlyCache: () => _categoryMonthlyCache
+      categoryMonthlyCache: () => _categoryMonthlyCache,
+      resetAgentTrendCache: () => { dbMerchantCache.clear(); _categoryMonthlyCache = {}; }
     };
   } else {
     init();

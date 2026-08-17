@@ -155,6 +155,16 @@ def main():
     assert "推荐五个 Beauty offer" in insert_params
     assert "report" in insert_params
 
+    agent_connection = FakeConnection()
+    agent_created = create_question_log(
+        sample_create_payload(mode="agent"),
+        connection_factory(agent_connection),
+    )
+    assert_equal(agent_created["status"], "submitted", "Agent create status")
+    agent_insert_sql, agent_insert_params = agent_connection.executed[-1]
+    assert "agent" in agent_insert_params
+    assert "mode" in agent_insert_sql
+
     duplicate_connection = FakeConnection()
     first = create_question_log(sample_create_payload(), connection_factory(duplicate_connection))
     second = create_question_log(sample_create_payload(), connection_factory(duplicate_connection))

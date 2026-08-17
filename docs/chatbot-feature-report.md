@@ -1,10 +1,24 @@
 # Chatbot 完整档案
 
-> 更新日期：2026-08-06 · 分支：`main`
+> 更新日期：2026-08-17 · 分支：`main`
 
 ## 1. 概述
 
 YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英双语，覆盖商户查询、品类搜索、推荐排名、支付追踪、Tier 管理和数据分析。系统采用 **LLM 意图分类 + 规则引擎回答生成** 的混合架构，所有数据在页面加载时一次性载入前端内存，回答生成零网络延迟。
+
+> Chat Mode Agent（工具调用）设计与实现见 `docs/superpowers/specs/2026-08-14-chat-mode-agent-design.md` 与 `docs/superpowers/plans/2026-08-14-chat-mode-agent.md`。
+
+> Phase 2（2026-08-14）：Agent 工具扩展至 5 个 —— `merchant_comparison`/`tier_analysis`/`category_comparison`/`payment_status`/`trend`（多 Tier 对比未纳入）。
+
+> Agent v1 稳定化（2026-08-17）：对比工具保留多实体差异，品类和付款工具拒绝不完整匹配，规划端限制为 7 个只读工具；自然语言综合失败时保留已完成工具数据。
+
+> Agent 商户月度数据迁移（2026-08-17）：`merchant_analysis` 复用 Report Mode 的 `/api/ui/db/merchant` 月度接口，返回最近 12 个月真实 `monthly` 明细；数据库月度数据不可用时保留当前缓存汇总并返回空月度数组。
+
+> Agent Tier 商家列表迁移（2026-08-17）：`tier_analysis` 保留 `analyzeTier()` 的概览，同时复用 Report Mode `tiers.length` 路径的 `offersInTier()` + `compareRecommendationOffers()` 排序，返回默认最多 100 个 `merchants` 行和 `merchantList` 分页元数据；较大的 Tier 通过 `offset/limit` 继续查询。
+
+> Dashboard 子页面拆分（2026-08-17）：Dashboard 下提供独立的 `Chatbot` 和 `Agent` 子页面。`Chatbot` 保留原有 Report/Chat Mode 与 Deep Window 流程；`Agent` 使用独立聊天记录，只复用 `runChatAgent()` 的只读工具链。
+
+> Agent 执行过程时间线（2026-08-17）：独立 Agent 页面以可折叠的执行摘要展示规划、工具查询、月度范围、结果整理和最终状态；不展示模型原始 Chain-of-Thought。执行中的请求支持通过 `AbortController` 停止，成功完成后时间线默认折叠，失败或停止时保持展开。
 
 > Chat Mode 商户分析的当前相对比较口径单独记录在 [Chat Mode 商户分析相对比较规则](chatbot-analysis-comparison-rules.md)，包括比较范围、指标公式、百分位阈值和已知口径问题。
 >
@@ -13,6 +27,8 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 ---
 
 ## 2. 完整请求流程
+
+> 本节描述 Report Mode 的意图分类和结构化回答主流程。Chat Mode 进入 `runChatAgent()` 后，先对问题做轻量分流：方法论、能力说明和闲聊追问直接调用 `/api/chat/stream`，不规划取数；需要具体数据的问题才调用 `/api/chat/agent` 规划工具，在浏览器执行工具，再调用 `/api/chat/stream` 综合；规划不可用时回退到原有单发流式路径。
 
 ```
 用户输入
@@ -236,7 +252,7 @@ Chat Mode 的自然语言回复仍通过现有 `/api/chat/stream` 生成；View 
 | 3322–3377 | 分析计算 | `findOfferByMerchantName()`, `offersInCategory()`, `offersInTier()`, `globalAverages()` |
 | 3378–3463 | 商户分析 | `analyzeMerchant()` — 指标、百分位排名、对比、强弱项、同行、支付风险 |
 | 3465–3500+ | 品类分析 | `analyzeCategory()` — 聚合统计、Tier 分布、Top/Bottom 排名 |
-| 3500+–3600+ | Tier 分析 | `analyzeTier()` — 层级概览、跨 Tier 对比、三段分化、异常值 |
+| 3500+–3600+ | Tier 分析 | `analyzeTier()` — 层级概览、跨 Tier 对比、三段分化、异常值；Agent 另由 `offersInTier()` 返回排序后的分页商家行 |
 | 3600+–3863 | 分析渲染 | `renderAnalysisTable()`, `fetchAnalysisText()`, `fallbackAnalysisText()` |
 | 3864–3963 | 分析入口 | `analysisAnswer()` — 同步渲染表格 + 异步加载 LLM 文字 |
 | 3965–3991 | 意图检测 | `detectQueryIntent()` — LLM 优先 → 正则兜底 |
@@ -319,7 +335,14 @@ _api_key()         → 读取对应 API Key
 _default_timeout() → OI_LLM_TIMEOUT (默认 15s)
 stream_timeout()   -> OI_LLM_STREAM_TIMEOUT (default 50s, max 50s)
 call_llm()         → 统一调用入口 (OpenAI 兼容 / Anthropic SDK)
+call_llm_tools()   → Agent 规划调用，归一化 DeepSeek/Claude 工具结果
 ```
+
+`chat_agent_http.py` 负责 Agent 规划端点的请求大小、消息角色、工具名称和双语提示词校验；工具执行仍在浏览器 `public/app.js` 中完成。
+
+`merchant_analysis` 的 `metrics` 是当前缓存商户汇总，`monthly` 是按最新月份在前排列的真实 DB 月度数据。月度数据由 `fetchMerchantMonthlyRows()` → `fetchMerchantMetrics()` → `/api/ui/db/merchant?months=12&minimal=1` 获取，并使用 `mergeMonthIntoOffer()` 保持与 Report Mode 月份概览相同的 EPC、AOV、CVR、Commission、Orders、Clicks、DPV 和 ATC 口径；月度接口不可用时 `monthly=[]`、`monthlyDataSource="unavailable"`，不伪造月度值。综合模型若只引用最新月份，`runChatAgent()` 会从已完成的工具结果中补回完整月度表。
+
+`tier_analysis` 的 `merchantCount` 是整个 Tier 的商户总数；`merchants` 是按 Report Mode Tier 查询顺序返回的当前页，`merchantList` 的 `hasMore` 表示是否还有后续页。Agent 综合不能把有 `hasMore` 的当前页表述为完整 Tier 列表；Report Mode 仍保留完整 Deep Window/Excel 行快照。
 
 ### 8.2 llm_classify.py — 编排层
 
@@ -343,7 +366,7 @@ call_llm()         → 统一调用入口 (OpenAI 兼容 / Anthropic SDK)
 ### 8.4 api/chat/ — Vercel Serverless
 
 ```
-api/chat/actions.py   -> class handler: trusted route header -> classify/analyze
+api/chat/actions.py   -> class handler: trusted route header -> classify/analyze/agent
 api/chat/stream.py    -> class handler: SSE stream (50s graceful deadline)
 ```
 
@@ -498,11 +521,12 @@ public/
 
 ```
 llm_provider.py               ← LLM Provider 抽象（DeepSeek/Claude）
+chat_agent_http.py            ← Chat Mode Agent 规划端点、工具白名单和双语提示词
 llm_classify.py               ← 意图分类 + 分析文字生成编排层
 server.py                     ← 本地服务器（/api/chat/* 路由）
 auth.py                       ← 认证 + llmEnabled 状态
 api/chat/
-|-- actions.py                -> /api/chat/classify + /api/chat/analyze Vercel handler
+|-- actions.py                -> /api/chat/classify + /api/chat/analyze + /api/chat/agent Vercel handler
 `-- stream.py                 -> /api/chat/stream Vercel SSE handler
 skills/
 ├── __init__.py               ← Skill 自动注册
@@ -524,11 +548,14 @@ scripts/build_offer_chatbot_data.rb   ← Ruby 主构建脚本 (~740 行)
 scripts/build_db_static_snapshot.py   ← Python DB 快照（含 --chatbot-output）
 ```
 
-### 测试（2 个文件）
+### 测试（Agent 相关）
 
 ```
 scripts/test_chatbot_intent_flow.mjs  ← 意图流测试
 scripts/test_zh_chatbot.mjs           ← 中文 chatbot 测试
+scripts/test_chat_agent.mjs           ← Agent 工具、规划、综合和降级测试
+scripts/test_agent_http.py            ← Agent 请求校验与规划端点测试
+scripts/test_llm_agent.py              ← Provider 工具调用与消息透传测试
 ```
 
 ### 文档（4 个目录）
@@ -616,10 +643,10 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 ## 17. 提问日志与导出
 - 本地可在 `.env` 中设置 `OI_CHATBOT_QUESTION_LOGGING=0`（也支持 `false`、`no`、`off`）关闭提问日志的 MySQL 写入；未设置时默认开启。关闭开关只影响提问日志 POST，回答流程继续执行，已有日志仍可只读导出。
 
-- `applyPrompt()` 在用户提交时异步调用现有 `POST /api/chat/stream?operation=questions` 创建日志，回答结束后再异步更新为 `success` 或 `failed`；日志失败不阻断原有问答。
-- 日志只保存提问及分析字段，不保存助手回答。字段包括匿名浏览器会话 ID、`report` / `chat` 模式、语言、意图、状态与时间戳。
+- `applyPrompt()` 与独立 Agent 页的 `handleAgentPageSubmit()` 在用户提交时异步调用现有 `POST /api/chat/stream?operation=questions` 创建日志，回答结束后再异步更新为 `success` 或 `failed`；日志失败不阻断原有问答。Agent 的中止也会完成为 `failed`。
+- 日志只保存提问及分析字段，不保存助手回答。字段包括匿名浏览器会话 ID、`report` / `chat` / `agent` 模式、语言、意图、状态与时间戳。
 - MySQL 表为 `cnpscy_oi_chatbot_question_logs`，定义位于 `chatbot_question_logs.py`，建表入口位于 `scripts/ensure_oi_schema.py`。
-- Chatbot 模式栏右侧的低调「日志 / Logs」菜单可通过带会话认证的 `GET /api/chat/stream?operation=questions&format=csv|jsonl` 导出全部记录。
+- Chatbot 模式栏右侧的低调「日志 / Logs」菜单可通过带会话认证的 `GET /api/chat/stream?operation=questions&format=csv|jsonl` 导出全部记录，Agent 记录通过 `mode=agent` 区分。
 - 不新增独立 API 端点：本地 `server.py` 与 Vercel 现有 `api/chat/stream.py` 根据 `operation=questions` 分流，共享日志 HTTP 处理位于 `chatbot_question_log_http.py`。
 
 ### 17.1 不满意反馈
@@ -627,6 +654,7 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - 每条成功回答仅提供一个低调的“不满意”按钮；Chat Mode 位于该回答底部，Report Mode 位于对应 Deep Window 底部。成功提交后按钮变为“已反馈”并禁用。
 - 反馈必须单选一个原因（回答不准确、没有回答问题、数据不完整、内容难以理解、其他），补充说明可选。提交失败时保留表单并允许重试。
 - Chat Mode 保存该次回答的原始 Markdown；Report Mode 在点击按钮时保存对应报告窗口当前可见文本。回答上限为 256 KB UTF-8，超出时安全截断并记录 `answerTruncated`。
-- 反馈表为 `cnpscy_oi_chatbot_answer_feedback`，通过 `questionEventId` 与提问日志一对一关联，并继续区分 `report` / `chat` 模式。
+- 反馈表为 `cnpscy_oi_chatbot_answer_feedback`，通过 `questionEventId` 与提问日志一对一关联，并区分 `report` / `chat` / `agent` 模式；独立 Agent 的成功直答、流式综合和 fallback 回答都复用同一反馈入口。
 - 不满意反馈使用现有 `POST /api/chat/stream?operation=feedback` 写入；「日志 / Logs」菜单内与提问记录分组展示，分别通过 `GET /api/chat/stream?operation=feedback&format=csv|jsonl` 独立导出。
 - 共享领域与 HTTP 处理分别位于 `chatbot_answer_feedback.py`、`chatbot_answer_feedback_http.py`；没有新增 Vercel 路由文件。
+- 两张表的 `mode` 字段本身是 `VARCHAR(16)`，因此本次只扩展业务值，不新增表或执行 schema 迁移。

@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "api" / "chat" / "actions.py"
 sys.path.insert(0, str(ROOT))
 
+from auth import send_json
+
 
 class FakeTarget:
     def __init__(self, payload=None):
@@ -74,6 +76,23 @@ def main():
         module.dispatch_request(wrong_method, "GET", "classify")
         if wrong_method.status != 405:
             raise AssertionError(f"wrong chat method should return 405, got {wrong_method.status}")
+
+        class NullTarget:
+            def send_response(self, status): self.status = status
+            def send_header(self, *a): pass
+            def end_headers(self): pass
+
+        def target_writer(target, route):
+            send_json(target, 200, {"ok": True, "route": route})
+
+        module.handle_agent_request = lambda target: target_writer(target, "agent")
+        agent = FakeTarget({
+            "messages": [{"role": "user", "content": "Shokz"}],
+            "tools": [{"name": "merchant_analysis", "description": "d", "parameters": {"type": "object"}}],
+        })
+        module.dispatch_request(agent, "POST", "agent")
+        if agent.status != 200 or response_json(agent).get("route") != "agent":
+            raise AssertionError("agent route did not dispatch to handle_agent_request")
 
         unknown_route = FakeTarget()
         module.dispatch_request(unknown_route, "POST", "unknown")

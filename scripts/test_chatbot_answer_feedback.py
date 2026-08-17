@@ -173,6 +173,14 @@ def main():
     assert QUESTION_ID in insert_params
     assert "inaccurate" in insert_params
 
+    agent_connection = FakeConnection(question_row=question_row(mode="agent"))
+    agent_result = create_answer_feedback(
+        sample_payload(mode="agent"),
+        connection_factory(agent_connection),
+    )
+    assert_equal(agent_result["ok"], True, "Agent feedback create ok")
+    assert "agent" in agent_connection.executed[-1][1]
+
     idempotent_connection = FakeConnection(
         question_row=question_row(),
         feedback_row=feedback_row(),

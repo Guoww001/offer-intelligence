@@ -1,6 +1,6 @@
 # Chat Mode 不同分析类型说明
 
-> 更新日期：2026-08-13
+> 更新日期：2026-08-17
 >
 > 适用范围：Chat Mode 的多轮数据问答，以及由 Report Mode 生成并加入记忆栏的结构化分析报告。
 
@@ -10,9 +10,13 @@
 
 ### 1.1 Chat Mode 与 Report Mode 的职责边界
 
-Chat Mode 本身是自由对话入口，不直接执行 `analyzeMerchant()`、`analyzeCategory()` 或 `analyzeTier()` 这类前端结构化分析函数。
+Chat Mode 现在是一个只读数据分析 Agent。它会先由 LLM 规划是否需要取数，再在浏览器内执行允许的分析工具，最后由 LLM 综合工具结果。Report Mode 仍然负责完整结构化报告、Deep Window 和 Excel 导出。
 
-本文后续提到的商户、品类、Tier、趋势、媒体和付款分析，主要描述的是 Report Mode 生成结构化结果时所使用的分析路径，以及 Chat Mode 能够基于这些结果继续讨论的内容。不能把这些结构化函数理解为每次进入 Chat Mode 后都会重新执行。
+当前 Agent 支持 7 个工具：单商户分析、单品类分析、多商户对比、单 Tier 分析、多品类对比、付款状态和趋势分析。ASIN、推荐、关键词、媒体、媒体画像、多 Tier 对比和写入型操作暂不属于 Agent 工具。
+
+页面入口：Dashboard 下的 `Chatbot` 子页面保留原有 Report/Chat Mode、Deep Window 和记忆栏流程；Dashboard 下的 `Agent` 子页面提供独立的只读 Agent 对话，并维护独立的多轮会话历史。
+
+独立 Agent 页面还会在每轮回复前展示可折叠的执行过程：规划查询、显示月份范围、执行数据工具、整理结果和最终状态。该区域只展示用户可理解的执行摘要与数据范围，不展示模型原始 Chain-of-Thought；成功后默认折叠，失败或用户停止时保持展开。
 
 它的请求主要包含：
 
@@ -20,19 +24,24 @@ Chat Mode 本身是自由对话入口，不直接执行 `analyzeMerchant()`、`a
 用户问题
   + 对话历史 history
   + 记忆栏 memory（从 Report Mode 面板拖入的报告内容）
-  -> /api/chat/stream
-  -> LLM 流式回答
+  -> 方法论/闲聊追问：/api/chat/stream（直接回答，不规划取数）
+  -> 数据问题：/api/chat/agent（规划工具调用）
+  -> 浏览器执行只读工具
+  -> /api/chat/stream（基于工具结果综合）
 ```
 
 因此：
 
-- 没有记忆栏数据时，Chat Mode 仍可能依据用户问题、对话历史和 LLM 的一般知识给出回答，但不能可靠读取当前数据库中的具体商户、品类或媒体数值。
-- 记忆栏中的报告决定了 Chat Mode 能看到哪些数值、表格和比较结果；未加入记忆栏的完整数据库不会自动暴露给 Chat Mode。
+- 没有记忆栏数据时，Agent 仍可以对当前缓存中的商户、品类、Tier 和付款数据执行支持的只读工具；记忆栏是已有 Report Mode 报告和多轮讨论的补充上下文，不再是取数前提。
+- 商户 `merchant_analysis` 会在当前缓存汇总之外，复用 Report Mode 的月度接口读取最近 12 个月真实数据；其他静态工具主要使用页面加载的数据库缓存。趋势工具优先读取月度 DB 数据，无法取得真实月度数据时会返回 `estimated=true` 的估算结果。
+- 商户月度数据不可用时，Agent 仍返回当前缓存分析，结果中的 `monthly` 为空且 `monthlyDataSource` 为 `unavailable`；这不代表当前汇总数据也不可用。
+- `tier_analysis` 在 Tier 概览之外复用 Report Mode 的 Tier 行排序，返回 `merchants` 当前页和 `merchantList` 分页元数据；默认最多返回 100 个商户，`hasMore=true` 时必须通过下一页继续查询，不能把当前页当作完整 Tier 列表。
 - 记忆栏传给 `/api/chat/stream` 的主要是面板 `textContent`，每份记忆最多截取 8000 个字符。它不是完整的结构化 summary，也不是完整 HTML 或完整数据库快照。
 - 如果报告带有下载项，前端会额外保存 `reportSnapshot`，但这个快照主要用于本地推荐筛选和 View/Excel 导出，不会作为完整 JSON 直接发送给流式 LLM。
-- Chat Mode 可以根据记忆内容做解释、归纳、横向比较和行动建议，但不能保证重新计算出未出现在记忆文本中的新百分位、排名或行业阈值。
-- 如果记忆内容没有包含用户问题需要的字段，系统提示词要求 Chat Mode 说明缺少数据；这属于 LLM 行为约束，不是后端强制校验，不能完全排除模型推测或生成不准确结论。
-- Report Mode 负责生成结构化报告；Chat Mode 负责基于报告进行多轮讨论。
+- 工具中的百分位、均值、差异和状态由现有前端分析函数计算，LLM 只负责选择工具和表述，不应重新计算或外推排名。
+- “你是按什么指标推荐的”“推荐依据是什么”“你能做什么”等方法论、能力说明和礼貌追问直接走 `/api/chat/stream`，复用已有历史/记忆回答，不调用 `/api/chat/agent`；只有包含具体数据、商户、Tier、趋势、统计或列表请求时才进入规划。
+- 如果 Agent 规划失败，系统会回退到原有单发流式路径；如果综合失败但工具已经成功，Chat Mode 会保留工具结果并显示确定性的 JSON 数据摘要。
+- Agent 数据问题当前是固定的“规划 → 并行执行 → 综合”流程，不是无限 ReAct 循环；非数据追问走直接流式回答，也没有跨会话工具记忆或写入确认流程。
 
 ### 1.2 Chat Mode 的一个特殊路径：基于记忆报告的推荐
 
@@ -53,11 +62,11 @@ Chat Mode 本身是自由对话入口，不直接执行 `analyzeMerchant()`、`a
 
 | 类型 | 典型问题 | Report Mode 结构化来源 | Chat Mode 可继续讨论的内容 |
 | --- | --- | --- | --- |
-| 单商户分析 | “分析 Shokz 表现” | `analyzeMerchant()` | 指标、同品类百分位、均值对比、亮点/短板、Peer、付款风险 |
+| 单商户分析 | “分析 Shokz 表现” | `analyzeMerchant()` + 月度商户接口 | 指标、同品类百分位、均值对比、亮点/短板、Peer、付款风险、最近 12 个月真实月度明细（DB 可用时） |
 | 多商户对比 | “Shokz 和 Soundcore 谁更好” | `analyzeMerchantComparison()` | 两个或多个商户的指标并列和差异 |
 | 单品类分析 | “分析 Electronics 品类” | `analyzeCategory()` | 品类汇总、全站对比、Tier 分布、Top/Bottom 商户 |
 | 多品类对比 | “比较 Electronics 和 Beauty” | `analyzeMultiCategory()` | 品类之间的总量、商户级平均值和差异 |
-| 单 Tier 分析 | “Tier 2 整体表现如何” | `analyzeTier()` | Tier 汇总、跨 Tier 对比、分段统计、异常值 |
+| 单 Tier 分析 | “Tier 2 整体表现如何 / Tier 2 有哪些商家” | `analyzeTier()` + `offersInTier()` | Tier 汇总、跨 Tier 对比、分段统计、异常值、按 Report Mode 排序的分页商家列表 |
 | 多 Tier 对比 | “比较 Tier 1 和 Tier 2” | `analyzeMultiTier()` | Tier 之间的总量、平均值、商户数和品类分布 |
 | 趋势分析 | “Shokz 最近三个月趋势” | `computeTrend()` + 月度数据 | 月度值、环比、首末期变化和趋势叙述 |
 | 媒体记录 | “销售最高的 5 个媒体” | `renderPublisherRecordsHtml()` | 筛选结果、排序结果、完整筛选集合合计 |
@@ -65,7 +74,7 @@ Chat Mode 本身是自由对话入口，不直接执行 `analyzeMerchant()`、`a
 | 推荐/筛选 | “推荐 Tier 2 的高 EPC 商户” | 推荐排序路径 | 过滤、排序、Top N 和下载结果 |
 | 付款分析 | “哪些商户逾期未付款” | Payment 查询路径 | 付款状态、金额、月份和风险 |
 
-表中的“结构化来源”表示 Report Mode 当前实际调用的前端分析或查询路径，不表示普通 Chat Mode 会在每次提问时直接调用这些函数。Chat Mode 只有在相关报告被加入记忆栏后，才能基于记忆内容继续追问；推荐列表请求另有“基于记忆导出快照的本地筛选”例外，见第 1.2 节。
+表中的“结构化来源”表示 Report Mode 和 Agent 当前复用的前端分析路径。对于已接入 Agent 的 7 类工具，Chat Mode 会主动取数；媒体、ASIN、推荐等未接入工具仍需要 Report Mode 报告或记忆栏上下文，推荐列表请求另有“基于记忆导出快照的本地筛选”例外，见第 1.2 节。
 
 ## 3. 单商户分析
 
@@ -108,6 +117,9 @@ CVR = conversionRate * 100
 - 样本不足时仍展示当前值，但不计算百分位，也不进入亮点或短板。
 - Peer 是同品类、同 Tier 中按 `affCommission` 降序取前 3 个商户。
 - 付款风险单独展示，不混入综合健康分。
+- Agent 结果中的 `metrics` 仍是当前缓存商户汇总；`monthly` 是按最新月份在前排列的真实 DB 月度行，包含 Revenue、AOV、EPC(All)、EPC(Aff)、CVR、Commission、Orders、Clicks、DPV 和 ATC。
+- 如果自然语言综合只引用最新月份，Agent 会从同一份工具结果中补回完整 `monthly` 表，避免最终回答退化为当月快照。
+- `monthly` 为空时不生成估算月度值；估算只属于独立的 `trend` 工具降级路径。
 
 详细口径见：[Chat Mode 商户分析相对比较规则](chatbot-analysis-comparison-rules.md)。
 
@@ -240,6 +252,12 @@ Chat Mode 会依据记忆栏中的 summary、表格和对比字段回答；如�
 - EPC 异常：商户 EPC 大于 Tier 平均 EPC 的 3 倍。
 - CVR 异常：商户 CVR 大于 Tier 平均 CVR 的 2 倍。
 - 异常结果最多展示 5 个。
+
+Agent 的 `tier_analysis` 还返回：
+
+- `merchants`：当前页的商家名、Merchant ID、Tier、品类和核心指标。
+- `merchantList`：`total`、`offset`、`limit`、`returned`、`hasMore`，用于说明当前页是否已经覆盖整个 Tier。
+- 默认页大小为 100，最大页大小为 100；Tier 1/2 等规模较小的层级通常可以一页返回，较大的 Tier 需要按 `offset` 继续查询。
 
 异常规则是诊断提示，不是升 Tier 或降 Tier 的正式决策规则。
 
@@ -394,6 +412,8 @@ Gross Profit = allCommission - affCommission
 - 应付金额和未付金额
 - 付款周期
 
+付款月份未指定年份时按当前日历年解释，例如当前年份为 2026 时，“6月份”对应 `2026-06`；只有用户明确写出 `2025年6月` 等历史年份时才查询历史月份。
+
 付款风险可以作为商户分析的独立关注项，但不会直接改变 EPC、CVR 或百分位。
 
 ### 12.3 ASIN
@@ -402,9 +422,15 @@ ASIN 查询主要用于定位商品所属商户、商品信息和相关 offer，
 
 ## 13. Chat Mode 如何使用这些分析结果
 
-推荐使用以下流程：
+推荐使用以下两种流程：
 
 ```text
+直接数据问题
+  -> 切换 Chat Mode
+  -> Agent 规划并执行只读工具
+  -> 查看流式综合回答或 View
+
+已有报告的深度追问
 Report Mode 生成结构化报告
   -> 点击“加入对话”或将最小化面板拖入记忆栏
   -> 切换 Chat Mode
@@ -419,7 +445,7 @@ Report Mode 生成结构化报告
 - 复盘：哪些结论有足够样本，哪些需要谨慎？
 - 规划：根据当前表现制定下个月的运营重点。
 
-Chat Mode 可以综合多张记忆报告，但它不会自动拥有未被放入记忆栏的完整数据库。若要让它比较两个品类或多个商户，最好将相关报告都加入记忆栏，并在问题中明确比较对象和指标。
+Chat Mode 可以综合多张记忆报告，也可以对 Agent 已支持的当前缓存数据执行工具。Tier 商家列表现在可以直接由 Agent 分页获取；记忆栏仍适合保存 Report Mode 的完整报告、补充 Agent 未覆盖的领域，或作为后续追问的明确依据。
 
 ## 14. 当前最重要的口径差异
 
@@ -432,7 +458,7 @@ Chat Mode 可以综合多张记忆报告，但它不会自动拥有未被放入�
 | 媒体记录 | 筛选后排序和合计 | 没有媒体健康分 |
 | 媒体画像 | 合作组合画像 | Affiliate Commission 当前存在 75% 推算口径 |
 | 推荐 | 多信号排序 | 不是健康分或百分位 |
-| Chat Mode | 记忆栏 + 对话历史 | 不会自动读取全部当前数据库 |
+| Chat Mode | Agent 工具 + 记忆栏 + 对话历史 | 工具范围受限，静态数据通常来自缓存，趋势可能是估算 |
 
 ## 15. 后续调整建议
 

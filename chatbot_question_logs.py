@@ -80,8 +80,8 @@ def _clean_prompt(value: Any) -> str:
 
 def _clean_mode(value: Any) -> str:
     mode = str(value or "").strip().lower()
-    if mode not in {"report", "chat"}:
-        raise QuestionLogValidationError("mode must be report or chat")
+    if mode not in {"report", "chat", "agent"}:
+        raise QuestionLogValidationError("mode must be report, chat, or agent")
     return mode
 
 
