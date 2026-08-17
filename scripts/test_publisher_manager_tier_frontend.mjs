@@ -101,10 +101,17 @@ const merchantAssociationData = {
     { userId: 13, userName: "Merach Fan", adminName: "Alex Chen", merchantIds: [123456], markets: {}, networks: [], linkTypes: {}, total: { sales: 60 } }
   ]
 };
+const merchantOptions = hooks.publisherMerchantOptions(merchantAssociationData);
+assertEqual(
+  merchantOptions.find((merchant) => merchant.merchantId === "380945"),
+  { merchantId: "380945", name: "Merach", count: 2 },
+  "merchant options should include the merchant name, ID, and associated publisher count"
+);
 hooks.setPublisherPortfolioFilters({
   market: "all",
   network: "all",
-  merchantSearch: "merach"
+  merchantSearch: "merach",
+  merchantId: ""
 });
 const merchantPublishers = hooks.filteredPublishers(merchantAssociationData);
 assertEqual(
@@ -121,6 +128,25 @@ assertEqual(
   [merchantAssociationSummary.merchantCount, merchantAssociationSummary.publisherCount],
   [2, 2],
   "merchant search should expose matched merchant and associated publisher counts"
+);
+hooks.setPublisherPortfolioFilters({
+  merchantSearch: "Merach",
+  merchantId: "380945"
+});
+assertEqual(
+  hooks.filteredPublishers(merchantAssociationData).map((publisher) => publisher.userId),
+  [11, 12],
+  "selected merchant option should filter by its exact merchant ID"
+);
+assertEqual(
+  hooks.publisherMerchantAssociationSummary(
+    merchantAssociationData,
+    hooks.filteredPublishers(merchantAssociationData),
+    "Merach",
+    "380945"
+  ).merchants,
+  [{ merchantId: "380945", merchantName: "Merach" }],
+  "selected merchant summary should stay scoped to the selected merchant ID"
 );
 
 const metric = (sales) => ({
@@ -158,6 +184,7 @@ hooks.setPublisherPortfolioFilters({
   market: "all",
   network: "all",
   merchantSearch: "",
+  merchantId: "",
   portfolioSearch: "",
   category: "all",
   tier: "Tier 3"

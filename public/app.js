@@ -378,6 +378,7 @@
     publisherNetwork: "all",
     publisherLinkType: "all",
     publisherMerchantSearch: "",
+    publisherMerchantSelectedId: "",
     publisherProductSearch: "",
     publisherManagerSearch: "",
     publisherSiteSearch: "",
@@ -526,6 +527,7 @@
     publisherNetworkFilter: document.getElementById("publisherNetworkFilter"),
     publisherLinkTypeFilter: document.getElementById("publisherLinkTypeFilter"),
     publisherMerchantSearch: document.getElementById("publisherMerchantSearch"),
+    publisherMerchantDropdown: document.getElementById("publisherMerchantDropdown"),
     publisherProductSearch: document.getElementById("publisherProductSearch"),
     publisherManagerSearch: document.getElementById("publisherManagerSearch"),
     publisherSiteSearch: document.getElementById("publisherSiteSearch"),
@@ -15736,6 +15738,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   var _managerOptions = [];
+  var _merchantOptions = [];
   var _publisherSelectorOptions = [];
   var _publisherPortfolioRequests = {};
   var _publisherPortfolioRequestVersion = 0;
@@ -15793,6 +15796,66 @@ var _NUMERIC_COL_PATTERNS = [
   function _hideManagerDropdown() {
     var dd = document.getElementById("publisherManagerDropdown");
     if (dd) dd.classList.remove("show");
+  }
+
+  function _publisherMerchantOptions(data) {
+    var nameMap = (data || {}).merchantNameMap || {};
+    var counts = {};
+    ((data || {}).publishers || []).forEach(function (publisher) {
+      var seen = new Set();
+      (publisher.merchantIds || []).forEach(function (merchantId) {
+        var id = String(merchantId || "").trim();
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        counts[id] = (counts[id] || 0) + 1;
+      });
+    });
+    return Object.keys(counts).map(function (merchantId) {
+      return {
+        merchantId: merchantId,
+        name: String(nameMap[merchantId] || merchantId),
+        count: counts[merchantId],
+      };
+    }).sort(function (a, b) {
+      return a.name.localeCompare(b.name) || a.merchantId.localeCompare(b.merchantId);
+    });
+  }
+
+  function _rebuildMerchantOptions(data) {
+    _merchantOptions = _publisherMerchantOptions(data);
+  }
+
+  function _showMerchantDropdown() {
+    if (!els.publisherMerchantDropdown || !els.publisherMerchantSearch) return;
+    var query = String(els.publisherMerchantSearch.value || "").toLowerCase().trim();
+    var options = _merchantOptions.filter(function (merchant) {
+      return !query || merchant.name.toLowerCase().indexOf(query) !== -1 ||
+        merchant.merchantId.toLowerCase().indexOf(query) !== -1;
+    }).slice(0, 60);
+    var html = options.map(function (merchant) {
+      var selected = String(state.publisherMerchantSelectedId || "") === merchant.merchantId;
+      return '<div class="combobox-option merchant-combobox-option' +
+        (selected ? ' highlighted' : '') + '" role="option" aria-selected="' +
+        (selected ? 'true' : 'false') + '" data-merchant-id="' +
+        escapeHtml(merchant.merchantId) + '">' +
+        '<span class="opt-label">' + escapeHtml(merchant.name) + '</span>' +
+        '<span class="opt-id">ID ' + escapeHtml(merchant.merchantId) + '</span>' +
+        '<span class="opt-count">(' + number(merchant.count) + ')</span></div>';
+    }).join("");
+    if (!html) {
+      html = '<div class="combobox-option combobox-no-results" role="option" aria-disabled="true">' +
+        escapeHtml(t("publishers.merchantNoMatch", "No matching merchant")) + '</div>';
+    }
+    els.publisherMerchantDropdown.innerHTML = html;
+    els.publisherMerchantDropdown.classList.add("show");
+    els.publisherMerchantSearch.setAttribute("aria-expanded", "true");
+  }
+
+  function _hideMerchantDropdown() {
+    if (els.publisherMerchantDropdown) els.publisherMerchantDropdown.classList.remove("show");
+    if (els.publisherMerchantSearch) {
+      els.publisherMerchantSearch.setAttribute("aria-expanded", "false");
+    }
   }
 
   function _rebuildPublisherSelectorOptions(publishers) {
@@ -15859,7 +15922,14 @@ var _NUMERIC_COL_PATTERNS = [
     var normalizedQuery = String(query || "").toLowerCase().trim();
     if (!normalizedQuery) return [];
     var nameMap = (data || {}).merchantNameMap || {};
-    return Object.keys(nameMap).filter(function (merchantId) {
+    var merchantIds = new Set(Object.keys(nameMap));
+    ((data || {}).publishers || []).forEach(function (publisher) {
+      (publisher.merchantIds || []).forEach(function (merchantId) {
+        var id = String(merchantId || "").trim();
+        if (id) merchantIds.add(id);
+      });
+    });
+    return Array.from(merchantIds).filter(function (merchantId) {
       var merchantName = String(nameMap[merchantId] || "").toLowerCase();
       return String(merchantId).toLowerCase().indexOf(normalizedQuery) !== -1 ||
         merchantName.indexOf(normalizedQuery) !== -1;
@@ -15871,8 +15941,13 @@ var _NUMERIC_COL_PATTERNS = [
     });
   }
 
-  function _publisherMerchantAssociationSummary(data, publishers, query) {
-    var merchants = _publisherMerchantMatches(data, query);
+  function _publisherMerchantAssociationSummary(data, publishers, query, selectedMerchantId) {
+    var selectedId = String(selectedMerchantId || "").trim();
+    var merchants = selectedId
+      ? _publisherMerchantMatches(data, selectedId).filter(function (merchant) {
+          return merchant.merchantId === selectedId;
+        })
+      : _publisherMerchantMatches(data, query);
     return {
       query: String(query || "").trim(),
       merchantCount: merchants.length,
@@ -15941,11 +16016,14 @@ var _NUMERIC_COL_PATTERNS = [
     var network = state.publisherNetwork || "all";
     var linkType = state.publisherLinkType || "all";
     var merchantSearch = (state.publisherMerchantSearch || "").toLowerCase().trim();
+    var selectedMerchantId = String(state.publisherMerchantSelectedId || "").trim();
     var productSearch = (state.publisherProductSearch || "").toLowerCase().trim();
     var manager = (state.publisherManagerSearch || "").toLowerCase().trim();
     var siteSearch = (state.publisherSiteSearch || "").toLowerCase().trim();
     var trackSearch = (state.publisherTrackSearch || "").toLowerCase().trim();
-    var matchingMerchantIds = merchantSearch
+    var matchingMerchantIds = selectedMerchantId
+      ? new Set([selectedMerchantId])
+      : merchantSearch
       ? new Set(_publisherMerchantMatches(data, merchantSearch).map(function (merchant) {
           return merchant.merchantId;
         }))
@@ -15959,7 +16037,7 @@ var _NUMERIC_COL_PATTERNS = [
       // 链接类型筛选
       if (linkType !== "all" && (!pub.linkTypes || !pub.linkTypes[linkType])) return false;
       // 商家搜索（只匹配商家名称和 ID）
-      if (merchantSearch) {
+      if (merchantSearch || selectedMerchantId) {
         var mIds = pub.merchantIds || [];
         var matched = mIds.some(function (merchantId) {
           return matchingMerchantIds.has(String(merchantId));
@@ -16068,6 +16146,7 @@ var _NUMERIC_COL_PATTERNS = [
     var market = state.publisherMarket || "all";
     var network = state.publisherNetwork || "all";
     var globalMerchantSearch = (state.publisherMerchantSearch || "").toLowerCase().trim();
+    var globalMerchantSelectedId = String(state.publisherMerchantSelectedId || "").trim();
     var portfolioSearch = includePortfolioControls
       ? (state.publisherPortfolioSearch || "").toLowerCase().trim()
       : "";
@@ -16087,7 +16166,9 @@ var _NUMERIC_COL_PATTERNS = [
       var merchant = row.merchant;
       if (!_publisherMetricIsActive(row.metrics)) return false;
       if (network !== "all" && String(merchant.network || "Unknown") !== network) return false;
-      if (globalMerchantSearch) {
+      if (globalMerchantSelectedId) {
+        if (String(merchant.merchantId || "") !== globalMerchantSelectedId) return false;
+      } else if (globalMerchantSearch) {
         var globalHaystack = [
           merchant.merchantId,
           merchant.merchantName,
@@ -16577,7 +16658,12 @@ var _NUMERIC_COL_PATTERNS = [
       return;
     }
 
-    var summary = _publisherMerchantAssociationSummary(data, publishers, query);
+    var summary = _publisherMerchantAssociationSummary(
+      data,
+      publishers,
+      query,
+      state.publisherMerchantSelectedId
+    );
     var matchedMerchantText = summary.merchants.map(function (merchant) {
       return merchant.merchantName + " · ID " + merchant.merchantId;
     }).join(" / ");
@@ -17147,6 +17233,7 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherEndDate || "",
       state.publisherManagerSearch || "",
       state.publisherMerchantSearch || "",
+      state.publisherMerchantSelectedId || "",
       state.publisherProductSearch || "",
       state.publisherSiteSearch || "",
       state.publisherTrackSearch || "",
@@ -17174,6 +17261,7 @@ var _NUMERIC_COL_PATTERNS = [
       _fillPublishersSelect(els.publisherMarketFilter, data.markets || [], state.publisherMarket, "请选择站点");
       // 重建经理选项列表（供组合框使用）
       _rebuildManagerOptions(data.publishers);
+      _rebuildMerchantOptions(data);
       _rebuildPublisherSelectorOptions(
         _publishersForManager(data.publishers, state.publisherManagerSearch)
       );
@@ -24808,10 +24896,12 @@ var _NUMERIC_COL_PATTERNS = [
       _hideManagerDropdown();
       renderPublishersPage();
     });
-    // 商家搜索即时返回关联媒体；短延迟避免连续输入时反复重绘大表。
+    // 商家组合框：按名称或 ID 搜索；短延迟避免连续输入时反复重绘大表。
     els.publisherMerchantSearch.addEventListener("input", function () {
       state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+      state.publisherMerchantSelectedId = "";
       if (state.publisherSelectedId) _setSelectedPublisher(null);
+      _showMerchantDropdown();
       if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
       _publisherMerchantSearchTimer = setTimeout(function () {
         _publisherMerchantSearchTimer = null;
@@ -24819,13 +24909,43 @@ var _NUMERIC_COL_PATTERNS = [
       }, 180);
     });
     els.publisherMerchantSearch.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
-      _publisherMerchantSearchTimer = null;
-      state.publisherMerchantSearch = els.publisherMerchantSearch.value;
-      renderPublishersPage();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+        _publisherMerchantSearchTimer = null;
+        state.publisherMerchantSearch = els.publisherMerchantSearch.value;
+        _hideMerchantDropdown();
+        renderPublishersPage();
+      } else if (event.key === "Escape") {
+        _hideMerchantDropdown();
+      }
     });
+    els.publisherMerchantSearch.addEventListener("focus", function () {
+      _rebuildMerchantOptions(_publishersCache || {});
+      _showMerchantDropdown();
+    });
+    els.publisherMerchantSearch.addEventListener("blur", function () {
+      setTimeout(_hideMerchantDropdown, 200);
+    });
+    if (els.publisherMerchantDropdown) {
+      els.publisherMerchantDropdown.addEventListener("click", function (event) {
+        var option = event.target.closest("[data-merchant-id]");
+        if (!option) return;
+        var merchantId = option.getAttribute("data-merchant-id");
+        var merchant = _merchantOptions.find(function (candidate) {
+          return candidate.merchantId === merchantId;
+        });
+        if (!merchant) return;
+        if (_publisherMerchantSearchTimer) clearTimeout(_publisherMerchantSearchTimer);
+        _publisherMerchantSearchTimer = null;
+        state.publisherMerchantSelectedId = merchant.merchantId;
+        state.publisherMerchantSearch = merchant.name;
+        els.publisherMerchantSearch.value = merchant.name;
+        if (state.publisherSelectedId) _setSelectedPublisher(null);
+        _hideMerchantDropdown();
+        renderPublishersPage();
+      });
+    }
     if (els.publisherAffinityEmpty) {
       els.publisherAffinityEmpty.addEventListener("click", function (event) {
         var option = event.target.closest("[data-publisher-id]");
@@ -24927,6 +25047,7 @@ var _NUMERIC_COL_PATTERNS = [
       state.publisherStartDate = "";
       state.publisherEndDate = "";
       state.publisherMerchantSearch = "";
+      state.publisherMerchantSelectedId = "";
       state.publisherProductSearch = "";
       state.publisherManagerSearch = "";
       state.publisherSiteSearch = "";
@@ -25447,6 +25568,7 @@ var _NUMERIC_COL_PATTERNS = [
       publishersForManager: _publishersForManager,
       filteredPublishers: getFilteredPublishers,
       publisherMerchantMatches: _publisherMerchantMatches,
+      publisherMerchantOptions: _publisherMerchantOptions,
       publisherMerchantAssociationSummary: _publisherMerchantAssociationSummary,
       publisherTierOptions: _publisherTierOptions,
       publisherMetricAffEpc: _publisherMetricAffEpc,
@@ -25502,6 +25624,9 @@ var _NUMERIC_COL_PATTERNS = [
         state.publisherMerchantSearch = filters.merchantSearch == null
           ? state.publisherMerchantSearch
           : filters.merchantSearch;
+        state.publisherMerchantSelectedId = filters.merchantId == null
+          ? state.publisherMerchantSelectedId
+          : String(filters.merchantId || "");
         state.publisherPortfolioSearch = filters.portfolioSearch == null
           ? state.publisherPortfolioSearch
           : filters.portfolioSearch;

@@ -12077,7 +12077,7 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
   min-width: 120px;
 }
 
-/* 自定义组合框（经理输入） */
+/* 自定义组合框（商家、经理输入） */
 .publishers-combobox {
   position: relative;
   min-width: 120px;
@@ -12131,6 +12131,40 @@ body.dashboard-mode:not([data-dash-theme="light"]) :is(.insight-panel, .chat-pan
   color: var(--muted);
   font-size: 11px;
   margin-left: 4px;
+}
+
+.publishers-combobox-dropdown .combobox-option .opt-id {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.publishers-combobox-dropdown .merchant-combobox-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.publishers-combobox-dropdown .merchant-combobox-option .opt-label {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publishers-combobox-dropdown .merchant-combobox-option .opt-id {
+  grid-column: 1 / -1;
+  margin-left: 0;
+}
+
+.publishers-combobox-dropdown .merchant-combobox-option .opt-count {
+  margin-left: 0;
+}
+
+.publishers-combobox-dropdown .combobox-no-results {
+  color: var(--muted);
+  cursor: default;
 }
 
 /* 日期范围组合 */

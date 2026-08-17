@@ -602,7 +602,23 @@
                   </div>
                   <label>
                     <span data-i18n="publishers.merchant">Merchant</span>
-                    <input id="publisherMerchantSearch" type="search" placeholder="商家名称或 ID" />
+                    <div class="publishers-combobox">
+                      <input
+                        id="publisherMerchantSearch"
+                        type="text"
+                        placeholder="商家名称或 ID"
+                        autocomplete="off"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-controls="publisherMerchantDropdown"
+                        aria-expanded="false"
+                      />
+                      <div
+                        class="publishers-combobox-dropdown"
+                        id="publisherMerchantDropdown"
+                        role="listbox"
+                      ></div>
+                    </div>
                   </label>
                   <label>
                     <span data-i18n="publishers.manager">Manager</span>
