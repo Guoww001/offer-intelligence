@@ -219,6 +219,20 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   hooks.resetAgentTrendCache();
 }
 
+// ── Test 1b: ID + 商户名时优先使用商户 ID ──
+{
+  const targetOffer = sandbox.window.CHATBOT_DATA.offers.find((offer) => String(offer.merchantId) === "362342");
+  assertTruthy(targetOffer, "ID-priority fixture should contain merchant 362342");
+  const targetName = targetOffer.brand || targetOffer.merchantName;
+  const combined = await hooks.agentExecuteTool("merchant_analysis", { merchant: `362342 ${targetName}` });
+  assertTruthy(combined.ok, "ID + merchant name should resolve by ID");
+  assertEqual(combined.data.merchant, targetName, "ID + merchant name should return the ID-matched merchant");
+
+  const conflictingName = await hooks.agentExecuteTool("merchant_analysis", { merchant: `362342 __agent_test_other_name__` });
+  assertTruthy(conflictingName.ok, "ID should take priority over a conflicting merchant name");
+  assertEqual(conflictingName.data.merchant, targetName, "ID-priority lookup should ignore the conflicting name");
+}
+
 // ── Test 2: 规划 → 执行 → 综合全链路 ──
 {
   fetchCalls = [];
@@ -242,6 +256,58 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(outcome.fullResponse, "OK", "synthesis tokens should accumulate");
   assertEqual(fetchCalls.length, 3, "expect one plan call, one monthly data call, and one synthesis call");
   assertIncludes(JSON.stringify(fetchCalls[2].body), "merchant_analysis", "synthesis body should carry tool result");
+}
+
+// ── Test 2b: 多商户字段查询不能误用 merchant_comparison ──
+{
+  hooks.resetAgentTrendCache();
+  fetchCalls = [];
+  const merchants = [
+    "362342 Nulastin",
+    "385281 Anua",
+    "362805 TP-Link | Tapo",
+    "363006 FlavCity"
+  ];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      return { ok: true, json: async function () {
+        return {
+          ok: true,
+          content: null,
+          finishReason: "tool_calls",
+          toolCalls: [{ id: "comparison", name: "merchant_comparison", arguments: { merchants } }]
+        };
+      } };
+    }
+    if (url.indexOf("/api/ui/db/merchant") === 0) {
+      return { ok: true, json: async function () { return { ok: true, monthlyAmazonMetrics: [] }; } };
+    }
+    return sseResponse('data: {"token":"逐个商户查询完成"}\n\ndata: [DONE]\n\n');
+  };
+  const outcome = await hooks.runChatAgent(
+    "For merchant IDs 362342 Nulastin, 385281 Anua, 362805 TP-Link | Tapo, and 363006 FlavCity, return clicks, orders, sales/revenue, affiliate commission, EPC affiliate, AOV, CVR, and payment cycle.",
+    { language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null }
+  );
+  assertEqual(outcome.ok, true, "multi-merchant field lookup should succeed");
+  assertEqual(
+    fetchCalls.filter((call) => call.url.indexOf("/api/ui/db/merchant") === 0).length,
+    4,
+    "multi-merchant field lookup should fetch monthly data for each merchant"
+  );
+  const synthesisBody = JSON.stringify(fetchCalls[fetchCalls.length - 1].body);
+  assertEqual(synthesisBody.includes('"tool":"merchant_comparison"'), false,
+    "field lookup synthesis should not receive a merchant comparison result");
+  assertEqual((synthesisBody.match(/merchant_analysis/g) || []).length >= 4, true,
+    "field lookup synthesis should receive one merchant analysis per merchant");
+}
+
+// ── Test 2c: 明确要求比较时仍保留 merchant_comparison ──
+{
+  const comparisonCalls = hooks.normalizeAgentToolCalls([
+    { id: "comparison", name: "merchant_comparison", arguments: { merchants: ["Shokz", "Anua"] } }
+  ], "Compare Shokz and Anua and tell me which performs better.");
+  assertEqual(comparisonCalls.length, 1, "explicit comparison should remain one comparison call");
+  assertEqual(comparisonCalls[0].name, "merchant_comparison", "explicit comparison should use comparison tool");
 }
 
 // ── Test 3: 工具失败 → 补充规划 → 直接内容 ──

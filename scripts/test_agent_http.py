@@ -130,6 +130,15 @@ def test_agent_request_rejects_client_system_message():
     assert "role" in response_json(target)["error"]
 
 
+def test_planning_prompt_distinguishes_lookup_from_comparison():
+    zh = chat_agent_http.agent_planning_system_prompt("zh")
+    en = chat_agent_http.agent_planning_system_prompt("en")
+    assert "merchant_analysis" in zh and "merchant_comparison" in zh
+    assert "明确要求" in zh and "分别" in zh
+    assert "merchant_analysis" in en and "merchant_comparison" in en
+    assert "explicitly asks" in en.lower() and "one merchant_analysis" in en.lower()
+
+
 def test_synthesis_prompt_language():
     zh = chat_agent_http.agent_synthesis_system_prompt("zh")
     en = chat_agent_http.agent_synthesis_system_prompt("en")

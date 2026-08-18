@@ -110,13 +110,13 @@
               </span>
             </button>
             <div class="nav-subnav" id="dashboardSubnav" aria-label="Dashboard pages">
-              <button class="page-nav-button active" id="chatbotNav" type="button">
+              <button class="page-nav-button" id="chatbotNav" type="button">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M5 6h14v10H9l-4 3z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
                 </span>
                 <span data-i18n="nav.chatbot">Chatbot</span>
               </button>
-              <button class="page-nav-button" id="agentNav" type="button">
+              <button class="page-nav-button active" id="agentNav" type="button">
                 <span class="nav-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 0-7 7v2a7 7 0 0 0 7 7 7 7 0 0 0 7-7v-2a7 7 0 0 0-7-7z"/><path d="M9 11h.01M15 11h.01M9 15c1.8 1.2 4.2 1.2 6 0"/><path d="M5 12H3M21 12h-2"/></svg>
                 </span>
@@ -264,7 +264,7 @@
           </div>
         </div>
 
-        <section class="topbar dashboard-page">
+        <section class="topbar dashboard-page hidden">
           <div>
             <h2 data-i18n="dashboard.title">Recommendation Chatbot</h2>
             <p id="datasetStamp"></p>
@@ -283,7 +283,7 @@
           </div>
         </section>
 
-        <section class="main-grid dashboard-page">
+        <section class="main-grid dashboard-page hidden">
           <section class="insight-panel" aria-label="Insights">
             <div class="chart-header">
               <div>
@@ -437,14 +437,14 @@
           </section>
         </section>
 
-        <section class="dashboard-agent-page hidden" id="dashboardAgentPage" aria-label="Conversation Agent">
+        <section class="dashboard-agent-page" id="dashboardAgentPage" aria-label="Chat Agent">
           <header class="agent-page-header">
             <div class="agent-page-heading">
               <div class="agent-page-title-row">
                 <span class="agent-page-title-mark" aria-hidden="true"><span></span></span>
                 <div>
                   <span class="agent-page-kicker">DASHBOARD / AGENT</span>
-                  <h2 data-i18n="agent.title">Conversation Agent</h2>
+                  <h2 data-i18n="agent.title">Chat Agent</h2>
                 </div>
                 <span class="agent-page-status-chip">
                   <span class="agent-page-status-dot" aria-hidden="true"></span>
@@ -478,14 +478,16 @@
               <p class="agent-page-rail-note" data-i18n="agent.rail.note">Read-only analysis. Use Chatbot for the original Report Mode workflow and Deep Window reports.</p>
             </aside>
 
-            <section class="chat-panel agent-page-chat-panel" data-agent-surface="workspace" aria-label="Conversation Agent chat">
+            <section class="chat-panel agent-page-chat-panel" data-agent-surface="workspace" aria-label="Chat Agent chat">
               <div class="agent-chat-context" aria-label="Agent workspace context">
                 <span class="agent-chat-context-mark" aria-hidden="true"></span>
                 <span data-i18n="agent.context">Read-only data workspace</span>
               </div>
               <div class="chat-log agent-chat-log" id="agentChatLog" aria-live="polite">
                 <div class="agent-page-welcome">
-                  <span class="agent-page-welcome-logo" role="img" aria-label="Yeah">Yeah</span>
+                  <span class="agent-page-welcome-logo" role="img" aria-label="YeahPromos">
+                    <span class="agent-page-welcome-logo-wordmark"><span class="agent-page-welcome-logo-base">YEAH</span><span class="agent-page-welcome-logo-accent">P</span><span class="agent-page-welcome-logo-tail">ROMOS</span></span>
+                  </span>
                   <div>
                     <span class="agent-page-welcome-kicker" data-i18n="agent.welcome.kicker">START WITH A DATA QUESTION</span>
                     <h3 data-i18n="agent.welcome.title">What would you like to query?</h3>
@@ -504,10 +506,6 @@
               <form class="chat-input agent-page-input" id="agentChatForm">
                 <div class="chat-input-field">
                   <input id="agentChatInput" autocomplete="off" placeholder="Ask the Agent about merchants, tiers, payments, or trends..." data-i18n-placeholder="agent.placeholder" />
-                  <div class="agent-input-meta">
-                    <span data-i18n="agent.inputHint">Enter to send · multi-month data ready</span>
-                    <span class="agent-input-scope" data-i18n="agent.inputScope">Read-only</span>
-                  </div>
                 </div>
                 <button id="agentChatSubmit" type="submit" aria-label="Send">
                   <span class="agent-send-label" data-i18n="action.send">Send</span>
