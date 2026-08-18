@@ -225,7 +225,7 @@
   });
 
   const state = {
-    page: "dashboard",
+    page: "agent",
     tier: "all",
     network: "all",
     category: "all",
@@ -993,8 +993,6 @@
       "agent.example.label": "示例提问",
       "agent.example.prompt": "Tapo，ID398679，epc和conversion帮我查询下",
       "agent.context": "只读数据工作区",
-      "agent.inputHint": "回车发送 · 支持多月份数据",
-      "agent.inputScope": "只读",
       "agent.placeholder": "询问商户、Tier、付款或趋势...",
       "agent.error": "Agent 暂时无法回答，请稍后重试。",
       "filters.dashboard": "仪表盘筛选",
@@ -13588,12 +13586,19 @@ var _NUMERIC_COL_PATTERNS = [
     return summary;
   }
 
-  // 商户严格解析：精确相等（品牌/商户名/商户ID）→ 子串包含；不启用 fuzzy 层。
+  // 商户严格解析：输入包含商户 ID 时以 ID 为准；否则精确匹配品牌/商户名，最后允许名称子串匹配。
   function agentResolveMerchantStrict(name) {
     if (!name) return null;
     var raw = String(name).trim();
     var lower = raw.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
     if (!lower) return null;
+    var idMatch = raw.match(/\b\d{5,8}(?:\.0)?\b/);
+    if (idMatch) {
+      var merchantId = idMatch[0].replace(/\.0$/, "");
+      return offers.filter(function (o) {
+        return String(o.merchantId || "").trim() === merchantId;
+      })[0] || null;
+    }
     var exact = offers.filter(function (o) {
       return normalizedOfferName(o, "brand") === lower ||
         normalizedOfferName(o, "merchantName") === lower ||
@@ -13613,6 +13618,35 @@ var _NUMERIC_COL_PATTERNS = [
   };
   function agentToolKindLabel(name) {
     return AGENT_TOOL_KIND_LABELS[name] || "分析";
+  }
+
+  function agentPromptRequestsMerchantComparison(prompt) {
+    var text = String(prompt || "").trim();
+    if (!text) return false;
+    return /对比|比较|差异|区别|优劣|排名|排序|谁更|哪个更|优于|胜出|compare|comparison|difference|versus|\bvs\.?\b|rank(?:ing)?|which\s+(?:merchant|brand|one).*(?:better|best|worse|winner)/i.test(text);
+  }
+
+  function normalizeAgentToolCalls(toolCalls, prompt) {
+    var calls = Array.isArray(toolCalls) ? toolCalls : [];
+    if (agentPromptRequestsMerchantComparison(prompt)) return calls;
+    var normalized = [];
+    calls.forEach(function (call) {
+      if (!call || typeof call !== "object") return;
+      var args = call.arguments;
+      if (call.name === "merchant_comparison" && args && Array.isArray(args.merchants) && args.merchants.length >= 2) {
+        args.merchants.slice(0, AGENT_MAX_TOOLS_PER_ROUND).forEach(function (merchant, index) {
+          if (typeof merchant !== "string" || !merchant.trim()) return;
+          normalized.push({
+            id: String(call.id || "merchant-comparison") + "-" + (index + 1),
+            name: "merchant_analysis",
+            arguments: { merchant: merchant.trim() }
+          });
+        });
+        return;
+      }
+      normalized.push(call);
+    });
+    return normalized;
   }
 
   function agentPaymentYearFromPrompt(prompt) {
@@ -13651,7 +13685,8 @@ var _NUMERIC_COL_PATTERNS = [
       if (!merchant) return { ok: false, error: "merchant 参数缺失" };
       var strictOffer = agentResolveMerchantStrict(merchant);
       if (!strictOffer) return { ok: false, error: "未找到商户 '" + merchant + "'" };
-      var summary = analyzeMerchant(merchant);
+      var canonicalMerchant = strictOffer.brand || strictOffer.merchantName || String(strictOffer.merchantId || "");
+      var summary = analyzeMerchant(canonicalMerchant);
       if (!summary) return { ok: false, error: "未找到商户 '" + merchant + "'" };
       var monthlyRows = await fetchMerchantMonthlyRowsForAgent(strictOffer, context.signal || null);
       return {
@@ -13887,10 +13922,10 @@ var _NUMERIC_COL_PATTERNS = [
     return [
       {
         name: "merchant_analysis",
-        description: "获取单个商户的核心指标及其在同品类中的百分位、品类/Tier/全站均值对比、强弱项、Top3 同行(Peer)、付款风险和最近12个月真实月度数据（DB可用时）。参数 merchant 为品牌名或商户ID。",
+        description: "获取单个商户的核心指标及其在同品类中的百分位、品类/Tier/全站均值对比、强弱项、Top3 同行(Peer)、付款风险和最近12个月真实月度数据（DB可用时）。参数 merchant 为品牌名或商户ID；同时提供 ID 和商户名时优先按 ID 查询。多个商户只需分别查询同一批字段时，请对每个商户分别调用本工具，不要改用 merchant_comparison。",
         parameters: {
           type: "object",
-          properties: { merchant: { type: "string", description: "商户品牌名或商户ID，如 Shokz" } },
+          properties: { merchant: { type: "string", description: "商户品牌名或商户ID，如 Shokz、362342；同时提供 ID 和名称时以 ID 为准。" } },
           required: ["merchant"]
         }
       },
@@ -13905,7 +13940,7 @@ var _NUMERIC_COL_PATTERNS = [
       },
       {
         name: "merchant_comparison",
-        description: "对比 2-5 个商户的核心指标（EPC/AOV/CVR/Orders/Clicks/佣金/佣金率/Sales），返回各商户指标并列、相对第一个商户的差异(deltas)与付款风险。参数 merchants 为品牌名或商户ID数组。",
+        description: "仅在用户明确要求比较、差异、优劣、排名或谁更好时，对比 2-5 个商户的核心指标（EPC/AOV/CVR/Orders/Clicks/佣金/佣金率/Sales），返回各商户指标并列、相对第一个商户的差异(deltas)与付款风险。参数 merchants 为品牌名或商户ID数组；同时提供 ID 和商户名时优先按 ID 查询。若用户只是要求分别查询多个商户的字段，请为每个商户调用 merchant_analysis，不要使用本工具。",
         parameters: {
           type: "object",
           properties: { merchants: { type: "array", items: { type: "string" }, description: "商户名数组，至少 2 个" } },
@@ -14541,7 +14576,8 @@ var _NUMERIC_COL_PATTERNS = [
         return { handled: false, error: plan && plan.error };
       }
 
-      var calls = plan.toolCalls.slice(0, AGENT_MAX_TOOLS_PER_ROUND);
+      var plannedCalls = normalizeAgentToolCalls(plan.toolCalls, prompt);
+      var calls = plannedCalls.slice(0, AGENT_MAX_TOOLS_PER_ROUND);
       if (execution) {
         execution.updateStep(planStep, {
           status: "done",
@@ -14663,7 +14699,9 @@ var _NUMERIC_COL_PATTERNS = [
     var examplePrompt = t("agent.example.prompt", "Look up EPC and conversion for Tapo (ID398679)");
     var examplePromptFallback = "Look up EPC and conversion for Tapo (ID398679)";
     return '<div class="agent-page-welcome">'
-      + '<span class="agent-page-welcome-logo" role="img" aria-label="Yeah">Yeah</span>'
+      + '<span class="agent-page-welcome-logo" role="img" aria-label="YeahPromos">'
+      + '<span class="agent-page-welcome-logo-wordmark"><span class="agent-page-welcome-logo-base">YEAH</span><span class="agent-page-welcome-logo-accent">P</span><span class="agent-page-welcome-logo-tail">ROMOS</span></span>'
+      + '</span>'
       + '<div>'
       + '<span class="agent-page-welcome-kicker">' + escapeHtml(t("agent.welcome.kicker", "START WITH A DATA QUESTION")) + '</span>'
       + '<h3>' + escapeHtml(t("agent.welcome.title", "What would you like to query?")) + '</h3>'
@@ -25863,7 +25901,7 @@ var _NUMERIC_COL_PATTERNS = [
     syncDashboardCategoryReportControls();
     updateReportsNavState();
     updateDashboardNavState();
-    updatePageModeClass();
+    switchPage(state.page);
     syncMobileNavigationMode();
     quickPrompts.forEach(({ key, prompt }) => {
       const button = document.createElement("button");
@@ -25985,6 +26023,11 @@ var _NUMERIC_COL_PATTERNS = [
       mobileNavigationMedia.addListener(syncMobileNavigationMode);
     }
     els.dashboardNav.addEventListener("click", () => {
+      if (!pageBelongsToDashboard(state.page)) {
+        state.dashboardOpen = true;
+        switchPage("agent");
+        return;
+      }
       state.dashboardOpen = !state.dashboardOpen;
       updateDashboardNavState();
     });
@@ -27100,6 +27143,8 @@ var _NUMERIC_COL_PATTERNS = [
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
       agentToolDefinitions,
       agentExecuteTool,
+      agentPromptRequestsMerchantComparison,
+      normalizeAgentToolCalls,
       compactAgentToolResult,
       ensureAgentTierMerchantDataVisible,
       ensureAgentPaymentDataVisible,

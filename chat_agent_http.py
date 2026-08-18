@@ -30,9 +30,10 @@ PLANNING_PROMPT_ZH = (
     "规则：\n"
     "1. 只有当用户问题需要具体数据（商户、品类、Tier、对比、付款或趋势）时才调用工具；闲聊、概念问题直接回答。\n"
     "2. 相互独立的工具调用必须在同一次回复中并行给出。\n"
-    "3. 从用户话语中提取工具参数；Tier 商家列表使用 tier_analysis，默认第一页最多100个商户；用户要求下一页时使用 offset/limit。\n"
-    "4. 不确定商户名或品类名时仍调用工具，工具会返回\"未找到\"。\n"
-    "5. 付款月份未写年份时按当前年份理解，不要根据历史数据猜年份；只有用户明确写出历史年份时才使用历史月份。不要编造数值；工具结果中的数值是最终值，直接引用。"
+    "3. 多个商户只要求分别返回同一组字段时，即使一次列出多个商户，也必须为每个商户并行调用 merchant_analysis；只有用户明确要求比较、差异、优劣、排名或谁更好时才使用 merchant_comparison。\n"
+    "4. 从用户话语中提取工具参数；Tier 商家列表使用 tier_analysis，默认第一页最多100个商户；用户要求下一页时使用 offset/limit。\n"
+    "5. 不确定商户名或品类名时仍调用工具，工具会返回\"未找到\"。\n"
+    "6. 付款月份未写年份时按当前年份理解，不要根据历史数据猜年份；只有用户明确写出历史年份时才使用历史月份。不要编造数值；工具结果中的数值是最终值，直接引用。"
 )
 
 PLANNING_PROMPT_EN = (
@@ -40,9 +41,10 @@ PLANNING_PROMPT_EN = (
     "Rules:\n"
     "1. Only call tools when the question needs concrete data (merchant, category, tier, comparison, payment, or trend metrics); answer chit-chat and conceptual questions directly.\n"
     "2. Independent tool calls must be issued in parallel in a single reply.\n"
-    "3. For a Tier merchant list, use tier_analysis; it returns up to 100 merchants per page by default, and offset/limit fetch the next page.\n"
-    "4. Extract tool arguments from the user's words; when unsure about a merchant or category name, still call the tool — it will report \"not found\".\n"
-    "5. When a payment month has no year, use the current calendar year rather than guessing from historical rows; use a historical year only when the user explicitly says so. Never invent numbers; values in tool results are final, quote them."
+    "3. When the user only asks for the same fields for multiple merchants, issue one merchant_analysis call per merchant in parallel, even when several merchants are listed. Use merchant_comparison only when the user explicitly asks for comparison, differences, ranking, or which merchant is better.\n"
+    "4. For a Tier merchant list, use tier_analysis; it returns up to 100 merchants per page by default, and offset/limit fetch the next page.\n"
+    "5. Extract tool arguments from the user's words; when unsure about a merchant or category name, still call the tool — it will report \"not found\".\n"
+    "6. When a payment month has no year, use the current calendar year rather than guessing from historical rows; use a historical year only when the user explicitly says so. Never invent numbers; values in tool results are final, quote them."
 )
 
 SYNTHESIS_PROMPT_ZH = (
