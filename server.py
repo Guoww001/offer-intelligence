@@ -49,6 +49,7 @@ from offer_db import (
     monthly_new_merchants_payload,
     offers_payload,
     product_keywords_payload,
+    brand_media_trend_payload,
     publisher_portfolio_payload,
     publishers_payload,
     public_error_payload,
@@ -500,6 +501,18 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     force = first_query_value(query, "refresh") == "1"
                     self.send_json(200, publishers_payload(force_refresh=force))
+                return
+
+            if parsed.path == "/api/ui/db/brand-media-trend":
+                merchant_id = first_query_value(query, "merchantId")
+                if not merchant_id:
+                    self.send_json(400, {"ok": False, "error": "merchantId is required"})
+                    return
+                self.send_json(200, brand_media_trend_payload(
+                    merchant_id,
+                    start_date=first_query_value(query, "startDate") or None,
+                    end_date=first_query_value(query, "endDate") or None,
+                ))
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})

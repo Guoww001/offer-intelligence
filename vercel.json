@@ -162,6 +162,18 @@
       ]
     },
     {
+      "src": "^/api/ui/db/brand-media-trend/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-brand-media-trend"
+        }
+      ]
+    },
+    {
       "src": "^/api/auth/login/?$",
       "dest": "/api/auth/index",
       "transforms": [

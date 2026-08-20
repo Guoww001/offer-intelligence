@@ -399,6 +399,21 @@
     publisherLayoutEditing: false,
     publisherLayout: _loadPublisherLayout(),
     publisherOverviewType: "network",
+    brandMedia: {
+      merchantId: "",
+      merchantName: "",
+      merchantSearch: "",
+      startDate: "",
+      endDate: "",
+      quickRange: "90",
+      catalogLoading: false,
+      catalogError: "",
+      loading: false,
+      error: "",
+      payload: null,
+      requestKey: "",
+      requestSequence: 0
+    },
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -535,6 +550,21 @@
     paymentsPage: document.getElementById("paymentsPage"),
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
+    brandMediaNav: document.getElementById("brandMediaNav"),
+    brandMediaPage: document.getElementById("brandMediaPage"),
+    brandMediaMerchantSearch: document.getElementById("brandMediaMerchantSearch"),
+    brandMediaMerchantDropdown: document.getElementById("brandMediaMerchantDropdown"),
+    brandMediaRangeButtons: document.getElementById("brandMediaRangeButtons"),
+    brandMediaStartDate: document.getElementById("brandMediaStartDate"),
+    brandMediaEndDate: document.getElementById("brandMediaEndDate"),
+    brandMediaStatus: document.getElementById("brandMediaStatus"),
+    brandMediaKpis: document.getElementById("brandMediaKpis"),
+    brandMediaChart: document.getElementById("brandMediaChart"),
+    brandMediaChartSubtitle: document.getElementById("brandMediaChartSubtitle"),
+    brandMediaLineCount: document.getElementById("brandMediaLineCount"),
+    brandMediaLegend: document.getElementById("brandMediaLegend"),
+    brandMediaTableRows: document.getElementById("brandMediaTableRows"),
+    brandMediaTableCount: document.getElementById("brandMediaTableCount"),
     publisherSelectorSearch: document.getElementById("publisherSelectorSearch"),
     publisherSelectorDropdown: document.getElementById("publisherSelectorDropdown"),
     publisherStartDate: document.getElementById("publisherStartDate"),
@@ -857,6 +887,7 @@
       "nav.agent": "Agent",
       "nav.payments": "付款",
       "nav.publishers": "媒体",
+      "nav.brandMedia": "品牌媒体趋势",
       "nav.reports": "报表",
       "nav.targets": "目标",
       "nav.category": "品类",
@@ -1098,6 +1129,38 @@
       "publishers.site": "站点",
       "publishers.track": "Track",
       "publishers.empty": "暂无数据",
+      "brandMedia.title": "品牌媒体趋势",
+      "brandMedia.subtitle": "查看一个品牌在不同日期由各媒体带来的 Revenue 变化。",
+      "brandMedia.liveSource": "每日订单 Revenue",
+      "brandMedia.brand": "品牌",
+      "brandMedia.brandPlaceholder": "搜索品牌或商家 ID",
+      "brandMedia.timeRange": "时间跨度",
+      "brandMedia.startDate": "开始日期",
+      "brandMedia.endDate": "结束日期",
+      "brandMedia.sourceNote": "Revenue 使用订单金额；缺少某媒体当天的源记录时，图表会断开而不会补为 0。",
+      "brandMedia.chartTitle": "各媒体每日 Revenue",
+      "brandMedia.chartSubtitle": "每条线代表一家媒体；没有每日源记录时会断开。",
+      "brandMedia.tableTitle": "媒体汇总",
+      "brandMedia.tableSubtitle": "展示图表中每条线在选定时间内的汇总和源记录覆盖情况。",
+      "brandMedia.media": "媒体",
+      "brandMedia.revenue": "Revenue",
+      "brandMedia.orders": "订单",
+      "brandMedia.activeDays": "活跃天数",
+      "brandMedia.firstSeen": "首个记录",
+      "brandMedia.lastSeen": "最后记录",
+      "brandMedia.selectBrand": "先选择一个品牌，即可加载该品牌所有媒体的每日 Revenue。",
+      "brandMedia.loading": "正在读取该品牌的媒体 Revenue 趋势…",
+      "brandMedia.noData": "这个品牌在所选时间内没有媒体订单记录。",
+      "brandMedia.loadError": "无法读取品牌媒体趋势，请调整日期范围后重试。",
+      "brandMedia.lineCount": "条媒体线",
+      "brandMedia.publisherCount": "活跃媒体",
+      "brandMedia.totalRevenue": "Revenue",
+      "brandMedia.totalForDate": "当日总 Revenue",
+      "brandMedia.allMedia": "全部媒体",
+      "brandMedia.mediaForDate": "该媒体当日 Revenue",
+      "brandMedia.noRecord": "无源记录",
+      "brandMedia.observations": "媒体日期记录",
+      "brandMedia.coverage": "数据覆盖",
       "label.All markets": "全市场",
       "label.All": "全部",
       "action.search": "搜索",
@@ -1688,6 +1751,8 @@
       renderMonthlyNewMerchantsPage();
     } else if (state.page === "offer-list-tracker") {
       renderOfferListTrackerPage();
+    } else if (state.page === "brand-media") {
+      renderBrandMediaPage();
     } else if (state.page === "agent") {
       // Agent 页面内容由独立会话状态维护，语言切换只需更新静态文案。
     } else {
@@ -17893,6 +17958,701 @@ var _NUMERIC_COL_PATTERNS = [
       });
   }
 
+  var BRAND_MEDIA_COLOR_GOLDEN_ANGLE = 137.508;
+  var _brandMediaMerchantOptions = [];
+
+  function brandMediaColor(index) {
+    var hue = Math.round((Number(index || 0) * BRAND_MEDIA_COLOR_GOLDEN_ANGLE) % 360);
+    return "hsl(" + hue + " 72% 48%)";
+  }
+
+  function brandMediaDateKey(value) {
+    var key = String(value || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return "";
+    var year = Number(key.slice(0, 4));
+    var month = Number(key.slice(5, 7));
+    var day = Number(key.slice(8, 10));
+    var date = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(date.getTime()) || date.getUTCFullYear() !== year ||
+        date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+      return "";
+    }
+    return key;
+  }
+
+  function brandMediaDayOrdinal(value) {
+    var key = brandMediaDateKey(value);
+    if (!key) return null;
+    return Date.UTC(
+      Number(key.slice(0, 4)),
+      Number(key.slice(5, 7)) - 1,
+      Number(key.slice(8, 10))
+    ) / 86400000;
+  }
+
+  function brandMediaDateAtOrdinal(ordinal) {
+    if (!Number.isFinite(Number(ordinal))) return "";
+    return new Date(Number(ordinal) * 86400000).toISOString().slice(0, 10);
+  }
+
+  function brandMediaLineSegments(points) {
+    var sorted = (points || []).map(function (point) {
+      var date = brandMediaDateKey(point && point.date);
+      return date ? Object.assign({}, point, { date: date }) : null;
+    }).filter(Boolean).sort(function (a, b) {
+      return a.date.localeCompare(b.date);
+    });
+    var segments = [];
+    var current = [];
+    sorted.forEach(function (point) {
+      var previous = current.length ? current[current.length - 1] : null;
+      var isNextDay = previous &&
+        brandMediaDayOrdinal(point.date) - brandMediaDayOrdinal(previous.date) === 1;
+      if (!previous || isNextDay) {
+        current.push(point);
+        return;
+      }
+      if (current.length) segments.push(current);
+      current = [point];
+    });
+    if (current.length) segments.push(current);
+    return segments;
+  }
+
+  function _brandMediaIsoDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") +
+      "-" + String(date.getDate()).padStart(2, "0");
+  }
+
+  function _brandMediaDate(value) {
+    var date = new Date(String(value || "") + "T12:00:00");
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function _brandMediaSetQuickRange(days) {
+    var end = new Date();
+    end.setHours(12, 0, 0, 0);
+    end.setDate(end.getDate() - 1);
+    var start = new Date(end.getTime());
+    start.setDate(start.getDate() - Math.max(1, Number(days || 90)) + 1);
+    state.brandMedia.quickRange = String(days);
+    state.brandMedia.startDate = _brandMediaIsoDate(start);
+    state.brandMedia.endDate = _brandMediaIsoDate(end);
+  }
+
+  function _brandMediaDisplayDate(value) {
+    return String(value || "").slice(0, 10) || "-";
+  }
+
+  function _brandMediaCount(value) {
+    return Number(value || 0).toLocaleString();
+  }
+
+  function _brandMediaMoney(value) {
+    return "$" + Number(value || 0).toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function _brandMediaCatalogOptions(data) {
+    return _publisherMerchantOptions(data).sort(function (a, b) {
+      return Number(b.count || 0) - Number(a.count || 0) ||
+        String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }
+
+  function _brandMediaShowMerchantDropdown() {
+    if (!els.brandMediaMerchantDropdown || !els.brandMediaMerchantSearch) return;
+    var query = String(els.brandMediaMerchantSearch.value || "").toLowerCase().trim();
+    var options = _brandMediaMerchantOptions.filter(function (merchant) {
+      return !query || String(merchant.name || "").toLowerCase().indexOf(query) !== -1 ||
+        String(merchant.merchantId || "").toLowerCase().indexOf(query) !== -1;
+    }).slice(0, 80);
+    var selectedId = String(state.brandMedia.merchantId || "");
+    var html = options.map(function (merchant) {
+      var selected = selectedId === String(merchant.merchantId);
+      return '<button type="button" class="brand-media-merchant-option' +
+        (selected ? ' selected' : '') + '" role="option" aria-selected="' +
+        (selected ? 'true' : 'false') + '" data-brand-media-merchant-id="' +
+        escapeHtml(String(merchant.merchantId)) + '" data-brand-media-merchant-name="' +
+        escapeHtml(String(merchant.name)) + '">' +
+        '<span>' + escapeHtml(String(merchant.name)) + '</span>' +
+        '<small>ID ' + escapeHtml(String(merchant.merchantId)) + ' · ' +
+        _brandMediaCount(merchant.count) + '</small></button>';
+    }).join("");
+    if (!html) {
+      html = '<div class="brand-media-merchant-empty" role="option" aria-disabled="true">' +
+        escapeHtml(t("publishers.merchantNoMatch", "No matching merchant")) + '</div>';
+    }
+    els.brandMediaMerchantDropdown.innerHTML = html;
+    els.brandMediaMerchantDropdown.classList.add("show");
+    els.brandMediaMerchantSearch.setAttribute("aria-expanded", "true");
+  }
+
+  function _brandMediaHideMerchantDropdown() {
+    if (els.brandMediaMerchantDropdown) els.brandMediaMerchantDropdown.classList.remove("show");
+    if (els.brandMediaMerchantSearch) els.brandMediaMerchantSearch.setAttribute("aria-expanded", "false");
+  }
+
+  function _brandMediaRenderKpis(payload) {
+    if (!els.brandMediaKpis) return;
+    if (!payload || !payload.summary) {
+      els.brandMediaKpis.innerHTML = "";
+      return;
+    }
+    var summary = payload.summary;
+    var items = [
+      [t("brandMedia.publisherCount", "Active media"), _brandMediaCount(summary.activePublisherCount)],
+      [t("brandMedia.totalRevenue", "Revenue"), _brandMediaMoney(summary.totalRevenue)],
+      [t("brandMedia.orders", "Orders"), _brandMediaCount(summary.totalOrders)],
+      [t("brandMedia.observations", "Media-day records"), _brandMediaCount(summary.observationCount)],
+    ];
+    els.brandMediaKpis.innerHTML = items.map(function (item, index) {
+      return '<article class="brand-media-kpi"><span>' + String(index + 1).padStart(2, "0") +
+        '</span><strong>' + escapeHtml(item[1]) + '</strong><small>' +
+        escapeHtml(item[0]) + '</small></article>';
+    }).join("");
+  }
+
+  function _brandMediaEmptyChart(message) {
+    if (els.brandMediaChart) {
+      els.brandMediaChart._brandMediaChartModel = null;
+      els.brandMediaChart.innerHTML = '<div class="brand-media-empty-chart">' +
+        escapeHtml(message) + '</div>';
+    }
+    if (els.brandMediaLegend) els.brandMediaLegend.innerHTML = "";
+    if (els.brandMediaLineCount) els.brandMediaLineCount.textContent = "";
+  }
+
+  function _brandMediaBuildChartModel(payload) {
+    var publishers = (payload && payload.publishers) || [];
+    var range = (payload && payload.dateRange) || {};
+    var startDate = brandMediaDateKey(range.startDate);
+    var endDate = brandMediaDateKey(range.endDate);
+    var startOrdinal = brandMediaDayOrdinal(startDate);
+    var endOrdinal = brandMediaDayOrdinal(endDate);
+    if (!publishers.length || startOrdinal == null || endOrdinal == null || endOrdinal < startOrdinal) return null;
+
+    var daySpan = endOrdinal - startOrdinal;
+    var minRevenue = 0;
+    var maxRevenue = 0;
+    var dailyTotals = {};
+    var publisherPoints = [];
+    var publisherSegments = [];
+    publishers.forEach(function (publisher) {
+      var points = (publisher.points || []).map(function (point) {
+        var date = brandMediaDateKey(point && point.date);
+        var ordinal = brandMediaDayOrdinal(date);
+        if (!date || ordinal == null || ordinal < startOrdinal || ordinal > endOrdinal) return null;
+        var revenue = Number(point.revenue);
+        revenue = Number.isFinite(revenue) ? revenue : 0;
+        dailyTotals[date] = (dailyTotals[date] || 0) + revenue;
+        maxRevenue = Math.max(maxRevenue, revenue);
+        return Object.assign({}, point, { date: date, revenue: revenue });
+      }).filter(Boolean).sort(function (a, b) {
+        return a.date.localeCompare(b.date);
+      });
+      publisherPoints.push(points.reduce(function (map, point) {
+        map[point.date] = point;
+        return map;
+      }, {}));
+      publisherSegments.push(brandMediaLineSegments(points));
+    });
+    if (maxRevenue === minRevenue) maxRevenue = minRevenue + 1;
+    var width = 1180;
+    var height = 560;
+    var left = 82;
+    var right = 28;
+    var top = 34;
+    var bottom = 62;
+    var plotWidth = width - left - right;
+    var plotHeight = height - top - bottom;
+    function xFor(dateText) {
+      var ordinal = brandMediaDayOrdinal(dateText);
+      var day = ordinal == null ? 0 : ordinal - startOrdinal;
+      var denominator = Math.max(1, daySpan);
+      return left + Math.max(0, Math.min(daySpan, day)) / denominator * plotWidth;
+    }
+    var revenueSpan = maxRevenue - minRevenue;
+    function yFor(value) {
+      return top + plotHeight - (Number(value || 0) - minRevenue) / revenueSpan * plotHeight;
+    }
+    var svg = [];
+    svg.push('<svg class="brand-media-svg" viewBox="0 0 ' + width + ' ' + height +
+      '" preserveAspectRatio="none" aria-hidden="true" data-brand-media-day-span="' + daySpan + '">');
+    for (var tick = 0; tick <= 4; tick++) {
+      var value = minRevenue + revenueSpan * tick / 4;
+      var y = yFor(value);
+      svg.push('<line class="brand-media-grid-line" x1="' + left + '" x2="' +
+        (width - right) + '" y1="' + y + '" y2="' + y + '"></line>');
+      svg.push('<text class="brand-media-axis-label" x="' + (left - 12) + '" y="' +
+        (y + 4) + '" text-anchor="end">' + escapeHtml(_brandMediaMoney(value)) + '</text>');
+    }
+    var tickOffsets = [];
+    for (var xTick = 0; xTick <= 4; xTick++) {
+      var tickOffset = Math.round(daySpan * xTick / 4);
+      if (tickOffsets.indexOf(tickOffset) === -1) tickOffsets.push(tickOffset);
+    }
+    tickOffsets.forEach(function (days) {
+      var dateKey = brandMediaDateAtOrdinal(startOrdinal + days);
+      var x = xFor(dateKey);
+      svg.push('<line class="brand-media-x-tick" x1="' + x + '" x2="' + x +
+        '" y1="' + (top + plotHeight) + '" y2="' + (top + plotHeight + 6) + '"></line>');
+      svg.push('<text class="brand-media-axis-label brand-media-axis-date" x="' + x + '" y="' +
+        (height - 22) + '" text-anchor="middle" data-brand-media-date="' + dateKey + '">' +
+        escapeHtml(dateKey.slice(5)) + '</text>');
+    });
+    svg.push('<rect class="brand-media-hit-area" x="' + left + '" y="' + top + '" width="' +
+      plotWidth + '" height="' + plotHeight + '" tabindex="0" data-brand-media-hit-area="true" aria-label="Select a date"></rect>');
+    publishers.forEach(function (publisher, index) {
+      var color = brandMediaColor(index);
+      publisherSegments[index].forEach(function (segment) {
+        var path = segment.map(function (point, pointIndex) {
+          return (pointIndex ? "L" : "M") + xFor(point.date).toFixed(2) + " " +
+            yFor(point.revenue).toFixed(2);
+        }).join(" ");
+        if (path) {
+          svg.push('<path class="brand-media-series" d="' + path + '" stroke="' +
+            color + '" data-brand-media-publisher-index="' + index + '"></path>');
+        }
+      });
+    });
+    svg.push('<line class="brand-media-crosshair brand-media-crosshair-date" x1="' + left +
+      '" x2="' + left + '" y1="' + top + '" y2="' + (top + plotHeight) + '" style="display:none"></line>');
+    svg.push('<line class="brand-media-crosshair brand-media-crosshair-value" x1="' + left +
+      '" x2="' + (width - right) + '" y1="' + (top + plotHeight) + '" y2="' +
+      (top + plotHeight) + '" style="display:none"></line>');
+    svg.push('</svg>');
+    return {
+      svg: svg.join(""),
+      width: width,
+      height: height,
+      left: left,
+      right: right,
+      top: top,
+      bottom: bottom,
+      plotWidth: plotWidth,
+      plotHeight: plotHeight,
+      startDate: startDate,
+      endDate: endDate,
+      startOrdinal: startOrdinal,
+      endOrdinal: endOrdinal,
+      daySpan: daySpan,
+      publishers: publishers,
+      dailyTotals: dailyTotals,
+      publisherPoints: publisherPoints,
+      xFor: xFor,
+      yFor: yFor,
+      dateForOffset: function (offset) {
+        return brandMediaDateAtOrdinal(startOrdinal + Math.max(0, Math.min(daySpan, offset)));
+      },
+    };
+  }
+
+  function _brandMediaChartPayload(payload) {
+    var model = _brandMediaBuildChartModel(payload);
+    return model ? model.svg : "";
+  }
+
+  function _brandMediaDateFromPointer(event, svg, model) {
+    if (!event || !svg || !model) return "";
+    var rect = svg.getBoundingClientRect ? svg.getBoundingClientRect() : null;
+    var width = rect && rect.width ? rect.width : model.width;
+    var x = rect && Number.isFinite(event.clientX)
+      ? (event.clientX - rect.left) / width * model.width
+      : model.left;
+    var offset = Math.round((x - model.left) / Math.max(1, model.plotWidth) * model.daySpan);
+    return model.dateForOffset(Math.max(0, Math.min(model.daySpan, offset)));
+  }
+
+  function _brandMediaPublisherIndexFromTarget(target) {
+    if (!target || typeof target.closest !== "function") return null;
+    var series = target.closest("[data-brand-media-publisher-index]");
+    if (!series) return null;
+    var index = Number(series.getAttribute("data-brand-media-publisher-index"));
+    return Number.isFinite(index) ? index : null;
+  }
+
+  function _brandMediaSetChartFocus(chart, model, focusedIndex) {
+    if (!chart || !model) return;
+    var svg = chart.querySelector ? chart.querySelector(".brand-media-svg") : null;
+    if (svg) {
+      svg.classList.toggle("brand-media-chart-has-focus", focusedIndex != null);
+      var series = svg.querySelectorAll(".brand-media-series");
+      Array.prototype.forEach.call(series, function (path) {
+        var index = Number(path.getAttribute("data-brand-media-publisher-index"));
+        path.classList.toggle("is-focused", focusedIndex != null && index === focusedIndex);
+        path.classList.toggle("is-muted", focusedIndex != null && index !== focusedIndex);
+      });
+    }
+    if (els.brandMediaLegend && els.brandMediaLegend.querySelectorAll) {
+      var legendItems = els.brandMediaLegend.querySelectorAll("[data-brand-media-publisher-index]");
+      Array.prototype.forEach.call(legendItems, function (item) {
+        var index = Number(item.getAttribute("data-brand-media-publisher-index"));
+        item.classList.toggle("is-focused", focusedIndex != null && index === focusedIndex);
+        item.classList.toggle("is-muted", focusedIndex != null && index !== focusedIndex);
+      });
+    }
+  }
+
+  function _brandMediaUpdateChartHover(chart, model, dateKey, focusedIndex) {
+    if (!chart || !model || !dateKey) return;
+    var svg = chart.querySelector ? chart.querySelector(".brand-media-svg") : null;
+    if (!svg) return;
+    var dateLine = svg.querySelector(".brand-media-crosshair-date");
+    var valueLine = svg.querySelector(".brand-media-crosshair-value");
+    var x = model.xFor(dateKey);
+    var focusPoint = focusedIndex != null && model.publisherPoints[focusedIndex]
+      ? model.publisherPoints[focusedIndex][dateKey]
+      : null;
+    var fallbackValue = 0;
+    if (focusPoint) {
+      fallbackValue = Number(focusPoint.revenue || 0);
+    } else {
+      model.publisherPoints.forEach(function (points) {
+        var point = points[dateKey];
+        if (point) fallbackValue = Math.max(fallbackValue, Number(point.revenue || 0));
+      });
+    }
+    var y = model.yFor(fallbackValue);
+    if (dateLine) {
+      dateLine.setAttribute("x1", x.toFixed(2));
+      dateLine.setAttribute("x2", x.toFixed(2));
+      dateLine.style.display = "";
+    }
+    if (valueLine) {
+      valueLine.setAttribute("y1", y.toFixed(2));
+      valueLine.setAttribute("y2", y.toFixed(2));
+      valueLine.style.display = "";
+    }
+
+    var tooltip = chart.querySelector(".brand-media-hover-tooltip");
+    if (!tooltip) return;
+    var total = Number(model.dailyTotals[dateKey] || 0);
+    var tooltipHtml = '<div class="brand-media-hover-date"><span>' +
+      escapeHtml(_brandMediaDisplayDate(dateKey)) + '</span><strong>' +
+      escapeHtml(t("brandMedia.totalForDate", "Total revenue")) + '</strong></div>' +
+      '<div class="brand-media-hover-row"><span>' +
+      escapeHtml(t("brandMedia.allMedia", "All media")) + '</span><strong>' +
+      escapeHtml(_brandMediaMoney(total)) + '</strong></div>';
+    if (focusedIndex != null && model.publishers[focusedIndex]) {
+      var publisher = model.publishers[focusedIndex];
+      var pointText = focusPoint
+        ? _brandMediaMoney(focusPoint.revenue)
+        : t("brandMedia.noRecord", "No source record");
+      tooltipHtml += '<div class="brand-media-hover-row brand-media-hover-media"><span><i style="--brand-media-line:' +
+        brandMediaColor(focusedIndex) + '"></i>' +
+        escapeHtml(String(publisher.userName || publisher.userId)) + '</span><strong>' +
+        escapeHtml(pointText) + '</strong></div>';
+    }
+    tooltip.innerHTML = tooltipHtml;
+    tooltip.hidden = false;
+    var chartWidth = chart.clientWidth || 0;
+    var cssX = chartWidth ? x / model.width * chartWidth : 0;
+    var edge = cssX < chartWidth * 0.18 ? "start" : cssX > chartWidth * 0.82 ? "end" : "center";
+    tooltip.dataset.edge = edge;
+    tooltip.style.left = Math.max(12, Math.min(Math.max(12, chartWidth - 12), cssX)) + "px";
+  }
+
+  function _brandMediaClearChartHover(chart) {
+    if (!chart) return;
+    var svg = chart.querySelector ? chart.querySelector(".brand-media-svg") : null;
+    if (svg) {
+      svg.classList.remove("brand-media-chart-has-focus");
+      var dateLine = svg.querySelector(".brand-media-crosshair-date");
+      var valueLine = svg.querySelector(".brand-media-crosshair-value");
+      if (dateLine) dateLine.style.display = "none";
+      if (valueLine) valueLine.style.display = "none";
+      Array.prototype.forEach.call(svg.querySelectorAll(".brand-media-series"), function (path) {
+        path.classList.remove("is-focused", "is-muted");
+      });
+    }
+    if (els.brandMediaLegend && els.brandMediaLegend.querySelectorAll) {
+      Array.prototype.forEach.call(els.brandMediaLegend.querySelectorAll("[data-brand-media-publisher-index]"), function (item) {
+        item.classList.remove("is-focused", "is-muted");
+      });
+    }
+    var tooltip = chart.querySelector ? chart.querySelector(".brand-media-hover-tooltip") : null;
+    if (tooltip) tooltip.hidden = true;
+    chart._brandMediaHoverDate = "";
+    chart._brandMediaFocusedIndex = null;
+  }
+
+  function _brandMediaBindChartInteractions() {
+    var chart = els.brandMediaChart;
+    if (!chart || chart._brandMediaInteractionsBound) return;
+    chart._brandMediaInteractionsBound = true;
+    chart.addEventListener("pointermove", function (event) {
+      var model = chart._brandMediaChartModel;
+      var svg = chart.querySelector ? chart.querySelector(".brand-media-svg") : null;
+      if (!model || !svg) return;
+      var dateKey = _brandMediaDateFromPointer(event, svg, model);
+      var focusedIndex = _brandMediaPublisherIndexFromTarget(event.target);
+      chart._brandMediaHoverDate = dateKey;
+      chart._brandMediaFocusedIndex = focusedIndex;
+      _brandMediaSetChartFocus(chart, model, focusedIndex);
+      _brandMediaUpdateChartHover(chart, model, dateKey, focusedIndex);
+    });
+    chart.addEventListener("pointerleave", function () {
+      _brandMediaClearChartHover(chart);
+    });
+    if (els.brandMediaLegend) {
+      els.brandMediaLegend.addEventListener("pointerover", function (event) {
+        var index = _brandMediaPublisherIndexFromTarget(event.target);
+        var model = chart._brandMediaChartModel;
+        if (index == null || !model) return;
+        var dateKey = chart._brandMediaHoverDate || model.endDate;
+        chart._brandMediaHoverDate = dateKey;
+        chart._brandMediaFocusedIndex = index;
+        _brandMediaSetChartFocus(chart, model, index);
+        _brandMediaUpdateChartHover(chart, model, dateKey, index);
+      });
+      els.brandMediaLegend.addEventListener("pointerleave", function () {
+        _brandMediaClearChartHover(chart);
+      });
+    }
+  }
+
+  function _brandMediaRenderChart(payload) {
+    var publishers = (payload && payload.publishers) || [];
+    if (!publishers.length) {
+      _brandMediaEmptyChart(t("brandMedia.noData", "No media order records in this range."));
+      return;
+    }
+    if (els.brandMediaChart) {
+      var model = _brandMediaBuildChartModel(payload);
+      if (!model) {
+        _brandMediaEmptyChart(t("brandMedia.noData", "No media order records in this range."));
+        return;
+      }
+      els.brandMediaChart._brandMediaChartModel = model;
+      els.brandMediaChart.innerHTML = model.svg +
+        '<div class="brand-media-hover-tooltip" hidden aria-live="polite"></div>';
+      var range = payload.dateRange || {};
+      els.brandMediaChart.setAttribute("aria-label",
+        String(payload.merchant && payload.merchant.merchantName || "") + ", " +
+        _brandMediaDisplayDate(range.startDate) + " to " + _brandMediaDisplayDate(range.endDate) +
+        ", " + _brandMediaCount(publishers.length) + " publisher revenue lines");
+    }
+    if (els.brandMediaLineCount) {
+      els.brandMediaLineCount.textContent = _brandMediaCount(publishers.length) + " " +
+        t("brandMedia.lineCount", "media lines");
+    }
+    if (els.brandMediaLegend) {
+      els.brandMediaLegend.innerHTML = publishers.map(function (publisher, index) {
+        return '<div class="brand-media-legend-item" tabindex="0" role="button" data-brand-media-publisher-index="' + index + '"><i style="--brand-media-line:' +
+          brandMediaColor(index) + '"></i><span>' +
+          escapeHtml(String(publisher.userName || publisher.userId)) +
+          '</span><strong>' + escapeHtml(_brandMediaMoney(publisher.totalRevenue)) +
+          '</strong></div>';
+      }).join("");
+    }
+    _brandMediaBindChartInteractions();
+  }
+
+  function _brandMediaRenderTable(payload) {
+    var publishers = (payload && payload.publishers) || [];
+    if (els.brandMediaTableCount) {
+      els.brandMediaTableCount.textContent = publishers.length
+        ? _brandMediaCount(publishers.length) + " " + t("brandMedia.lineCount", "media lines")
+        : "";
+    }
+    if (!els.brandMediaTableRows) return;
+    if (!publishers.length) {
+      els.brandMediaTableRows.innerHTML = '<tr><td colspan="6" class="brand-media-empty-cell">' +
+        escapeHtml(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue.")) +
+        '</td></tr>';
+      return;
+    }
+    els.brandMediaTableRows.innerHTML = publishers.map(function (publisher, index) {
+      return '<tr><td><span class="brand-media-table-dot" style="--brand-media-line:' +
+        brandMediaColor(index) + '"></span><strong>' +
+        escapeHtml(String(publisher.userName || publisher.userId)) + '</strong><small>ID ' +
+        escapeHtml(String(publisher.userId)) + '</small></td><td class="brand-media-numeric">' +
+        escapeHtml(_brandMediaMoney(publisher.totalRevenue)) + '</td><td class="brand-media-numeric">' +
+        _brandMediaCount(publisher.totalOrders) + '</td><td class="brand-media-numeric">' +
+        _brandMediaCount(publisher.activeDays) + '</td><td>' +
+        escapeHtml(_brandMediaDisplayDate(publisher.firstActiveDate)) + '</td><td>' +
+        escapeHtml(_brandMediaDisplayDate(publisher.lastActiveDate)) + '</td></tr>';
+    }).join("");
+  }
+
+  function _brandMediaSyncControls() {
+    var current = state.brandMedia;
+    if (!current.startDate || !current.endDate) _brandMediaSetQuickRange(current.quickRange || 90);
+    if (els.brandMediaMerchantSearch &&
+        document.activeElement !== els.brandMediaMerchantSearch) {
+      els.brandMediaMerchantSearch.value = current.merchantName || current.merchantSearch || "";
+    }
+    if (els.brandMediaStartDate) els.brandMediaStartDate.value = current.startDate || "";
+    if (els.brandMediaEndDate) els.brandMediaEndDate.value = current.endDate || "";
+    if (els.brandMediaRangeButtons) {
+      els.brandMediaRangeButtons.querySelectorAll("[data-brand-media-range]").forEach(function (button) {
+        button.classList.toggle("active", String(button.dataset.brandMediaRange) === String(current.quickRange || ""));
+      });
+    }
+  }
+
+  function _brandMediaStatus(text, kind) {
+    if (!els.brandMediaStatus) return;
+    els.brandMediaStatus.textContent = text || "";
+    els.brandMediaStatus.dataset.kind = kind || "";
+  }
+
+  function _brandMediaLoadTrend() {
+    var current = state.brandMedia;
+    var merchantId = String(current.merchantId || "").trim();
+    if (!merchantId) {
+      current.payload = null;
+      current.error = "";
+      current.loading = false;
+      _brandMediaRenderKpis(null);
+      _brandMediaRenderTable(null);
+      _brandMediaEmptyChart(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue."));
+      _brandMediaStatus(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue."), "info");
+      return;
+    }
+    if (!current.startDate || !current.endDate || current.startDate > current.endDate) {
+      current.error = "invalid-range";
+      _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+      return;
+    }
+    var key = merchantId + "|" + current.startDate + "|" + current.endDate;
+    if (current.requestKey === key && current.payload && !current.error) return;
+    current.requestKey = key;
+    current.loading = true;
+    current.error = "";
+    var sequence = ++current.requestSequence;
+    _brandMediaStatus(t("brandMedia.loading", "Loading brand media revenue trend..."), "loading");
+    _brandMediaEmptyChart(t("brandMedia.loading", "Loading brand media revenue trend..."));
+    var params = new URLSearchParams({
+      merchantId: merchantId,
+      startDate: current.startDate,
+      endDate: current.endDate,
+    });
+    fetch("/api/ui/db/brand-media-trend?" + params.toString())
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok || payload.ok === false) {
+            throw new Error(payload.error || "Failed to load brand media trend");
+          }
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        if (sequence !== current.requestSequence) return;
+        current.loading = false;
+        current.payload = payload;
+        current.error = "";
+        current.merchantName = String((payload.merchant || {}).merchantName || current.merchantName || merchantId);
+        _brandMediaSyncControls();
+        _brandMediaRenderKpis(payload);
+        _brandMediaRenderChart(payload);
+        _brandMediaRenderTable(payload);
+        _brandMediaStatus("", "");
+      })
+      .catch(function (error) {
+        if (sequence !== current.requestSequence) return;
+        current.loading = false;
+        current.payload = null;
+        current.error = String(error && error.message || "load-error");
+        _brandMediaRenderKpis(null);
+        _brandMediaRenderTable(null);
+        _brandMediaEmptyChart(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."));
+        _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+      });
+  }
+
+  function _brandMediaLoadCatalog() {
+    var current = state.brandMedia;
+    if (current.catalogLoading || _brandMediaMerchantOptions.length) return;
+    current.catalogLoading = true;
+    current.catalogError = "";
+    loadPublishersData().then(function (data) {
+      _brandMediaMerchantOptions = _brandMediaCatalogOptions(data);
+      current.catalogLoading = false;
+      if (document.activeElement === els.brandMediaMerchantSearch) _brandMediaShowMerchantDropdown();
+    }).catch(function (error) {
+      current.catalogLoading = false;
+      current.catalogError = String(error && error.message || "catalog-error");
+      _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+    });
+  }
+
+  function renderBrandMediaPage() {
+    _brandMediaSyncControls();
+    _brandMediaLoadCatalog();
+    if (state.brandMedia.payload) {
+      _brandMediaRenderKpis(state.brandMedia.payload);
+      _brandMediaRenderChart(state.brandMedia.payload);
+      _brandMediaRenderTable(state.brandMedia.payload);
+      return;
+    }
+    if (!state.brandMedia.loading) _brandMediaLoadTrend();
+  }
+
+  function _bindBrandMediaPageInteractions() {
+    if (!els.brandMediaMerchantSearch) return;
+    els.brandMediaMerchantSearch.addEventListener("focus", function () {
+      _brandMediaLoadCatalog();
+      _brandMediaShowMerchantDropdown();
+    });
+    els.brandMediaMerchantSearch.addEventListener("input", function () {
+      var value = String(els.brandMediaMerchantSearch.value || "");
+      state.brandMedia.merchantSearch = value;
+      if (value !== state.brandMedia.merchantName) {
+        state.brandMedia.merchantId = "";
+        state.brandMedia.merchantName = "";
+        state.brandMedia.payload = null;
+      }
+      _brandMediaShowMerchantDropdown();
+    });
+    els.brandMediaMerchantSearch.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") _brandMediaHideMerchantDropdown();
+    });
+    if (els.brandMediaMerchantDropdown) {
+      els.brandMediaMerchantDropdown.addEventListener("click", function (event) {
+        var option = event.target.closest("[data-brand-media-merchant-id]");
+        if (!option) return;
+        state.brandMedia.merchantId = String(option.dataset.brandMediaMerchantId || "");
+        state.brandMedia.merchantName = String(option.dataset.brandMediaMerchantName || "");
+        state.brandMedia.merchantSearch = state.brandMedia.merchantName;
+        state.brandMedia.payload = null;
+        state.brandMedia.requestKey = "";
+        _brandMediaSyncControls();
+        _brandMediaHideMerchantDropdown();
+        _brandMediaLoadTrend();
+      });
+    }
+    if (els.brandMediaRangeButtons) {
+      els.brandMediaRangeButtons.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-brand-media-range]");
+        if (!button) return;
+        _brandMediaSetQuickRange(button.dataset.brandMediaRange);
+        state.brandMedia.payload = null;
+        state.brandMedia.requestKey = "";
+        _brandMediaSyncControls();
+        _brandMediaLoadTrend();
+      });
+    }
+    [els.brandMediaStartDate, els.brandMediaEndDate].filter(Boolean).forEach(function (input) {
+      input.addEventListener("change", function () {
+        state.brandMedia.startDate = els.brandMediaStartDate.value || "";
+        state.brandMedia.endDate = els.brandMediaEndDate.value || "";
+        state.brandMedia.quickRange = "";
+        state.brandMedia.payload = null;
+        state.brandMedia.requestKey = "";
+        _brandMediaSyncControls();
+        _brandMediaLoadTrend();
+      });
+    });
+    document.addEventListener("click", function (event) {
+      var combobox = event.target.closest(".brand-media-combobox");
+      if (!combobox) _brandMediaHideMerchantDropdown();
+    });
+  }
+
   function getFilteredPublishers(data) {
     if (!data || !data.publishers) return [];
     var market = state.publisherMarket || "all";
@@ -25872,6 +26632,7 @@ var _NUMERIC_COL_PATTERNS = [
       agent: t("nav.agent", "Agent"),
       payments: t("nav.payments", "Payments"),
       publishers: t("nav.publishers", "Publishers"),
+      "brand-media": t("nav.brandMedia", "Brand media"),
       sheets: t("nav.targets", "Targets"),
       "offer-list-tracker": t("nav.offerListTracker", "Offer List Tracker"),
       category: t("nav.category", "Category"),
@@ -25998,6 +26759,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isDashboardPage = pageBelongsToDashboard(page);
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isOfferListTracker = page === "offer-list-tracker";
+    const isBrandMedia = page === "brand-media";
     const isReportPage = pageBelongsToReports(page);
     if (isReportPage) state.reportsOpen = true;
     if (isDashboardPage) state.dashboardOpen = true;
@@ -26005,6 +26767,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.dashboardAgentPage) els.dashboardAgentPage.classList.toggle("hidden", !isAgent);
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
+    if (els.brandMediaPage) els.brandMediaPage.classList.toggle("hidden", !isBrandMedia);
     els.monthlyNewMerchantsPage.classList.toggle("hidden", !isMonthlyNewMerchants);
     if (els.offerListTrackerPage) els.offerListTrackerPage.classList.toggle("hidden", !isOfferListTracker);
     // 离开 Publishers 页面时退出布局编辑模式
@@ -26019,6 +26782,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.agentNav) els.agentNav.classList.toggle("active", isAgent);
     els.paymentsNav.classList.toggle("active", page === "payments");
     els.publishersNav.classList.toggle("active", page === "publishers");
+    if (els.brandMediaNav) els.brandMediaNav.classList.toggle("active", isBrandMedia);
     els.sheetsNav.classList.toggle("active", isReportPage);
     els.targetNav.classList.toggle("active", isSheets);
     if (els.offerListTrackerNav) els.offerListTrackerNav.classList.toggle("active", isOfferListTracker);
@@ -26042,6 +26806,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (page === "publishers") {
       renderPublishersPage();
     }
+    if (isBrandMedia) renderBrandMediaPage();
     if (isSheets) renderSheetPage();
     if (isCategory) ensureDashboardCategoryReportData();
     if (isTier) renderTierPage(state.selectedTierPage);
@@ -26221,6 +26986,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.agentNav) els.agentNav.addEventListener("click", () => switchPage("agent"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.publishersNav.addEventListener("click", () => switchPage("publishers"));
+    if (els.brandMediaNav) els.brandMediaNav.addEventListener("click", () => switchPage("brand-media"));
+    _bindBrandMediaPageInteractions();
     els.sheetsNav.addEventListener("click", () => {
       state.reportsOpen = !state.reportsOpen;
       updateReportsNavState();
@@ -27386,6 +28153,13 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublisherProfileUsageHtml,
       publisherProfileAnswer,
       loadPublishersData,
+      brandMediaDateKey,
+      brandMediaDayOrdinal,
+      brandMediaLineSegments,
+      brandMediaColor,
+      brandMediaCatalogOptions: _brandMediaCatalogOptions,
+      brandMediaChartModel: _brandMediaBuildChartModel,
+      brandMediaChartPayload: _brandMediaChartPayload,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
