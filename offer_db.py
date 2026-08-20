@@ -32,6 +32,7 @@ DEFAULT_REPORTING_DELAY_DAYS = 2
 DEFAULT_DAILY_TREND_DAYS = 14
 DEFAULT_MONTHLY_TREND_MONTHS = 6
 MAX_TIER_REPORT_RANGE_DAYS = 366
+MAX_BRAND_MEDIA_TREND_RANGE_DAYS = 731
 TIER1_MANUAL_SOURCE = "offer-intelligence-tier1-add"
 TIER1_NAME = "Tier 1"
 DEFAULT_AFF_PROPORTION = 0.75
@@ -2840,6 +2841,7 @@ SEARCH_CACHE_TTL = int(os.environ.get("OFFER_DB_SEARCH_CACHE_TTL", "3600"))  # 1
 STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 10 min
 TIER_REPORT_CACHE_TTL = int(os.environ.get("OFFER_DB_TIER_REPORT_CACHE_TTL", "300"))
 PUBLISHERS_CACHE_TTL = int(os.environ.get("OFFER_DB_PUBLISHERS_CACHE_TTL", "3600"))  # 1 hour
+BRAND_MEDIA_TREND_CACHE_TTL = int(os.environ.get("OFFER_DB_BRAND_MEDIA_TREND_CACHE_TTL", "300"))
 CHATBOT_CACHE_TTL = int(os.environ.get("OFFER_DB_CHATBOT_CACHE_TTL", "300"))  # 5 minutes
 _bg_refresh_running: dict[str, bool] = {}
 _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -2847,6 +2849,7 @@ _search_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _publisher_portfolio_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_brand_media_trend_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _chatbot_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
@@ -4166,6 +4169,263 @@ LEFT JOIN (
 ) cat ON CAST(o.advert_id AS CHAR) = cat.merchantId
 GROUP BY o.user_id, o.advert_id, market
 """
+
+
+BRAND_MEDIA_TREND_SQL = """
+SELECT
+    o.advert_id AS merchant_id,
+    o.user_id,
+    COALESCE(NULLIF(MAX(u.user_name), ''), CAST(o.user_id AS CHAR)) AS user_name,
+    COALESCE(NULLIF(MAX(a.advert_name), ''), CAST(o.advert_id AS CHAR)) AS merchant_name,
+    o.order_time_day AS order_day,
+    SUM(COALESCE(o.amount, 0)) AS revenue,
+    SUM(COALESCE(o.total_purchases, 0)) AS orders,
+    SUM(COALESCE(o.payout, 0)) AS all_commission,
+    SUM(COALESCE(o.aff_payout, 0)) AS aff_commission
+FROM cnpscy_amazon_order o
+LEFT JOIN (
+    SELECT user_id, MAX(NULLIF(TRIM(user_name), '')) AS user_name
+    FROM cnpscy_user
+    GROUP BY user_id
+) u ON o.user_id = u.user_id
+LEFT JOIN (
+    SELECT advert_id, MAX(NULLIF(TRIM(advert_name), '')) AS advert_name
+    FROM cnpscy_advert
+    GROUP BY advert_id
+) a ON o.advert_id = a.advert_id
+WHERE o.advert_id = %s
+  AND o.user_id IS NOT NULL
+  AND o.user_id > 0
+  AND o.order_time_day BETWEEN %s AND %s
+GROUP BY o.advert_id, o.user_id, o.order_time_day
+ORDER BY o.order_time_day ASC, revenue DESC, o.user_id ASC
+"""
+
+
+def _brand_media_trend_date(value: Any) -> str | None:
+    if isinstance(value, dt.datetime):
+        return value.date().isoformat()
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if re.match(r"^\d{8}$", text):
+        try:
+            return dt.datetime.strptime(text, "%Y%m%d").date().isoformat()
+        except ValueError:
+            return None
+    try:
+        return dt.date.fromisoformat(text).isoformat()
+    except ValueError:
+        return None
+
+
+def brand_media_trend_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Normalize merchant × publisher × day rows for the UI trend renderer.
+
+    A point is emitted only when the order table has a record for that
+    publisher/date. A zero-revenue record remains a real point; an absent
+    publisher/date remains absent so the browser can render a line gap.
+    """
+    publishers_by_id: dict[int, dict[str, Any]] = {}
+    observed_dates: set[str] = set()
+    merchant_name = ""
+    total_revenue = 0.0
+    total_orders = 0
+    total_all_commission = 0.0
+    total_aff_commission = 0.0
+
+    for row in rows:
+        try:
+            user_id = int(row.get("user_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        day = _brand_media_trend_date(row.get("order_day"))
+        if user_id <= 0 or day is None:
+            continue
+
+        row_merchant_name = str(row.get("merchant_name") or "").strip()
+        if row_merchant_name and not merchant_name:
+            merchant_name = row_merchant_name
+        user_name = str(row.get("user_name") or user_id).strip() or str(user_id)
+        revenue = to_float(row.get("revenue"))
+        orders = int(to_float(row.get("orders")))
+        all_commission = to_float(row.get("all_commission"))
+        aff_commission = to_float(row.get("aff_commission"))
+
+        publisher = publishers_by_id.setdefault(
+            user_id,
+            {
+                "userId": user_id,
+                "userName": user_name,
+                "_points": {},
+                "totalRevenue": 0.0,
+                "totalOrders": 0,
+                "totalAllCommission": 0.0,
+                "totalAffCommission": 0.0,
+            },
+        )
+        if publisher["userName"] == str(user_id) and user_name != str(user_id):
+            publisher["userName"] = user_name
+
+        point = publisher["_points"].setdefault(
+            day,
+            {
+                "date": day,
+                "revenue": 0.0,
+                "orders": 0,
+                "allCommission": 0.0,
+                "affCommission": 0.0,
+            },
+        )
+        point["revenue"] += revenue
+        point["orders"] += orders
+        point["allCommission"] += all_commission
+        point["affCommission"] += aff_commission
+        publisher["totalRevenue"] += revenue
+        publisher["totalOrders"] += orders
+        publisher["totalAllCommission"] += all_commission
+        publisher["totalAffCommission"] += aff_commission
+
+        observed_dates.add(day)
+        total_revenue += revenue
+        total_orders += orders
+        total_all_commission += all_commission
+        total_aff_commission += aff_commission
+
+    publishers: list[dict[str, Any]] = []
+    observation_count = 0
+    for publisher in publishers_by_id.values():
+        points = [
+            {
+                "date": point["date"],
+                "revenue": round(point["revenue"], 2),
+                "orders": point["orders"],
+                "allCommission": round(point["allCommission"], 2),
+                "affCommission": round(point["affCommission"], 2),
+            }
+            for point in publisher.pop("_points").values()
+        ]
+        points.sort(key=lambda point: point["date"])
+        observation_count += len(points)
+        publishers.append(
+            {
+                **publisher,
+                "totalRevenue": round(publisher["totalRevenue"], 2),
+                "totalOrders": publisher["totalOrders"],
+                "totalAllCommission": round(publisher["totalAllCommission"], 2),
+                "totalAffCommission": round(publisher["totalAffCommission"], 2),
+                "activeDays": len(points),
+                "firstActiveDate": points[0]["date"] if points else None,
+                "lastActiveDate": points[-1]["date"] if points else None,
+                "points": points,
+            }
+        )
+
+    publishers.sort(
+        key=lambda publisher: (
+            -float(publisher["totalRevenue"]),
+            str(publisher["userName"]).casefold(),
+            int(publisher["userId"]),
+        )
+    )
+    dates = sorted(observed_dates)
+    return {
+        "merchantName": merchant_name,
+        "publishers": publishers,
+        "summary": {
+            "activePublisherCount": len(publishers),
+            "totalRevenue": round(total_revenue, 2),
+            "totalOrders": total_orders,
+            "totalAllCommission": round(total_all_commission, 2),
+            "totalAffCommission": round(total_aff_commission, 2),
+            "activeDayCount": len(dates),
+            "observationCount": observation_count,
+            "firstActiveDate": dates[0] if dates else None,
+            "lastActiveDate": dates[-1] if dates else None,
+        },
+    }
+
+
+def brand_media_trend_payload(
+    merchant_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    """Return daily revenue series for every active publisher of one merchant."""
+    try:
+        normalized_merchant_id = int(merchant_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("merchantId must be a positive integer") from exc
+    if normalized_merchant_id <= 0:
+        raise ValueError("merchantId must be a positive integer")
+
+    raw_start = str(start_date or "").strip()
+    raw_end = str(end_date or "").strip()
+    if bool(raw_start) != bool(raw_end):
+        raise ValueError("startDate and endDate must be provided together")
+    range_start = parse_tier_report_date(raw_start)
+    range_end = parse_tier_report_date(raw_end)
+    if raw_start and range_start is None:
+        raise ValueError("startDate must use YYYY-MM-DD format")
+    if raw_end and range_end is None:
+        raise ValueError("endDate must use YYYY-MM-DD format")
+    if range_start is None:
+        range_end = reporting_today() - dt.timedelta(days=DEFAULT_REPORTING_DELAY_DAYS)
+        range_start = range_end - dt.timedelta(days=89)
+    if range_start > range_end:
+        raise ValueError("startDate cannot be after endDate")
+    range_days = (range_end - range_start).days + 1
+    if range_days > MAX_BRAND_MEDIA_TREND_RANGE_DAYS:
+        raise ValueError(
+            f"date range cannot exceed {MAX_BRAND_MEDIA_TREND_RANGE_DAYS} days"
+        )
+
+    cache_key = "|".join(
+        [
+            str(normalized_merchant_id),
+            range_start.isoformat(),
+            range_end.isoformat(),
+        ]
+    )
+    now = time.time()
+    cached = _brand_media_trend_cache.get(cache_key)
+    if cached is not None and now - cached[0] < BRAND_MEDIA_TREND_CACHE_TTL:
+        return cached[1]
+
+    with db_connection() as conn:
+        rows = fetch_all(
+            conn,
+            BRAND_MEDIA_TREND_SQL,
+            (
+                normalized_merchant_id,
+                int(range_start.strftime("%Y%m%d")),
+                int(range_end.strftime("%Y%m%d")),
+            ),
+        )
+
+    normalized = brand_media_trend_from_rows(rows)
+    result = {
+        "ok": True,
+        "generatedAt": utc_now_iso(),
+        "source": "cnpscy_amazon_order",
+        "grain": "advert_id + user_id + order_time_day",
+        "metric": "amount",
+        "metricLabel": "Revenue",
+        "gapRule": "No order-table row is emitted for a missing publisher/date.",
+        "merchant": {
+            "merchantId": normalized_merchant_id,
+            "merchantName": normalized["merchantName"] or str(normalized_merchant_id),
+        },
+        "dateRange": {
+            "startDate": range_start.isoformat(),
+            "endDate": range_end.isoformat(),
+            "dayCount": range_days,
+        },
+        "summary": normalized["summary"],
+        "publishers": normalized["publishers"],
+    }
+    _brand_media_trend_cache[cache_key] = (now, result)
+    return result
 
 
 def _publisher_metric_bucket() -> dict[str, Any]:

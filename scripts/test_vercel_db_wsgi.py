@@ -100,6 +100,12 @@ def main():
             "startDate": start_date,
             "endDate": end_date,
         }
+        module.brand_media_trend_payload = lambda merchant_id, start_date=None, end_date=None: {
+            "route": "ui-brand-media-trend",
+            "merchantId": int(merchant_id),
+            "startDate": start_date,
+            "endDate": end_date,
+        }
         module.offers_payload = lambda month=None: {
             "route": "ui-offers",
             "month": month,
@@ -222,6 +228,20 @@ def main():
         assert_equal(publisher_portfolio["status"], 200, "publisher portfolio response code")
         assert b'"route":"ui-publisher-portfolio"' in publisher_portfolio["body"], publisher_portfolio["body"]
         assert b'"startDate":"2026-07-01"' in publisher_portfolio["body"], publisher_portfolio["body"]
+
+        brand_media_trend = request(
+            module.app,
+            "ui-brand-media-trend",
+            "merchantId=42&startDate=2026-07-01&endDate=2026-07-28",
+            token="",
+        )
+        assert_equal(brand_media_trend["status"], 200, "brand media trend response code")
+        assert b'"route":"ui-brand-media-trend"' in brand_media_trend["body"], brand_media_trend["body"]
+        assert b'"merchantId":42' in brand_media_trend["body"], brand_media_trend["body"]
+        assert b'"endDate":"2026-07-28"' in brand_media_trend["body"], brand_media_trend["body"]
+
+        missing_brand_media_merchant = request(module.app, "ui-brand-media-trend", token="")
+        assert_equal(missing_brand_media_merchant["status"], 400, "missing brand media merchant response code")
 
         invalid_publisher = request(
             module.app,

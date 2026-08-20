@@ -136,6 +136,12 @@
             </span>
             <span data-i18n="nav.publishers">Publishers</span>
           </button>
+          <button class="page-nav-button" id="brandMediaNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M7 15l3-4 3 2 5-7"/><path d="M15 6h3v3"/></svg>
+            </span>
+            <span data-i18n="nav.brandMedia">Brand media</span>
+          </button>
           <button class="page-nav-button" id="targetNav" type="button">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M9 5v14"/><path d="M5 10h14"/></svg>
@@ -930,6 +936,109 @@
               <table class="publishers-table">
                 <thead id="publishersTableHead"></thead>
                 <tbody id="publishersTableRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="brand-media-page hidden" id="brandMediaPage" aria-label="Brand media performance">
+          <header class="brand-media-header">
+            <div>
+              <span class="brand-media-eyebrow">REVENUE INTELLIGENCE</span>
+              <h2 data-i18n="brandMedia.title">Brand media performance</h2>
+              <p data-i18n="brandMedia.subtitle">Compare every active publisher's daily revenue for one brand.</p>
+            </div>
+            <div class="brand-media-header-note">
+              <span aria-hidden="true">●</span>
+              <span data-i18n="brandMedia.liveSource">Daily order revenue</span>
+            </div>
+          </header>
+
+          <section class="panel brand-media-controls" aria-label="Brand media trend controls">
+            <div class="brand-media-controls-grid">
+              <label class="brand-media-field brand-media-merchant-field">
+                <span data-i18n="brandMedia.brand">Brand</span>
+                <div class="brand-media-combobox">
+                  <input
+                    id="brandMediaMerchantSearch"
+                    type="text"
+                    placeholder="Search brand or Merchant ID"
+                    data-i18n-placeholder="brandMedia.brandPlaceholder"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="brandMediaMerchantDropdown"
+                    aria-expanded="false"
+                  />
+                  <div class="brand-media-combobox-dropdown" id="brandMediaMerchantDropdown" role="listbox"></div>
+                </div>
+              </label>
+
+              <div class="brand-media-field brand-media-range-field">
+                <span data-i18n="brandMedia.timeRange">Time range</span>
+                <div class="brand-media-range-buttons" id="brandMediaRangeButtons" aria-label="Quick date ranges">
+                  <button type="button" data-brand-media-range="30">30D</button>
+                  <button type="button" data-brand-media-range="90">90D</button>
+                  <button type="button" data-brand-media-range="180">180D</button>
+                  <button type="button" data-brand-media-range="365">1Y</button>
+                </div>
+              </div>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="brandMedia.startDate">Start date</span>
+                <input id="brandMediaStartDate" type="date" aria-label="Brand media trend start date" />
+              </label>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="brandMedia.endDate">End date</span>
+                <input id="brandMediaEndDate" type="date" aria-label="Brand media trend end date" />
+              </label>
+            </div>
+            <div class="brand-media-control-footer">
+              <p class="brand-media-status" id="brandMediaStatus" role="status" aria-live="polite"></p>
+              <p class="brand-media-source-note" data-i18n="brandMedia.sourceNote">Revenue uses order amount. Missing media-date records are shown as chart gaps, not zeroes.</p>
+            </div>
+          </section>
+
+          <section class="brand-media-kpis" id="brandMediaKpis" aria-label="Brand media performance summary"></section>
+
+          <section class="panel brand-media-chart-panel" aria-labelledby="brandMediaChartTitle">
+            <div class="brand-media-panel-heading">
+              <div>
+                <span class="brand-media-section-index">01</span>
+                <h3 id="brandMediaChartTitle" data-i18n="brandMedia.chartTitle">Publisher revenue by day</h3>
+                <p id="brandMediaChartSubtitle" data-i18n="brandMedia.chartSubtitle">Every line is one media partner. Lines break when there is no daily source record.</p>
+              </div>
+              <span class="brand-media-line-count" id="brandMediaLineCount" aria-live="polite"></span>
+            </div>
+            <div class="brand-media-chart-layout">
+              <div class="brand-media-chart-wrap" id="brandMediaChart" role="img" aria-live="polite"></div>
+              <aside class="brand-media-legend" id="brandMediaLegend" aria-label="Publisher line legend"></aside>
+            </div>
+          </section>
+
+          <section class="panel brand-media-table-panel" aria-labelledby="brandMediaTableTitle">
+            <div class="brand-media-panel-heading brand-media-table-heading">
+              <div>
+                <span class="brand-media-section-index">02</span>
+                <h3 id="brandMediaTableTitle" data-i18n="brandMedia.tableTitle">Media summary</h3>
+                <p data-i18n="brandMedia.tableSubtitle">Range totals and source-record coverage for every line in the chart.</p>
+              </div>
+              <span class="brand-media-table-count" id="brandMediaTableCount"></span>
+            </div>
+            <div class="brand-media-table-wrap">
+              <table class="brand-media-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="brandMedia.media">Media</th>
+                    <th class="brand-media-numeric" data-i18n="brandMedia.revenue">Revenue</th>
+                    <th class="brand-media-numeric" data-i18n="brandMedia.orders">Orders</th>
+                    <th class="brand-media-numeric" data-i18n="brandMedia.activeDays">Active days</th>
+                    <th data-i18n="brandMedia.firstSeen">First record</th>
+                    <th data-i18n="brandMedia.lastSeen">Last record</th>
+                  </tr>
+                </thead>
+                <tbody id="brandMediaTableRows"></tbody>
               </table>
             </div>
           </section>

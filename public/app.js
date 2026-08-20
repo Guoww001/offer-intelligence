@@ -399,6 +399,21 @@
     publisherLayoutEditing: false,
     publisherLayout: _loadPublisherLayout(),
     publisherOverviewType: "network",
+    brandMedia: {
+      merchantId: "",
+      merchantName: "",
+      merchantSearch: "",
+      startDate: "",
+      endDate: "",
+      quickRange: "90",
+      catalogLoading: false,
+      catalogError: "",
+      loading: false,
+      error: "",
+      payload: null,
+      requestKey: "",
+      requestSequence: 0
+    },
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -535,6 +550,21 @@
     paymentsPage: document.getElementById("paymentsPage"),
     publishersNav: document.getElementById("publishersNav"),
     publishersPage: document.getElementById("publishersPage"),
+    brandMediaNav: document.getElementById("brandMediaNav"),
+    brandMediaPage: document.getElementById("brandMediaPage"),
+    brandMediaMerchantSearch: document.getElementById("brandMediaMerchantSearch"),
+    brandMediaMerchantDropdown: document.getElementById("brandMediaMerchantDropdown"),
+    brandMediaRangeButtons: document.getElementById("brandMediaRangeButtons"),
+    brandMediaStartDate: document.getElementById("brandMediaStartDate"),
+    brandMediaEndDate: document.getElementById("brandMediaEndDate"),
+    brandMediaStatus: document.getElementById("brandMediaStatus"),
+    brandMediaKpis: document.getElementById("brandMediaKpis"),
+    brandMediaChart: document.getElementById("brandMediaChart"),
+    brandMediaChartSubtitle: document.getElementById("brandMediaChartSubtitle"),
+    brandMediaLineCount: document.getElementById("brandMediaLineCount"),
+    brandMediaLegend: document.getElementById("brandMediaLegend"),
+    brandMediaTableRows: document.getElementById("brandMediaTableRows"),
+    brandMediaTableCount: document.getElementById("brandMediaTableCount"),
     publisherSelectorSearch: document.getElementById("publisherSelectorSearch"),
     publisherSelectorDropdown: document.getElementById("publisherSelectorDropdown"),
     publisherStartDate: document.getElementById("publisherStartDate"),
@@ -857,6 +887,7 @@
       "nav.agent": "Agent",
       "nav.payments": "付款",
       "nav.publishers": "媒体",
+      "nav.brandMedia": "品牌媒体趋势",
       "nav.reports": "报表",
       "nav.targets": "目标",
       "nav.category": "品类",
@@ -1098,6 +1129,34 @@
       "publishers.site": "站点",
       "publishers.track": "Track",
       "publishers.empty": "暂无数据",
+      "brandMedia.title": "品牌媒体趋势",
+      "brandMedia.subtitle": "查看一个品牌在不同日期由各媒体带来的 Revenue 变化。",
+      "brandMedia.liveSource": "每日订单 Revenue",
+      "brandMedia.brand": "品牌",
+      "brandMedia.brandPlaceholder": "搜索品牌或商家 ID",
+      "brandMedia.timeRange": "时间跨度",
+      "brandMedia.startDate": "开始日期",
+      "brandMedia.endDate": "结束日期",
+      "brandMedia.sourceNote": "Revenue 使用订单金额；缺少某媒体当天的源记录时，图表会断开而不会补为 0。",
+      "brandMedia.chartTitle": "各媒体每日 Revenue",
+      "brandMedia.chartSubtitle": "每条线代表一家媒体；没有每日源记录时会断开。",
+      "brandMedia.tableTitle": "媒体汇总",
+      "brandMedia.tableSubtitle": "展示图表中每条线在选定时间内的汇总和源记录覆盖情况。",
+      "brandMedia.media": "媒体",
+      "brandMedia.revenue": "Revenue",
+      "brandMedia.orders": "订单",
+      "brandMedia.activeDays": "活跃天数",
+      "brandMedia.firstSeen": "首个记录",
+      "brandMedia.lastSeen": "最后记录",
+      "brandMedia.selectBrand": "先选择一个品牌，即可加载该品牌所有媒体的每日 Revenue。",
+      "brandMedia.loading": "正在读取该品牌的媒体 Revenue 趋势…",
+      "brandMedia.noData": "这个品牌在所选时间内没有媒体订单记录。",
+      "brandMedia.loadError": "无法读取品牌媒体趋势，请调整日期范围后重试。",
+      "brandMedia.lineCount": "条媒体线",
+      "brandMedia.publisherCount": "活跃媒体",
+      "brandMedia.totalRevenue": "Revenue",
+      "brandMedia.observations": "媒体日期记录",
+      "brandMedia.coverage": "数据覆盖",
       "label.All markets": "全市场",
       "label.All": "全部",
       "action.search": "搜索",
@@ -1688,6 +1747,8 @@
       renderMonthlyNewMerchantsPage();
     } else if (state.page === "offer-list-tracker") {
       renderOfferListTrackerPage();
+    } else if (state.page === "brand-media") {
+      renderBrandMediaPage();
     } else if (state.page === "agent") {
       // Agent 页面内容由独立会话状态维护，语言切换只需更新静态文案。
     } else {
@@ -17707,6 +17768,448 @@ var _NUMERIC_COL_PATTERNS = [
       });
   }
 
+  var BRAND_MEDIA_COLOR_GOLDEN_ANGLE = 137.508;
+  var _brandMediaMerchantOptions = [];
+
+  function brandMediaColor(index) {
+    var hue = Math.round((Number(index || 0) * BRAND_MEDIA_COLOR_GOLDEN_ANGLE) % 360);
+    return "hsl(" + hue + " 72% 48%)";
+  }
+
+  function brandMediaLineSegments(points) {
+    var sorted = (points || []).slice().sort(function (a, b) {
+      return String(a.date || "").localeCompare(String(b.date || ""));
+    });
+    var segments = [];
+    var current = [];
+    sorted.forEach(function (point) {
+      var date = new Date(String(point.date || "") + "T12:00:00");
+      var previous = current.length
+        ? new Date(String(current[current.length - 1].date || "") + "T12:00:00")
+        : null;
+      var isNextDay = previous && !Number.isNaN(previous.getTime()) &&
+        date.getTime() - previous.getTime() === 86400000;
+      if (!previous || isNextDay) {
+        current.push(point);
+        return;
+      }
+      if (current.length) segments.push(current);
+      current = [point];
+    });
+    if (current.length) segments.push(current);
+    return segments;
+  }
+
+  function _brandMediaIsoDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") +
+      "-" + String(date.getDate()).padStart(2, "0");
+  }
+
+  function _brandMediaDate(value) {
+    var date = new Date(String(value || "") + "T12:00:00");
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function _brandMediaSetQuickRange(days) {
+    var end = new Date();
+    end.setHours(12, 0, 0, 0);
+    end.setDate(end.getDate() - 1);
+    var start = new Date(end.getTime());
+    start.setDate(start.getDate() - Math.max(1, Number(days || 90)) + 1);
+    state.brandMedia.quickRange = String(days);
+    state.brandMedia.startDate = _brandMediaIsoDate(start);
+    state.brandMedia.endDate = _brandMediaIsoDate(end);
+  }
+
+  function _brandMediaDisplayDate(value) {
+    return String(value || "").slice(0, 10) || "-";
+  }
+
+  function _brandMediaCount(value) {
+    return Number(value || 0).toLocaleString();
+  }
+
+  function _brandMediaMoney(value) {
+    return "$" + Number(value || 0).toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function _brandMediaCatalogOptions(data) {
+    return _publisherMerchantOptions(data).sort(function (a, b) {
+      return Number(b.count || 0) - Number(a.count || 0) ||
+        String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }
+
+  function _brandMediaShowMerchantDropdown() {
+    if (!els.brandMediaMerchantDropdown || !els.brandMediaMerchantSearch) return;
+    var query = String(els.brandMediaMerchantSearch.value || "").toLowerCase().trim();
+    var options = _brandMediaMerchantOptions.filter(function (merchant) {
+      return !query || String(merchant.name || "").toLowerCase().indexOf(query) !== -1 ||
+        String(merchant.merchantId || "").toLowerCase().indexOf(query) !== -1;
+    }).slice(0, 80);
+    var selectedId = String(state.brandMedia.merchantId || "");
+    var html = options.map(function (merchant) {
+      var selected = selectedId === String(merchant.merchantId);
+      return '<button type="button" class="brand-media-merchant-option' +
+        (selected ? ' selected' : '') + '" role="option" aria-selected="' +
+        (selected ? 'true' : 'false') + '" data-brand-media-merchant-id="' +
+        escapeHtml(String(merchant.merchantId)) + '" data-brand-media-merchant-name="' +
+        escapeHtml(String(merchant.name)) + '">' +
+        '<span>' + escapeHtml(String(merchant.name)) + '</span>' +
+        '<small>ID ' + escapeHtml(String(merchant.merchantId)) + ' · ' +
+        _brandMediaCount(merchant.count) + '</small></button>';
+    }).join("");
+    if (!html) {
+      html = '<div class="brand-media-merchant-empty" role="option" aria-disabled="true">' +
+        escapeHtml(t("publishers.merchantNoMatch", "No matching merchant")) + '</div>';
+    }
+    els.brandMediaMerchantDropdown.innerHTML = html;
+    els.brandMediaMerchantDropdown.classList.add("show");
+    els.brandMediaMerchantSearch.setAttribute("aria-expanded", "true");
+  }
+
+  function _brandMediaHideMerchantDropdown() {
+    if (els.brandMediaMerchantDropdown) els.brandMediaMerchantDropdown.classList.remove("show");
+    if (els.brandMediaMerchantSearch) els.brandMediaMerchantSearch.setAttribute("aria-expanded", "false");
+  }
+
+  function _brandMediaRenderKpis(payload) {
+    if (!els.brandMediaKpis) return;
+    if (!payload || !payload.summary) {
+      els.brandMediaKpis.innerHTML = "";
+      return;
+    }
+    var summary = payload.summary;
+    var items = [
+      [t("brandMedia.publisherCount", "Active media"), _brandMediaCount(summary.activePublisherCount)],
+      [t("brandMedia.totalRevenue", "Revenue"), _brandMediaMoney(summary.totalRevenue)],
+      [t("brandMedia.orders", "Orders"), _brandMediaCount(summary.totalOrders)],
+      [t("brandMedia.observations", "Media-day records"), _brandMediaCount(summary.observationCount)],
+    ];
+    els.brandMediaKpis.innerHTML = items.map(function (item, index) {
+      return '<article class="brand-media-kpi"><span>' + String(index + 1).padStart(2, "0") +
+        '</span><strong>' + escapeHtml(item[1]) + '</strong><small>' +
+        escapeHtml(item[0]) + '</small></article>';
+    }).join("");
+  }
+
+  function _brandMediaEmptyChart(message) {
+    if (els.brandMediaChart) {
+      els.brandMediaChart.innerHTML = '<div class="brand-media-empty-chart">' +
+        escapeHtml(message) + '</div>';
+    }
+    if (els.brandMediaLegend) els.brandMediaLegend.innerHTML = "";
+    if (els.brandMediaLineCount) els.brandMediaLineCount.textContent = "";
+  }
+
+  function _brandMediaChartPayload(payload) {
+    var publishers = (payload && payload.publishers) || [];
+    var range = (payload && payload.dateRange) || {};
+    var start = _brandMediaDate(range.startDate);
+    var end = _brandMediaDate(range.endDate);
+    if (!publishers.length || !start || !end || end < start) return "";
+
+    var minRevenue = 0;
+    var maxRevenue = 0;
+    publishers.forEach(function (publisher) {
+      (publisher.points || []).forEach(function (point) {
+        var revenue = Number(point.revenue || 0);
+        maxRevenue = Math.max(maxRevenue, revenue);
+        minRevenue = Math.min(minRevenue, revenue);
+      });
+    });
+    if (maxRevenue === minRevenue) maxRevenue = minRevenue + 1;
+    var width = 1180;
+    var height = 560;
+    var left = 82;
+    var right = 28;
+    var top = 34;
+    var bottom = 62;
+    var plotWidth = width - left - right;
+    var plotHeight = height - top - bottom;
+    var daySpan = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000));
+    function xFor(dateText) {
+      var date = _brandMediaDate(dateText);
+      var day = date ? (date.getTime() - start.getTime()) / 86400000 : 0;
+      return left + Math.max(0, Math.min(daySpan, day)) / daySpan * plotWidth;
+    }
+    var revenueSpan = maxRevenue - minRevenue;
+    function yFor(value) {
+      return top + plotHeight - (Number(value || 0) - minRevenue) / revenueSpan * plotHeight;
+    }
+    var svg = [];
+    svg.push('<svg class="brand-media-svg" viewBox="0 0 ' + width + ' ' + height +
+      '" preserveAspectRatio="none" aria-hidden="true">');
+    for (var tick = 0; tick <= 4; tick++) {
+      var value = minRevenue + revenueSpan * tick / 4;
+      var y = yFor(value);
+      svg.push('<line class="brand-media-grid-line" x1="' + left + '" x2="' +
+        (width - right) + '" y1="' + y + '" y2="' + y + '"></line>');
+      svg.push('<text class="brand-media-axis-label" x="' + (left - 12) + '" y="' +
+        (y + 4) + '" text-anchor="end">' + escapeHtml(_brandMediaMoney(value)) + '</text>');
+    }
+    for (var xTick = 0; xTick <= 4; xTick++) {
+      var days = Math.round(daySpan * xTick / 4);
+      var date = new Date(start.getTime());
+      date.setDate(date.getDate() + days);
+      var x = left + plotWidth * xTick / 4;
+      svg.push('<line class="brand-media-x-tick" x1="' + x + '" x2="' + x +
+        '" y1="' + (top + plotHeight) + '" y2="' + (top + plotHeight + 6) + '"></line>');
+      svg.push('<text class="brand-media-axis-label brand-media-axis-date" x="' + x + '" y="' +
+        (height - 22) + '" text-anchor="middle">' +
+        escapeHtml(_brandMediaIsoDate(date).slice(5)) + '</text>');
+    }
+    publishers.forEach(function (publisher, index) {
+      var color = brandMediaColor(index);
+      brandMediaLineSegments(publisher.points || []).forEach(function (segment) {
+        var path = segment.map(function (point, pointIndex) {
+          return (pointIndex ? "L" : "M") + xFor(point.date).toFixed(2) + " " +
+            yFor(point.revenue).toFixed(2);
+        }).join(" ");
+        if (path) {
+          svg.push('<path class="brand-media-series" d="' + path + '" stroke="' +
+            color + '"></path>');
+        }
+      });
+    });
+    svg.push('</svg>');
+    return svg.join("");
+  }
+
+  function _brandMediaRenderChart(payload) {
+    var publishers = (payload && payload.publishers) || [];
+    if (!publishers.length) {
+      _brandMediaEmptyChart(t("brandMedia.noData", "No media order records in this range."));
+      return;
+    }
+    if (els.brandMediaChart) {
+      els.brandMediaChart.innerHTML = _brandMediaChartPayload(payload);
+      var range = payload.dateRange || {};
+      els.brandMediaChart.setAttribute("aria-label",
+        String(payload.merchant && payload.merchant.merchantName || "") + ", " +
+        _brandMediaDisplayDate(range.startDate) + " to " + _brandMediaDisplayDate(range.endDate) +
+        ", " + _brandMediaCount(publishers.length) + " publisher revenue lines");
+    }
+    if (els.brandMediaLineCount) {
+      els.brandMediaLineCount.textContent = _brandMediaCount(publishers.length) + " " +
+        t("brandMedia.lineCount", "media lines");
+    }
+    if (els.brandMediaLegend) {
+      els.brandMediaLegend.innerHTML = publishers.map(function (publisher, index) {
+        return '<div class="brand-media-legend-item"><i style="--brand-media-line:' +
+          brandMediaColor(index) + '"></i><span>' +
+          escapeHtml(String(publisher.userName || publisher.userId)) +
+          '</span><strong>' + escapeHtml(_brandMediaMoney(publisher.totalRevenue)) +
+          '</strong></div>';
+      }).join("");
+    }
+  }
+
+  function _brandMediaRenderTable(payload) {
+    var publishers = (payload && payload.publishers) || [];
+    if (els.brandMediaTableCount) {
+      els.brandMediaTableCount.textContent = publishers.length
+        ? _brandMediaCount(publishers.length) + " " + t("brandMedia.lineCount", "media lines")
+        : "";
+    }
+    if (!els.brandMediaTableRows) return;
+    if (!publishers.length) {
+      els.brandMediaTableRows.innerHTML = '<tr><td colspan="6" class="brand-media-empty-cell">' +
+        escapeHtml(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue.")) +
+        '</td></tr>';
+      return;
+    }
+    els.brandMediaTableRows.innerHTML = publishers.map(function (publisher, index) {
+      return '<tr><td><span class="brand-media-table-dot" style="--brand-media-line:' +
+        brandMediaColor(index) + '"></span><strong>' +
+        escapeHtml(String(publisher.userName || publisher.userId)) + '</strong><small>ID ' +
+        escapeHtml(String(publisher.userId)) + '</small></td><td class="brand-media-numeric">' +
+        escapeHtml(_brandMediaMoney(publisher.totalRevenue)) + '</td><td class="brand-media-numeric">' +
+        _brandMediaCount(publisher.totalOrders) + '</td><td class="brand-media-numeric">' +
+        _brandMediaCount(publisher.activeDays) + '</td><td>' +
+        escapeHtml(_brandMediaDisplayDate(publisher.firstActiveDate)) + '</td><td>' +
+        escapeHtml(_brandMediaDisplayDate(publisher.lastActiveDate)) + '</td></tr>';
+    }).join("");
+  }
+
+  function _brandMediaSyncControls() {
+    var current = state.brandMedia;
+    if (!current.startDate || !current.endDate) _brandMediaSetQuickRange(current.quickRange || 90);
+    if (els.brandMediaMerchantSearch &&
+        document.activeElement !== els.brandMediaMerchantSearch) {
+      els.brandMediaMerchantSearch.value = current.merchantName || current.merchantSearch || "";
+    }
+    if (els.brandMediaStartDate) els.brandMediaStartDate.value = current.startDate || "";
+    if (els.brandMediaEndDate) els.brandMediaEndDate.value = current.endDate || "";
+    if (els.brandMediaRangeButtons) {
+      els.brandMediaRangeButtons.querySelectorAll("[data-brand-media-range]").forEach(function (button) {
+        button.classList.toggle("active", String(button.dataset.brandMediaRange) === String(current.quickRange || ""));
+      });
+    }
+  }
+
+  function _brandMediaStatus(text, kind) {
+    if (!els.brandMediaStatus) return;
+    els.brandMediaStatus.textContent = text || "";
+    els.brandMediaStatus.dataset.kind = kind || "";
+  }
+
+  function _brandMediaLoadTrend() {
+    var current = state.brandMedia;
+    var merchantId = String(current.merchantId || "").trim();
+    if (!merchantId) {
+      current.payload = null;
+      current.error = "";
+      current.loading = false;
+      _brandMediaRenderKpis(null);
+      _brandMediaRenderTable(null);
+      _brandMediaEmptyChart(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue."));
+      _brandMediaStatus(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue."), "info");
+      return;
+    }
+    if (!current.startDate || !current.endDate || current.startDate > current.endDate) {
+      current.error = "invalid-range";
+      _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+      return;
+    }
+    var key = merchantId + "|" + current.startDate + "|" + current.endDate;
+    if (current.requestKey === key && current.payload && !current.error) return;
+    current.requestKey = key;
+    current.loading = true;
+    current.error = "";
+    var sequence = ++current.requestSequence;
+    _brandMediaStatus(t("brandMedia.loading", "Loading brand media revenue trend..."), "loading");
+    _brandMediaEmptyChart(t("brandMedia.loading", "Loading brand media revenue trend..."));
+    var params = new URLSearchParams({
+      merchantId: merchantId,
+      startDate: current.startDate,
+      endDate: current.endDate,
+    });
+    fetch("/api/ui/db/brand-media-trend?" + params.toString())
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok || payload.ok === false) {
+            throw new Error(payload.error || "Failed to load brand media trend");
+          }
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        if (sequence !== current.requestSequence) return;
+        current.loading = false;
+        current.payload = payload;
+        current.error = "";
+        current.merchantName = String((payload.merchant || {}).merchantName || current.merchantName || merchantId);
+        _brandMediaSyncControls();
+        _brandMediaRenderKpis(payload);
+        _brandMediaRenderChart(payload);
+        _brandMediaRenderTable(payload);
+        _brandMediaStatus("", "");
+      })
+      .catch(function (error) {
+        if (sequence !== current.requestSequence) return;
+        current.loading = false;
+        current.payload = null;
+        current.error = String(error && error.message || "load-error");
+        _brandMediaRenderKpis(null);
+        _brandMediaRenderTable(null);
+        _brandMediaEmptyChart(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."));
+        _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+      });
+  }
+
+  function _brandMediaLoadCatalog() {
+    var current = state.brandMedia;
+    if (current.catalogLoading || _brandMediaMerchantOptions.length) return;
+    current.catalogLoading = true;
+    current.catalogError = "";
+    loadPublishersData().then(function (data) {
+      _brandMediaMerchantOptions = _brandMediaCatalogOptions(data);
+      current.catalogLoading = false;
+      if (document.activeElement === els.brandMediaMerchantSearch) _brandMediaShowMerchantDropdown();
+    }).catch(function (error) {
+      current.catalogLoading = false;
+      current.catalogError = String(error && error.message || "catalog-error");
+      _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+    });
+  }
+
+  function renderBrandMediaPage() {
+    _brandMediaSyncControls();
+    _brandMediaLoadCatalog();
+    if (state.brandMedia.payload) {
+      _brandMediaRenderKpis(state.brandMedia.payload);
+      _brandMediaRenderChart(state.brandMedia.payload);
+      _brandMediaRenderTable(state.brandMedia.payload);
+      return;
+    }
+    if (!state.brandMedia.loading) _brandMediaLoadTrend();
+  }
+
+  function _bindBrandMediaPageInteractions() {
+    if (!els.brandMediaMerchantSearch) return;
+    els.brandMediaMerchantSearch.addEventListener("focus", function () {
+      _brandMediaLoadCatalog();
+      _brandMediaShowMerchantDropdown();
+    });
+    els.brandMediaMerchantSearch.addEventListener("input", function () {
+      var value = String(els.brandMediaMerchantSearch.value || "");
+      state.brandMedia.merchantSearch = value;
+      if (value !== state.brandMedia.merchantName) {
+        state.brandMedia.merchantId = "";
+        state.brandMedia.merchantName = "";
+        state.brandMedia.payload = null;
+      }
+      _brandMediaShowMerchantDropdown();
+    });
+    els.brandMediaMerchantSearch.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") _brandMediaHideMerchantDropdown();
+    });
+    if (els.brandMediaMerchantDropdown) {
+      els.brandMediaMerchantDropdown.addEventListener("click", function (event) {
+        var option = event.target.closest("[data-brand-media-merchant-id]");
+        if (!option) return;
+        state.brandMedia.merchantId = String(option.dataset.brandMediaMerchantId || "");
+        state.brandMedia.merchantName = String(option.dataset.brandMediaMerchantName || "");
+        state.brandMedia.merchantSearch = state.brandMedia.merchantName;
+        state.brandMedia.payload = null;
+        state.brandMedia.requestKey = "";
+        _brandMediaSyncControls();
+        _brandMediaHideMerchantDropdown();
+        _brandMediaLoadTrend();
+      });
+    }
+    if (els.brandMediaRangeButtons) {
+      els.brandMediaRangeButtons.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-brand-media-range]");
+        if (!button) return;
+        _brandMediaSetQuickRange(button.dataset.brandMediaRange);
+        state.brandMedia.payload = null;
+        state.brandMedia.requestKey = "";
+        _brandMediaSyncControls();
+        _brandMediaLoadTrend();
+      });
+    }
+    [els.brandMediaStartDate, els.brandMediaEndDate].filter(Boolean).forEach(function (input) {
+      input.addEventListener("change", function () {
+        state.brandMedia.startDate = els.brandMediaStartDate.value || "";
+        state.brandMedia.endDate = els.brandMediaEndDate.value || "";
+        state.brandMedia.quickRange = "";
+        state.brandMedia.payload = null;
+        state.brandMedia.requestKey = "";
+        _brandMediaSyncControls();
+        _brandMediaLoadTrend();
+      });
+    });
+    document.addEventListener("click", function (event) {
+      var combobox = event.target.closest(".brand-media-combobox");
+      if (!combobox) _brandMediaHideMerchantDropdown();
+    });
+  }
+
   function getFilteredPublishers(data) {
     if (!data || !data.publishers) return [];
     var market = state.publisherMarket || "all";
@@ -25686,6 +26189,7 @@ var _NUMERIC_COL_PATTERNS = [
       agent: t("nav.agent", "Agent"),
       payments: t("nav.payments", "Payments"),
       publishers: t("nav.publishers", "Publishers"),
+      "brand-media": t("nav.brandMedia", "Brand media"),
       sheets: t("nav.targets", "Targets"),
       "offer-list-tracker": t("nav.offerListTracker", "Offer List Tracker"),
       category: t("nav.category", "Category"),
@@ -25812,6 +26316,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isDashboardPage = pageBelongsToDashboard(page);
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isOfferListTracker = page === "offer-list-tracker";
+    const isBrandMedia = page === "brand-media";
     const isReportPage = pageBelongsToReports(page);
     if (isReportPage) state.reportsOpen = true;
     if (isDashboardPage) state.dashboardOpen = true;
@@ -25819,6 +26324,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.dashboardAgentPage) els.dashboardAgentPage.classList.toggle("hidden", !isAgent);
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
+    if (els.brandMediaPage) els.brandMediaPage.classList.toggle("hidden", !isBrandMedia);
     els.monthlyNewMerchantsPage.classList.toggle("hidden", !isMonthlyNewMerchants);
     if (els.offerListTrackerPage) els.offerListTrackerPage.classList.toggle("hidden", !isOfferListTracker);
     // 离开 Publishers 页面时退出布局编辑模式
@@ -25833,6 +26339,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.agentNav) els.agentNav.classList.toggle("active", isAgent);
     els.paymentsNav.classList.toggle("active", page === "payments");
     els.publishersNav.classList.toggle("active", page === "publishers");
+    if (els.brandMediaNav) els.brandMediaNav.classList.toggle("active", isBrandMedia);
     els.sheetsNav.classList.toggle("active", isReportPage);
     els.targetNav.classList.toggle("active", isSheets);
     if (els.offerListTrackerNav) els.offerListTrackerNav.classList.toggle("active", isOfferListTracker);
@@ -25856,6 +26363,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (page === "publishers") {
       renderPublishersPage();
     }
+    if (isBrandMedia) renderBrandMediaPage();
     if (isSheets) renderSheetPage();
     if (isCategory) ensureDashboardCategoryReportData();
     if (isTier) renderTierPage(state.selectedTierPage);
@@ -26035,6 +26543,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.agentNav) els.agentNav.addEventListener("click", () => switchPage("agent"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.publishersNav.addEventListener("click", () => switchPage("publishers"));
+    if (els.brandMediaNav) els.brandMediaNav.addEventListener("click", () => switchPage("brand-media"));
+    _bindBrandMediaPageInteractions();
     els.sheetsNav.addEventListener("click", () => {
       state.reportsOpen = !state.reportsOpen;
       updateReportsNavState();
@@ -27197,6 +27707,10 @@ var _NUMERIC_COL_PATTERNS = [
       renderPublisherProfileUsageHtml,
       publisherProfileAnswer,
       loadPublishersData,
+      brandMediaLineSegments,
+      brandMediaColor,
+      brandMediaCatalogOptions: _brandMediaCatalogOptions,
+      brandMediaChartPayload: _brandMediaChartPayload,
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,

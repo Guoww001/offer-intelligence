@@ -15,6 +15,7 @@ from offer_db import (
     offers_payload,
     parse_query,
     product_keywords_payload,
+    brand_media_trend_payload,
     publisher_portfolio_payload,
     publishers_payload,
     read_static_merchant_ids,
@@ -182,6 +183,27 @@ def handle_ui_publishers(target, query):
             send_json(target, 200, publishers_payload(
                 force_refresh=first_query_value(query, "refresh").lower() in {"1", "true", "yes"}
             ))
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except Exception as error:
+        send_db_error(target, error)
+
+
+def handle_ui_brand_media_trend(target, query):
+    merchant_id = first_query_value(query, "merchantId")
+    if not merchant_id:
+        send_json(target, 400, {"ok": False, "error": "merchantId is required"})
+        return
+    try:
+        send_json(
+            target,
+            200,
+            brand_media_trend_payload(
+                merchant_id,
+                start_date=first_query_value(query, "startDate") or None,
+                end_date=first_query_value(query, "endDate") or None,
+            ),
+        )
     except ValueError as error:
         send_json(target, 400, {"ok": False, "error": str(error)})
     except Exception as error:
@@ -395,6 +417,7 @@ def app(environ, start_response):
         "ui-tier-sheet",
         "ui-tier-summary",
         "ui-publishers",
+        "ui-brand-media-trend",
     }:
         if require_auth(target):
             if route == "ui-status":
@@ -407,6 +430,8 @@ def app(environ, start_response):
                 handle_ui_keywords(target)
             elif route == "ui-publishers":
                 handle_ui_publishers(target, query)
+            elif route == "ui-brand-media-trend":
+                handle_ui_brand_media_trend(target, query)
             elif route == "ui-offers":
                 handle_ui_offers(target, query)
             elif route == "ui-tier-sheet":
