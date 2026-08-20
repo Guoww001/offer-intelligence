@@ -308,6 +308,13 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   ], "Compare Shokz and Anua and tell me which performs better.");
   assertEqual(comparisonCalls.length, 1, "explicit comparison should remain one comparison call");
   assertEqual(comparisonCalls[0].name, "merchant_comparison", "explicit comparison should use comparison tool");
+
+  const trendCalls = hooks.normalizeAgentToolCalls([
+    { id: "merchant", name: "merchant_analysis", arguments: { merchant: "Shokz" } }
+  ], "查看 Shokz 最近 12 个月的收入趋势");
+  assertEqual(trendCalls.length, 1, "explicit trend should remain one trend call");
+  assertEqual(trendCalls[0].name, "trend", "explicit trend should use the trend tool");
+  assertEqual(trendCalls[0].arguments.target, "Shokz", "trend fallback should preserve the merchant target");
 }
 
 // ── Test 3: 工具失败 → 补充规划 → 直接内容 ──
@@ -593,6 +600,39 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertTruthy(result.data.months && result.data.months.length >= 2, "estimated trend should still carry months");
 }
 
+// ── Test 12b: Agent 趋势结果应渲染为可切换指标的 SVG 折线图 ──
+{
+  const trendData = {
+    tool: "trend",
+    entityType: "merchant",
+    target: "Shokz",
+    estimated: true,
+    metric: null,
+    metrics: ["revenue", "orders"],
+    months: [
+      { month: "2026-04", revenue: 1000, orders: 50 },
+      { month: "2026-05", revenue: 1200, orders: 60 }
+    ],
+    summary: {
+      revenue: { first: 1000, last: 1200, abs: 200, pct: 20, dir: "up" }
+    }
+  };
+  const chartHtml = hooks.renderAgentTrendChartHtml(trendData, "zh");
+  assertIncludes(chartHtml, "agent-trend-card", "trend result should render an Agent chart card");
+  assertIncludes(chartHtml, "<svg", "trend result should render an SVG line chart");
+  assertIncludes(chartHtml, 'data-agent-trend-metric="revenue"', "trend chart should expose a revenue metric switch");
+  assertIncludes(chartHtml, 'data-agent-trend-metric="orders"', "trend chart should expose an orders metric switch");
+  assertIncludes(chartHtml, "估算趋势", "estimated trend should show an estimate notice");
+  assertEqual(hooks.renderAgentTrendChartHtml({ months: [] }, "zh"), "", "trend chart should stay hidden without monthly rows");
+
+  const content = { children: [], appendChild(node) { this.children.push(node); } };
+  const reply = { msgEl: { querySelector(selector) { return selector === ".chat-stream-text" ? content : null; } } };
+  hooks.appendAgentTrendCharts(reply, [{ name: "trend", result: { ok: true, data: trendData } }], "zh");
+  assertEqual(content.children.length, 1, "successful Agent trend should append one chart visual");
+  assertIncludes(content.children[0].className, "agent-trend-visuals", "trend visual should use the Agent chart wrapper");
+  assertIncludes(content.children[0].innerHTML, "agent-trend-card", "trend visual wrapper should contain the chart card");
+}
+
 // ── Test 13: 三商户对比必须保留参考商户到每个同行的差异 ──
 {
   const names = Array.from(new Set(sandbox.window.CHATBOT_DATA.offers.slice(0, 5)
@@ -802,4 +842,4 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(timelineRoot.open, false, "successful Agent timeline should collapse after completion");
 }
 
-console.log("OK 26 scenarios");
+console.log("OK 27 scenarios");

@@ -13626,13 +13626,71 @@ var _NUMERIC_COL_PATTERNS = [
     return /对比|比较|差异|区别|优劣|排名|排序|谁更|哪个更|优于|胜出|compare|comparison|difference|versus|\bvs\.?\b|rank(?:ing)?|which\s+(?:merchant|brand|one).*(?:better|best|worse|winner)/i.test(text);
   }
 
+  function agentPromptRequestsTrend(prompt) {
+    var text = String(prompt || "").trim();
+    if (!text) return false;
+    return /趋势|走势|逐月|月度变化|趋势图|trend(?:line)?|month[-\s]?by[-\s]?month|over\s+time|monthly\s+trend/i.test(text);
+  }
+
+  function agentTrendMetricFromPrompt(prompt) {
+    var text = String(prompt || "");
+    var matches = [];
+    [
+      { key: "conversionRate", pattern: /\b(?:cvr|conversion(?:\s+rate)?)\b|转化率|转换率/i },
+      { key: "affiliatePayout", pattern: /\b(?:affiliate|aff)\s+(?:payout|commission)\b|联盟佣金|佣金收入/i },
+      { key: "revenue", pattern: /\b(?:revenue|sales)\b|销售额|收入|营收/i },
+      { key: "orders", pattern: /\border(?:s)?\b|订单/i },
+      { key: "clicks", pattern: /\bclicks?\b|点击/i },
+      { key: "epc", pattern: /\bepc\b/i },
+      { key: "aov", pattern: /\baov\b|客单价|平均订单金额/i }
+    ].forEach(function (item) {
+      if (item.pattern.test(text)) matches.push(item.key);
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   function normalizeAgentToolCalls(toolCalls, prompt) {
     var calls = Array.isArray(toolCalls) ? toolCalls : [];
-    if (agentPromptRequestsMerchantComparison(prompt)) return calls;
+    var comparisonRequested = agentPromptRequestsMerchantComparison(prompt);
+    var trendRequested = agentPromptRequestsTrend(prompt);
+    if (comparisonRequested) return calls;
     var normalized = [];
     calls.forEach(function (call) {
       if (!call || typeof call !== "object") return;
       var args = call.arguments;
+      if (trendRequested && call.name === "merchant_analysis" && args && typeof args.merchant === "string" && args.merchant.trim()) {
+        var trendArgs = {
+          entityType: "merchant",
+          target: args.merchant.trim(),
+          months: 12
+        };
+        var trendMetric = agentTrendMetricFromPrompt(prompt);
+        if (trendMetric) trendArgs.metric = trendMetric;
+        normalized.push({
+          id: String(call.id || "merchant-analysis") + "-trend",
+          name: "trend",
+          arguments: trendArgs
+        });
+        return;
+      }
+      if (trendRequested && call.name === "merchant_comparison" && args && Array.isArray(args.merchants) && args.merchants.length >= 2) {
+        args.merchants.slice(0, AGENT_MAX_TOOLS_PER_ROUND).forEach(function (merchant, index) {
+          if (typeof merchant !== "string" || !merchant.trim()) return;
+          var multiTrendArgs = {
+            entityType: "merchant",
+            target: merchant.trim(),
+            months: 12
+          };
+          var multiTrendMetric = agentTrendMetricFromPrompt(prompt);
+          if (multiTrendMetric) multiTrendArgs.metric = multiTrendMetric;
+          normalized.push({
+            id: String(call.id || "merchant-comparison") + "-trend-" + (index + 1),
+            name: "trend",
+            arguments: multiTrendArgs
+          });
+        });
+        return;
+      }
       if (call.name === "merchant_comparison" && args && Array.isArray(args.merchants) && args.merchants.length >= 2) {
         args.merchants.slice(0, AGENT_MAX_TOOLS_PER_ROUND).forEach(function (merchant, index) {
           if (typeof merchant !== "string" || !merchant.trim()) return;
@@ -14427,6 +14485,132 @@ var _NUMERIC_COL_PATTERNS = [
     }
   }
 
+  function agentTrendMetricLabel(metric, language) {
+    var zh = language !== "en";
+    var labels = zh
+      ? {
+          revenue: "销售额", orders: "订单", epc: "EPC", aov: "AOV", clicks: "点击",
+          affiliatePayout: "联盟佣金", dpv: "DPV", atc: "加购", conversionRate: "CVR",
+          payout: "总佣金", directSales: "直接销售额", haloSales: "Halo 销售额"
+        }
+      : {
+          revenue: "Revenue", orders: "Orders", epc: "EPC", aov: "AOV", clicks: "Clicks",
+          affiliatePayout: "Affiliate Payout", dpv: "DPV", atc: "ATC", conversionRate: "CVR",
+          payout: "Payout", directSales: "Direct Sales", haloSales: "Halo Sales"
+        };
+    return labels[metric] || metricLabel(metric);
+  }
+
+  function agentTrendMetrics(data) {
+    var source = Array.isArray(data && data.metrics) ? data.metrics.slice() : [];
+    var valid = TREND_METRIC_DEFS.map(function (def) { return def.key; });
+    var metrics = source.filter(function (metric, index) {
+      return valid.indexOf(metric) !== -1 && source.indexOf(metric) === index;
+    });
+    if (data && valid.indexOf(data.metric) !== -1 && metrics.indexOf(data.metric) === -1) {
+      metrics.unshift(data.metric);
+    }
+    if (!metrics.length) metrics = ["revenue"];
+    return metrics;
+  }
+
+  function agentTrendActiveMetric(data, metrics) {
+    var requested = data && data.metric;
+    if (requested && metrics.indexOf(requested) !== -1) return requested;
+    return metrics.indexOf("revenue") !== -1 ? "revenue" : metrics[0];
+  }
+
+  function renderAgentTrendChartHtml(data, language) {
+    var monthly = Array.isArray(data && data.months) ? data.months : [];
+    if (monthly.length < 2) return "";
+    var metrics = agentTrendMetrics(data);
+    var activeMetric = agentTrendActiveMetric(data, metrics);
+    var title = String(data.target || (language === "en" ? "Merchant" : "商户"));
+    var firstMonth = String(monthly[0].month || "");
+    var lastMonth = String(monthly[monthly.length - 1].month || "");
+    var summary = data.summary && data.summary[activeMetric];
+    var deltaText = "";
+    if (summary && Number.isFinite(Number(summary.pct))) {
+      var pct = Number(summary.pct);
+      deltaText = (pct > 0 ? "+" : "") + pct.toFixed(1) + "%";
+    }
+    var tabs = metrics.length > 1
+      ? metrics.map(function (metric) {
+          var active = metric === activeMetric ? " is-active" : "";
+          return '<button type="button" class="agent-trend-metric' + active + '" data-agent-trend-metric="'
+            + escapeHtml(metric) + '" aria-pressed="' + String(metric === activeMetric) + '">'
+            + escapeHtml(agentTrendMetricLabel(metric, language)) + "</button>";
+        }).join("")
+      : "";
+    var svg = trendTrendChartSvg(data, activeMetric);
+    if (!svg) return "";
+    var zh = language !== "en";
+    var status = data.estimated
+      ? (zh ? "估算趋势" : "Estimated trend")
+      : (zh ? "数据库月度数据" : "Database monthly data");
+    var delta = deltaText
+      ? '<span class="agent-trend-delta ' + (Number(summary.pct) >= 0 ? "is-up" : "is-down") + '">' + escapeHtml(deltaText) + "</span>"
+      : "";
+    var ariaLabel = title + " " + agentTrendMetricLabel(activeMetric, language) + (zh ? "趋势图" : "trend chart");
+    return '<section class="agent-trend-card" data-agent-trend-card aria-label="' + escapeHtml(ariaLabel) + '">'
+      + '<div class="agent-trend-card-head">'
+      + '<div><span class="agent-trend-eyebrow">' + escapeHtml(status) + '</span>'
+      + '<h4>' + escapeHtml(title) + (zh ? "趋势" : " trend") + '</h4></div>'
+      + '<div class="agent-trend-range">' + escapeHtml(firstMonth + " — " + lastMonth) + delta + '</div>'
+      + '</div>'
+      + (tabs ? '<div class="agent-trend-metrics" role="group" aria-label="' + escapeHtml(zh ? "选择趋势指标" : "Choose trend metric") + '">' + tabs + '</div>' : "")
+      + '<div class="agent-trend-chart" data-agent-trend-chart>' + svg + '</div>'
+      + '</section>';
+  }
+
+  function bindAgentTrendChartControls(wrapper, trendData) {
+    if (!wrapper || typeof wrapper.addEventListener !== "function") return;
+    wrapper._agentTrendData = trendData;
+    if (wrapper._agentTrendBound) return;
+    wrapper._agentTrendBound = true;
+    wrapper.addEventListener("click", function (event) {
+      var button = event.target && event.target.closest
+        ? event.target.closest("[data-agent-trend-metric]")
+        : null;
+      if (!button) return;
+      var card = button.closest("[data-agent-trend-card]");
+      if (!card) return;
+      var metric = button.getAttribute("data-agent-trend-metric");
+      var data = trendData[Number(card.getAttribute("data-agent-trend-index"))] || trendData[0];
+      if (!data || !metric || agentTrendMetrics(data).indexOf(metric) === -1) return;
+      card.querySelectorAll("[data-agent-trend-metric]").forEach(function (item) {
+        var active = item === button;
+        item.classList.toggle("is-active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      var chart = card.querySelector("[data-agent-trend-chart]");
+      if (chart) chart.innerHTML = trendTrendChartSvg(data, metric);
+    });
+  }
+
+  function appendAgentTrendCharts(reply, toolResults, language) {
+    var content = reply && reply.msgEl && typeof reply.msgEl.querySelector === "function"
+      ? reply.msgEl.querySelector(".chat-stream-text")
+      : null;
+    if (!content || typeof content.appendChild !== "function") return;
+    var trends = (Array.isArray(toolResults) ? toolResults : []).map(function (item) {
+      return item && item.result && item.result.ok && item.result.data && item.name === "trend"
+        ? item.result.data
+        : null;
+    }).filter(function (data) {
+      return data && Array.isArray(data.months) && data.months.length >= 2;
+    });
+    if (!trends.length) return;
+    var wrapper = document.createElement("div");
+    wrapper.className = "agent-trend-visuals";
+    wrapper.setAttribute("aria-label", language === "en" ? "Trend charts" : "趋势图");
+    wrapper.innerHTML = trends.map(function (data, index) {
+      return renderAgentTrendChartHtml(data, language).replace("data-agent-trend-card", "data-agent-trend-card data-agent-trend-index=\"" + index + "\"");
+    }).join("");
+    content.appendChild(wrapper);
+    bindAgentTrendChartControls(wrapper, trends);
+  }
+
   function renderAgentFallbackReply(toolResults, opts) {
     var language = opts.language || "zh";
     var chatLogEl = opts.chatLogEl;
@@ -14676,6 +14860,7 @@ var _NUMERIC_COL_PATTERNS = [
         language: language,
         viewContext: opts.viewContext || null
       });
+      appendAgentTrendCharts(fallbackReply, toolResults, language);
       if (execution) execution.finish("error", Date.now() - executionStartedAt);
       return { handled: true, ok: true, fullResponse: fallbackReply.fullResponse, statusBar: fallbackReply.statusBar };
     }
@@ -14683,6 +14868,7 @@ var _NUMERIC_COL_PATTERNS = [
     completedResponse = ensureAgentTierMerchantDataVisible(completedResponse, toolResults, language, prompt);
     completedResponse = ensureAgentPaymentDataVisible(completedResponse, toolResults, language);
     if (completedResponse !== reply.fullResponse) updateAgentRenderedResponse(reply, completedResponse);
+    appendAgentTrendCharts(reply, toolResults, language);
     if (execution) {
       execution.updateStep(synthesisStep, {
         status: "done",
@@ -27143,6 +27329,9 @@ var _NUMERIC_COL_PATTERNS = [
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
       agentToolDefinitions,
       agentExecuteTool,
+      renderAgentTrendChartHtml,
+      appendAgentTrendCharts,
+      agentPromptRequestsTrend,
       agentPromptRequestsMerchantComparison,
       normalizeAgentToolCalls,
       compactAgentToolResult,
