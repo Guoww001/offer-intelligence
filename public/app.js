@@ -175,6 +175,7 @@
   const DB_TIER1_MERCHANTS_UI_API = "/api/ui/db/tier1-merchants";
   const DB_CHATBOT_OFFERS_UI_API = "/api/ui/db/chatbot-offers";
   const DB_MONTHLY_NEW_MERCHANTS_UI_API = "/api/ui/db/monthly-new-merchants";
+  const DB_OFFERS_UI_API = "/api/ui/db/offers";
   const DB_STATUS_AUTO_REFRESH_MS = 5 * 60 * 1000;
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const DEFAULT_TIER_REPORT_END_DATE = localDateKey(new Date());
@@ -223,6 +224,58 @@
     asins: true,
     recommendation: true
   });
+
+  function offerTrackerDateOrdinal(value) {
+    const text = String(value || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+    const [year, month, day] = text.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+    return Math.floor(date.getTime() / 86400000);
+  }
+
+  function offerTrackerDateRange(startDate = "", endDate = "") {
+    const start = String(startDate || "").trim();
+    const end = String(endDate || "").trim();
+    const startOrdinal = offerTrackerDateOrdinal(start);
+    const endOrdinal = offerTrackerDateOrdinal(end);
+    if (startOrdinal === null || endOrdinal === null) return { ok: false, reason: "invalid" };
+    if (startOrdinal > endOrdinal) return { ok: false, reason: "order" };
+    const dayCount = endOrdinal - startOrdinal + 1;
+    if (dayCount > 366) return { ok: false, reason: "length", dayCount };
+    return { ok: true, startDate: start, endDate: end, dayCount };
+  }
+
+  function offerTrackerDefaultDateRange(payload = data) {
+    const explicit = offerTrackerDateRange(payload.startDate, payload.endDate);
+    if (explicit.ok) return { startDate: explicit.startDate, endDate: explicit.endDate };
+    const sources = payload.sources || {};
+    const month = String(payload.month || sources.month || (payload.summary && payload.summary.month) || "").trim();
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      const [year, monthNumber] = month.split("-").map(Number);
+      const lastDay = new Date(Date.UTC(year, monthNumber, 0));
+      return {
+        startDate: `${month}-01`,
+        endDate: `${month}-${String(lastDay.getUTCDate()).padStart(2, "0")}`
+      };
+    }
+    const today = localDateKey(new Date()) || "1970-01-01";
+    return { startDate: `${today.slice(0, 7)}-01`, endDate: today };
+  }
+
+  function offerTrackerRangeKey(startDate, endDate) {
+    return `${String(startDate || "").trim()}|${String(endDate || "").trim()}`;
+  }
+
+  function offerTrackerRangeLabel(startDate, endDate) {
+    return `${startDate} ${offerTrackerText("–", "至")} ${endDate}`;
+  }
+
+  const OFFER_TRACKER_DEFAULT_DATE_RANGE = offerTrackerDefaultDateRange(data);
+  const OFFER_TRACKER_DEFAULT_RANGE_KEY = offerTrackerRangeKey(
+    OFFER_TRACKER_DEFAULT_DATE_RANGE.startDate,
+    OFFER_TRACKER_DEFAULT_DATE_RANGE.endDate
+  );
 
   const state = {
     page: "agent",
@@ -310,25 +363,37 @@
       draftFilters: {
         tiers: [],
         categories: [],
+        startDate: OFFER_TRACKER_DEFAULT_DATE_RANGE.startDate,
+        endDate: OFFER_TRACKER_DEFAULT_DATE_RANGE.endDate,
         minAov: "",
         maxAov: "",
         minCommission: "",
         maxCommission: "",
         networks: [],
+        bbPolicy: "all",
         revenueStatus: "all",
         revenueSort: "priority"
       },
       filters: {
         tiers: [],
         categories: [],
+        startDate: OFFER_TRACKER_DEFAULT_DATE_RANGE.startDate,
+        endDate: OFFER_TRACKER_DEFAULT_DATE_RANGE.endDate,
         minAov: "",
         maxAov: "",
         minCommission: "",
         maxCommission: "",
         networks: [],
+        bbPolicy: "all",
         revenueStatus: "all",
         revenueSort: "priority"
       },
+      defaultDateRange: { ...OFFER_TRACKER_DEFAULT_DATE_RANGE },
+      sourceRows: offers,
+      sourceRangeKey: OFFER_TRACKER_DEFAULT_RANGE_KEY,
+      sourceRowsByRange: new Map([[OFFER_TRACKER_DEFAULT_RANGE_KEY, offers]]),
+      loading: false,
+      requestSequence: 0,
       search: "",
       view: "offers",
       page: 1,
@@ -564,8 +629,12 @@
     brandMediaKpis: document.getElementById("brandMediaKpis"),
     brandMediaChart: document.getElementById("brandMediaChart"),
     brandMediaChartSubtitle: document.getElementById("brandMediaChartSubtitle"),
+    brandMediaTotalKey: document.getElementById("brandMediaTotalKey"),
     brandMediaLineCount: document.getElementById("brandMediaLineCount"),
     brandMediaLegend: document.getElementById("brandMediaLegend"),
+    brandMediaClicksPanel: document.getElementById("brandMediaClicksPanel"),
+    brandMediaClickChart: document.getElementById("brandMediaClickChart"),
+    brandMediaClickChartCount: document.getElementById("brandMediaClickChartCount"),
     brandMediaTableRows: document.getElementById("brandMediaTableRows"),
     brandMediaTableCount: document.getElementById("brandMediaTableCount"),
     publisherSelectorSearch: document.getElementById("publisherSelectorSearch"),
@@ -639,6 +708,9 @@
     offerTrackerCategoryToggle: document.getElementById("offerTrackerCategoryToggle"),
     offerTrackerCategorySummary: document.getElementById("offerTrackerCategorySummary"),
     offerTrackerCategoryMenu: document.getElementById("offerTrackerCategoryMenu"),
+    offerTrackerStartDate: document.getElementById("offerTrackerStartDate"),
+    offerTrackerEndDate: document.getElementById("offerTrackerEndDate"),
+    offerTrackerDateStatus: document.getElementById("offerTrackerDateStatus"),
     offerTrackerMinAov: document.getElementById("offerTrackerMinAov"),
     offerTrackerMaxAov: document.getElementById("offerTrackerMaxAov"),
     offerTrackerMinCommission: document.getElementById("offerTrackerMinCommission"),
@@ -647,6 +719,7 @@
     offerTrackerNetworkToggle: document.getElementById("offerTrackerNetworkToggle"),
     offerTrackerNetworkSummary: document.getElementById("offerTrackerNetworkSummary"),
     offerTrackerNetworkMenu: document.getElementById("offerTrackerNetworkMenu"),
+    offerTrackerBbPolicy: document.getElementById("offerTrackerBbPolicy"),
     offerTrackerRevenueStatus: document.getElementById("offerTrackerRevenueStatus"),
     offerTrackerRevenueSort: document.getElementById("offerTrackerRevenueSort"),
     offerTrackerFilterChips: document.getElementById("offerTrackerFilterChips"),
@@ -907,6 +980,15 @@
       "offerTracker.defineRange": "定义 Offer 范围",
       "offerTracker.defineRangeSubtitle": "先选择商业范围，再查看并导出对应的优先级清单。",
       "offerTracker.liveSource": "实时 Offer 缓存",
+      "offerTracker.timeRange": "时间范围",
+      "offerTracker.bbPreference": "是否介意 BB",
+      "offerTracker.bbAll": "全部 BB 偏好",
+      "offerTracker.bbMind": "介意 BB",
+      "offerTracker.bbOpen": "不介意 BB",
+      "offerTracker.bbUnknown": "未知",
+      "offerTracker.rangeLoading": "正在读取所选时间范围…",
+      "offerTracker.rangeLoaded": "数据范围：{range}",
+      "offerTracker.rangeError": "无法读取所选时间范围，请稍后重试。",
       "offerTracker.aovRange": "AOV 范围",
       "offerTracker.commissionRange": "AFF 佣金范围",
       "offerTracker.revenueStatus": "Revenue 状态",
@@ -1133,8 +1215,8 @@
       "publishers.track": "Track",
       "publishers.empty": "暂无数据",
       "brandMedia.title": "品牌媒体趋势",
-      "brandMedia.subtitle": "查看一个品牌在不同日期由各媒体带来的 Revenue 变化。",
-      "brandMedia.liveSource": "每日订单 Revenue",
+      "brandMedia.subtitle": "查看一个品牌在不同日期由各媒体带来的订单数变化，Revenue 保留在 hover 中。",
+      "brandMedia.liveSource": "每日订单数",
       "brandMedia.brand": "品牌",
       "brandMedia.brandPlaceholder": "搜索品牌或商家 ID",
       "brandMedia.manager": "媒介经理",
@@ -1142,32 +1224,42 @@
       "brandMedia.timeRange": "时间跨度",
       "brandMedia.startDate": "开始日期",
       "brandMedia.endDate": "结束日期",
-      "brandMedia.sourceNote": "Revenue 使用订单金额；缺少某媒体当天的源记录时，图表会断开而不会补为 0。",
-      "brandMedia.chartTitle": "各媒体每日 Revenue",
-      "brandMedia.chartSubtitle": "点击右侧媒体可锁定；可同时锁定多家，再次点击解除。没有每日源记录时会断开。",
+      "brandMedia.sourceNote": "折线表示每日订单数；缺少某媒体当天的源记录时，图表会断开而不会补为 0，Revenue 会保留在 hover 中。",
+      "brandMedia.chartTitle": "各媒体每日订单数",
+      "brandMedia.chartSubtitle": "点击右侧媒体可锁定；可同时锁定多家，再次点击解除。黑线表示未锁定前的全部媒体订单数，Revenue 会保留在 hover 中。没有每日源记录时会断开。",
+      "brandMedia.allOrderLine": "全部媒体订单数",
+      "brandMedia.clicksTitle": "已锁定媒体的每日点击",
+      "brandMedia.clicksSubtitle": "锁定一家媒体时显示普通柱状图；锁定多家时按媒体堆叠显示每日累计点击。",
+      "brandMedia.clicksCount": "点击柱",
+      "brandMedia.clicksEmpty": "当前锁定媒体在所选时间内没有点击记录。",
+      "brandMedia.clicksDateTotal": "累计点击",
+      "brandMedia.clicksMedia": "媒体点击",
       "brandMedia.tableTitle": "媒体汇总",
       "brandMedia.tableSubtitle": "展示图表中每条线在选定时间内的汇总和源记录覆盖情况。",
       "brandMedia.media": "媒体",
       "brandMedia.revenue": "Revenue",
-      "brandMedia.orders": "订单",
+      "brandMedia.orders": "订单数",
       "brandMedia.activeDays": "活跃天数",
       "brandMedia.firstSeen": "首个记录",
       "brandMedia.lastSeen": "最后记录",
-      "brandMedia.selectBrand": "先选择一个品牌，即可加载该品牌所有媒体的每日 Revenue。",
-      "brandMedia.loading": "正在读取该品牌的媒体 Revenue 趋势…",
+      "brandMedia.selectBrand": "先选择一个品牌，即可加载该品牌所有媒体的每日订单数。",
+      "brandMedia.loading": "正在读取该品牌的媒体订单数趋势…",
       "brandMedia.noData": "这个品牌在所选时间内没有媒体订单记录。",
       "brandMedia.loadError": "无法读取品牌媒体趋势，请调整日期范围后重试。",
       "brandMedia.lineCount": "条媒体线",
       "brandMedia.publisherCount": "活跃媒体",
       "brandMedia.totalRevenue": "Revenue",
-      "brandMedia.totalForDate": "当日总 Revenue",
+      "brandMedia.totalOrders": "订单数",
+      "brandMedia.totalOrdersForDate": "当日总订单数",
+      "brandMedia.totalRevenueForDate": "当日总 Revenue",
       "brandMedia.allMedia": "全部媒体",
       "brandMedia.lockedMedia": "已锁定媒体",
       "brandMedia.lockedCount": "已锁定",
       "brandMedia.lock": "点击锁定该媒体",
       "brandMedia.unlock": "点击解除该媒体锁定",
       "brandMedia.noLockedData": "当前锁定媒体在所选时间内没有源记录。点击右侧媒体可解除锁定。",
-      "brandMedia.mediaForDate": "该媒体当日 Revenue",
+      "brandMedia.mediaOrdersForDate": "该媒体当日订单数",
+      "brandMedia.mediaRevenueForDate": "该媒体当日 Revenue",
       "brandMedia.noRecord": "无源记录",
       "brandMedia.observations": "媒体日期记录",
       "brandMedia.coverage": "数据覆盖",
@@ -18198,6 +18290,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (!payload) return;
     _brandMediaRenderKpis(payload);
     _brandMediaRenderChart(payload);
+    _brandMediaRenderClicksChart(payload);
     _brandMediaRenderTable(payload);
   }
 
@@ -18276,6 +18369,9 @@ var _NUMERIC_COL_PATTERNS = [
     var publishers = Array.isArray(publishersOverride)
       ? publishersOverride
       : ((payload && payload.publishers) || []);
+    var allPublishers = _brandMediaManagerFilteredPublishers(payload);
+    var lockedKeys = _brandMediaLockedPublisherSet();
+    var showAllOrderLine = !lockedKeys.size && publishers.length === allPublishers.length;
     var range = (payload && payload.dateRange) || {};
     var startDate = brandMediaDateKey(range.startDate);
     var endDate = brandMediaDateKey(range.endDate);
@@ -18284,9 +18380,12 @@ var _NUMERIC_COL_PATTERNS = [
     if (!publishers.length || startOrdinal == null || endOrdinal == null || endOrdinal < startOrdinal) return null;
 
     var daySpan = endOrdinal - startOrdinal;
-    var minRevenue = 0;
-    var maxRevenue = 0;
-    var dailyTotals = {};
+    var minOrders = 0;
+    var maxOrders = 0;
+    var dailyOrderTotals = {};
+    var dailyRevenueTotals = {};
+    var allDailyOrderTotals = {};
+    var allDailyRevenueTotals = {};
     var publisherPoints = [];
     var publisherPointsByIndex = {};
     var publisherByIndex = {};
@@ -18298,9 +18397,12 @@ var _NUMERIC_COL_PATTERNS = [
         if (!date || ordinal == null || ordinal < startOrdinal || ordinal > endOrdinal) return null;
         var revenue = Number(point.revenue);
         revenue = Number.isFinite(revenue) ? revenue : 0;
-        dailyTotals[date] = (dailyTotals[date] || 0) + revenue;
-        maxRevenue = Math.max(maxRevenue, revenue);
-        return Object.assign({}, point, { date: date, revenue: revenue });
+        var orders = Number(point.orders);
+        orders = Number.isFinite(orders) ? Math.max(0, orders) : 0;
+        dailyOrderTotals[date] = (dailyOrderTotals[date] || 0) + orders;
+        dailyRevenueTotals[date] = (dailyRevenueTotals[date] || 0) + revenue;
+        maxOrders = Math.max(maxOrders, orders);
+        return Object.assign({}, point, { date: date, revenue: revenue, orders: orders });
       }).filter(Boolean).sort(function (a, b) {
         return a.date.localeCompare(b.date);
       });
@@ -18314,7 +18416,25 @@ var _NUMERIC_COL_PATTERNS = [
       publisherByIndex[sourceIndex] = publisher;
       publisherSegments.push(brandMediaLineSegments(points));
     });
-    if (maxRevenue === minRevenue) maxRevenue = minRevenue + 1;
+    allPublishers.forEach(function (publisher) {
+      (publisher.points || []).forEach(function (point) {
+        var date = brandMediaDateKey(point && point.date);
+        var ordinal = brandMediaDayOrdinal(date);
+        if (!date || ordinal == null || ordinal < startOrdinal || ordinal > endOrdinal) return;
+        var revenue = Number(point.revenue);
+        revenue = Number.isFinite(revenue) ? revenue : 0;
+        var orders = Number(point.orders);
+        orders = Number.isFinite(orders) ? Math.max(0, orders) : 0;
+        allDailyOrderTotals[date] = (allDailyOrderTotals[date] || 0) + orders;
+        allDailyRevenueTotals[date] = (allDailyRevenueTotals[date] || 0) + revenue;
+      });
+    });
+    if (showAllOrderLine) {
+      Object.keys(allDailyOrderTotals).forEach(function (date) {
+        maxOrders = Math.max(maxOrders, Number(allDailyOrderTotals[date] || 0));
+      });
+    }
+    if (maxOrders === minOrders) maxOrders = minOrders + 1;
     var width = 1180;
     var height = 560;
     var left = 82;
@@ -18329,20 +18449,20 @@ var _NUMERIC_COL_PATTERNS = [
       var denominator = Math.max(1, daySpan);
       return left + Math.max(0, Math.min(daySpan, day)) / denominator * plotWidth;
     }
-    var revenueSpan = maxRevenue - minRevenue;
+    var orderSpan = maxOrders - minOrders;
     function yFor(value) {
-      return top + plotHeight - (Number(value || 0) - minRevenue) / revenueSpan * plotHeight;
+      return top + plotHeight - (Number(value || 0) - minOrders) / orderSpan * plotHeight;
     }
     var svg = [];
     svg.push('<svg class="brand-media-svg" viewBox="0 0 ' + width + ' ' + height +
       '" preserveAspectRatio="none" aria-hidden="true" data-brand-media-day-span="' + daySpan + '">');
     for (var tick = 0; tick <= 4; tick++) {
-      var value = minRevenue + revenueSpan * tick / 4;
+      var value = Math.round(minOrders + orderSpan * tick / 4);
       var y = yFor(value);
       svg.push('<line class="brand-media-grid-line" x1="' + left + '" x2="' +
         (width - right) + '" y1="' + y + '" y2="' + y + '"></line>');
       svg.push('<text class="brand-media-axis-label" x="' + (left - 12) + '" y="' +
-        (y + 4) + '" text-anchor="end">' + escapeHtml(_brandMediaMoney(value)) + '</text>');
+        (y + 4) + '" text-anchor="end">' + escapeHtml(_brandMediaCount(value)) + '</text>');
     }
     var tickOffsets = [];
     for (var xTick = 0; xTick <= 4; xTick++) {
@@ -18366,7 +18486,7 @@ var _NUMERIC_COL_PATTERNS = [
       publisherSegments[index].forEach(function (segment) {
         var path = segment.map(function (point, pointIndex) {
           return (pointIndex ? "L" : "M") + xFor(point.date).toFixed(2) + " " +
-            yFor(point.revenue).toFixed(2);
+            yFor(point.orders).toFixed(2);
         }).join(" ");
         if (path) {
           svg.push('<path class="brand-media-series" d="' + path + '" stroke="' +
@@ -18374,6 +18494,21 @@ var _NUMERIC_COL_PATTERNS = [
         }
       });
     });
+    if (showAllOrderLine) {
+      var totalPoints = Object.keys(allDailyOrderTotals).sort().map(function (date) {
+        return { date: date, orders: Number(allDailyOrderTotals[date] || 0) };
+      });
+      brandMediaLineSegments(totalPoints).forEach(function (segment) {
+        var path = segment.map(function (point, pointIndex) {
+          return (pointIndex ? "L" : "M") + xFor(point.date).toFixed(2) + " " +
+            yFor(point.orders).toFixed(2);
+        }).join(" ");
+        if (path) {
+          svg.push('<path class="brand-media-total-series" d="' + path +
+            '" data-brand-media-total="true" data-brand-media-total-metric="orders"></path>');
+        }
+      });
+    }
     svg.push('<line class="brand-media-crosshair brand-media-crosshair-date" x1="' + left +
       '" x2="' + left + '" y1="' + top + '" y2="' + (top + plotHeight) + '" style="display:none"></line>');
     svg.push('<line class="brand-media-crosshair brand-media-crosshair-value" x1="' + left +
@@ -18396,7 +18531,16 @@ var _NUMERIC_COL_PATTERNS = [
       endOrdinal: endOrdinal,
       daySpan: daySpan,
       publishers: publishers,
-      dailyTotals: dailyTotals,
+      primaryMetric: "orders",
+      minOrders: minOrders,
+      maxOrders: maxOrders,
+      dailyTotals: dailyOrderTotals,
+      dailyOrderTotals: dailyOrderTotals,
+      dailyRevenueTotals: dailyRevenueTotals,
+      allDailyTotals: allDailyOrderTotals,
+      allDailyOrderTotals: allDailyOrderTotals,
+      allDailyRevenueTotals: allDailyRevenueTotals,
+      showAllOrderLine: showAllOrderLine,
       publisherPoints: publisherPoints,
       publisherPointsByIndex: publisherPointsByIndex,
       publisherByIndex: publisherByIndex,
@@ -18406,6 +18550,262 @@ var _NUMERIC_COL_PATTERNS = [
         return brandMediaDateAtOrdinal(startOrdinal + Math.max(0, Math.min(daySpan, offset)));
       },
     };
+  }
+
+  function _brandMediaClickPoints(publisher, startOrdinal, endOrdinal) {
+    var source = Array.isArray(publisher && publisher.clickPoints)
+      ? publisher.clickPoints
+      : [];
+    if (!source.length) {
+      source = (publisher && publisher.points || []).filter(function (point) {
+        return Number(point && point.clicks || 0) > 0;
+      });
+    }
+    return source.map(function (point) {
+      var date = brandMediaDateKey(point && point.date);
+      var ordinal = brandMediaDayOrdinal(date);
+      if (!date || ordinal == null || ordinal < startOrdinal || ordinal > endOrdinal) return null;
+      var clicks = Number(point && point.clicks);
+      return {
+        date: date,
+        clicks: Number.isFinite(clicks) ? Math.max(0, clicks) : 0,
+      };
+    }).filter(Boolean).sort(function (a, b) {
+      return a.date.localeCompare(b.date);
+    });
+  }
+
+  function _brandMediaBuildClicksChartModel(payload, publishersOverride) {
+    var publishers = Array.isArray(publishersOverride)
+      ? publishersOverride
+      : _brandMediaVisiblePublishers(payload);
+    var range = (payload && payload.dateRange) || {};
+    var startDate = brandMediaDateKey(range.startDate);
+    var endDate = brandMediaDateKey(range.endDate);
+    var startOrdinal = brandMediaDayOrdinal(startDate);
+    var endOrdinal = brandMediaDayOrdinal(endDate);
+    if (!publishers.length || startOrdinal == null || endOrdinal == null || endOrdinal < startOrdinal) {
+      return null;
+    }
+
+    var daySpan = endOrdinal - startOrdinal;
+    var dailyTotals = {};
+    var clickPointsByIndex = {};
+    var publisherByIndex = {};
+    var maxClicks = 0;
+    publishers.forEach(function (publisher, index) {
+      var sourceIndex = _brandMediaSourceIndex(publisher, index);
+      var pointsByDate = {};
+      _brandMediaClickPoints(publisher, startOrdinal, endOrdinal).forEach(function (point) {
+        pointsByDate[point.date] = (pointsByDate[point.date] || 0) + point.clicks;
+        dailyTotals[point.date] = (dailyTotals[point.date] || 0) + point.clicks;
+      });
+      clickPointsByIndex[sourceIndex] = pointsByDate;
+      publisherByIndex[sourceIndex] = publisher;
+    });
+    Object.keys(dailyTotals).forEach(function (date) {
+      maxClicks = Math.max(maxClicks, Number(dailyTotals[date] || 0));
+    });
+
+    var width = 1180;
+    var height = 440;
+    var left = 82;
+    var right = 28;
+    var top = 34;
+    var bottom = 62;
+    var plotWidth = width - left - right;
+    var plotHeight = height - top - bottom;
+    var yMax = maxClicks > 0 ? maxClicks : 1;
+    function xFor(dateText) {
+      var ordinal = brandMediaDayOrdinal(dateText);
+      var day = ordinal == null ? 0 : ordinal - startOrdinal;
+      if (daySpan <= 0) return left + plotWidth / 2;
+      return left + Math.max(0, Math.min(daySpan, day)) / daySpan * plotWidth;
+    }
+    function yFor(value) {
+      return top + plotHeight - Number(value || 0) / yMax * plotHeight;
+    }
+
+    var isCumulative = publishers.length > 1;
+    var barWidth = Math.max(2, Math.min(34, plotWidth / Math.max(1, daySpan + 1) * 0.72));
+    var svg = [];
+    svg.push('<svg class="brand-media-click-svg ' + (isCumulative ? 'is-cumulative' : 'is-single') +
+      '" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none" aria-hidden="true">');
+    for (var tick = 0; tick <= 4; tick++) {
+      var value = yMax * tick / 4;
+      var y = yFor(value);
+      svg.push('<line class="brand-media-grid-line" x1="' + left + '" x2="' +
+        (width - right) + '" y1="' + y + '" y2="' + y + '"></line>');
+      svg.push('<text class="brand-media-axis-label" x="' + (left - 12) + '" y="' +
+        (y + 4) + '" text-anchor="end">' + escapeHtml(_brandMediaCount(value)) + '</text>');
+    }
+    var tickOffsets = [];
+    for (var xTick = 0; xTick <= 4; xTick++) {
+      var tickOffset = Math.round(daySpan * xTick / 4);
+      if (tickOffsets.indexOf(tickOffset) === -1) tickOffsets.push(tickOffset);
+    }
+    tickOffsets.forEach(function (days) {
+      var dateKey = brandMediaDateAtOrdinal(startOrdinal + days);
+      var x = xFor(dateKey);
+      svg.push('<line class="brand-media-x-tick" x1="' + x + '" x2="' + x +
+        '" y1="' + (top + plotHeight) + '" y2="' + (top + plotHeight + 6) + '"></line>');
+      svg.push('<text class="brand-media-axis-label brand-media-axis-date" x="' + x + '" y="' +
+        (height - 22) + '" text-anchor="middle" data-brand-media-date="' + dateKey + '">' +
+        escapeHtml(dateKey.slice(5)) + '</text>');
+    });
+
+    Object.keys(dailyTotals).sort().forEach(function (date) {
+      var x = xFor(date);
+      var cumulative = 0;
+      publishers.forEach(function (publisher, index) {
+        var sourceIndex = _brandMediaSourceIndex(publisher, index);
+        var value = Number((clickPointsByIndex[sourceIndex] || {})[date] || 0);
+        if (!(value > 0)) return;
+        var yTop = yFor(cumulative + value);
+        var yBottom = yFor(cumulative);
+        var barClass = isCumulative ? " is-cumulative" : " is-single";
+        var publisherName = String(publisher.userName || publisher.userId || "Media");
+        svg.push('<rect class="brand-media-click-bar' + barClass + '" x="' +
+          (x - barWidth / 2).toFixed(2) + '" y="' + yTop.toFixed(2) + '" width="' +
+          barWidth.toFixed(2) + '" height="' + Math.max(0.75, yBottom - yTop).toFixed(2) +
+          '" fill="' + brandMediaColor(sourceIndex) + '" data-brand-media-click-date="' + date +
+          '" data-brand-media-publisher-index="' + sourceIndex + '"><title>' +
+          escapeHtml(date + " · " + publisherName + ": " + _brandMediaCount(value) + " " +
+            t("brandMedia.clicksMedia", "media clicks")) + '</title></rect>');
+        cumulative += value;
+      });
+    });
+    svg.push('</svg>');
+    return {
+      svg: svg.join(""),
+      width: width,
+      height: height,
+      left: left,
+      right: right,
+      top: top,
+      bottom: bottom,
+      plotWidth: plotWidth,
+      plotHeight: plotHeight,
+      startDate: startDate,
+      endDate: endDate,
+      startOrdinal: startOrdinal,
+      endOrdinal: endOrdinal,
+      daySpan: daySpan,
+      yMax: yMax,
+      publishers: publishers,
+      dailyTotals: dailyTotals,
+      clickPointsByIndex: clickPointsByIndex,
+      publisherByIndex: publisherByIndex,
+      isCumulative: isCumulative,
+      hasData: maxClicks > 0,
+      xFor: xFor,
+      yFor: yFor,
+    };
+  }
+
+  function _brandMediaUpdateClickChartHover(chart, model, target) {
+    if (!chart || !model || !target) return;
+    var date = String(target.getAttribute("data-brand-media-click-date") || "");
+    if (!date) return;
+    var total = Number(model.dailyTotals[date] || 0);
+    var entries = model.publishers.map(function (publisher, index) {
+      var sourceIndex = _brandMediaSourceIndex(publisher, index);
+      return {
+        sourceIndex: sourceIndex,
+        name: String(publisher.userName || publisher.userId || "Media"),
+        clicks: Number((model.clickPointsByIndex[sourceIndex] || {})[date] || 0),
+      };
+    }).filter(function (entry) { return entry.clicks > 0; });
+    var tooltip = chart.querySelector(".brand-media-hover-tooltip");
+    if (!tooltip) return;
+    var title = model.isCumulative
+      ? t("brandMedia.clicksDateTotal", "Cumulative clicks")
+      : t("brandMedia.clicksMedia", "Media clicks");
+    var html = '<div class="brand-media-hover-date"><span>' +
+      escapeHtml(_brandMediaDisplayDate(date)) + '</span><strong>' + escapeHtml(title) +
+      '</strong></div><div class="brand-media-hover-row"><span>' +
+      escapeHtml(t("brandMedia.clicksDateTotal", "Cumulative clicks")) +
+      '</span><strong>' + escapeHtml(_brandMediaCount(total)) + '</strong></div>';
+    entries.forEach(function (entry) {
+      html += '<div class="brand-media-hover-row brand-media-hover-media"><span><i style="--brand-media-line:' +
+        brandMediaColor(entry.sourceIndex) + '"></i>' + escapeHtml(entry.name) +
+        '</span><strong>' + escapeHtml(_brandMediaCount(entry.clicks)) + '</strong></div>';
+    });
+    tooltip.innerHTML = html;
+    tooltip.hidden = false;
+    var rect = chart.getBoundingClientRect ? chart.getBoundingClientRect() : null;
+    var targetRect = target.getBoundingClientRect ? target.getBoundingClientRect() : null;
+    var chartWidth = chart.clientWidth || 0;
+    var cssX = rect && targetRect && chartWidth
+      ? targetRect.left - rect.left + targetRect.width / 2
+      : chartWidth / 2;
+    var edge = cssX < chartWidth * 0.18 ? "start" : cssX > chartWidth * 0.82 ? "end" : "center";
+    tooltip.dataset.edge = edge;
+    tooltip.style.left = Math.max(12, Math.min(Math.max(12, chartWidth - 12), cssX)) + "px";
+  }
+
+  function _brandMediaClearClickChartHover(chart) {
+    if (!chart) return;
+    var tooltip = chart.querySelector ? chart.querySelector(".brand-media-hover-tooltip") : null;
+    if (tooltip) tooltip.hidden = true;
+  }
+
+  function _brandMediaBindClickChartInteractions() {
+    var chart = els.brandMediaClickChart;
+    if (!chart || chart._brandMediaClickInteractionsBound) return;
+    chart._brandMediaClickInteractionsBound = true;
+    chart.addEventListener("pointermove", function (event) {
+      var target = event.target && event.target.closest
+        ? event.target.closest("[data-brand-media-click-date]")
+        : null;
+      var model = chart._brandMediaClickChartModel;
+      if (!target || !model) {
+        _brandMediaClearClickChartHover(chart);
+        return;
+      }
+      _brandMediaUpdateClickChartHover(chart, model, target);
+    });
+    chart.addEventListener("pointerleave", function () {
+      _brandMediaClearClickChartHover(chart);
+    });
+  }
+
+  function _brandMediaRenderClicksChart(payload) {
+    var panel = els.brandMediaClicksPanel;
+    var chart = els.brandMediaClickChart;
+    var lockedKeys = _brandMediaLockedPublisherSet();
+    if (!panel || !chart || !payload || !lockedKeys.size) {
+      if (panel) panel.classList.add("hidden");
+      if (chart) {
+        chart._brandMediaClickChartModel = null;
+        chart.innerHTML = "";
+      }
+      if (els.brandMediaClickChartCount) els.brandMediaClickChartCount.textContent = "";
+      return;
+    }
+
+    panel.classList.remove("hidden");
+    var publishers = _brandMediaVisiblePublishers(payload);
+    var model = _brandMediaBuildClicksChartModel(payload, publishers);
+    chart._brandMediaClickChartModel = model;
+    if (!model || !model.hasData) {
+      chart.innerHTML = '<div class="brand-media-empty-chart">' +
+        escapeHtml(t("brandMedia.clicksEmpty", "The locked media have no click records in the selected range.")) +
+        '</div>';
+      chart.setAttribute("aria-label", t("brandMedia.clicksEmpty", "No click records for the locked media."));
+      if (els.brandMediaClickChartCount) els.brandMediaClickChartCount.textContent = "";
+      return;
+    }
+    chart.innerHTML = model.svg + '<div class="brand-media-hover-tooltip" hidden aria-live="polite"></div>';
+    chart.setAttribute("aria-label",
+      _brandMediaDisplayDate(model.startDate) + " to " + _brandMediaDisplayDate(model.endDate) + ", " +
+      _brandMediaCount(model.publishers.length) + " locked media " +
+      (model.isCumulative ? "cumulative" : "bar") + " clicks chart");
+    if (els.brandMediaClickChartCount) {
+      els.brandMediaClickChartCount.textContent = _brandMediaCount(model.publishers.length) + " " +
+        t("brandMedia.clicksCount", "click bars");
+    }
+    _brandMediaBindClickChartInteractions();
   }
 
   function _brandMediaChartPayload(payload) {
@@ -18467,13 +18867,15 @@ var _NUMERIC_COL_PATTERNS = [
     var focusPoint = focusPoints
       ? focusPoints[dateKey]
       : null;
-    var fallbackValue = 0;
+    var fallbackValue = model.showAllOrderLine
+      ? Number(model.allDailyOrderTotals[dateKey] || 0)
+      : 0;
     if (focusPoint) {
-      fallbackValue = Number(focusPoint.revenue || 0);
-    } else {
+      fallbackValue = Number(focusPoint.orders || 0);
+    } else if (!model.showAllOrderLine) {
       model.publisherPoints.forEach(function (points) {
         var point = points[dateKey];
-        if (point) fallbackValue = Math.max(fallbackValue, Number(point.revenue || 0));
+        if (point) fallbackValue = Math.max(fallbackValue, Number(point.orders || 0));
       });
     }
     var y = model.yFor(fallbackValue);
@@ -18490,25 +18892,34 @@ var _NUMERIC_COL_PATTERNS = [
 
     var tooltip = chart.querySelector(".brand-media-hover-tooltip");
     if (!tooltip) return;
-    var total = Number(model.dailyTotals[dateKey] || 0);
+    var totalOrders = Number((model.dailyOrderTotals || model.dailyTotals)[dateKey] || 0);
+    var totalRevenue = Number((model.dailyRevenueTotals || {})[dateKey] || 0);
     var totalLabel = _brandMediaLockedPublisherSet().size
       ? t("brandMedia.lockedMedia", "Locked media")
       : t("brandMedia.allMedia", "All media");
     var tooltipHtml = '<div class="brand-media-hover-date"><span>' +
       escapeHtml(_brandMediaDisplayDate(dateKey)) + '</span><strong>' +
-      escapeHtml(t("brandMedia.totalForDate", "Total revenue")) + '</strong></div>' +
+      escapeHtml(t("brandMedia.totalOrdersForDate", "Total orders")) + '</strong></div>' +
       '<div class="brand-media-hover-row"><span>' +
       escapeHtml(totalLabel) + '</span><strong>' +
-      escapeHtml(_brandMediaMoney(total)) + '</strong></div>';
+      escapeHtml(_brandMediaCount(totalOrders)) + '</strong></div>' +
+      '<div class="brand-media-hover-row brand-media-hover-secondary"><span>' +
+      escapeHtml(t("brandMedia.totalRevenueForDate", "Total revenue")) + '</span><strong>' +
+      escapeHtml(_brandMediaMoney(totalRevenue)) + '</strong></div>';
     if (focusedIndex != null && model.publisherByIndex && model.publisherByIndex[focusedIndex]) {
       var publisher = model.publisherByIndex[focusedIndex];
-      var pointText = focusPoint
-        ? _brandMediaMoney(focusPoint.revenue)
+      var orderText = focusPoint
+        ? _brandMediaCount(focusPoint.orders)
         : t("brandMedia.noRecord", "No source record");
       tooltipHtml += '<div class="brand-media-hover-row brand-media-hover-media"><span><i style="--brand-media-line:' +
         brandMediaColor(focusedIndex) + '"></i>' +
         escapeHtml(String(publisher.userName || publisher.userId)) + '</span><strong>' +
-        escapeHtml(pointText) + '</strong></div>';
+        escapeHtml(orderText) + '</strong></div>';
+      if (focusPoint) {
+        tooltipHtml += '<div class="brand-media-hover-row brand-media-hover-secondary"><span>' +
+          escapeHtml(t("brandMedia.mediaRevenueForDate", "Media revenue")) + '</span><strong>' +
+          escapeHtml(_brandMediaMoney(focusPoint.revenue)) + '</strong></div>';
+      }
     }
     tooltip.innerHTML = tooltipHtml;
     tooltip.hidden = false;
@@ -18598,11 +19009,15 @@ var _NUMERIC_COL_PATTERNS = [
     var publishers = _brandMediaVisiblePublishers(payload);
     var lockedKeys = _brandMediaLockedPublisherSet();
     if (!allPublishers.length) {
+      if (els.brandMediaTotalKey) els.brandMediaTotalKey.classList.add("hidden");
       _brandMediaEmptyChart(t("brandMedia.noData", "No media order records in this range."));
       return;
     }
     var model = publishers.length ? _brandMediaBuildChartModel(payload, publishers) : null;
     var range = payload.dateRange || {};
+    if (els.brandMediaTotalKey) {
+      els.brandMediaTotalKey.classList.toggle("hidden", Boolean(lockedKeys.size));
+    }
     if (els.brandMediaChart) {
       if (!model) {
         els.brandMediaChart._brandMediaChartModel = null;
@@ -18612,7 +19027,7 @@ var _NUMERIC_COL_PATTERNS = [
         els.brandMediaChart.setAttribute("aria-label",
           String(payload.merchant && payload.merchant.merchantName || "") + ", " +
           _brandMediaDisplayDate(range.startDate) + " to " + _brandMediaDisplayDate(range.endDate) +
-          ", 0 publisher revenue lines");
+          ", 0 publisher order lines");
       } else {
         els.brandMediaChart._brandMediaChartModel = model;
         els.brandMediaChart.innerHTML = model.svg +
@@ -18620,7 +19035,7 @@ var _NUMERIC_COL_PATTERNS = [
         els.brandMediaChart.setAttribute("aria-label",
           String(payload.merchant && payload.merchant.merchantName || "") + ", " +
           _brandMediaDisplayDate(range.startDate) + " to " + _brandMediaDisplayDate(range.endDate) +
-          ", " + _brandMediaCount(publishers.length) + " publisher revenue lines");
+          ", " + _brandMediaCount(publishers.length) + " publisher order lines");
       }
     }
     if (els.brandMediaLineCount) els.brandMediaLineCount.textContent = _brandMediaLineCountText(publishers.length);
@@ -18659,7 +19074,7 @@ var _NUMERIC_COL_PATTERNS = [
       els.brandMediaTableRows.innerHTML = '<tr><td colspan="7" class="brand-media-empty-cell">' +
         escapeHtml(_brandMediaLockedPublisherSet().size
           ? t("brandMedia.noLockedData", "No locked media records in the selected range. Click a media in the right panel to unlock it.")
-          : t("brandMedia.selectBrand", "Select a brand to load its daily media revenue.")) +
+          : t("brandMedia.selectBrand", "Select a brand to load its daily media orders.")) +
         '</td></tr>';
       return;
     }
@@ -18710,8 +19125,10 @@ var _NUMERIC_COL_PATTERNS = [
       _brandMediaRenderManagerFilter(null);
       _brandMediaRenderKpis(null);
       _brandMediaRenderTable(null);
-      _brandMediaEmptyChart(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue."));
-      _brandMediaStatus(t("brandMedia.selectBrand", "Select a brand to load its daily media revenue."), "info");
+      _brandMediaRenderClicksChart(null);
+      if (els.brandMediaTotalKey) els.brandMediaTotalKey.classList.add("hidden");
+      _brandMediaEmptyChart(t("brandMedia.selectBrand", "Select a brand to load its daily media orders."));
+      _brandMediaStatus(t("brandMedia.selectBrand", "Select a brand to load its daily media orders."), "info");
       return;
     }
     if (!current.startDate || !current.endDate || current.startDate > current.endDate) {
@@ -18725,8 +19142,9 @@ var _NUMERIC_COL_PATTERNS = [
     current.loading = true;
     current.error = "";
     var sequence = ++current.requestSequence;
-    _brandMediaStatus(t("brandMedia.loading", "Loading brand media revenue trend..."), "loading");
-    _brandMediaEmptyChart(t("brandMedia.loading", "Loading brand media revenue trend..."));
+    _brandMediaStatus(t("brandMedia.loading", "Loading brand media order trend..."), "loading");
+    _brandMediaRenderClicksChart(null);
+    _brandMediaEmptyChart(t("brandMedia.loading", "Loading brand media order trend..."));
     var params = new URLSearchParams({
       merchantId: merchantId,
       startDate: current.startDate,
@@ -18759,6 +19177,8 @@ var _NUMERIC_COL_PATTERNS = [
         _brandMediaRenderManagerFilter(null);
         _brandMediaRenderKpis(null);
         _brandMediaRenderTable(null);
+        _brandMediaRenderClicksChart(null);
+        if (els.brandMediaTotalKey) els.brandMediaTotalKey.classList.add("hidden");
         _brandMediaEmptyChart(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."));
         _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
       });
@@ -25799,14 +26219,22 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function normalizeOfferTrackerFilters(filters = {}) {
+    const defaultRange = state.offerListTracker && state.offerListTracker.defaultDateRange
+      ? state.offerListTracker.defaultDateRange
+      : OFFER_TRACKER_DEFAULT_DATE_RANGE;
+    const requestedRange = offerTrackerDateRange(filters.startDate, filters.endDate);
+    const bbPolicy = String(filters.bbPolicy || "all").trim().toLowerCase();
     return {
       tiers: offerTrackerSelectedTiers(filters),
       categories: offerTrackerSelectedCategories(filters),
+      startDate: requestedRange.ok ? requestedRange.startDate : defaultRange.startDate,
+      endDate: requestedRange.ok ? requestedRange.endDate : defaultRange.endDate,
       minAov: filters.minAov == null ? "" : String(filters.minAov),
       maxAov: filters.maxAov == null ? "" : String(filters.maxAov),
       minCommission: filters.minCommission == null ? "" : String(filters.minCommission),
       maxCommission: filters.maxCommission == null ? "" : String(filters.maxCommission),
       networks: offerTrackerSelectedNetworks(filters),
+      bbPolicy: ["mind", "open", "unknown"].includes(bbPolicy) ? bbPolicy : "all",
       revenueStatus: filters.revenueStatus || "all",
       revenueSort: filters.revenueSort || "priority"
     };
@@ -25940,6 +26368,8 @@ var _NUMERIC_COL_PATTERNS = [
     const selectedTiers = offerTrackerSelectedTiers(filters);
     const selectedCategories = offerTrackerSelectedCategories(filters);
     const selectedNetworks = offerTrackerSelectedNetworks(filters);
+    const requestedBbPolicy = String(filters.bbPolicy || "all").trim().toLowerCase();
+    const selectedBbPolicy = ["mind", "open", "unknown"].includes(requestedBbPolicy) ? requestedBbPolicy : "all";
     const query = String(search || "").trim().toLowerCase();
     return (sourceRows || []).filter((offer) => {
       const tier = canonicalTierName(offer.tier);
@@ -25950,6 +26380,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (selectedTiers.length && !selectedTiers.includes(tier)) return false;
       if (selectedCategories.length && !selectedCategories.includes(category)) return false;
       if (selectedNetworks.length && !selectedNetworks.includes(String(offer.network || ""))) return false;
+      if (selectedBbPolicy !== "all" && offerTrackerBbPolicyKey(offer) !== selectedBbPolicy) return false;
       if (minAov !== null && aov < minAov) return false;
       if (maxAov !== null && aov > maxAov) return false;
       if (minCommission !== null && commission < minCommission) return false;
@@ -25980,7 +26411,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function offerTrackerFilteredRows() {
     return filterOfferTrackerRows(
-      offers,
+      state.offerListTracker.sourceRows || offers,
       state.offerListTracker.filters,
       state.offerListTracker.search,
       state.offerListTracker.rules
@@ -26376,6 +26807,71 @@ var _NUMERIC_COL_PATTERNS = [
     els.offerTrackerNotice.classList.toggle("hidden", !message);
   }
 
+  function normalizeOfferTrackerSourceRows(rows) {
+    const normalized = Array.isArray(rows) ? rows.map((offer) => ({ ...(offer || {}) })) : [];
+    const merged = mergeProductKeywordsIntoOffers(normalized, productKeywordData);
+    merged.forEach((offer) => {
+      offer.originalTier = offer.originalTier || offer.tier || "Unknown";
+      applyTierOverrideToOffer(offer);
+      if (offer.affCommission === undefined && offer.affiliatePayout !== undefined) {
+        offer.affCommission = offer.affiliatePayout;
+      }
+      offer.paymentCycle = resolveOfferPaymentCycle(offer);
+      offer.region = normalizeRegion(offer.region || offer.country || inferRegionFromText(offer.brand));
+    });
+    return merged;
+  }
+
+  async function loadOfferTrackerRange(range) {
+    const tracker = state.offerListTracker;
+    const normalizedRange = offerTrackerDateRange(range && range.startDate, range && range.endDate);
+    if (!normalizedRange.ok) return false;
+    const key = offerTrackerRangeKey(normalizedRange.startDate, normalizedRange.endDate);
+    if (tracker.sourceRowsByRange.has(key)) {
+      tracker.requestSequence += 1;
+      tracker.loading = false;
+      tracker.sourceRows = tracker.sourceRowsByRange.get(key) || [];
+      tracker.sourceRangeKey = key;
+      syncOfferTrackerControls();
+      return true;
+    }
+
+    const sequence = ++tracker.requestSequence;
+    tracker.loading = true;
+    setOfferTrackerNotice(offerTrackerText("Loading selected date range…", "正在读取所选时间范围…"));
+    syncOfferTrackerControls();
+    try {
+      const params = new URLSearchParams({
+        start_date: normalizedRange.startDate,
+        end_date: normalizedRange.endDate
+      });
+      const response = await fetch(`${DB_OFFERS_UI_API}?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false || !Array.isArray(payload.offers)) {
+        throw new Error("offer range request failed");
+      }
+      if (sequence !== tracker.requestSequence) return false;
+      const rows = normalizeOfferTrackerSourceRows(payload.offers);
+      tracker.sourceRowsByRange.set(key, rows);
+      tracker.sourceRows = rows;
+      tracker.sourceRangeKey = key;
+      return true;
+    } catch (error) {
+      if (sequence === tracker.requestSequence) {
+        setOfferTrackerNotice(offerTrackerText("Could not load the selected date range. Try again later.", "无法读取所选时间范围，请稍后重试。"));
+      }
+      return false;
+    } finally {
+      if (sequence === tracker.requestSequence) {
+        tracker.loading = false;
+        syncOfferTrackerControls();
+      }
+    }
+  }
+
   function downloadOfferTrackerWorkbook(selectedOnly = false) {
     openOfferTrackerExportDialog(
       selectedOnly,
@@ -26498,14 +26994,30 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function syncOfferTrackerControls() {
+    const tracker = state.offerListTracker;
     const draft = state.offerListTracker.draftFilters;
     offerTrackerMultiSelectConfigs().forEach(syncOfferTrackerMultiSelectControl);
+    if (els.offerTrackerStartDate) els.offerTrackerStartDate.value = draft.startDate || "";
+    if (els.offerTrackerEndDate) els.offerTrackerEndDate.value = draft.endDate || "";
+    if (els.offerTrackerBbPolicy) els.offerTrackerBbPolicy.value = draft.bbPolicy || "all";
     if (els.offerTrackerRevenueStatus) els.offerTrackerRevenueStatus.value = draft.revenueStatus || "all";
     if (els.offerTrackerRevenueSort) els.offerTrackerRevenueSort.value = draft.revenueSort || "priority";
     if (els.offerTrackerMinAov) els.offerTrackerMinAov.value = draft.minAov;
     if (els.offerTrackerMaxAov) els.offerTrackerMaxAov.value = draft.maxAov;
     if (els.offerTrackerMinCommission) els.offerTrackerMinCommission.value = draft.minCommission;
     if (els.offerTrackerMaxCommission) els.offerTrackerMaxCommission.value = draft.maxCommission;
+    if (els.offerTrackerDateStatus) {
+      const range = offerTrackerDateRange(draft.startDate, draft.endDate);
+      els.offerTrackerDateStatus.textContent = tracker.loading
+        ? offerTrackerText("Loading selected date range…", "正在读取所选时间范围…")
+        : range.ok
+          ? offerTrackerText(
+            `Data range: ${offerTrackerRangeLabel(range.startDate, range.endDate)}`,
+            `数据范围：${offerTrackerRangeLabel(range.startDate, range.endDate)}`
+          )
+          : offerTrackerText("Select a valid date range", "请选择有效的日期范围");
+    }
+    if (els.offerTrackerApplyFilters) els.offerTrackerApplyFilters.disabled = tracker.loading;
     if (els.offerTrackerSearch && els.offerTrackerSearch.value !== state.offerListTracker.search) {
       els.offerTrackerSearch.value = state.offerListTracker.search;
     }
@@ -26515,11 +27027,14 @@ var _NUMERIC_COL_PATTERNS = [
     return {
       tiers: offerTrackerMultiSelectSelectionFromControl(offerTrackerMultiSelectConfig("tiers")),
       categories: offerTrackerMultiSelectSelectionFromControl(offerTrackerMultiSelectConfig("categories")),
+      startDate: String((els.offerTrackerStartDate && els.offerTrackerStartDate.value) || "").trim(),
+      endDate: String((els.offerTrackerEndDate && els.offerTrackerEndDate.value) || "").trim(),
       minAov: els.offerTrackerMinAov.value.trim(),
       maxAov: els.offerTrackerMaxAov.value.trim(),
       minCommission: els.offerTrackerMinCommission.value.trim(),
       maxCommission: els.offerTrackerMaxCommission.value.trim(),
       networks: offerTrackerMultiSelectSelectionFromControl(offerTrackerMultiSelectConfig("networks")),
+      bbPolicy: (els.offerTrackerBbPolicy && els.offerTrackerBbPolicy.value) || "all",
       revenueStatus: els.offerTrackerRevenueStatus.value || "all",
       revenueSort: els.offerTrackerRevenueSort.value || "priority"
     };
@@ -26530,6 +27045,11 @@ var _NUMERIC_COL_PATTERNS = [
     offerTrackerSelectedTiers(filters).forEach((tier) => chips.push(tier));
     offerTrackerSelectedCategories(filters).forEach((category) => chips.push(category));
     offerTrackerSelectedNetworks(filters).forEach((network) => chips.push(network));
+    const dateRange = offerTrackerDateRange(filters.startDate, filters.endDate);
+    if (dateRange.ok) chips.push(`${offerTrackerText("Date", "日期")} ${offerTrackerRangeLabel(dateRange.startDate, dateRange.endDate)}`);
+    if (filters.bbPolicy === "mind") chips.push(offerTrackerText("Mind BB", "介意 BB"));
+    if (filters.bbPolicy === "open") chips.push(offerTrackerText("Doesn't mind BB", "不介意 BB"));
+    if (filters.bbPolicy === "unknown") chips.push(offerTrackerText("Unknown BB preference", "未知 BB 偏好"));
     if (filters.revenueStatus === "positive") chips.push(offerTrackerText("Revenue > $0", "已产生 Revenue"));
     if (filters.revenueStatus === "none") chips.push(offerTrackerText("Revenue = $0", "未产生 Revenue"));
     if (filters.revenueSort === "revenue-desc") chips.push(offerTrackerText("Revenue high to low", "Revenue 从高到低"));
@@ -26656,7 +27176,7 @@ var _NUMERIC_COL_PATTERNS = [
     }
   }
 
-  function applyOfferTrackerFilters() {
+  async function applyOfferTrackerFilters() {
     const filters = readOfferTrackerDraftFilters();
     const minAov = offerTrackerOptionalNumber(filters.minAov);
     const maxAov = offerTrackerOptionalNumber(filters.maxAov);
@@ -26666,17 +27186,46 @@ var _NUMERIC_COL_PATTERNS = [
       setOfferTrackerNotice(offerTrackerText("A minimum value cannot be greater than its maximum.", "最小值不能大于最大值。"));
       return;
     }
-    state.offerListTracker.draftFilters = { ...filters };
-    state.offerListTracker.filters = { ...filters };
+    const dateRange = offerTrackerDateRange(filters.startDate, filters.endDate);
+    if (!dateRange.ok) {
+      const message = dateRange.reason === "order"
+        ? offerTrackerText("The start date cannot be after the end date.", "开始日期不能晚于结束日期。")
+        : dateRange.reason === "length"
+          ? offerTrackerText("The date range cannot exceed 366 days.", "日期范围不能超过 366 天。")
+          : offerTrackerText("Select a valid date range.", "请选择有效的日期范围。" );
+      setOfferTrackerNotice(message);
+      return;
+    }
+    const normalizedFilters = normalizeOfferTrackerFilters(filters);
+    state.offerListTracker.draftFilters = { ...normalizedFilters };
+    if (!await loadOfferTrackerRange(dateRange)) return;
+    state.offerListTracker.filters = { ...normalizedFilters };
     state.offerListTracker.page = 1;
     closeOfferTrackerMultiSelectMenus();
     setOfferTrackerNotice("");
     renderOfferListTrackerPage();
   }
 
-  function resetOfferTrackerFilters() {
-    const filters = { tiers: [], categories: [], minAov: "", maxAov: "", minCommission: "", maxCommission: "", networks: [], revenueStatus: "all", revenueSort: "priority" };
+  async function resetOfferTrackerFilters() {
+    const tracker = state.offerListTracker;
+    tracker.requestSequence += 1;
+    tracker.loading = false;
+    const filters = {
+      tiers: [],
+      categories: [],
+      startDate: tracker.defaultDateRange.startDate,
+      endDate: tracker.defaultDateRange.endDate,
+      minAov: "",
+      maxAov: "",
+      minCommission: "",
+      maxCommission: "",
+      networks: [],
+      bbPolicy: "all",
+      revenueStatus: "all",
+      revenueSort: "priority"
+    };
     state.offerListTracker.draftFilters = { ...filters };
+    if (!await loadOfferTrackerRange(filters)) return;
     state.offerListTracker.filters = { ...filters };
     state.offerListTracker.search = "";
     state.offerListTracker.page = 1;
@@ -26740,14 +27289,16 @@ var _NUMERIC_COL_PATTERNS = [
     setOfferTrackerNotice(offerTrackerText(`Saved view “${name}”.`, `已保存视图“${name}”。`));
   }
 
-  function handleOfferTrackerSavedViewsClick(event) {
+  async function handleOfferTrackerSavedViewsClick(event) {
     const loadButton = event.target.closest("[data-offer-tracker-load-view]");
     const deleteButton = event.target.closest("[data-offer-tracker-delete-view]");
     if (loadButton) {
       const saved = state.offerListTracker.savedViews.find((view) => view.id === loadButton.dataset.offerTrackerLoadView);
       if (!saved) return;
-      state.offerListTracker.filters = normalizeOfferTrackerFilters(saved.filters || {});
-      state.offerListTracker.draftFilters = normalizeOfferTrackerFilters(state.offerListTracker.filters);
+      const filters = normalizeOfferTrackerFilters(saved.filters || {});
+      if (!await loadOfferTrackerRange(filters)) return;
+      state.offerListTracker.filters = filters;
+      state.offerListTracker.draftFilters = { ...filters };
       state.offerListTracker.search = saved.search || "";
       state.offerListTracker.view = saved.view === "products" ? "products" : "offers";
       state.offerListTracker.page = 1;
@@ -27213,6 +27764,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.offerTrackerApplyFilters) els.offerTrackerApplyFilters.addEventListener("click", applyOfferTrackerFilters);
     if (els.offerTrackerResetFilters) els.offerTrackerResetFilters.addEventListener("click", resetOfferTrackerFilters);
     [
+      els.offerTrackerBbPolicy,
       els.offerTrackerRevenueStatus,
       els.offerTrackerRevenueSort
     ].filter(Boolean).forEach((select) => {
@@ -27246,12 +27798,17 @@ var _NUMERIC_COL_PATTERNS = [
         }
       });
     });
-    [els.offerTrackerMinAov, els.offerTrackerMaxAov, els.offerTrackerMinCommission, els.offerTrackerMaxCommission].filter(Boolean).forEach((input) => {
+    [els.offerTrackerStartDate, els.offerTrackerEndDate, els.offerTrackerMinAov, els.offerTrackerMaxAov, els.offerTrackerMinCommission, els.offerTrackerMaxCommission].filter(Boolean).forEach((input) => {
       input.addEventListener("input", () => {
         state.offerListTracker.draftFilters = readOfferTrackerDraftFilters();
       });
+      if (input.type === "date") {
+        input.addEventListener("change", () => {
+          state.offerListTracker.draftFilters = readOfferTrackerDraftFilters();
+        });
+      }
     });
-    [els.offerTrackerMinAov, els.offerTrackerMaxAov, els.offerTrackerMinCommission, els.offerTrackerMaxCommission].filter(Boolean).forEach((input) => {
+    [els.offerTrackerStartDate, els.offerTrackerEndDate, els.offerTrackerMinAov, els.offerTrackerMaxAov, els.offerTrackerMinCommission, els.offerTrackerMaxCommission].filter(Boolean).forEach((input) => {
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") applyOfferTrackerFilters();
       });
@@ -28375,6 +28932,11 @@ var _NUMERIC_COL_PATTERNS = [
       brandMediaCatalogOptions: _brandMediaCatalogOptions,
       brandMediaChartModel: _brandMediaBuildChartModel,
       brandMediaChartPayload: _brandMediaChartPayload,
+      brandMediaClickChartModel: _brandMediaBuildClicksChartModel,
+      brandMediaClickChartPayload: function (payload, publishers) {
+        var model = _brandMediaBuildClicksChartModel(payload, publishers);
+        return model ? model.svg : "";
+      },
       parsePublisherFilters,
       renderPublisherRecordsHtml,
       publisherRecordsAnswer,
@@ -28513,6 +29075,8 @@ var _NUMERIC_COL_PATTERNS = [
       offerTrackerAovType,
       offerTrackerAovTypeLabel,
       offerTrackerAovCellHtml,
+      offerTrackerDateRange,
+      offerTrackerRangeLabel,
       offerTrackerBbPolicyKey,
       offerTrackerBbPolicyLabel,
       offerTrackerBbPolicyCellHtml,

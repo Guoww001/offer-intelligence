@@ -115,10 +115,15 @@ const chartPayload = {
     userName: "Media Nine",
     adminName: "timmy",
     totalRevenue: 41,
+    totalOrders: 5,
     points: [
-      { date: "2026-05-01", revenue: 19 },
-      { date: "2026-05-02", revenue: 0 },
-      { date: "2026-05-05", revenue: 22 }
+      { date: "2026-05-01", revenue: 19, orders: 2 },
+      { date: "2026-05-02", revenue: 0, orders: 0 },
+      { date: "2026-05-05", revenue: 22, orders: 3 }
+    ],
+    clickPoints: [
+      { date: "2026-05-01", clicks: 120 },
+      { date: "2026-05-02", clicks: 80 }
     ]
   }]
 };
@@ -134,10 +139,20 @@ if (!chart.includes('class="brand-media-crosshair brand-media-crosshair-date"') 
     !chart.includes('data-brand-media-publisher-index="0"')) {
   throw new Error("the chart should include crosshair and publisher interaction targets");
 }
+if (!chart.includes('class="brand-media-total-series"') ||
+    !chart.includes('data-brand-media-total="true"') ||
+    !chart.includes('data-brand-media-total-metric="orders"')) {
+  throw new Error("the unlocked order chart should include the black all-media order line");
+}
 const chartModel = hooks.brandMediaChartModel(chartPayload);
 if (Math.round(chartModel.xFor("2026-05-01")) !== 82 ||
     Math.round(chartModel.xFor("2026-05-05")) !== 1152) {
   throw new Error("series points should share the same date-to-x coordinate as the axis");
+}
+if (chartModel.primaryMetric !== "orders" ||
+    chartModel.dailyOrderTotals["2026-05-01"] !== 2 ||
+    chartModel.dailyRevenueTotals["2026-05-01"] !== 19) {
+  throw new Error("the line model should plot orders while retaining daily revenue values");
 }
 
 const lockPayload = {
@@ -150,7 +165,8 @@ const lockPayload = {
       adminName: "stella",
       totalRevenue: 8,
       totalOrders: 2,
-      points: [{ date: "2026-05-03", revenue: 8 }]
+      points: [{ date: "2026-05-03", revenue: 8, orders: 1 }],
+      clickPoints: [{ date: "2026-05-03", clicks: 40 }]
     }
   ]
 };
@@ -168,6 +184,23 @@ if (!lockedChart || !lockedChart.publisherByIndex[0] || lockedChart.publisherByI
 if (!lockedChart.svg.includes('data-brand-media-publisher-index="0"') ||
     lockedChart.svg.includes('data-brand-media-publisher-index="1"')) {
   throw new Error("locked chart should render only the selected media line");
+}
+
+const singleClickChart = hooks.brandMediaClickChartModel(lockPayload, [lockedPublishers[0]]);
+if (!singleClickChart || singleClickChart.isCumulative || !singleClickChart.hasData) {
+  throw new Error("one locked media should render a regular click bar chart");
+}
+if ((singleClickChart.svg.match(/class="brand-media-click-bar/g) || []).length !== 2) {
+  throw new Error("the single-media click chart should render one bar per observed date");
+}
+
+const cumulativeClickChart = hooks.brandMediaClickChartModel(lockPayload, lockPayload.publishers);
+if (!cumulativeClickChart || !cumulativeClickChart.isCumulative || !cumulativeClickChart.hasData) {
+  throw new Error("multiple locked media should render a cumulative click bar chart");
+}
+if (!cumulativeClickChart.svg.includes("brand-media-click-svg is-cumulative") ||
+    !cumulativeClickChart.svg.includes("brand-media-click-bar is-cumulative")) {
+  throw new Error("the multi-media click chart should use cumulative stacked bars");
 }
 
 assertEqual(
@@ -191,6 +224,9 @@ const indexHtml = fs.readFileSync("public/index.html", "utf8");
   'id="brandMediaStartDate"',
   'id="brandMediaEndDate"',
   'id="brandMediaChart"',
+  'id="brandMediaTotalKey"',
+  'id="brandMediaClicksPanel"',
+  'id="brandMediaClickChart"',
   'id="brandMediaTableRows"'
 ].forEach(function (required) {
   if (!indexHtml.includes(required)) throw new Error("brand media page is missing " + required);
