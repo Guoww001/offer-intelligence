@@ -266,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"ok": False, "error": "Request body is too large"})
             return
         try:
-            body = _read_json_body(self)
+            body = _read_json_body(self, max_size=AGENT_SYNTHESIS_MAX_REQUEST_BYTES)
         except (ValueError, Exception):
             self.send_json(400, {"ok": False, "error": "Invalid JSON body"})
             return

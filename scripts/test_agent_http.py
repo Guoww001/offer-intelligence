@@ -139,6 +139,14 @@ def test_planning_prompt_distinguishes_lookup_from_comparison():
     assert "explicitly asks" in en.lower() and "one merchant_analysis" in en.lower()
 
 
+def test_planning_prompt_routes_explicit_trends_to_trend_tool():
+    zh = chat_agent_http.agent_planning_system_prompt("zh")
+    en = chat_agent_http.agent_planning_system_prompt("en")
+    assert "明确要求趋势" in zh and "trend" in zh
+    assert "must call trend" in en.lower()
+    assert "merchant_analysis" in en and "monthly" in en.lower()
+
+
 def test_synthesis_prompt_language():
     zh = chat_agent_http.agent_synthesis_system_prompt("zh")
     en = chat_agent_http.agent_synthesis_system_prompt("en")

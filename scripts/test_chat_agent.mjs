@@ -102,6 +102,14 @@ assertTruthy(hooks.createAgentExecutionTimeline, "createAgentExecutionTimeline h
 
 const firstOffer = hooks.firstOfferName();
 assertTruthy(firstOffer, "fixture offers must not be empty");
+const merchantTargets = Array.from(new Map(
+  sandbox.window.CHATBOT_DATA.offers
+    .filter((offer) => offer && offer.merchantId)
+    .map((offer) => [String(offer.merchantId), offer])
+)).slice(0, 7).map(([merchantId, offer]) =>
+  merchantId + " " + (offer.brand || offer.merchantName || merchantId)
+);
+assertTruthy(merchantTargets.length >= 7, "fixture offers must contain seven unique merchants");
 
 function sseResponse(bodyText) {
   const encoder = new TextEncoder();
@@ -201,6 +209,90 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertIncludes(directTimeline.className, "agent-run-timeline-done", "direct-answer timeline should complete without planning");
 }
 
+// ── Test 0b: 具体数据问题没有可验证来源时不得采用规划模型直答 ──
+{
+  const prompt = "Shokz（商户 ID 123）当前 EPC 是多少？";
+  assertEqual(hooks.agentPromptRequiresVerifiableData(prompt), true,
+    "concrete EPC lookup should require a verifiable data source");
+  assertEqual(hooks.agentPromptRequiresVerifiableData("什么是 EPC？"), false,
+    "metric definition should remain a methodology question");
+  fetchCalls = [];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      return { ok: true, json: async function () {
+        return { ok: true, content: "模型猜测 EPC 为 9.99", toolCalls: [], finishReason: "stop" };
+      } };
+    }
+    throw new Error("missing-data guard must not fall back to the normal stream");
+  };
+  const outcome = await hooks.runChatAgent(prompt, {
+    language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null
+  });
+  assertEqual(outcome.handled, true, "missing-data guard should handle the request");
+  assertEqual(outcome.ok, true, "missing-data guard should return a safe answer");
+  assertEqual(outcome.dataUnavailable, true, "missing-data guard should mark data as unavailable");
+  assertIncludes(outcome.directContent, "可验证", "safe answer should explain the missing verifiable source");
+  assertEqual(fetchCalls.length, 1, "missing-data guard should only need the planning response");
+}
+
+// ── Test 0c: 已有数据上下文或用户提供数值时允许继续回答 ──
+{
+  const prompt = "Shokz 当前 EPC 是多少？";
+  const planContent = "根据已加载的报告上下文，Shokz 的 EPC 为 1.23。";
+  fetchCalls = [];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      return { ok: true, json: async function () {
+        return { ok: true, content: planContent, toolCalls: [], finishReason: "stop" };
+      } };
+    }
+    throw new Error("existing data context should not call the normal stream");
+  };
+  const contextualOutcome = await hooks.runChatAgent(prompt, {
+    language: "zh", chatLogEl: chatLogStub,
+    memoryText: "报告快照：Shokz EPC 为 1.23，数据月份为 2026-08。",
+    history: [], viewContext: null
+  });
+  assertEqual(contextualOutcome.directContent, planContent,
+    "structured data context should allow the planner content");
+  assertEqual(contextualOutcome.dataUnavailable || false, false,
+    "structured data context should not be marked unavailable");
+
+  assertEqual(hooks.agentPromptRequiresVerifiableData("EPC 1.23 是否值得继续？"), true,
+    "metric interpretation should still be recognized as a data question");
+  fetchCalls = [];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      return { ok: true, json: async function () {
+        return { ok: true, content: "EPC 1.23 可以作为当前输入值进行解释。", toolCalls: [], finishReason: "stop" };
+      } };
+    }
+    throw new Error("user-provided metric should not call the normal stream");
+  };
+  const userDataOutcome = await hooks.runChatAgent("EPC 1.23 是否值得继续？", {
+    language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null
+  });
+  assertIncludes(userDataOutcome.directContent, "1.23", "user-provided metric should remain answerable");
+  assertEqual(userDataOutcome.dataUnavailable || false, false,
+    "user-provided metric should not be marked unavailable");
+}
+
+// ── Test 0d: 具体数据问题规划失败时也不得回退为无来源直答 ──
+{
+  fetchCalls = [];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) throw new Error("planner unavailable");
+    throw new Error("planner failure must not fall back to the normal stream");
+  };
+  const outcome = await hooks.runChatAgent("Shokz 当前 EPC 是多少？", {
+    language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null
+  });
+  assertEqual(outcome.handled, true, "planner failure should still be safely handled for data questions");
+  assertEqual(outcome.dataUnavailable, true, "planner failure should mark data as unavailable");
+  assertIncludes(outcome.directContent, "重试", "planner failure should ask the user to retry or provide data");
+  assertEqual(fetchCalls.length, 1, "planner failure should not call the normal stream");
+}
+
 // ── Test 1: merchant_analysis 工具直接执行 ──
 {
   mockFetchImpl = function (url) {
@@ -258,7 +350,76 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertIncludes(JSON.stringify(fetchCalls[2].body), "merchant_analysis", "synthesis body should carry tool result");
 }
 
-// ── Test 2b: 多商户字段查询不能误用 merchant_comparison ──
+// ── Test 2a: 超过 4 个工具调用应拆批执行而不是静默截断 ──
+{
+  hooks.resetAgentTrendCache();
+  fetchCalls = [];
+  const sixCalls = Array.from({ length: 6 }, (_, index) => ({
+    id: `merchant-${index + 1}`,
+    name: "merchant_analysis",
+    arguments: { merchant: merchantTargets[index] }
+  }));
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      return { ok: true, json: async function () {
+        return { ok: true, content: null, finishReason: "tool_calls", toolCalls: sixCalls };
+      } };
+    }
+    if (url.indexOf("/api/ui/db/merchant") === 0) {
+      return { ok: true, json: async function () { return { ok: true, monthlyAmazonMetrics: [] }; } };
+    }
+    return sseResponse('data: {"token":"六个查询完成"}\n\ndata: [DONE]\n\n');
+  };
+  const outcome = await hooks.runChatAgent("分别查询六个商户的表现", {
+    language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null
+  });
+  assertEqual(outcome.ok, true, "six planned tool calls should succeed");
+  assertEqual(
+    fetchCalls.filter((call) => call.url.indexOf("/api/ui/db/merchant") === 0).length,
+    6,
+    "six planned tool calls should all execute in 4+2 batches"
+  );
+  const synthesisBody = JSON.stringify(fetchCalls[fetchCalls.length - 1].body);
+  assertEqual((synthesisBody.match(/merchant_analysis/g) || []).length >= 6, true,
+    "synthesis body should include all six tool results");
+}
+
+// ── Test 2b: 超过总预算时必须明确报告未执行目标 ──
+{
+  hooks.resetAgentTrendCache();
+  fetchCalls = [];
+  const sevenCalls = Array.from({ length: 7 }, (_, index) => ({
+    id: `merchant-budget-${index + 1}`,
+    name: "merchant_analysis",
+    arguments: { merchant: merchantTargets[index] }
+  }));
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      return { ok: true, json: async function () {
+        return { ok: true, content: null, finishReason: "tool_calls", toolCalls: sevenCalls };
+      } };
+    }
+    if (url.indexOf("/api/ui/db/merchant") === 0) {
+      return { ok: true, json: async function () { return { ok: true, monthlyAmazonMetrics: [] }; } };
+    }
+    return sseResponse('data: {"token":"预算测试完成"}\n\ndata: [DONE]\n\n');
+  };
+  const partialOutcome = await hooks.runChatAgent("分别查询七个商户的表现", {
+    language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null
+  });
+  assertEqual(partialOutcome.ok, true, "partial tool run should still synthesize an answer");
+  assertEqual(partialOutcome.partial, true, "seventh tool call should mark the outcome partial");
+  assertEqual(partialOutcome.executedToolCalls, 6, "tool budget should execute six calls");
+  assertEqual(partialOutcome.omittedTargets.length, 1, "one target should be explicitly omitted");
+  assertEqual(
+    fetchCalls.filter((call) => call.url.indexOf("/api/ui/db/merchant") === 0).length,
+    6,
+    "tool execution should stop at the explicit total budget"
+  );
+  assertIncludes(partialOutcome.fullResponse, "未执行", "partial answer should disclose omitted target");
+}
+
+// ── Test 2c: 多商户字段查询不能误用 merchant_comparison ──
 {
   hooks.resetAgentTrendCache();
   fetchCalls = [];
@@ -301,13 +462,20 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
     "field lookup synthesis should receive one merchant analysis per merchant");
 }
 
-// ── Test 2c: 明确要求比较时仍保留 merchant_comparison ──
+// ── Test 2d: 明确要求比较时仍保留 merchant_comparison ──
 {
   const comparisonCalls = hooks.normalizeAgentToolCalls([
     { id: "comparison", name: "merchant_comparison", arguments: { merchants: ["Shokz", "Anua"] } }
   ], "Compare Shokz and Anua and tell me which performs better.");
   assertEqual(comparisonCalls.length, 1, "explicit comparison should remain one comparison call");
   assertEqual(comparisonCalls[0].name, "merchant_comparison", "explicit comparison should use comparison tool");
+
+  const trendCalls = hooks.normalizeAgentToolCalls([
+    { id: "merchant", name: "merchant_analysis", arguments: { merchant: "Shokz" } }
+  ], "查看 Shokz 最近 12 个月的收入趋势");
+  assertEqual(trendCalls.length, 1, "explicit trend should remain one trend call");
+  assertEqual(trendCalls[0].name, "trend", "explicit trend should use the trend tool");
+  assertEqual(trendCalls[0].arguments.target, "Shokz", "trend fallback should preserve the merchant target");
 }
 
 // ── Test 3: 工具失败 → 补充规划 → 直接内容 ──
@@ -593,6 +761,39 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertTruthy(result.data.months && result.data.months.length >= 2, "estimated trend should still carry months");
 }
 
+// ── Test 12b: Agent 趋势结果应渲染为可切换指标的 SVG 折线图 ──
+{
+  const trendData = {
+    tool: "trend",
+    entityType: "merchant",
+    target: "Shokz",
+    estimated: true,
+    metric: null,
+    metrics: ["revenue", "orders"],
+    months: [
+      { month: "2026-04", revenue: 1000, orders: 50 },
+      { month: "2026-05", revenue: 1200, orders: 60 }
+    ],
+    summary: {
+      revenue: { first: 1000, last: 1200, abs: 200, pct: 20, dir: "up" }
+    }
+  };
+  const chartHtml = hooks.renderAgentTrendChartHtml(trendData, "zh");
+  assertIncludes(chartHtml, "agent-trend-card", "trend result should render an Agent chart card");
+  assertIncludes(chartHtml, "<svg", "trend result should render an SVG line chart");
+  assertIncludes(chartHtml, 'data-agent-trend-metric="revenue"', "trend chart should expose a revenue metric switch");
+  assertIncludes(chartHtml, 'data-agent-trend-metric="orders"', "trend chart should expose an orders metric switch");
+  assertIncludes(chartHtml, "估算趋势", "estimated trend should show an estimate notice");
+  assertEqual(hooks.renderAgentTrendChartHtml({ months: [] }, "zh"), "", "trend chart should stay hidden without monthly rows");
+
+  const content = { children: [], appendChild(node) { this.children.push(node); } };
+  const reply = { msgEl: { querySelector(selector) { return selector === ".chat-stream-text" ? content : null; } } };
+  hooks.appendAgentTrendCharts(reply, [{ name: "trend", result: { ok: true, data: trendData } }], "zh");
+  assertEqual(content.children.length, 1, "successful Agent trend should append one chart visual");
+  assertIncludes(content.children[0].className, "agent-trend-visuals", "trend visual should use the Agent chart wrapper");
+  assertIncludes(content.children[0].innerHTML, "agent-trend-card", "trend visual wrapper should contain the chart card");
+}
+
 // ── Test 13: 三商户对比必须保留参考商户到每个同行的差异 ──
 {
   const names = Array.from(new Set(sandbox.window.CHATBOT_DATA.offers.slice(0, 5)
@@ -802,4 +1003,4 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(timelineRoot.open, false, "successful Agent timeline should collapse after completion");
 }
 
-console.log("OK 26 scenarios");
+console.log("OK 30 scenarios");
