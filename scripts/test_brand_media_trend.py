@@ -71,6 +71,69 @@ ROWS = [
 ]
 
 
+SANKEY_ROWS = [
+    {
+        "merchant_id": 101,
+        "merchant_name": "Alpha",
+        "user_id": 7,
+        "user_name": "Media Seven",
+        "admin_name": "timmy",
+        "product_key": "ASIN-A",
+        "revenue": 80,
+    },
+    {
+        "merchant_id": 101,
+        "merchant_name": "Alpha",
+        "user_id": 7,
+        "user_name": "Media Seven",
+        "admin_name": "timmy",
+        "product_key": "ASIN-A",
+        "revenue": 20,
+    },
+    {
+        "merchant_id": 101,
+        "merchant_name": "Alpha",
+        "user_id": 8,
+        "user_name": "Media Eight",
+        "admin_name": "stella",
+        "product_key": "ASIN-A",
+        "revenue": 40,
+    },
+    {
+        "merchant_id": 101,
+        "merchant_name": "Alpha",
+        "user_id": 7,
+        "user_name": "Media Seven",
+        "admin_name": "timmy",
+        "product_key": "ASIN-B",
+        "revenue": 5,
+    },
+    {
+        "merchant_id": 101,
+        "merchant_name": "Alpha",
+        "user_id": 8,
+        "user_name": "Media Eight",
+        "admin_name": "stella",
+        "product_key": "ASIN-B",
+        "revenue": 10,
+    },
+    {
+        "merchant_id": 101,
+        "merchant_name": "Alpha",
+        "user_id": 8,
+        "user_name": "Media Eight",
+        "admin_name": "stella",
+        "product_key": "ASIN-ZERO",
+        "revenue": 0,
+    },
+]
+
+PRODUCT_ROWS = [
+    {"asin": "ASIN-A", "productName": "Widget A"},
+    {"asin": "ASIN-B", "productName": "Widget B"},
+]
+
+
 def assert_equal(actual, expected, label):
     if actual != expected:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
@@ -94,6 +157,30 @@ def main():
     assert_equal(normalized["summary"]["observationCount"], 3, "observation count")
     assert_close(normalized["summary"]["totalRevenue"], 100.5, "total revenue")
     assert_equal(normalized["summary"]["totalClicks"], 200, "total clicks")
+
+
+    sankey = offer_db.brand_media_sankey_from_rows(
+        SANKEY_ROWS,
+        product_rows=PRODUCT_ROWS,
+        merchant_id=101,
+        merchant_name="Alpha",
+    )
+    assert_equal(sankey["available"], True, "Sankey should be available")
+    assert_equal(sankey["brand"]["label"], "Alpha", "Sankey brand label")
+    assert_equal(sankey["summary"]["productCount"], 2, "Sankey product count")
+    assert_equal(sankey["summary"]["mediaCount"], 2, "Sankey media count")
+    assert_equal(sankey["summary"]["linkCount"], 6, "Sankey link count")
+    assert_close(sankey["summary"]["totalRevenue"], 155, "Sankey total revenue")
+    product_labels = {
+        node["label"] for node in sankey["nodes"] if node["type"] == "product"
+    }
+    assert_equal(product_labels, {"Widget A", "Widget B"}, "Sankey product metadata")
+    product_media_revenue = sum(
+        link["value"]
+        for link in sankey["links"]
+        if str(link["source"]).startswith("product:")
+    )
+    assert_close(product_media_revenue, 155, "Sankey product-media reconciliation")
 
     media_seven = normalized["publishers"][0]
     media_eight = normalized["publishers"][1]
@@ -159,6 +246,40 @@ def main():
             start_date="2026-07-01",
             end_date="2026-07-31",
         )
+
+
+
+    def fake_sankey_table_columns(_conn, table):
+        if table == "cnpscy_amazon_order":
+            return {"advert_id", "user_id", "order_time_day", "amount", "asin"}
+        return set()
+
+    def fake_sankey_fetch_all(_conn, sql, params=None):
+        assert_equal(params, (101, 20260701, 20260731), "Sankey SQL params")
+        if "product_key" not in sql or "GROUP BY" not in sql or "HAVING SUM" not in sql:
+            raise AssertionError("Sankey query must aggregate by product and media")
+        if "asin" not in sql:
+            raise AssertionError("Sankey query must use the discovered product identifier")
+        return SANKEY_ROWS
+
+    with (
+        patch.object(offer_db, "db_connection", fake_connection),
+        patch.object(offer_db, "table_columns", fake_sankey_table_columns),
+        patch.object(offer_db, "fetch_all", fake_sankey_fetch_all),
+        patch.object(offer_db, "merchant_products", lambda *_args, **_kwargs: PRODUCT_ROWS),
+    ):
+        offer_db._brand_media_sankey_cache = {}
+        sankey_payload = offer_db.brand_media_sankey_payload(
+            101,
+            start_date="2026-07-01",
+            end_date="2026-07-31",
+        )
+
+    assert_equal(sankey_payload["source"], "cnpscy_amazon_order + cnpscy_amazon_product", "Sankey source")
+    assert_equal(sankey_payload["grain"], "advert_id + product + user_id", "Sankey grain")
+    assert_equal(sankey_payload["merchant"]["merchantName"], "Alpha", "Sankey payload merchant")
+    assert_equal(sankey_payload["dateRange"]["dayCount"], 31, "Sankey inclusive date range")
+    assert_equal(sankey_payload["sankey"]["summary"]["productCount"], 2, "Sankey payload products")
 
     assert_equal(payload["source"], "cnpscy_amazon_order + cnpscy_amazon_click", "trend source")
     assert_equal(payload["grain"], "advert_id + user_id + day + metric", "trend grain")

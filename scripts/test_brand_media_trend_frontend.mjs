@@ -155,6 +155,41 @@ if (chartModel.primaryMetric !== "orders" ||
   throw new Error("the line model should plot orders while retaining daily revenue values");
 }
 
+
+const sankeyPayload = {
+  merchant: { merchantId: 101, merchantName: "Alpha" },
+  dateRange: { startDate: "2026-05-01", endDate: "2026-05-05" },
+  sankey: {
+    available: true,
+    nodes: [
+      { id: "brand:101", type: "brand", label: "Alpha", value: 155 },
+      { id: "product:ASIN-A", type: "product", label: "Widget A", value: 140 },
+      { id: "product:ASIN-B", type: "product", label: "Widget B", value: 15 },
+      { id: "media:9", type: "media", label: "Media Nine", value: 145 },
+      { id: "media:12", type: "media", label: "Media Twelve", value: 10 }
+    ],
+    links: [
+      { source: "brand:101", target: "product:ASIN-A", value: 140 },
+      { source: "brand:101", target: "product:ASIN-B", value: 15 },
+      { source: "product:ASIN-A", target: "media:9", value: 130 },
+      { source: "product:ASIN-A", target: "media:12", value: 10 },
+      { source: "product:ASIN-B", target: "media:9", value: 15 }
+    ],
+    summary: { productCount: 2, mediaCount: 2, totalRevenue: 155 }
+  }
+};
+const sankeyModel = hooks.brandMediaSankeyModel(sankeyPayload);
+if (!sankeyModel || sankeyModel.productCount !== 2 || sankeyModel.mediaCount !== 2) {
+  throw new Error("Sankey model should preserve the three-column product/media structure");
+}
+if (sankeyModel.totalRevenue !== 155 || sankeyModel.links.length !== 5) {
+  throw new Error("Sankey model should preserve Revenue values and links");
+}
+if (!hooks.brandMediaSankeyPayload(sankeyPayload)) {
+  throw new Error("Sankey payload hook should expose the rendered model");
+}
+
+
 const lockPayload = {
   dateRange: { startDate: "2026-05-01", endDate: "2026-05-05" },
   publishers: [
@@ -229,12 +264,19 @@ const indexHtml = fs.readFileSync("public/index.html", "utf8");
   'id="brandMediaTotalKey"',
   'id="brandMediaClicksPanel"',
   'id="brandMediaClickChart"',
+  'id="brandMediaSankeyPanel"',
+  'id="brandMediaSankeyChart"',
+  'id="brandMediaSankeyCount"',
   'id="brandMediaTableRows"'
 ].forEach(function (required) {
   if (!indexHtml.includes(required)) throw new Error("brand media page is missing " + required);
 });
 if (!indexHtml.includes('data-i18n="brandMedia.manager"')) {
   throw new Error("media summary should expose the manager association");
+}
+
+if (!fs.readFileSync("public/app.js", "utf8").includes("/api/ui/db/brand-media-sankey?")) {
+  throw new Error("brand media Sankey should use the selected brand and date range endpoint");
 }
 
 console.log("Brand media trend frontend checks passed");

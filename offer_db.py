@@ -2842,6 +2842,7 @@ STATUS_CACHE_TTL = int(os.environ.get("OFFER_DB_STATUS_CACHE_TTL", "600"))   # 1
 TIER_REPORT_CACHE_TTL = int(os.environ.get("OFFER_DB_TIER_REPORT_CACHE_TTL", "300"))
 PUBLISHERS_CACHE_TTL = int(os.environ.get("OFFER_DB_PUBLISHERS_CACHE_TTL", "3600"))  # 1 hour
 BRAND_MEDIA_TREND_CACHE_TTL = int(os.environ.get("OFFER_DB_BRAND_MEDIA_TREND_CACHE_TTL", "300"))
+BRAND_MEDIA_SANKEY_CACHE_TTL = int(os.environ.get("OFFER_DB_BRAND_MEDIA_SANKEY_CACHE_TTL", "300"))
 CHATBOT_CACHE_TTL = int(os.environ.get("OFFER_DB_CHATBOT_CACHE_TTL", "300"))  # 5 minutes
 _bg_refresh_running: dict[str, bool] = {}
 _merchant_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -2850,6 +2851,7 @@ _status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _tier_sheet_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _publisher_portfolio_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _brand_media_trend_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_brand_media_sankey_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _chatbot_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 # In-memory cache for offers payload (avoids 23MB disk read + json.loads per request)
 _offers_memory_cache: tuple[float, dict[str, Any]] | None = None
@@ -4585,6 +4587,339 @@ def brand_media_trend_payload(
         "publishers": normalized["publishers"],
     }
     _brand_media_trend_cache[cache_key] = (now, result)
+    return result
+
+
+
+def brand_media_sankey_from_rows(
+    rows: list[dict[str, Any]],
+    product_rows: list[dict[str, Any]] | None = None,
+    merchant_id: int | str | None = None,
+    merchant_name: str | None = None,
+) -> dict[str, Any]:
+    """Aggregate positive Revenue from one brand into product and media flows."""
+    product_labels: dict[str, str] = {}
+    for row in product_rows or []:
+        product_key = str(
+            row.get("asin")
+            or row.get("productAsin")
+            or row.get("product_key")
+            or ""
+        ).strip()
+        product_name = str(
+            row.get("productName")
+            or row.get("product_name")
+            or row.get("title")
+            or ""
+        ).strip()
+        if product_key and product_name:
+            product_labels.setdefault(product_key, product_name)
+
+    merchant_key = str(merchant_id or "").strip() or "selected"
+    brand_key = f"brand:{merchant_key}"
+    brand_label = str(merchant_name or "").strip() or merchant_key
+    product_totals: dict[str, float] = {}
+    media_totals: dict[str, float] = {}
+    brand_product_totals: dict[str, float] = {}
+    product_media_totals: dict[tuple[str, str], float] = {}
+    product_meta: dict[str, dict[str, Any]] = {}
+    media_meta: dict[str, dict[str, Any]] = {}
+
+    for row in rows:
+        revenue = to_float(row.get("revenue"))
+        if revenue <= 0:
+            continue
+        user_id = str(
+            row.get("user_id")
+            or row.get("publisher_id")
+            or row.get("media_id")
+            or ""
+        ).strip()
+        product_key = str(
+            row.get("product_key")
+            or row.get("product_asin")
+            or row.get("asin")
+            or ""
+        ).strip()
+        if not user_id or not product_key:
+            continue
+
+        product_id = f"product:{product_key}"
+        media_id = f"media:{user_id}"
+        product_name = str(
+            row.get("product_name")
+            or row.get("productName")
+            or product_labels.get(product_key)
+            or product_key
+        ).strip() or product_key
+        media_name = str(
+            row.get("user_name")
+            or row.get("publisher_name")
+            or row.get("media_name")
+            or user_id
+        ).strip() or user_id
+        manager_name = str(row.get("admin_name") or "").strip()
+
+        product_totals[product_id] = product_totals.get(product_id, 0.0) + revenue
+        media_totals[media_id] = media_totals.get(media_id, 0.0) + revenue
+        brand_product_totals[product_id] = brand_product_totals.get(product_id, 0.0) + revenue
+        pair = (product_id, media_id)
+        product_media_totals[pair] = product_media_totals.get(pair, 0.0) + revenue
+        product_meta.setdefault(
+            product_id,
+            {
+                "productKey": product_key,
+                "label": product_name,
+            },
+        )
+        media_meta.setdefault(
+            media_id,
+            {
+                "userId": user_id,
+                "label": media_name,
+                "manager": manager_name,
+            },
+        )
+        if manager_name and not media_meta[media_id].get("manager"):
+            media_meta[media_id]["manager"] = manager_name
+        if brand_label == merchant_key:
+            row_brand = str(row.get("merchant_name") or "").strip()
+            if row_brand:
+                brand_label = row_brand
+
+    total_revenue = sum(product_totals.values())
+    product_nodes = [
+        {
+            "id": product_id,
+            "type": "product",
+            "label": product_meta[product_id]["label"],
+            "productKey": product_meta[product_id]["productKey"],
+            "value": round(value, 2),
+        }
+        for product_id, value in product_totals.items()
+    ]
+    media_nodes = [
+        {
+            "id": media_id,
+            "type": "media",
+            "label": media_meta[media_id]["label"],
+            "userId": media_meta[media_id]["userId"],
+            "manager": media_meta[media_id].get("manager") or "",
+            "value": round(value, 2),
+        }
+        for media_id, value in media_totals.items()
+    ]
+    product_nodes.sort(key=lambda node: (-float(node["value"]), str(node["label"]).casefold()))
+    media_nodes.sort(key=lambda node: (-float(node["value"]), str(node["label"]).casefold()))
+    nodes = [
+        {
+            "id": brand_key,
+            "type": "brand",
+            "label": brand_label,
+            "value": round(total_revenue, 2),
+        },
+        *product_nodes,
+        *media_nodes,
+    ]
+    links = [
+        {
+            "source": brand_key,
+            "target": product_id,
+            "value": round(value, 2),
+        }
+        for product_id, value in sorted(
+            brand_product_totals.items(),
+            key=lambda item: (-float(item[1]), str(item[0])),
+        )
+    ]
+    links.extend(
+        {
+            "source": product_id,
+            "target": media_id,
+            "value": round(value, 2),
+        }
+        for (product_id, media_id), value in sorted(
+            product_media_totals.items(),
+            key=lambda item: (-float(item[1]), str(item[0][0]), str(item[0][1])),
+        )
+    )
+    return {
+        "available": True,
+        "brand": {
+            "id": brand_key,
+            "label": brand_label,
+            "value": round(total_revenue, 2),
+        },
+        "nodes": nodes,
+        "links": links,
+        "summary": {
+            "productCount": len(product_nodes),
+            "mediaCount": len(media_nodes),
+            "linkCount": len(links),
+            "totalRevenue": round(total_revenue, 2),
+        },
+    }
+
+
+def brand_media_sankey_payload(
+    merchant_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    """Return product-to-media Revenue attribution for one brand and date range."""
+    try:
+        normalized_merchant_id = int(merchant_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("merchantId must be a positive integer") from exc
+    if normalized_merchant_id <= 0:
+        raise ValueError("merchantId must be a positive integer")
+
+    raw_start = str(start_date or "").strip()
+    raw_end = str(end_date or "").strip()
+    if bool(raw_start) != bool(raw_end):
+        raise ValueError("startDate and endDate must be provided together")
+    range_start = parse_tier_report_date(raw_start)
+    range_end = parse_tier_report_date(raw_end)
+    if raw_start and range_start is None:
+        raise ValueError("startDate must use YYYY-MM-DD format")
+    if raw_end and range_end is None:
+        raise ValueError("endDate must use YYYY-MM-DD format")
+    if range_start is None:
+        range_end = reporting_today() - dt.timedelta(days=DEFAULT_REPORTING_DELAY_DAYS)
+        range_start = range_end - dt.timedelta(days=89)
+    if range_start > range_end:
+        raise ValueError("startDate cannot be after endDate")
+    range_days = (range_end - range_start).days + 1
+    if range_days > MAX_BRAND_MEDIA_TREND_RANGE_DAYS:
+        raise ValueError(
+            f"date range cannot exceed {MAX_BRAND_MEDIA_TREND_RANGE_DAYS} days"
+        )
+
+    cache_key = "|".join(
+        [
+            str(normalized_merchant_id),
+            range_start.isoformat(),
+            range_end.isoformat(),
+        ]
+    )
+    now = time.time()
+    cached = _brand_media_sankey_cache.get(cache_key)
+    if cached is not None and now - cached[0] < BRAND_MEDIA_TREND_CACHE_TTL:
+        return cached[1]
+
+    with db_connection() as conn:
+        order_columns = table_columns(conn, "cnpscy_amazon_order")
+        merchant_column = pick_column(order_columns, ["advert_id", "merchant_id"])
+        user_column = pick_column(order_columns, ["user_id", "publisher_id", "media_id"])
+        date_column = pick_column(order_columns, ["order_time_day", "order_date", "order_time"])
+        revenue_column = pick_column(order_columns, ["amount", "sales_amount", "revenue"])
+        product_column = pick_column(
+            order_columns,
+            [
+                "asin",
+                "product_asin",
+                "item_asin",
+                "amazon_asin",
+                "product_id",
+                "item_id",
+                "sku",
+            ],
+        )
+        if not merchant_column or not user_column or not date_column or not revenue_column or not product_column:
+            normalized = brand_media_sankey_from_rows(
+                [],
+                merchant_id=normalized_merchant_id,
+                merchant_name=str(normalized_merchant_id),
+            )
+            normalized.update(
+                {
+                    "available": False,
+                    "reason": "The order table does not expose a product identifier.",
+                }
+            )
+        else:
+            revenue_expr = f"COALESCE({qualified('o', revenue_column)}, 0)"
+            product_expr = f"CAST({qualified('o', product_column)} AS CHAR)"
+            rows = fetch_all(
+                conn,
+                f"""
+                SELECT
+                    {qualified('o', merchant_column)} AS merchant_id,
+                    {qualified('o', user_column)} AS user_id,
+                    {product_expr} AS product_key,
+                    COALESCE(NULLIF(MAX(u.user_name), ''), CAST({qualified('o', user_column)} AS CHAR)) AS user_name,
+                    COALESCE(NULLIF(MAX(u.admin_name), ''), 'Unknown') AS admin_name,
+                    COALESCE(NULLIF(MAX(a.advert_name), ''), CAST({qualified('o', merchant_column)} AS CHAR)) AS merchant_name,
+                    SUM({revenue_expr}) AS revenue
+                FROM cnpscy_amazon_order o
+                LEFT JOIN (
+                    SELECT
+                        u.user_id,
+                        MAX(NULLIF(TRIM(u.user_name), '')) AS user_name,
+                        COALESCE(MAX(NULLIF(TRIM(ad.admin_name), '')), 'Unknown') AS admin_name
+                    FROM v_maxai_cnpscy_user u
+                    LEFT JOIN cnpscy_admins ad
+                        ON CAST(u.admin_id_look AS CHAR) = CAST(ad.admin_code AS CHAR)
+                        AND ad.is_delete = 0
+                    GROUP BY u.user_id
+                ) u ON {qualified('o', user_column)} = u.user_id
+                LEFT JOIN (
+                    SELECT advert_id, MAX(NULLIF(TRIM(advert_name), '')) AS advert_name
+                    FROM cnpscy_advert
+                    GROUP BY advert_id
+                ) a ON {qualified('o', merchant_column)} = a.advert_id
+                WHERE {qualified('o', merchant_column)} = %s
+                  AND {qualified('o', user_column)} IS NOT NULL
+                  AND {qualified('o', user_column)} > 0
+                  AND {qualified('o', product_column)} IS NOT NULL
+                  AND TRIM(CAST({qualified('o', product_column)} AS CHAR)) != ''
+                  AND {qualified('o', date_column)} BETWEEN %s AND %s
+                GROUP BY
+                    {qualified('o', merchant_column)},
+                    {qualified('o', user_column)},
+                    {qualified('o', product_column)}
+                HAVING SUM({revenue_expr}) > 0
+                ORDER BY revenue DESC, product_key ASC, user_id ASC
+                """,
+                (
+                    normalized_merchant_id,
+                    int(range_start.strftime("%Y%m%d")),
+                    int(range_end.strftime("%Y%m%d")),
+                ),
+            )
+            product_rows = merchant_products(conn, str(normalized_merchant_id), limit=5000)
+            merchant_name = str(
+                rows[0].get("merchant_name") if rows else normalized_merchant_id
+            ).strip() or str(normalized_merchant_id)
+            normalized = brand_media_sankey_from_rows(
+                rows,
+                product_rows=product_rows,
+                merchant_id=normalized_merchant_id,
+                merchant_name=merchant_name,
+            )
+
+    result = {
+        "ok": True,
+        "generatedAt": utc_now_iso(),
+        "source": "cnpscy_amazon_order + cnpscy_amazon_product",
+        "grain": "advert_id + product + user_id",
+        "metric": "amount",
+        "metricLabel": "Revenue",
+        "merchant": {
+            "merchantId": normalized_merchant_id,
+            "merchantName": str(
+                normalized.get("brand", {}).get("label")
+                or normalized_merchant_id
+            ),
+        },
+        "dateRange": {
+            "startDate": range_start.isoformat(),
+            "endDate": range_end.isoformat(),
+            "dayCount": range_days,
+        },
+        "sankey": normalized,
+    }
+    _brand_media_sankey_cache[cache_key] = (now, result)
     return result
 
 

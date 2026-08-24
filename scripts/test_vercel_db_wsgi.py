@@ -100,6 +100,12 @@ def main():
             "startDate": start_date,
             "endDate": end_date,
         }
+        module.brand_media_sankey_payload = lambda merchant_id, start_date=None, end_date=None: {
+            "route": "ui-brand-media-sankey",
+            "merchantId": int(merchant_id),
+            "startDate": start_date,
+            "endDate": end_date,
+        }
         module.brand_media_trend_payload = lambda merchant_id, start_date=None, end_date=None: {
             "route": "ui-brand-media-trend",
             "merchantId": int(merchant_id),
@@ -240,6 +246,21 @@ def main():
         assert_equal(publisher_portfolio["status"], 200, "publisher portfolio response code")
         assert b'"route":"ui-publisher-portfolio"' in publisher_portfolio["body"], publisher_portfolio["body"]
         assert b'"startDate":"2026-07-01"' in publisher_portfolio["body"], publisher_portfolio["body"]
+
+
+        brand_media_sankey = request(
+            module.app,
+            "ui-brand-media-sankey",
+            "merchantId=42&startDate=2026-07-01&endDate=2026-07-28",
+            token="",
+        )
+        assert_equal(brand_media_sankey["status"], 200, "brand media Sankey response code")
+        assert b'"route":"ui-brand-media-sankey"' in brand_media_sankey["body"], brand_media_sankey["body"]
+        assert b'"merchantId":42' in brand_media_sankey["body"], brand_media_sankey["body"]
+        assert b'"endDate":"2026-07-28"' in brand_media_sankey["body"], brand_media_sankey["body"]
+
+        missing_brand_media_sankey_merchant = request(module.app, "ui-brand-media-sankey", token="")
+        assert_equal(missing_brand_media_sankey_merchant["status"], 400, "missing brand media Sankey merchant response code")
 
         brand_media_trend = request(
             module.app,

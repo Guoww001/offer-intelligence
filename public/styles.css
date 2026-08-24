@@ -21779,6 +21779,7 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
 }
 
 .brand-media-chart-panel,
+.brand-media-sankey-panel,
 .brand-media-table-panel {
   padding: clamp(18px, 2.4vw, 30px);
 }
@@ -22095,6 +22096,84 @@ body.brand-media-chart-expanded {
   text-align: center;
 }
 
+
+.brand-media-sankey-panel {
+  margin-top: 14px;
+}
+
+.brand-media-sankey-chart-wrap {
+  min-height: 390px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(52, 77, 117, 0.1);
+  border-radius: 15px;
+  background: #fff;
+}
+
+.brand-media-sankey-scroll {
+  min-width: 820px;
+  min-height: 390px;
+}
+
+.brand-media-sankey-svg {
+  display: block;
+  width: 100%;
+  min-width: 820px;
+  height: auto;
+  overflow: visible;
+}
+
+.brand-media-sankey-column-title {
+  fill: #7890ba;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brand-media-sankey-link {
+  opacity: 0.28;
+  pointer-events: stroke;
+  transition: opacity 140ms ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-media-sankey-link:hover {
+  opacity: 0.66;
+}
+
+.brand-media-sankey-node rect {
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-media-sankey-node text {
+  fill: #1f3b68;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.brand-media-sankey-node-value {
+  fill: #7890ba !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.brand-media-sankey-node-brand text {
+  fill: #17233d;
+}
+
+.brand-media-sankey-empty {
+  display: grid;
+  min-height: 390px;
+  padding: 24px;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+}
+
 .brand-media-clicks-panel {
   margin-top: 14px;
   padding: clamp(18px, 2.4vw, 30px);
@@ -22403,12 +22482,15 @@ body.brand-media-chart-expanded {
   }
 
   .brand-media-chart-panel,
+  .brand-media-sankey-panel,
   .brand-media-table-panel {
     padding: 16px;
   }
 
   .brand-media-chart-layout,
   .brand-media-chart-wrap,
+  .brand-media-sankey-chart-wrap,
+  .brand-media-sankey-empty,
   .brand-media-empty-chart,
   .brand-media-svg,
   .brand-media-click-chart-wrap,
