@@ -219,6 +219,8 @@ assertEqual(
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 [
   'id="brandMediaPage"',
+  'id="brandMediaChartPanel"',
+  'id="brandMediaChartExpand"',
   'id="brandMediaMerchantSearch"',
   'id="brandMediaManagerFilter"',
   'id="brandMediaStartDate"',

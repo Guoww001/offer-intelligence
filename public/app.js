@@ -470,6 +470,7 @@
       merchantSearch: "",
       managerFilter: "",
       lockedPublisherKeys: [],
+      chartExpanded: false,
       startDate: "",
       endDate: "",
       quickRange: "90",
@@ -627,7 +628,9 @@
     brandMediaEndDate: document.getElementById("brandMediaEndDate"),
     brandMediaStatus: document.getElementById("brandMediaStatus"),
     brandMediaKpis: document.getElementById("brandMediaKpis"),
+    brandMediaChartPanel: document.getElementById("brandMediaChartPanel"),
     brandMediaChart: document.getElementById("brandMediaChart"),
+    brandMediaChartExpand: document.getElementById("brandMediaChartExpand"),
     brandMediaChartSubtitle: document.getElementById("brandMediaChartSubtitle"),
     brandMediaTotalKey: document.getElementById("brandMediaTotalKey"),
     brandMediaLineCount: document.getElementById("brandMediaLineCount"),
@@ -1228,6 +1231,8 @@
       "brandMedia.chartTitle": "各媒体每日订单数",
       "brandMedia.chartSubtitle": "点击右侧媒体可锁定；可同时锁定多家，再次点击解除。黑线表示未锁定前的全部媒体订单数，Revenue 会保留在 hover 中。没有每日源记录时会断开。",
       "brandMedia.allOrderLine": "全部媒体订单数",
+      "brandMedia.expandChart": "展开图表",
+      "brandMedia.collapseChart": "退出展开视图",
       "brandMedia.clicksTitle": "已锁定媒体的每日点击",
       "brandMedia.clicksSubtitle": "锁定一家媒体时显示普通柱状图；锁定多家时按媒体堆叠显示每日累计点击。",
       "brandMedia.clicksCount": "点击柱",
@@ -18768,6 +18773,36 @@ var _NUMERIC_COL_PATTERNS = [
     chart._brandMediaFocusedIndex = null;
   }
 
+  function _brandMediaChartExpandLabel(expanded) {
+    return expanded
+      ? t("brandMedia.collapseChart", "Exit expanded chart")
+      : t("brandMedia.expandChart", "Expand chart");
+  }
+
+  function _brandMediaSyncChartExpandButton() {
+    var button = els.brandMediaChartExpand;
+    if (!button) return;
+    var expanded = Boolean(state.brandMedia && state.brandMedia.chartExpanded);
+    var label = _brandMediaChartExpandLabel(expanded);
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+    var labelElement = button.querySelector(".brand-media-chart-expand-label");
+    if (labelElement) labelElement.textContent = label;
+    button.classList.toggle("is-expanded", expanded);
+  }
+
+  function _brandMediaSetChartExpanded(expanded) {
+    if (!els.brandMediaChartPanel) return;
+    state.brandMedia.chartExpanded = Boolean(expanded);
+    els.brandMediaChartPanel.classList.toggle("is-expanded", state.brandMedia.chartExpanded);
+    if (document.body) {
+      document.body.classList.toggle("brand-media-chart-expanded", state.brandMedia.chartExpanded);
+    }
+    _brandMediaSyncChartExpandButton();
+    _brandMediaClearChartHover(els.brandMediaChart);
+  }
+
   function _brandMediaBindChartInteractions() {
     var chart = els.brandMediaChart;
     if (!chart || chart._brandMediaInteractionsBound) return;
@@ -18854,7 +18889,16 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (els.brandMediaLineCount) els.brandMediaLineCount.textContent = _brandMediaLineCountText(publishers.length);
     if (els.brandMediaLegend) {
-      els.brandMediaLegend.innerHTML = allPublishers.map(function (publisher, index) {
+      var totalOrderCount = allPublishers.reduce(function (total, publisher) {
+        return total + Number(publisher.totalOrders || 0);
+      }, 0);
+      var totalLegendItem = '<div class="brand-media-legend-total" data-brand-media-total-legend="true">' +
+        '<i aria-hidden="true"></i><span class="brand-media-legend-details"><strong>' +
+        escapeHtml(t("brandMedia.allOrderLine", "All media orders")) +
+        '</strong><small>' + escapeHtml(t("brandMedia.totalOrders", "Total orders")) +
+        '</small></span><strong>' + escapeHtml(_brandMediaCount(totalOrderCount)) +
+        '</strong></div>';
+      els.brandMediaLegend.innerHTML = totalLegendItem + allPublishers.map(function (publisher, index) {
         var sourceIndex = _brandMediaSourceIndex(publisher, index);
         var key = publisher._brandMediaPublisherKey || _brandMediaPublisherKey(publisher, sourceIndex);
         var locked = lockedKeys.has(key);
@@ -19015,6 +19059,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function renderBrandMediaPage() {
+    _brandMediaSyncChartExpandButton();
     _brandMediaSyncControls();
     _brandMediaLoadCatalog();
     if (state.brandMedia.payload) {
@@ -19090,6 +19135,17 @@ var _NUMERIC_COL_PATTERNS = [
         _brandMediaSyncControls();
         _brandMediaLoadTrend();
       });
+    });
+
+    if (els.brandMediaChartExpand) {
+      els.brandMediaChartExpand.addEventListener("click", function () {
+        _brandMediaSetChartExpanded(!state.brandMedia.chartExpanded);
+      });
+    }
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" || !state.brandMedia.chartExpanded) return;
+      _brandMediaSetChartExpanded(false);
+      if (els.brandMediaChartExpand) els.brandMediaChartExpand.focus();
     });
     document.addEventListener("click", function (event) {
       var combobox = event.target.closest(".brand-media-combobox");
@@ -27319,6 +27375,9 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.importOpen) {
       closeMonthlyNewMerchantImport({ restoreFocus: false });
+    }
+    if (page !== "brand-media" && state.brandMedia && state.brandMedia.chartExpanded) {
+      _brandMediaSetChartExpanded(false);
     }
     state.page = page;
     updatePageModeClass(page);
