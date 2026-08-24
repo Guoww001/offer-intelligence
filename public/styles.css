@@ -21962,9 +21962,53 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
 }
 
 .brand-media-chart-panel,
+.brand-media-sankey-panel,
 .brand-media-table-panel {
   padding: clamp(18px, 2.4vw, 30px);
 }
+
+body.brand-media-chart-expanded {
+  overflow: hidden;
+}
+
+.brand-media-chart-panel.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  padding: clamp(18px, 2.5vw, 32px);
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(20, 38, 73, 0.22);
+}
+
+.brand-media-chart-panel.is-expanded .brand-media-chart-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.brand-media-chart-panel.is-expanded .brand-media-chart-wrap {
+  min-height: 0;
+  height: auto;
+  padding: 0;
+}
+
+.brand-media-chart-panel.is-expanded .brand-media-svg {
+  min-height: 0;
+  height: 100%;
+}
+
+.brand-media-chart-panel.is-expanded .brand-media-legend {
+  max-height: none;
+  min-height: 0;
+}
+
 
 .brand-media-panel-heading {
   align-items: flex-start;
@@ -21976,9 +22020,45 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
 .brand-media-chart-meta {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   gap: 14px;
   margin-top: 5px;
+}
+
+.brand-media-chart-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(52, 77, 117, 0.18);
+  border-radius: 9px;
+  background: #fff;
+  color: #193d73;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.brand-media-chart-expand:hover,
+.brand-media-chart-expand:focus-visible {
+  border-color: rgba(36, 107, 254, 0.55);
+  background: rgba(36, 107, 254, 0.07);
+  box-shadow: 0 0 0 3px rgba(36, 107, 254, 0.11);
+  color: #145be8;
+  outline: none;
+}
+
+.brand-media-chart-expand svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .brand-media-panel-heading h3 {
@@ -22199,6 +22279,84 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
   text-align: center;
 }
 
+
+.brand-media-sankey-panel {
+  margin-top: 14px;
+}
+
+.brand-media-sankey-chart-wrap {
+  min-height: 390px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(52, 77, 117, 0.1);
+  border-radius: 15px;
+  background: #fff;
+}
+
+.brand-media-sankey-scroll {
+  min-width: 820px;
+  min-height: 390px;
+}
+
+.brand-media-sankey-svg {
+  display: block;
+  width: 100%;
+  min-width: 820px;
+  height: auto;
+  overflow: visible;
+}
+
+.brand-media-sankey-column-title {
+  fill: #7890ba;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brand-media-sankey-link {
+  opacity: 0.28;
+  pointer-events: stroke;
+  transition: opacity 140ms ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-media-sankey-link:hover {
+  opacity: 0.66;
+}
+
+.brand-media-sankey-node rect {
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-media-sankey-node text {
+  fill: #1f3b68;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.brand-media-sankey-node-value {
+  fill: #7890ba !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.brand-media-sankey-node-brand text {
+  fill: #17233d;
+}
+
+.brand-media-sankey-empty {
+  display: grid;
+  min-height: 390px;
+  padding: 24px;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+}
+
 .brand-media-clicks-panel {
   margin-top: 14px;
   padding: clamp(18px, 2.4vw, 30px);
@@ -22246,6 +22404,63 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
   overflow: auto;
   border-left: 1px solid rgba(52, 77, 117, 0.1);
   padding: 11px 12px;
+}
+
+.brand-media-legend-total {
+  position: sticky;
+  top: -11px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin: -11px -12px 5px;
+  padding: 11px 12px 9px;
+  border-bottom: 1px solid rgba(52, 77, 117, 0.14);
+  background: #fff;
+  box-shadow: 0 5px 10px rgba(20, 38, 73, 0.07);
+  color: #17202d;
+}
+
+.brand-media-legend-total i {
+  display: inline-block;
+  width: 8px;
+  height: 3px;
+  border-radius: 999px;
+  background: #111827;
+}
+
+.brand-media-legend-total .brand-media-legend-details {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.brand-media-legend-total .brand-media-legend-details strong,
+.brand-media-legend-total .brand-media-legend-details small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-media-legend-total .brand-media-legend-details strong {
+  color: #17202d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.brand-media-legend-total .brand-media-legend-details small {
+  margin-top: 1px;
+  color: #8296b8;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.brand-media-legend-total > strong {
+  color: #17202d;
+  font-size: 11px;
 }
 
 .brand-media-legend-item {
@@ -22406,6 +22621,10 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
     border-top: 1px solid rgba(52, 77, 117, 0.1);
     border-left: 0;
   }
+
+  .brand-media-legend-total {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 700px) {
@@ -22446,12 +22665,15 @@ body.dashboard-mode .dashboard-agent-page .agent-page-chat-panel .message.user {
   }
 
   .brand-media-chart-panel,
+  .brand-media-sankey-panel,
   .brand-media-table-panel {
     padding: 16px;
   }
 
   .brand-media-chart-layout,
   .brand-media-chart-wrap,
+  .brand-media-sankey-chart-wrap,
+  .brand-media-sankey-empty,
   .brand-media-empty-chart,
   .brand-media-svg,
   .brand-media-click-chart-wrap,

@@ -1009,7 +1009,7 @@
 
           <section class="brand-media-kpis" id="brandMediaKpis" aria-label="Brand media performance summary"></section>
 
-          <section class="panel brand-media-chart-panel" aria-labelledby="brandMediaChartTitle">
+          <section class="panel brand-media-chart-panel" id="brandMediaChartPanel" aria-labelledby="brandMediaChartTitle">
             <div class="brand-media-panel-heading">
               <div>
                 <span class="brand-media-section-index">01</span>
@@ -1022,6 +1022,12 @@
                   <span data-i18n="brandMedia.allOrderLine">All media orders</span>
                 </span>
                 <span class="brand-media-line-count" id="brandMediaLineCount" aria-live="polite"></span>
+                <button type="button" class="brand-media-chart-expand" id="brandMediaChartExpand" aria-controls="brandMediaChartPanel" aria-expanded="false" aria-label="Expand chart" title="Expand chart">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6"></path>
+                  </svg>
+                  <span class="brand-media-chart-expand-label sr-only" data-i18n="brandMedia.expandChart">Expand chart</span>
+                </button>
               </div>
             </div>
             <div class="brand-media-chart-layout">
@@ -1042,10 +1048,23 @@
             <div class="brand-media-click-chart-wrap" id="brandMediaClickChart" role="img" aria-live="polite"></div>
           </section>
 
+
+          <section class="panel brand-media-sankey-panel" id="brandMediaSankeyPanel" aria-labelledby="brandMediaSankeyTitle">
+            <div class="brand-media-panel-heading">
+              <div>
+                <span class="brand-media-section-index">03</span>
+                <h3 id="brandMediaSankeyTitle" data-i18n="brandMedia.sankeyTitle">Revenue flow: brand → products → media</h3>
+                <p data-i18n="brandMedia.sankeySubtitle">Revenue-generating products and their corresponding media for the selected time range.</p>
+              </div>
+              <span class="brand-media-line-count" id="brandMediaSankeyCount" aria-live="polite"></span>
+            </div>
+            <div class="brand-media-sankey-chart-wrap" id="brandMediaSankeyChart" role="img" aria-live="polite"></div>
+          </section>
+
           <section class="panel brand-media-table-panel" aria-labelledby="brandMediaTableTitle">
             <div class="brand-media-panel-heading brand-media-table-heading">
               <div>
-                <span class="brand-media-section-index">03</span>
+                <span class="brand-media-section-index">04</span>
                 <h3 id="brandMediaTableTitle" data-i18n="brandMedia.tableTitle">Media summary</h3>
                 <p data-i18n="brandMedia.tableSubtitle">Range totals and source-record coverage for every line in the chart.</p>
               </div>

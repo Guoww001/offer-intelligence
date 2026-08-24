@@ -470,6 +470,7 @@
       merchantSearch: "",
       managerFilter: "",
       lockedPublisherKeys: [],
+      chartExpanded: false,
       startDate: "",
       endDate: "",
       quickRange: "90",
@@ -478,6 +479,9 @@
       loading: false,
       error: "",
       payload: null,
+      sankeyPayload: null,
+      sankeyLoading: false,
+      sankeyError: "",
       requestKey: "",
       requestSequence: 0
     },
@@ -627,13 +631,19 @@
     brandMediaEndDate: document.getElementById("brandMediaEndDate"),
     brandMediaStatus: document.getElementById("brandMediaStatus"),
     brandMediaKpis: document.getElementById("brandMediaKpis"),
+    brandMediaChartPanel: document.getElementById("brandMediaChartPanel"),
     brandMediaChart: document.getElementById("brandMediaChart"),
+    brandMediaChartExpand: document.getElementById("brandMediaChartExpand"),
     brandMediaChartSubtitle: document.getElementById("brandMediaChartSubtitle"),
     brandMediaTotalKey: document.getElementById("brandMediaTotalKey"),
     brandMediaLineCount: document.getElementById("brandMediaLineCount"),
     brandMediaLegend: document.getElementById("brandMediaLegend"),
     brandMediaClicksPanel: document.getElementById("brandMediaClicksPanel"),
     brandMediaClickChart: document.getElementById("brandMediaClickChart"),
+    brandMediaSankeyPanel: document.getElementById("brandMediaSankeyPanel"),
+    brandMediaSankeyChart: document.getElementById("brandMediaSankeyChart"),
+    brandMediaSankeyTitle: document.getElementById("brandMediaSankeyTitle"),
+    brandMediaSankeyCount: document.getElementById("brandMediaSankeyCount"),
     brandMediaClickChartCount: document.getElementById("brandMediaClickChartCount"),
     brandMediaTableRows: document.getElementById("brandMediaTableRows"),
     brandMediaTableCount: document.getElementById("brandMediaTableCount"),
@@ -1228,6 +1238,19 @@
       "brandMedia.chartTitle": "各媒体每日订单数",
       "brandMedia.chartSubtitle": "点击右侧媒体可锁定；可同时锁定多家，再次点击解除。黑线表示未锁定前的全部媒体订单数，Revenue 会保留在 hover 中。没有每日源记录时会断开。",
       "brandMedia.allOrderLine": "全部媒体订单数",
+      "brandMedia.sankeyTitle": "Revenue 流向：品牌 → 单品 → 媒体",
+      "brandMedia.sankeySubtitle": "按所选时间跨度汇总产生 Revenue 的单品及其对应媒体。",
+      "brandMedia.sankeyBrand": "品牌",
+      "brandMedia.sankeyProducts": "产生 Revenue 的单品",
+      "brandMedia.sankeyMedia": "对应媒体",
+      "brandMedia.sankeyProductCount": "个单品",
+      "brandMedia.sankeyMediaCount": "个媒体",
+      "brandMedia.sankeyLoading": "正在加载品牌、单品与媒体的 Revenue 流向…",
+      "brandMedia.sankeyError": "无法读取单品 Revenue 流向，请调整日期范围后重试。",
+      "brandMedia.sankeyEmpty": "当前时间跨度没有可展示的 Revenue 单品—媒体流向。",
+      "brandMedia.sankeyUnavailable": "订单数据暂未提供单品字段，无法生成 Revenue 流向。",
+      "brandMedia.expandChart": "展开图表",
+      "brandMedia.collapseChart": "退出展开视图",
       "brandMedia.clicksTitle": "已锁定媒体的每日点击",
       "brandMedia.clicksSubtitle": "锁定一家媒体时显示普通柱状图；锁定多家时按媒体堆叠显示每日累计点击。",
       "brandMedia.clicksCount": "点击柱",
@@ -18465,6 +18488,7 @@ var _NUMERIC_COL_PATTERNS = [
   function _brandMediaRenderCurrentView() {
     var payload = state.brandMedia && state.brandMedia.payload;
     _brandMediaRenderManagerFilter(payload);
+    _brandMediaRenderSankeyChart(state.brandMedia && state.brandMedia.sankeyPayload);
     if (!payload) return;
     _brandMediaRenderKpis(payload);
     _brandMediaRenderChart(payload);
@@ -19132,6 +19156,36 @@ var _NUMERIC_COL_PATTERNS = [
     chart._brandMediaFocusedIndex = null;
   }
 
+  function _brandMediaChartExpandLabel(expanded) {
+    return expanded
+      ? t("brandMedia.collapseChart", "Exit expanded chart")
+      : t("brandMedia.expandChart", "Expand chart");
+  }
+
+  function _brandMediaSyncChartExpandButton() {
+    var button = els.brandMediaChartExpand;
+    if (!button) return;
+    var expanded = Boolean(state.brandMedia && state.brandMedia.chartExpanded);
+    var label = _brandMediaChartExpandLabel(expanded);
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+    var labelElement = button.querySelector(".brand-media-chart-expand-label");
+    if (labelElement) labelElement.textContent = label;
+    button.classList.toggle("is-expanded", expanded);
+  }
+
+  function _brandMediaSetChartExpanded(expanded) {
+    if (!els.brandMediaChartPanel) return;
+    state.brandMedia.chartExpanded = Boolean(expanded);
+    els.brandMediaChartPanel.classList.toggle("is-expanded", state.brandMedia.chartExpanded);
+    if (document.body) {
+      document.body.classList.toggle("brand-media-chart-expanded", state.brandMedia.chartExpanded);
+    }
+    _brandMediaSyncChartExpandButton();
+    _brandMediaClearChartHover(els.brandMediaChart);
+  }
+
   function _brandMediaBindChartInteractions() {
     var chart = els.brandMediaChart;
     if (!chart || chart._brandMediaInteractionsBound) return;
@@ -19218,7 +19272,16 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (els.brandMediaLineCount) els.brandMediaLineCount.textContent = _brandMediaLineCountText(publishers.length);
     if (els.brandMediaLegend) {
-      els.brandMediaLegend.innerHTML = allPublishers.map(function (publisher, index) {
+      var totalOrderCount = allPublishers.reduce(function (total, publisher) {
+        return total + Number(publisher.totalOrders || 0);
+      }, 0);
+      var totalLegendItem = '<div class="brand-media-legend-total" data-brand-media-total-legend="true">' +
+        '<i aria-hidden="true"></i><span class="brand-media-legend-details"><strong>' +
+        escapeHtml(t("brandMedia.allOrderLine", "All media orders")) +
+        '</strong><small>' + escapeHtml(t("brandMedia.totalOrders", "Total orders")) +
+        '</small></span><strong>' + escapeHtml(_brandMediaCount(totalOrderCount)) +
+        '</strong></div>';
+      els.brandMediaLegend.innerHTML = totalLegendItem + allPublishers.map(function (publisher, index) {
         var sourceIndex = _brandMediaSourceIndex(publisher, index);
         var key = publisher._brandMediaPublisherKey || _brandMediaPublisherKey(publisher, sourceIndex);
         var locked = lockedKeys.has(key);
@@ -19240,6 +19303,221 @@ var _NUMERIC_COL_PATTERNS = [
       }).join("");
     }
     _brandMediaBindChartInteractions();
+  }
+
+
+  function _brandMediaSankeyLabel(value, maxLength) {
+    var text = String(value == null ? "" : value).trim();
+    var limit = Number(maxLength || 34);
+    if (text.length <= limit) return text;
+    return text.slice(0, Math.max(1, limit - 1)) + "…";
+  }
+
+  function _brandMediaBuildSankeyModel(payload) {
+    var sankey = payload && payload.sankey ? payload.sankey : payload;
+    if (!sankey || sankey.available === false) return null;
+    var rawNodes = Array.isArray(sankey.nodes) ? sankey.nodes : [];
+    var rawLinks = Array.isArray(sankey.links) ? sankey.links : [];
+    var nodes = rawNodes.filter(function (node) {
+      return node && String(node.id || "").trim() && Number(node.value || 0) > 0;
+    }).map(function (node) {
+      return {
+        id: String(node.id),
+        type: String(node.type || ""),
+        label: String(node.label || node.id),
+        value: Number(node.value || 0),
+        productKey: String(node.productKey || ""),
+        userId: String(node.userId || ""),
+        manager: String(node.manager || "")
+      };
+    });
+    var brand = nodes.filter(function (node) { return node.type === "brand"; })[0] || null;
+    var products = nodes.filter(function (node) { return node.type === "product"; });
+    var media = nodes.filter(function (node) { return node.type === "media"; });
+    if (!brand || !products.length || !media.length) return null;
+
+    var nodeById = {};
+    nodes.forEach(function (node) { nodeById[node.id] = node; });
+    var links = rawLinks.map(function (link) {
+      var source = String(link && link.source || "");
+      var target = String(link && link.target || "");
+      var value = Number(link && link.value || 0);
+      if (!source || !target || value <= 0 || !nodeById[source] || !nodeById[target]) return null;
+      return { source: source, target: target, value: value };
+    }).filter(Boolean);
+    if (!links.length) return null;
+
+    products.sort(function (a, b) {
+      return b.value - a.value || a.label.localeCompare(b.label);
+    });
+    media.sort(function (a, b) {
+      return b.value - a.value || a.label.localeCompare(b.label);
+    });
+    var productIds = {};
+    products.forEach(function (node) { productIds[node.id] = true; });
+    var mediaIds = {};
+    media.forEach(function (node) { mediaIds[node.id] = true; });
+    links = links.filter(function (link) {
+      return (link.source === brand.id && productIds[link.target]) ||
+        (productIds[link.source] && mediaIds[link.target]);
+    });
+    if (!links.length) return null;
+    var totalRevenue = Number(
+      sankey.summary && sankey.summary.totalRevenue ||
+      brand.value ||
+      products.reduce(function (sum, node) { return sum + node.value; }, 0)
+    );
+    return {
+      brand: brand,
+      products: products,
+      media: media,
+      links: links,
+      nodeById: nodeById,
+      totalRevenue: totalRevenue,
+      productCount: products.length,
+      mediaCount: media.length
+    };
+  }
+
+  function _brandMediaRenderSankeyChart(payload) {
+    var chart = els.brandMediaSankeyChart;
+    if (!chart) return;
+    var current = state.brandMedia || {};
+    var message = "";
+    if (!String(current.merchantId || "").trim()) {
+      message = t("brandMedia.selectBrand", "Select a brand to load its daily media orders.");
+    } else if (current.sankeyLoading && !payload) {
+      message = t("brandMedia.sankeyLoading", "Loading Revenue flow by brand, product and media...");
+    } else if (current.sankeyError) {
+      message = t("brandMedia.sankeyError", "Unable to load the product Revenue flow. Adjust the date range and try again.");
+    }
+
+    var sankey = payload && payload.sankey ? payload.sankey : payload;
+    if (!message && sankey && sankey.available === false) {
+      message = sankey.reason
+        ? t("brandMedia.sankeyUnavailable", "The order data does not expose a product identifier, so the Revenue flow cannot be generated.")
+        : t("brandMedia.sankeyEmpty", "No product-to-media Revenue flow is available for the selected range.");
+    }
+    var model = !message ? _brandMediaBuildSankeyModel(payload) : null;
+    chart._brandMediaSankeyModel = model;
+    if (els.brandMediaSankeyCount) {
+      els.brandMediaSankeyCount.textContent = model
+        ? _brandMediaCount(model.productCount) + " " +
+          t("brandMedia.sankeyProductCount", "products") + " · " +
+          _brandMediaCount(model.mediaCount) + " " +
+          t("brandMedia.sankeyMediaCount", "media")
+        : "";
+    }
+    if (message || !model) {
+      chart.innerHTML = '<div class="brand-media-sankey-empty">' +
+        escapeHtml(message || t("brandMedia.sankeyEmpty", "No product-to-media Revenue flow is available for the selected range.")) +
+        '</div>';
+      chart.setAttribute("aria-label", message || t("brandMedia.sankeyEmpty", "No product-to-media Revenue flow is available for the selected range."));
+      return;
+    }
+
+    var width = 1120;
+    var itemCount = Math.max(model.products.length, model.media.length, 1);
+    var height = Math.max(390, 128 + itemCount * 31);
+    var top = 70;
+    var bottom = 26;
+    var innerHeight = height - top - bottom;
+    var columnX = { brand: 36, product: 390, media: 760 };
+    var nodeWidth = 12;
+    var nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
+    function layoutColumn(columnNodes, x) {
+      var total = columnNodes.reduce(function (sum, node) { return sum + node.value; }, 0) || 1;
+      var available = innerHeight - nodeGap * Math.max(0, columnNodes.length - 1);
+      var scale = available / total;
+      var totalHeight = 0;
+      var layout = columnNodes.map(function (node) {
+        var nodeHeight = Math.max(14, node.value * scale);
+        totalHeight += nodeHeight;
+        return {
+          node: node,
+          x: x,
+          y: 0,
+          width: nodeWidth,
+          height: nodeHeight,
+          outOffset: 0,
+          inOffset: 0
+        };
+      });
+      totalHeight += nodeGap * Math.max(0, layout.length - 1);
+      var y = top + Math.max(0, (innerHeight - totalHeight) / 2);
+      layout.forEach(function (entry) {
+        entry.y = y;
+        y += entry.height + nodeGap;
+      });
+      return layout;
+    }
+
+    var brandLayout = layoutColumn([model.brand], columnX.brand);
+    var productLayout = layoutColumn(model.products, columnX.product);
+    var mediaLayout = layoutColumn(model.media, columnX.media);
+    var layoutById = {};
+    brandLayout.concat(productLayout, mediaLayout).forEach(function (entry) {
+      layoutById[entry.node.id] = entry;
+    });
+    var maxLink = model.links.reduce(function (max, link) {
+      return Math.max(max, link.value);
+    }, 0) || 1;
+    var linkMarkup = model.links.map(function (link) {
+      var source = layoutById[link.source];
+      var target = layoutById[link.target];
+      if (!source || !target) return "";
+      var strokeWidth = Math.max(1.5, Math.min(34, 2 + (link.value / maxLink) * 30));
+      var sourceY = source.y + source.outOffset + strokeWidth / 2;
+      var targetY = target.y + target.inOffset + strokeWidth / 2;
+      source.outOffset += strokeWidth;
+      target.inOffset += strokeWidth;
+      var startX = source.x + source.width;
+      var endX = target.x;
+      var curve = Math.max(60, (endX - startX) * 0.46);
+      var color = source.node.type === "brand" ? "#17233d" : "#246bfe";
+      var title = source.node.label + " → " + target.node.label + ": " + _brandMediaMoney(link.value);
+      return '<path class="brand-media-sankey-link" d="M ' + startX + " " + sourceY +
+        " C " + (startX + curve) + " " + sourceY + ", " +
+        (endX - curve) + " " + targetY + ", " + endX + " " + targetY +
+        '" stroke="' + color + '" stroke-width="' + strokeWidth.toFixed(2) +
+        '" fill="none"><title>' + escapeHtml(title) + '</title></path>';
+    }).join("");
+
+    function nodeMarkup(entry, position, color) {
+      var node = entry.node;
+      var label = _brandMediaSankeyLabel(node.label, position === "brand" ? 44 : 36);
+      var title = node.label + ": " + _brandMediaMoney(node.value);
+      var labelX = entry.x + entry.width + 14;
+      var valueY = entry.y + Math.min(entry.height - 3, 17);
+      return '<g class="brand-media-sankey-node brand-media-sankey-node-' + node.type +
+        '" data-brand-media-sankey-node="' + escapeHtml(node.id) + '">' +
+        '<rect x="' + entry.x + '" y="' + entry.y.toFixed(2) + '" width="' + entry.width +
+        '" height="' + entry.height.toFixed(2) + '" rx="6" fill="' + color + '"></rect>' +
+        '<title>' + escapeHtml(title) + '</title>' +
+        '<text x="' + labelX + '" y="' + valueY.toFixed(2) + '">' + escapeHtml(label) + '</text>' +
+        '<text class="brand-media-sankey-node-value" x="' + labelX +
+        '" y="' + (valueY + 16).toFixed(2) + '">' + escapeHtml(_brandMediaMoney(node.value)) +
+        '</text></g>';
+    }
+
+    var svg = '<svg class="brand-media-sankey-svg" viewBox="0 0 ' + width + " " + height +
+      '" width="' + width + '" height="' + height + '" role="img" aria-label="' + escapeHtml(t("brandMedia.sankeyTitle", "Revenue flow: brand to products to media")) + '">' +
+      '<text class="brand-media-sankey-column-title" x="' + columnX.brand + '" y="25">' +
+      escapeHtml(t("brandMedia.sankeyBrand", "Brand")) + '</text>' +
+      '<text class="brand-media-sankey-column-title" x="' + columnX.product + '" y="25">' +
+      escapeHtml(t("brandMedia.sankeyProducts", "Revenue products")) + '</text>' +
+      '<text class="brand-media-sankey-column-title" x="' + columnX.media + '" y="25">' +
+      escapeHtml(t("brandMedia.sankeyMedia", "Media")) + '</text>' +
+      '<g class="brand-media-sankey-links">' + linkMarkup + '</g>' +
+      '<g class="brand-media-sankey-nodes">' +
+      brandLayout.map(function (entry) { return nodeMarkup(entry, "brand", "#17233d"); }).join("") +
+      productLayout.map(function (entry) { return nodeMarkup(entry, "product", "#246bfe"); }).join("") +
+      mediaLayout.map(function (entry, index) {
+        return nodeMarkup(entry, "media", brandMediaColor(index + 1));
+      }).join("") +
+      '</g></svg>';
+    chart.innerHTML = '<div class="brand-media-sankey-scroll">' + svg + '</div>';
+    chart.setAttribute("aria-label", t("brandMedia.sankeyTitle", "Revenue flow: brand to products to media"));
   }
 
   function _brandMediaRenderTable(payload) {
@@ -19298,12 +19576,16 @@ var _NUMERIC_COL_PATTERNS = [
     var merchantId = String(current.merchantId || "").trim();
     if (!merchantId) {
       current.payload = null;
+      current.sankeyPayload = null;
+      current.sankeyLoading = false;
+      current.sankeyError = "";
       current.error = "";
       current.loading = false;
       _brandMediaRenderManagerFilter(null);
       _brandMediaRenderKpis(null);
       _brandMediaRenderTable(null);
       _brandMediaRenderClicksChart(null);
+      _brandMediaRenderSankeyChart(null);
       if (els.brandMediaTotalKey) els.brandMediaTotalKey.classList.add("hidden");
       _brandMediaEmptyChart(t("brandMedia.selectBrand", "Select a brand to load its daily media orders."));
       _brandMediaStatus(t("brandMedia.selectBrand", "Select a brand to load its daily media orders."), "info");
@@ -19311,32 +19593,46 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (!current.startDate || !current.endDate || current.startDate > current.endDate) {
       current.error = "invalid-range";
+      current.sankeyPayload = null;
+      current.sankeyLoading = false;
+      current.sankeyError = "invalid-range";
+      _brandMediaRenderSankeyChart(null);
       _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
       return;
     }
     var key = merchantId + "|" + current.startDate + "|" + current.endDate;
-    if (current.requestKey === key && current.payload && !current.error) return;
+    if (current.requestKey === key && current.payload && current.sankeyPayload &&
+        !current.error && !current.sankeyError) return;
     current.requestKey = key;
     current.loading = true;
+    current.sankeyLoading = true;
     current.error = "";
+    current.sankeyError = "";
+    current.sankeyPayload = null;
     var sequence = ++current.requestSequence;
     _brandMediaStatus(t("brandMedia.loading", "Loading brand media order trend..."), "loading");
     _brandMediaRenderClicksChart(null);
     _brandMediaEmptyChart(t("brandMedia.loading", "Loading brand media order trend..."));
+    _brandMediaRenderSankeyChart(null);
     var params = new URLSearchParams({
       merchantId: merchantId,
       startDate: current.startDate,
       endDate: current.endDate,
     });
-    fetch("/api/ui/db/brand-media-trend?" + params.toString())
-      .then(function (response) {
+    function fetchJson(url, fallbackMessage) {
+      return fetch(url).then(function (response) {
         return response.json().then(function (payload) {
           if (!response.ok || payload.ok === false) {
-            throw new Error(payload.error || "Failed to load brand media trend");
+            throw new Error(payload.error || fallbackMessage);
           }
           return payload;
         });
-      })
+      });
+    }
+    fetchJson(
+      "/api/ui/db/brand-media-trend?" + params.toString(),
+      "Failed to load brand media trend"
+    )
       .then(function (payload) {
         if (sequence !== current.requestSequence) return;
         current.loading = false;
@@ -19358,7 +19654,26 @@ var _NUMERIC_COL_PATTERNS = [
         _brandMediaRenderClicksChart(null);
         if (els.brandMediaTotalKey) els.brandMediaTotalKey.classList.add("hidden");
         _brandMediaEmptyChart(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."));
+        _brandMediaRenderCurrentView();
         _brandMediaStatus(t("brandMedia.loadError", "Unable to load brand media trend. Adjust the date range and try again."), "error");
+      });
+    fetchJson(
+      "/api/ui/db/brand-media-sankey?" + params.toString(),
+      "Failed to load brand media Sankey"
+    )
+      .then(function (payload) {
+        if (sequence !== current.requestSequence) return;
+        current.sankeyLoading = false;
+        current.sankeyPayload = payload;
+        current.sankeyError = "";
+        _brandMediaRenderSankeyChart(payload);
+      })
+      .catch(function (error) {
+        if (sequence !== current.requestSequence) return;
+        current.sankeyLoading = false;
+        current.sankeyPayload = null;
+        current.sankeyError = String(error && error.message || "sankey-load-error");
+        _brandMediaRenderSankeyChart(null);
       });
   }
 
@@ -19379,13 +19694,14 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function renderBrandMediaPage() {
+    _brandMediaSyncChartExpandButton();
     _brandMediaSyncControls();
     _brandMediaLoadCatalog();
-    if (state.brandMedia.payload) {
+    if (state.brandMedia.payload && state.brandMedia.sankeyPayload) {
       _brandMediaRenderCurrentView();
       return;
     }
-    if (!state.brandMedia.loading) _brandMediaLoadTrend();
+    if (!state.brandMedia.loading && !state.brandMedia.sankeyLoading) _brandMediaLoadTrend();
   }
 
   function _bindBrandMediaPageInteractions() {
@@ -19403,6 +19719,8 @@ var _NUMERIC_COL_PATTERNS = [
         state.brandMedia.managerFilter = "";
         state.brandMedia.lockedPublisherKeys = [];
         state.brandMedia.payload = null;
+        state.brandMedia.sankeyPayload = null;
+        state.brandMedia.sankeyError = "";
       }
       _brandMediaShowMerchantDropdown();
     });
@@ -19419,6 +19737,8 @@ var _NUMERIC_COL_PATTERNS = [
         state.brandMedia.managerFilter = "";
         state.brandMedia.lockedPublisherKeys = [];
         state.brandMedia.payload = null;
+        state.brandMedia.sankeyPayload = null;
+        state.brandMedia.sankeyError = "";
         state.brandMedia.requestKey = "";
         _brandMediaSyncControls();
         _brandMediaHideMerchantDropdown();
@@ -19439,6 +19759,8 @@ var _NUMERIC_COL_PATTERNS = [
         if (!button) return;
         _brandMediaSetQuickRange(button.dataset.brandMediaRange);
         state.brandMedia.payload = null;
+        state.brandMedia.sankeyPayload = null;
+        state.brandMedia.sankeyError = "";
         state.brandMedia.requestKey = "";
         _brandMediaSyncControls();
         _brandMediaLoadTrend();
@@ -19450,10 +19772,23 @@ var _NUMERIC_COL_PATTERNS = [
         state.brandMedia.endDate = els.brandMediaEndDate.value || "";
         state.brandMedia.quickRange = "";
         state.brandMedia.payload = null;
+        state.brandMedia.sankeyPayload = null;
+        state.brandMedia.sankeyError = "";
         state.brandMedia.requestKey = "";
         _brandMediaSyncControls();
         _brandMediaLoadTrend();
       });
+    });
+
+    if (els.brandMediaChartExpand) {
+      els.brandMediaChartExpand.addEventListener("click", function () {
+        _brandMediaSetChartExpanded(!state.brandMedia.chartExpanded);
+      });
+    }
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" || !state.brandMedia.chartExpanded) return;
+      _brandMediaSetChartExpanded(false);
+      if (els.brandMediaChartExpand) els.brandMediaChartExpand.focus();
     });
     document.addEventListener("click", function (event) {
       var combobox = event.target.closest(".brand-media-combobox");
@@ -27684,6 +28019,9 @@ var _NUMERIC_COL_PATTERNS = [
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.importOpen) {
       closeMonthlyNewMerchantImport({ restoreFocus: false });
     }
+    if (page !== "brand-media" && state.brandMedia && state.brandMedia.chartExpanded) {
+      _brandMediaSetChartExpanded(false);
+    }
     state.page = page;
     updatePageModeClass(page);
     if (page !== "tier") {
@@ -29112,6 +29450,10 @@ var _NUMERIC_COL_PATTERNS = [
       brandMediaChartModel: _brandMediaBuildChartModel,
       brandMediaChartPayload: _brandMediaChartPayload,
       brandMediaClickChartModel: _brandMediaBuildClicksChartModel,
+      brandMediaSankeyModel: _brandMediaBuildSankeyModel,
+      brandMediaSankeyPayload: function (payload) {
+        return _brandMediaBuildSankeyModel(payload);
+      },
       brandMediaClickChartPayload: function (payload, publishers) {
         var model = _brandMediaBuildClicksChartModel(payload, publishers);
         return model ? model.svg : "";
