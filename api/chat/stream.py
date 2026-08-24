@@ -47,7 +47,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            body = _read_json_body(self)
+            body = _read_json_body(self, max_size=AGENT_SYNTHESIS_MAX_REQUEST_BYTES)
         except (ValueError, Exception):
             self._send_json(400, {"ok": False, "error": "Invalid JSON body"})
             return

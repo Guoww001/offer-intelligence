@@ -13444,7 +13444,55 @@ var _NUMERIC_COL_PATTERNS = [
     return "工具 " + name + " 结果：\n" + JSON.stringify(agentToolPromptData(name, result.data));
   }
 
-  function buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language) {
+  function agentToolCallTarget(call) {
+    var name = call && call.name ? String(call.name) : "unknown";
+    var args = call && call.arguments && typeof call.arguments === "object" ? call.arguments : {};
+    if (name === "merchant_analysis") return String(args.merchant || name);
+    if (name === "trend") return String(args.target || name);
+    if (name === "tier_analysis") return String(args.tier || name);
+    if (name === "category_analysis") return String(args.category || name);
+    if (name === "merchant_comparison" && Array.isArray(args.merchants)) return args.merchants.join("、") || name;
+    if (name === "category_comparison" && Array.isArray(args.categories)) return args.categories.join("、") || name;
+    if (name === "payment_status") {
+      var paymentParts = [args.merchant, args.month, args.status, args.tier]
+        .filter(function (value) { return value !== undefined && value !== null && String(value).trim(); })
+        .map(function (value) { return String(value).trim(); });
+      return paymentParts.join(" / ") || name;
+    }
+    return name;
+  }
+
+  function agentPartialExecutionInstruction(executionMeta, language) {
+    var omittedTargets = executionMeta && Array.isArray(executionMeta.omittedTargets)
+      ? executionMeta.omittedTargets.filter(function (target) { return String(target || "").trim(); }).map(String)
+      : [];
+    if (!omittedTargets.length) return "";
+    var executed = Number(executionMeta.executedToolCalls || 0);
+    var total = Number(executionMeta.plannedToolCalls || (executed + omittedTargets.length));
+    var targets = omittedTargets.join(language === "en" ? ", " : "、");
+    return language === "en"
+      ? "The tool execution was partial: " + executed + "/" + total + " planned data step(s) ran. Unexecuted targets: " + targets + ". Do not present unexecuted targets as completed; state that the result is incomplete."
+      : "本次工具执行不完整：已执行 " + executed + "/" + total + " 个规划数据步骤。未执行目标：" + targets + "。不得把未执行目标写成已完成，必须明确说明结果不完整。";
+  }
+
+  function agentPartialExecutionNotice(executionMeta, language) {
+    var instruction = agentPartialExecutionInstruction(executionMeta, language);
+    if (!instruction) return "";
+    return language === "en"
+      ? "> ⚠ Partial tool execution: " + instruction.replace(/^The tool execution was partial:\s*/, "")
+      : "> ⚠ 本次工具执行不完整：" + instruction.replace(/^本次工具执行不完整：/, "");
+  }
+
+  function agentPlanProgressText(plannedCount, executedCount, omittedCount, language) {
+    if (language === "en") {
+      return executedCount + "/" + plannedCount + " planned data step(s) executed"
+        + (omittedCount ? "; " + omittedCount + " omitted after reaching the total budget" : "");
+    }
+    return "已完成 " + executedCount + "/" + plannedCount + " 个规划数据步骤"
+      + (omittedCount ? "；达到总预算，未执行 " + omittedCount + " 个目标" : "");
+  }
+
+  function buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language, executionMeta) {
     var messages = [];
     var background = [];
     var memory = agentClipText(memoryText, AGENT_SYNTHESIS_MEMORY_CHARS);
@@ -13454,11 +13502,13 @@ var _NUMERIC_COL_PATTERNS = [
     if (background.length) messages.push({ role: "user", content: background.join("\n\n") });
     messages.push({ role: "user", content: "当前问题：\n" + agentClipText(prompt, AGENT_PROMPT_CHARS) });
     var results = Array.isArray(toolResults) ? toolResults : [];
-    if (results.length) {
-      var resultsBlock = results.map(agentToolResultPromptText).join("\n---\n");
+    var partialInstruction = agentPartialExecutionInstruction(executionMeta, language);
+    if (results.length || partialInstruction) {
+      var resultsBlock = results.length ? results.map(agentToolResultPromptText).join("\n---\n") : "（没有可用工具结果）";
       var instruction = language === "en"
         ? "Answer the current question from the selected tool fields; state missing tool data plainly."
         : "请基于以上必要工具字段回答当前问题；工具失败的部分请如实说明。";
+      if (partialInstruction) instruction += "\n\n" + partialInstruction;
       messages.push({ role: "user", content: "工具执行结果：\n" + resultsBlock + "\n\n" + instruction });
     }
     return messages;
@@ -13494,6 +13544,46 @@ var _NUMERIC_COL_PATTERNS = [
       return true;
     }
     return false;
+  }
+
+  function agentTextHasVerifiableData(text) {
+    var value = String(text || "").trim();
+    if (!value) return false;
+    var metricTerm = /(?:\b(?:epc|aov|cvr|revenue|sales|orders|clicks|commission|payout|payment|trend|conversion|monthly|report|data)\b|付款|收入|销售额|订单|点击|佣金|佣金率|转化率|客单价|趋势|月度|报告|数据|数值)/i;
+    var metricValue = /(?:\b(?:epc|aov|cvr|revenue|sales|orders|clicks|commission|payout|payment|trend|conversion|monthly|report|data)\b|付款|收入|销售额|订单|点击|佣金|佣金率|转化率|客单价|趋势|月度|报告|数据|数值)\s*["']?\s*(?:为|是|等于|=|:|：|is)?\s*[$￥¥]?\s*[-+]?\d+(?:[.,]\d+)?\s*%?/i.test(value);
+    var tableValue = /[|｜]/.test(value) && /[-+]?\d/.test(value) && metricTerm.test(value);
+    return metricValue || tableValue;
+  }
+
+  function agentPromptRequiresVerifiableData(prompt) {
+    var text = String(prompt || "").trim();
+    if (!text || agentShouldBypassPlanning(text)) return false;
+
+    // 定义、口径和计算方法属于方法论问题，不因提到指标名就强制取数。
+    var conceptualQuestion = /(?:什么是|是什么意思|定义|含义|解释|如何计算|怎么算|怎么计算|what is|meaning|definition|how to calculate)/i.test(text);
+    var explicitDataRequest = /(?:当前|最新|最近|本月|上月|多少|数值|数据|查询|统计|列出|展示|提供|每个|分别|哪些|名单|列表|排名|top\s*\d+|分析|表现|趋势|付款|收入|销售额|订单|点击|佣金|商户|商家|品牌|品类|tier|payment|revenue|sales|orders|clicks|trend|epc|aov|cvr|merchant|category)/i.test(text);
+    var concreteDataQualifier = /(?:多少|数值|数据|查询|统计|列出|展示|提供|每个|分别|哪些|名单|列表|排名|top\s*\d+)/i.test(text);
+    if (conceptualQuestion && !concreteDataQualifier && !agentTextHasVerifiableData(text)) return false;
+    return explicitDataRequest || agentTextHasVerifiableData(text);
+  }
+
+  function agentHasVerifiableContext(prompt, memoryText, history) {
+    if (agentTextHasVerifiableData(prompt) || agentTextHasVerifiableData(memoryText)) return true;
+    var recent = agentRecentHistory(history, AGENT_SYNTHESIS_HISTORY_LIMIT, AGENT_SYNTHESIS_MESSAGE_CHARS);
+    return recent.some(function (item) {
+      return item && agentTextHasVerifiableData(item.content);
+    });
+  }
+
+  function agentHasVerifiableSource(prompt, memoryText, history, toolResults) {
+    return (Array.isArray(toolResults) && toolResults.length > 0)
+      || agentHasVerifiableContext(prompt, memoryText, history);
+  }
+
+  function agentMissingDataResponse(language) {
+    return language === "en"
+      ? "I do not have a verifiable data source for this specific question yet. Please provide the merchant, time range, and metric, or retry so I can run a data lookup."
+      : "当前没有可验证的数据来源，无法直接给出具体数据结论。请补充商户、时间范围和指标，或重试以执行数据查询。";
   }
 
   function agentRoundNumber(value) {
@@ -13841,7 +13931,7 @@ var _NUMERIC_COL_PATTERNS = [
         return;
       }
       if (trendRequested && call.name === "merchant_comparison" && args && Array.isArray(args.merchants) && args.merchants.length >= 2) {
-        args.merchants.slice(0, AGENT_MAX_TOOLS_PER_ROUND).forEach(function (merchant, index) {
+        args.merchants.forEach(function (merchant, index) {
           if (typeof merchant !== "string" || !merchant.trim()) return;
           var multiTrendArgs = {
             entityType: "merchant",
@@ -13859,7 +13949,7 @@ var _NUMERIC_COL_PATTERNS = [
         return;
       }
       if (call.name === "merchant_comparison" && args && Array.isArray(args.merchants) && args.merchants.length >= 2) {
-        args.merchants.slice(0, AGENT_MAX_TOOLS_PER_ROUND).forEach(function (merchant, index) {
+        args.merchants.forEach(function (merchant, index) {
           if (typeof merchant !== "string" || !merchant.trim()) return;
           normalized.push({
             id: String(call.id || "merchant-comparison") + "-" + (index + 1),
@@ -14782,6 +14872,8 @@ var _NUMERIC_COL_PATTERNS = [
     var language = opts.language || "zh";
     var chatLogEl = opts.chatLogEl;
     var fullResponse = agentFallbackText(toolResults, language);
+    var partialNotice = agentPartialExecutionNotice(opts.executionMeta, language);
+    if (partialNotice) fullResponse += "\n\n" + partialNotice;
     var msgEl = document.createElement("div");
     msgEl.className = "message assistant";
     var msgContent = document.createElement("div");
@@ -14816,6 +14908,25 @@ var _NUMERIC_COL_PATTERNS = [
     function stoppedOutcome() {
       if (execution) execution.finish("stopped", Date.now() - executionStartedAt);
       return { handled: true, ok: false, stopped: true };
+    }
+
+    function missingDataOutcome(step) {
+      var content = agentMissingDataResponse(language);
+      if (execution) {
+        execution.updateStep(step, {
+          status: "done",
+          label: executionCopy.direct,
+          detail: language === "en" ? "No verifiable data source" : "缺少可验证数据来源",
+          elapsedMs: Date.now() - executionStartedAt
+        });
+        execution.finish("done", Date.now() - executionStartedAt);
+      }
+      return {
+        handled: true,
+        ok: true,
+        dataUnavailable: true,
+        directContent: content
+      };
     }
 
     if (signal && signal.aborted) return stoppedOutcome();
@@ -14878,68 +14989,21 @@ var _NUMERIC_COL_PATTERNS = [
 
     var toolCallsTotal = 0;
     var toolResults = [];
+    var omittedCalls = [];
 
-    for (var round = 0; round < AGENT_MAX_PLANNING_ROUNDS; round++) {
-      var planStep = execution ? execution.addStep({
-        status: "running",
-        label: round ? executionCopy.replanning : executionCopy.planning,
-        detail: executionCopy.planningDetail
-      }) : null;
-      var planCard = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.planning });
-      var plan;
-      try {
-        var planOptions = {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: messages, tools: agentToolDefinitions(), language: language })
-        };
-        if (signal) planOptions.signal = signal;
-        var planResp = await fetch("/api/chat/agent", planOptions);
-        plan = planResp.ok ? await planResp.json() : { ok: false, error: "HTTP " + planResp.status };
-      } catch (error) {
-        if (agentRequestWasStopped(error, signal)) return stoppedOutcome();
-        plan = { ok: false, error: String((error && error.message) || error) };
-      }
-      if (planCard && planCard.remove) planCard.remove();
+    function currentExecutionMeta() {
+      var omittedTargets = omittedCalls.map(agentToolCallTarget);
+      return {
+        partial: omittedTargets.length > 0,
+        executedToolCalls: toolCallsTotal,
+        plannedToolCalls: toolCallsTotal + omittedTargets.length,
+        omittedTargets: omittedTargets
+      };
+    }
 
-      if (!plan || plan.ok !== true || !Array.isArray(plan.toolCalls) || !plan.toolCalls.length) {
-        if (plan && typeof plan.content === "string" && plan.content.trim()) {
-          if (execution) {
-            execution.updateStep(planStep, {
-              status: "done",
-              label: executionCopy.direct,
-              detail: language === "en" ? "No data tool was needed" : "无需调用数据工具",
-              elapsedMs: Date.now() - executionStartedAt
-            });
-            execution.finish("done", Date.now() - executionStartedAt);
-          }
-          return { handled: true, ok: true, directContent: plan.content };
-        }
-        if (execution) {
-          execution.updateStep(planStep, {
-            status: "error",
-            label: executionCopy.planning,
-            detail: String(plan && plan.error || (language === "en" ? "No executable plan" : "没有生成可执行计划")),
-            elapsedMs: Date.now() - executionStartedAt
-          });
-          execution.finish("error", Date.now() - executionStartedAt);
-        }
-        return { handled: false, error: plan && plan.error };
-      }
-
-      var plannedCalls = normalizeAgentToolCalls(plan.toolCalls, prompt);
-      var calls = plannedCalls.slice(0, AGENT_MAX_TOOLS_PER_ROUND);
-      if (execution) {
-        execution.updateStep(planStep, {
-          status: "done",
-          label: executionCopy.planning,
-          detail: (language === "en" ? calls.length + " data step(s) planned" : "已规划 " + calls.length + " 个数据步骤"),
-          elapsedMs: Date.now() - executionStartedAt
-        });
-      }
-      var results = await Promise.all(calls.map(async function (call) {
+    async function executeAgentToolBatch(calls) {
+      return Promise.all(calls.map(async function (call) {
         if (signal && signal.aborted) return { stopped: true };
-        if (toolCallsTotal >= AGENT_MAX_TOOL_CALLS) return null;
         toolCallsTotal++;
         var kind = agentToolKindLabel(call.name);
         var timelineStep = execution ? execution.addStep({
@@ -14969,17 +15033,102 @@ var _NUMERIC_COL_PATTERNS = [
         });
         return { id: call.id, name: call.name, result: result };
       }));
+    }
 
-      if ((signal && signal.aborted) || results.some(function (r) { return r && r.stopped; })) return stoppedOutcome();
+    for (var round = 0; round < AGENT_MAX_PLANNING_ROUNDS; round++) {
+      var planStep = execution ? execution.addStep({
+        status: "running",
+        label: round ? executionCopy.replanning : executionCopy.planning,
+        detail: executionCopy.planningDetail
+      }) : null;
+      var planCard = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.planning });
+      var plan;
+      try {
+        var planOptions = {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: messages, tools: agentToolDefinitions(), language: language })
+        };
+        if (signal) planOptions.signal = signal;
+        var planResp = await fetch("/api/chat/agent", planOptions);
+        plan = planResp.ok ? await planResp.json() : { ok: false, error: "HTTP " + planResp.status };
+      } catch (error) {
+        if (agentRequestWasStopped(error, signal)) return stoppedOutcome();
+        plan = { ok: false, error: String((error && error.message) || error) };
+      }
+      if (planCard && planCard.remove) planCard.remove();
 
-      var finished = results.filter(function (r) { return r !== null; });
-      finished.forEach(function (r) { toolResults.push(r); });
-      var allOk = finished.every(function (r) { return r.result.ok; });
-      if (allOk) break;
+      var planReturnedWithoutTools = plan && plan.ok === true
+        && (!Array.isArray(plan.toolCalls) || !plan.toolCalls.length);
+      var needsVerifiableSource = agentPromptRequiresVerifiableData(prompt)
+        && !agentHasVerifiableSource(prompt, memoryText, history, toolResults);
+      if (!plan || plan.ok !== true || !Array.isArray(plan.toolCalls) || !plan.toolCalls.length) {
+        if (needsVerifiableSource && (!plan || plan.ok !== true || planReturnedWithoutTools)) {
+          return missingDataOutcome(planStep);
+        }
+        if (plan && typeof plan.content === "string" && plan.content.trim()) {
+          if (execution) {
+            execution.updateStep(planStep, {
+              status: "done",
+              label: executionCopy.direct,
+              detail: language === "en" ? "No data tool was needed" : "无需调用数据工具",
+              elapsedMs: Date.now() - executionStartedAt
+            });
+            execution.finish("done", Date.now() - executionStartedAt);
+          }
+          return { handled: true, ok: true, directContent: plan.content };
+        }
+        if (execution) {
+          execution.updateStep(planStep, {
+            status: "error",
+            label: executionCopy.planning,
+            detail: String(plan && plan.error || (language === "en" ? "No executable plan" : "没有生成可执行计划")),
+            elapsedMs: Date.now() - executionStartedAt
+          });
+          execution.finish("error", Date.now() - executionStartedAt);
+        }
+        return { handled: false, error: plan && plan.error };
+      }
 
-      var failedCount = finished.filter(function (r) { return !r.result.ok; }).length;
-      for (var f = 0; f < finished.length; f++) {
-        var item = finished[f];
+      var plannedCalls = normalizeAgentToolCalls(plan.toolCalls, prompt);
+      var remainingBudget = Math.max(0, AGENT_MAX_TOOL_CALLS - toolCallsTotal);
+      var executableCalls = plannedCalls.slice(0, remainingBudget);
+      var omittedInPlan = plannedCalls.slice(executableCalls.length);
+      if (omittedInPlan.length) omittedCalls = omittedCalls.concat(omittedInPlan);
+      var planResults = [];
+      var planExecuted = 0;
+      var failedCount = 0;
+      while (executableCalls.length) {
+        var calls = executableCalls.splice(0, AGENT_MAX_TOOLS_PER_ROUND);
+        var results = await executeAgentToolBatch(calls);
+        if ((signal && signal.aborted) || results.some(function (r) { return r && r.stopped; })) return stoppedOutcome();
+        var finishedBatch = results.filter(function (r) { return r && r.result; });
+        planResults = planResults.concat(finishedBatch);
+        toolResults = toolResults.concat(finishedBatch);
+        planExecuted += finishedBatch.length;
+        failedCount += finishedBatch.filter(function (r) { return !r.result.ok; }).length;
+        if (execution) {
+          execution.updateStep(planStep, {
+            status: "done",
+            label: executionCopy.planning,
+            detail: agentPlanProgressText(plannedCalls.length, planExecuted, omittedInPlan.length, language),
+            elapsedMs: Date.now() - executionStartedAt
+          });
+        }
+      }
+      if (execution && !planExecuted) {
+        execution.updateStep(planStep, {
+          status: "done",
+          label: executionCopy.planning,
+          detail: agentPlanProgressText(plannedCalls.length, 0, omittedInPlan.length, language),
+          elapsedMs: Date.now() - executionStartedAt
+        });
+      }
+      if (needsVerifiableSource && !planResults.length) return missingDataOutcome(planStep);
+      if (failedCount === 0 || toolCallsTotal >= AGENT_MAX_TOOL_CALLS || !planResults.length) break;
+
+      for (var f = 0; f < planResults.length; f++) {
+        var item = planResults[f];
         messages.push({ role: "user", content: agentToolResultPromptText(item) });
       }
       messages.push({
@@ -14988,7 +15137,13 @@ var _NUMERIC_COL_PATTERNS = [
       });
     }
 
-    var synthMessages = buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language);
+    if (agentPromptRequiresVerifiableData(prompt)
+      && !agentHasVerifiableSource(prompt, memoryText, history, toolResults)) {
+      return missingDataOutcome(null);
+    }
+
+    var executionMeta = currentExecutionMeta();
+    var synthMessages = buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language, executionMeta);
 
     var synthesisStep = execution ? execution.addStep({
       status: "running",
@@ -15025,27 +15180,50 @@ var _NUMERIC_COL_PATTERNS = [
       var fallbackReply = renderAgentFallbackReply(toolResults, {
         chatLogEl: chatLogEl,
         language: language,
-        viewContext: opts.viewContext || null
+        viewContext: opts.viewContext || null,
+        executionMeta: executionMeta
       });
       appendAgentTrendCharts(fallbackReply, toolResults, language);
       if (execution) execution.finish("error", Date.now() - executionStartedAt);
-      return { handled: true, ok: true, fullResponse: fallbackReply.fullResponse, statusBar: fallbackReply.statusBar };
+      return {
+        handled: true,
+        ok: true,
+        fullResponse: fallbackReply.fullResponse,
+        statusBar: fallbackReply.statusBar,
+        partial: executionMeta.partial,
+        omittedTargets: executionMeta.omittedTargets,
+        executedToolCalls: executionMeta.executedToolCalls,
+        plannedToolCalls: executionMeta.plannedToolCalls
+      };
     }
     var completedResponse = ensureAgentMonthlyDataVisible(reply.fullResponse, toolResults, language);
     completedResponse = ensureAgentTierMerchantDataVisible(completedResponse, toolResults, language, prompt);
     completedResponse = ensureAgentPaymentDataVisible(completedResponse, toolResults, language);
+    var partialNotice = agentPartialExecutionNotice(executionMeta, language);
+    if (partialNotice) completedResponse = String(completedResponse || "").trimEnd() + "\n\n" + partialNotice;
     if (completedResponse !== reply.fullResponse) updateAgentRenderedResponse(reply, completedResponse);
     appendAgentTrendCharts(reply, toolResults, language);
     if (execution) {
       execution.updateStep(synthesisStep, {
         status: "done",
         label: executionCopy.synthesis,
-        detail: language === "en" ? "Final answer ready" : "最终回答已生成",
+        detail: executionMeta.partial
+          ? (language === "en" ? "Final answer ready; partial tool coverage" : "最终回答已生成；工具查询覆盖不完整")
+          : (language === "en" ? "Final answer ready" : "最终回答已生成"),
         elapsedMs: Date.now() - executionStartedAt
       });
       execution.finish("done", Date.now() - executionStartedAt);
     }
-    return { handled: true, ok: true, fullResponse: completedResponse, statusBar: reply.statusBar };
+    return {
+      handled: true,
+      ok: true,
+      fullResponse: completedResponse,
+      statusBar: reply.statusBar,
+      partial: executionMeta.partial,
+      omittedTargets: executionMeta.omittedTargets,
+      executedToolCalls: executionMeta.executedToolCalls,
+      plannedToolCalls: executionMeta.plannedToolCalls
+    };
   }
 
   function agentPageWelcomeHtml() {
@@ -28872,6 +29050,7 @@ var _NUMERIC_COL_PATTERNS = [
       ensureAgentTierMerchantDataVisible,
       ensureAgentPaymentDataVisible,
       agentShouldBypassPlanning,
+      agentPromptRequiresVerifiableData,
       agentPaymentMonthForQuery,
       agentToolPromptData,
       buildAgentPlanningMessages,
