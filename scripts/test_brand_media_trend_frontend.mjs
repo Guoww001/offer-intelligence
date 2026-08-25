@@ -264,19 +264,38 @@ const indexHtml = fs.readFileSync("public/index.html", "utf8");
   'id="brandMediaTotalKey"',
   'id="brandMediaClicksPanel"',
   'id="brandMediaClickChart"',
-  'id="brandMediaSankeyPanel"',
-  'id="brandMediaSankeyChart"',
-  'id="brandMediaSankeyCount"',
   'id="brandMediaTableRows"'
 ].forEach(function (required) {
   if (!indexHtml.includes(required)) throw new Error("brand media page is missing " + required);
 });
+[
+  'id="revenueFlowPage"',
+  'id="revenueFlowMerchantSearch"',
+  'id="revenueFlowMerchantDropdown"',
+  'id="revenueFlowRangeButtons"',
+  'id="revenueFlowStartDate"',
+  'id="revenueFlowEndDate"',
+  'id="revenueFlowChart"',
+  'id="revenueFlowCount"',
+  'id="revenueFlowKpis"'
+].forEach(function (required) {
+  if (!indexHtml.includes(required)) throw new Error("revenue flow page is missing " + required);
+});
+if (indexHtml.includes('id="brandMediaSankeyPanel"')) {
+  throw new Error("Sankey should be removed from the Brand media page");
+}
 if (!indexHtml.includes('data-i18n="brandMedia.manager"')) {
   throw new Error("media summary should expose the manager association");
 }
 
-if (!fs.readFileSync("public/app.js", "utf8").includes("/api/ui/db/brand-media-sankey?")) {
-  throw new Error("brand media Sankey should use the selected brand and date range endpoint");
+const appSource = fs.readFileSync("public/app.js", "utf8");
+if (!appSource.includes("/api/ui/db/brand-media-sankey?") || !appSource.includes('switchPage("revenue-flow")')) {
+  throw new Error("Revenue flow should use the selected brand/date endpoint from its standalone page");
+}
+const vercelConfig = fs.readFileSync("vercel.json", "utf8");
+if (!vercelConfig.includes("/api/ui/db/brand-media-sankey") ||
+    !vercelConfig.includes('"args": "ui-brand-media-sankey"')) {
+  throw new Error("Vercel must route the Revenue flow endpoint to the DB WSGI function");
 }
 
 console.log("Brand media trend frontend checks passed");

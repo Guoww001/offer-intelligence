@@ -142,6 +142,12 @@
             </span>
             <span data-i18n="nav.brandMedia">Brand media</span>
           </button>
+          <button class="page-nav-button" id="revenueFlowNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 6h5v12H4zM15 6h5v12h-5z"/><path d="M9 9h6M9 15h6"/><path d="m12 7 3 2-3 2M12 13l3 2-3 2"/></svg>
+            </span>
+            <span data-i18n="nav.revenueFlow">Revenue flow</span>
+          </button>
           <button class="page-nav-button" id="targetNav" type="button">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M9 5v14"/><path d="M5 10h14"/></svg>
@@ -1048,23 +1054,10 @@
             <div class="brand-media-click-chart-wrap" id="brandMediaClickChart" role="img" aria-live="polite"></div>
           </section>
 
-
-          <section class="panel brand-media-sankey-panel" id="brandMediaSankeyPanel" aria-labelledby="brandMediaSankeyTitle">
-            <div class="brand-media-panel-heading">
-              <div>
-                <span class="brand-media-section-index">03</span>
-                <h3 id="brandMediaSankeyTitle" data-i18n="brandMedia.sankeyTitle">Revenue flow: brand → products → media</h3>
-                <p data-i18n="brandMedia.sankeySubtitle">Revenue-generating products and their corresponding media for the selected time range.</p>
-              </div>
-              <span class="brand-media-line-count" id="brandMediaSankeyCount" aria-live="polite"></span>
-            </div>
-            <div class="brand-media-sankey-chart-wrap" id="brandMediaSankeyChart" role="img" aria-live="polite"></div>
-          </section>
-
           <section class="panel brand-media-table-panel" aria-labelledby="brandMediaTableTitle">
             <div class="brand-media-panel-heading brand-media-table-heading">
               <div>
-                <span class="brand-media-section-index">04</span>
+                <span class="brand-media-section-index">03</span>
                 <h3 id="brandMediaTableTitle" data-i18n="brandMedia.tableTitle">Media summary</h3>
                 <p data-i18n="brandMedia.tableSubtitle">Range totals and source-record coverage for every line in the chart.</p>
               </div>
@@ -1086,6 +1079,80 @@
                 <tbody id="brandMediaTableRows"></tbody>
               </table>
             </div>
+          </section>
+        </section>
+
+        <section class="brand-media-page revenue-flow-page hidden" id="revenueFlowPage" aria-label="Revenue flow">
+          <header class="brand-media-header">
+            <div>
+              <span class="brand-media-eyebrow">REVENUE ATTRIBUTION</span>
+              <h2 data-i18n="revenueFlow.title">Revenue flow</h2>
+              <p data-i18n="revenueFlow.subtitle">Trace a brand's revenue from products to the media that generated it.</p>
+            </div>
+            <div class="brand-media-header-note">
+              <span aria-hidden="true">●</span>
+              <span data-i18n="revenueFlow.liveSource">Order-level revenue</span>
+            </div>
+          </header>
+
+          <section class="panel brand-media-controls revenue-flow-controls" aria-label="Revenue flow controls">
+            <div class="brand-media-controls-grid">
+              <label class="brand-media-field brand-media-merchant-field">
+                <span data-i18n="revenueFlow.brand">Brand</span>
+                <div class="brand-media-combobox">
+                  <input
+                    id="revenueFlowMerchantSearch"
+                    type="text"
+                    placeholder="Search brand or Merchant ID"
+                    data-i18n-placeholder="revenueFlow.brandPlaceholder"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="revenueFlowMerchantDropdown"
+                    aria-expanded="false"
+                  />
+                  <div class="brand-media-combobox-dropdown" id="revenueFlowMerchantDropdown" role="listbox"></div>
+                </div>
+              </label>
+
+              <div class="brand-media-field brand-media-range-field">
+                <span data-i18n="revenueFlow.timeRange">Time range</span>
+                <div class="brand-media-range-buttons" id="revenueFlowRangeButtons" aria-label="Quick date ranges">
+                  <button type="button" data-revenue-flow-range="30">30D</button>
+                  <button type="button" data-revenue-flow-range="90">90D</button>
+                  <button type="button" data-revenue-flow-range="180">180D</button>
+                  <button type="button" data-revenue-flow-range="365">1Y</button>
+                </div>
+              </div>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="revenueFlow.startDate">Start date</span>
+                <input id="revenueFlowStartDate" type="date" aria-label="Revenue flow start date" />
+              </label>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="revenueFlow.endDate">End date</span>
+                <input id="revenueFlowEndDate" type="date" aria-label="Revenue flow end date" />
+              </label>
+            </div>
+            <div class="brand-media-control-footer">
+              <p class="brand-media-status" id="revenueFlowStatus" role="status" aria-live="polite"></p>
+              <p class="brand-media-source-note" data-i18n="revenueFlow.sourceNote">Only positive order Revenue is included. Each media is a terminating node in the flow.</p>
+            </div>
+          </section>
+
+          <section class="brand-media-kpis revenue-flow-kpis" id="revenueFlowKpis" aria-label="Revenue flow summary"></section>
+
+          <section class="panel brand-media-sankey-panel revenue-flow-panel" id="revenueFlowPanel" aria-labelledby="revenueFlowTitle">
+            <div class="brand-media-panel-heading">
+              <div>
+                <span class="brand-media-section-index">01</span>
+                <h3 id="revenueFlowTitle" data-i18n="revenueFlow.chartTitle">Revenue flow: brand → products → media</h3>
+                <p data-i18n="revenueFlow.chartSubtitle">Revenue-generating products and their corresponding media for the selected time range.</p>
+              </div>
+              <span class="brand-media-line-count" id="revenueFlowCount" aria-live="polite"></span>
+            </div>
+            <div class="brand-media-sankey-chart-wrap" id="revenueFlowChart" role="img" aria-live="polite"></div>
           </section>
         </section>
 
