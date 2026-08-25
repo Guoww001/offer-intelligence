@@ -1334,6 +1334,14 @@
       "revenueFlow.linkCount": "条流向",
       "revenueFlow.expandChart": "展开图表",
       "revenueFlow.collapseChart": "退出展开视图",
+      "revenueFlow.canvasHint": "拖动画布平移，滚轮缩放；点击单品或媒体锁定关联",
+      "revenueFlow.canvasControls": "拖动平移 · 滚轮缩放 · 点击单品或媒体锁定",
+      "revenueFlow.canvasLocked": "已锁定",
+      "revenueFlow.canvasZoomOut": "缩小",
+      "revenueFlow.canvasZoomIn": "放大",
+      "revenueFlow.canvasResetView": "重置视图",
+      "revenueFlow.canvasLabel": "可交互的 Revenue 流向画布",
+      "revenueFlow.canvasToolbar": "画布控制",
       "label.All markets": "全市场",
       "label.All": "全部",
       "action.search": "搜索",
@@ -19849,6 +19857,51 @@ var _NUMERIC_COL_PATTERNS = [
       : empty;
   }
 
+  function _brandMediaSankeyToggleSelection(model, currentNodeId, nodeId) {
+    var current = String(currentNodeId || "");
+    var next = String(nodeId || "");
+    var node = model && model.nodeById ? model.nodeById[next] : null;
+    if (!node || (node.type !== "product" && node.type !== "media")) return current;
+    return current === next ? "" : next;
+  }
+
+  function _brandMediaSankeyCanvasViewport(chart) {
+    return chart && chart.querySelector
+      ? chart.querySelector("[data-brand-media-sankey-canvas]")
+      : null;
+  }
+
+  function _brandMediaSankeyCanvasStage(chart) {
+    return chart && chart.querySelector
+      ? chart.querySelector("[data-brand-media-sankey-canvas-stage]")
+      : null;
+  }
+
+  function _brandMediaSankeyCanvasUpdateUi(chart) {
+    if (!chart) return;
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    var lockedNodeId = String(chart._brandMediaSankeyLockedNodeId || "");
+    var model = chart._brandMediaSankeyModel;
+    var lockedNode = model && model.nodeById ? model.nodeById[lockedNodeId] : null;
+    var copy = chart._brandMediaSankeyCanvasCopy || {
+      hint: "Drag to pan, scroll to zoom, and click a product or media to pin its relationships.",
+      locked: "Pinned"
+    };
+    if (viewport) viewport.classList.toggle("has-selection", Boolean(lockedNode));
+    var status = chart.querySelector ? chart.querySelector("[data-brand-media-sankey-canvas-status]") : null;
+    if (status) {
+      var displayLabel = lockedNode
+        ? (lockedNode.type === "product"
+          ? _brandMediaSankeyProductAsin(lockedNode)
+          : _brandMediaSankeyLabel(lockedNode.label, 42))
+        : "";
+      status.textContent = lockedNode ? copy.locked + ": " + displayLabel : copy.hint;
+    }
+    var zoom = chart.querySelector ? chart.querySelector("[data-brand-media-sankey-canvas-zoom]") : null;
+    var view = chart._brandMediaSankeyCanvasView || { scale: 1 };
+    if (zoom) zoom.textContent = Math.round(Number(view.scale || 1) * 100) + "%";
+  }
+
   function _brandMediaIndexSankeyElements(chart) {
     if (!chart) return;
     var scroll = chart.querySelector ? chart.querySelector(".brand-media-sankey-scroll") : null;
@@ -19918,7 +19971,7 @@ var _NUMERIC_COL_PATTERNS = [
     context.globalAlpha = 1;
   }
 
-  function _brandMediaSankeyNodeMarkup(entry, focus) {
+  function _brandMediaSankeyNodeMarkup(entry, focus, lockedNodeId) {
     var node = entry.node;
     var position = entry.position;
     var label = position === "product"
@@ -19927,11 +19980,14 @@ var _NUMERIC_COL_PATTERNS = [
     var title = position === "product"
       ? _brandMediaSankeyProductAsin(node) + " · " + node.label + ": " + _brandMediaMoney(node.value)
       : node.label + ": " + _brandMediaMoney(node.value);
+    var locked = String(lockedNodeId || "") === String(node.id || "");
     var interactionAttributes = position === "brand"
       ? ' aria-hidden="true"'
-      : ' tabindex="0" role="button" aria-label="' + escapeHtml(title) + '"';
+      : ' tabindex="0" role="button" aria-pressed="' + (locked ? "true" : "false") +
+        '" aria-label="' + escapeHtml(title) + '"';
     var focused = focus && focus.nodeIds.has(node.id) ? " is-focused" : "";
-    return '<div class="brand-media-sankey-node brand-media-sankey-node-' + node.type + focused +
+    var selectionAnchor = locked ? " is-locked is-selection-anchor" : "";
+    return '<div class="brand-media-sankey-node brand-media-sankey-node-' + node.type + focused + selectionAnchor +
       '" data-brand-media-sankey-node="' + escapeHtml(node.id) + '" style="left:' + entry.x +
       'px;top:' + entry.y.toFixed(2) + 'px;width:' + entry.width + 'px;height:' +
       entry.height.toFixed(2) + 'px;--brand-media-node-color:' + entry.color + ';"' +
@@ -19948,7 +20004,11 @@ var _NUMERIC_COL_PATTERNS = [
     if (!layer || !layout) return;
     layer.style.height = layout.height + "px";
     layer.innerHTML = layout.nodes.map(function (entry) {
-      return _brandMediaSankeyNodeMarkup(entry, chart._brandMediaSankeyFocus);
+      return _brandMediaSankeyNodeMarkup(
+        entry,
+        chart._brandMediaSankeyFocus,
+        chart._brandMediaSankeyLockedNodeId
+      );
     }).join("");
   }
 
@@ -19967,26 +20027,42 @@ var _NUMERIC_COL_PATTERNS = [
       if (tileElement) _brandMediaSankeyDrawTile(chart, tile, tileElement.canvas);
     });
     _brandMediaSankeyRenderNodes(chart);
+    _brandMediaSankeyCanvasUpdateUi(chart);
   }
 
   function _brandMediaSankeyClearHover(chart) {
     if (!chart) return;
-    if (!chart._brandMediaSankeyFocus && !chart._brandMediaSankeyHoverNodeId) return;
-    chart._brandMediaSankeyFocus = null;
-    chart._brandMediaSankeyHoverNodeId = "";
-    chart._brandMediaSankeyFocusVersion = Number(chart._brandMediaSankeyFocusVersion || 0) + 1;
-    if (chart.classList) chart.classList.remove("brand-media-sankey-chart-has-focus");
-    _brandMediaSankeyRenderTiles(chart);
+    var lockedNodeId = String(chart._brandMediaSankeyLockedNodeId || "");
+    var model = chart._brandMediaSankeyModel;
+    if (lockedNodeId && model && model.nodeById && model.nodeById[lockedNodeId]) {
+      _brandMediaSankeyApplyFocus(chart, model, lockedNodeId, "locked");
+      return;
+    }
+    _brandMediaSankeyClearFocus(chart);
   }
 
-  function _brandMediaSankeyApplyHover(chart, model, nodeId) {
+  function _brandMediaSankeyClearFocus(chart) {
+    if (!chart) return;
+    chart._brandMediaSankeyFocus = null;
+    chart._brandMediaSankeyHoverNodeId = "";
+    chart._brandMediaSankeyActiveNodeId = "";
+    chart._brandMediaSankeyFocusMode = "";
+    chart._brandMediaSankeyFocusVersion = Number(chart._brandMediaSankeyFocusVersion || 0) + 1;
+    if (chart.classList) {
+      chart.classList.remove("brand-media-sankey-chart-has-focus");
+      chart.classList.remove("brand-media-sankey-chart-has-lock");
+    }
+    if (chart._brandMediaSankeyLayout) _brandMediaSankeyRenderTiles(chart);
+  }
+
+  function _brandMediaSankeyApplyFocus(chart, model, nodeId, mode) {
     if (!chart || !model || !nodeId || !model.nodeById || !model.nodeById[nodeId]) {
-      _brandMediaSankeyClearHover(chart);
+      _brandMediaSankeyClearFocus(chart);
       return;
     }
     var node = model.nodeById[nodeId];
     if (node.type === "brand") {
-      _brandMediaSankeyClearHover(chart);
+      _brandMediaSankeyClearFocus(chart);
       return;
     }
     var hoverState = _brandMediaSankeyHoverState(model, nodeId);
@@ -19995,9 +20071,49 @@ var _NUMERIC_COL_PATTERNS = [
       linkIndexes: new Set(hoverState.linkIndexes)
     };
     chart._brandMediaSankeyFocusVersion = Number(chart._brandMediaSankeyFocusVersion || 0) + 1;
-    chart._brandMediaSankeyHoverNodeId = nodeId;
-    if (chart.classList) chart.classList.add("brand-media-sankey-chart-has-focus");
+    var isLocked = mode === "locked";
+    chart._brandMediaSankeyActiveNodeId = nodeId;
+    chart._brandMediaSankeyFocusMode = isLocked ? "locked" : "hover";
+    chart._brandMediaSankeyHoverNodeId = isLocked ? "" : nodeId;
+    if (chart.classList) {
+      chart.classList.add("brand-media-sankey-chart-has-focus");
+      chart.classList.toggle("brand-media-sankey-chart-has-lock", isLocked);
+    }
     _brandMediaSankeyRenderTiles(chart);
+  }
+
+  function _brandMediaSankeyApplyHover(chart, model, nodeId) {
+    if (!chart || !model || !nodeId || !model.nodeById || !model.nodeById[nodeId]) {
+      _brandMediaSankeyClearHover(chart);
+      return;
+    }
+    if (chart._brandMediaSankeyLockedNodeId && chart._brandMediaSankeyLockedNodeId !== nodeId) return;
+    var node = model.nodeById[nodeId];
+    if (node.type === "brand") {
+      _brandMediaSankeyClearHover(chart);
+      return;
+    }
+    _brandMediaSankeyApplyFocus(
+      chart,
+      model,
+      nodeId,
+      chart._brandMediaSankeyLockedNodeId ? "locked" : "hover"
+    );
+  }
+
+  function _brandMediaSankeyToggleLockedNode(chart, nodeId) {
+    if (!chart || !chart._brandMediaSankeyModel) return;
+    var nextNodeId = _brandMediaSankeyToggleSelection(
+      chart._brandMediaSankeyModel,
+      chart._brandMediaSankeyLockedNodeId,
+      nodeId
+    );
+    chart._brandMediaSankeyLockedNodeId = nextNodeId;
+    if (nextNodeId) {
+      _brandMediaSankeyApplyFocus(chart, chart._brandMediaSankeyModel, nextNodeId, "locked");
+    } else {
+      _brandMediaSankeyClearFocus(chart);
+    }
   }
 
   function _brandMediaSankeyNodeFromTarget(chart, target) {
@@ -20017,11 +20133,31 @@ var _NUMERIC_COL_PATTERNS = [
         return;
       }
       var nodeId = String(node.getAttribute("data-brand-media-sankey-node") || "");
-      if (nodeId === chart._brandMediaSankeyHoverNodeId) return;
+      var modelNode = chart._brandMediaSankeyModel && chart._brandMediaSankeyModel.nodeById
+        ? chart._brandMediaSankeyModel.nodeById[nodeId]
+        : null;
+      if (!modelNode || modelNode.type === "brand") {
+        if (!chart._brandMediaSankeyLockedNodeId) _brandMediaSankeyClearHover(chart);
+        return;
+      }
+      if (chart._brandMediaSankeyLockedNodeId && chart._brandMediaSankeyLockedNodeId !== nodeId) return;
+      if (nodeId === chart._brandMediaSankeyActiveNodeId) return;
       _brandMediaSankeyApplyHover(chart, chart._brandMediaSankeyModel, nodeId);
     }
     chart.addEventListener("pointerover", handleNodeTarget);
     chart.addEventListener("focusin", handleNodeTarget);
+    chart.addEventListener("click", function (event) {
+      var node = _brandMediaSankeyNodeFromTarget(chart, event.target);
+      if (!node) return;
+      var nodeId = String(node.getAttribute("data-brand-media-sankey-node") || "");
+      var modelNode = chart._brandMediaSankeyModel && chart._brandMediaSankeyModel.nodeById
+        ? chart._brandMediaSankeyModel.nodeById[nodeId]
+        : null;
+      if (!modelNode || (modelNode.type !== "product" && modelNode.type !== "media")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      _brandMediaSankeyToggleLockedNode(chart, nodeId);
+    });
     chart.addEventListener("pointerleave", function () {
       _brandMediaSankeyClearHover(chart);
     });
@@ -20033,7 +20169,9 @@ var _NUMERIC_COL_PATTERNS = [
   function _brandMediaBindSankeyScroll(chart) {
     if (!chart || chart._brandMediaSankeyScrollBound) return;
     chart._brandMediaSankeyScrollBound = true;
-    chart.addEventListener("scroll", function () {
+    var scrollTarget = _brandMediaSankeyCanvasViewport(chart) || chart;
+    chart._brandMediaSankeyScrollTarget = scrollTarget;
+    scrollTarget.addEventListener("scroll", function () {
       if (chart.classList) chart.classList.add("is-scrolling");
       if (chart._brandMediaSankeyScrollTimer) clearTimeout(chart._brandMediaSankeyScrollTimer);
       chart._brandMediaSankeyScrollTimer = setTimeout(function () {
@@ -20041,6 +20179,127 @@ var _NUMERIC_COL_PATTERNS = [
         if (chart.classList) chart.classList.remove("is-scrolling");
       }, 120);
     }, { passive: true });
+  }
+
+  function _brandMediaSankeyCanvasClamp(value, min, max) {
+    return Math.min(max, Math.max(min, Number(value || 0)));
+  }
+
+  function _brandMediaSankeyCanvasApplyView(chart) {
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    var stage = _brandMediaSankeyCanvasStage(chart);
+    var content = chart && chart._brandMediaSankeyScroll;
+    var layout = chart && chart._brandMediaSankeyLayout;
+    if (!viewport || !stage || !content || !layout) return;
+    var view = chart._brandMediaSankeyCanvasView || { scale: 1 };
+    view.scale = _brandMediaSankeyCanvasClamp(Number(view.scale || 1), 0.65, 1.8);
+    chart._brandMediaSankeyCanvasView = view;
+    stage.style.width = (layout.width * view.scale) + "px";
+    stage.style.height = (layout.height * view.scale) + "px";
+    content.style.width = layout.width + "px";
+    content.style.height = layout.height + "px";
+    content.style.transformOrigin = "0 0";
+    content.style.transform = "scale(" + view.scale.toFixed(3) + ")";
+    _brandMediaSankeyCanvasUpdateUi(chart);
+  }
+
+  function _brandMediaSankeyCanvasResetView(chart) {
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    if (!viewport) return;
+    chart._brandMediaSankeyCanvasView = { scale: 1 };
+    _brandMediaSankeyCanvasApplyView(chart);
+    viewport.scrollLeft = 0;
+    viewport.scrollTop = 0;
+  }
+
+  function _brandMediaSankeyCanvasZoom(chart, factor, point) {
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    if (!viewport) return;
+    var view = chart._brandMediaSankeyCanvasView || { scale: 1 };
+    var oldScale = Number(view.scale || 1);
+    var nextScale = _brandMediaSankeyCanvasClamp(oldScale * Number(factor || 1), 0.65, 1.8);
+    if (nextScale === oldScale) return;
+    var rect = viewport.getBoundingClientRect ? viewport.getBoundingClientRect() : { left: 0, top: 0 };
+    var pointX = point && Number.isFinite(point.x) ? point.x : (viewport.clientWidth || 1160) / 2;
+    var pointY = point && Number.isFinite(point.y) ? point.y : (viewport.clientHeight || 520) / 2;
+    var worldX = (viewport.scrollLeft + pointX) / oldScale;
+    var worldY = (viewport.scrollTop + pointY) / oldScale;
+    view.scale = nextScale;
+    chart._brandMediaSankeyCanvasView = view;
+    _brandMediaSankeyCanvasApplyView(chart);
+    viewport.scrollLeft = Math.max(0, worldX * nextScale - pointX);
+    viewport.scrollTop = Math.max(0, worldY * nextScale - pointY);
+  }
+
+  function _brandMediaBindSankeyCanvasInteractions(chart) {
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    if (!viewport || chart._brandMediaSankeyCanvasInteractionsBound) return;
+    chart._brandMediaSankeyCanvasInteractionsBound = true;
+    if (!chart._brandMediaSankeyCanvasView) chart._brandMediaSankeyCanvasResetPending = true;
+    var pan = null;
+    function stopPan(event) {
+      if (!pan || (event && event.pointerId !== pan.pointerId)) return;
+      pan = null;
+      viewport.classList.remove("is-panning");
+      if (event && viewport.releasePointerCapture && viewport.hasPointerCapture && viewport.hasPointerCapture(event.pointerId)) {
+        viewport.releasePointerCapture(event.pointerId);
+      }
+    }
+    viewport.addEventListener("pointerdown", function (event) {
+      if (event.button !== undefined && event.button !== 0) return;
+      var node = _brandMediaSankeyNodeFromTarget(chart, event.target);
+      if (node) return;
+      var button = event.target && event.target.closest ? event.target.closest("button") : null;
+      if (button) return;
+      pan = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop
+      };
+      viewport.classList.add("is-panning");
+      if (viewport.setPointerCapture) viewport.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    viewport.addEventListener("pointermove", function (event) {
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      viewport.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+      viewport.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
+      event.preventDefault();
+    });
+    viewport.addEventListener("pointerup", stopPan);
+    viewport.addEventListener("pointercancel", stopPan);
+    viewport.addEventListener("lostpointercapture", stopPan);
+    viewport.addEventListener("wheel", function (event) {
+      event.preventDefault();
+      var rect = viewport.getBoundingClientRect();
+      _brandMediaSankeyCanvasZoom(chart, event.deltaY < 0 ? 1.1 : 0.9, {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      });
+    }, { passive: false });
+    viewport.addEventListener("keydown", function (event) {
+      if (event.key === "0") _brandMediaSankeyCanvasResetView(chart);
+      else if (event.key === "+" || event.key === "=") _brandMediaSankeyCanvasZoom(chart, 1.15);
+      else if (event.key === "-" || event.key === "_") _brandMediaSankeyCanvasZoom(chart, 0.87);
+      else return;
+      event.preventDefault();
+    });
+    var toolbar = chart.querySelector ? chart.querySelector(".brand-media-sankey-canvas-toolbar") : null;
+    if (toolbar) toolbar.addEventListener("click", function (event) {
+      var action = event.target && event.target.closest
+        ? event.target.closest("[data-brand-media-sankey-canvas-action]")
+        : null;
+      if (!action || !toolbar.contains(action)) return;
+      var actionName = String(action.getAttribute("data-brand-media-sankey-canvas-action") || "");
+      if (actionName === "zoom-in") _brandMediaSankeyCanvasZoom(chart, 1.15);
+      else if (actionName === "zoom-out") _brandMediaSankeyCanvasZoom(chart, 0.87);
+      else if (actionName === "reset-view") _brandMediaSankeyCanvasResetView(chart);
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
   }
 
   function _brandMediaSankeyResetRenderState(chart) {
@@ -20057,12 +20316,21 @@ var _NUMERIC_COL_PATTERNS = [
     chart._brandMediaSankeyNodeLayer = null;
     chart._brandMediaSankeyVisible = null;
     chart._brandMediaSankeyFocus = null;
+    chart._brandMediaSankeyLockedNodeId = "";
     chart._brandMediaSankeyHoverNodeId = "";
+    chart._brandMediaSankeyActiveNodeId = "";
+    chart._brandMediaSankeyFocusMode = "";
     chart._brandMediaSankeyFocusVersion = 0;
+    chart._brandMediaSankeyCanvasView = null;
+    chart._brandMediaSankeyCanvasCopy = null;
+    chart._brandMediaSankeyScrollBound = false;
+    chart._brandMediaSankeyScrollTarget = null;
+    chart._brandMediaSankeyCanvasInteractionsBound = false;
   }
 
   function _brandMediaRenderSankeyChart(payload, chart, countElement, currentState, copyPrefix) {
     if (!chart) return;
+    var previousLockedNodeId = String(chart._brandMediaSankeyLockedNodeId || "");
     _brandMediaSankeyResetRenderState(chart);
     var prefix = String(copyPrefix || "brandMedia");
     function copy(key, fallback) {
@@ -20086,6 +20354,9 @@ var _NUMERIC_COL_PATTERNS = [
     }
     var model = !message ? _brandMediaBuildSankeyModel(payload) : null;
     chart._brandMediaSankeyModel = model;
+    chart._brandMediaSankeyLockedNodeId = model && model.nodeById && model.nodeById[previousLockedNodeId]
+      ? previousLockedNodeId
+      : "";
     if (countElement) {
       countElement.textContent = model
         ? _brandMediaCount(model.productCount) + " " +
@@ -20111,20 +20382,51 @@ var _NUMERIC_COL_PATTERNS = [
     };
     var tileLayout = _brandMediaBuildSankeyTileLayout(layout, 640);
     chart._brandMediaSankeyTileLayout = tileLayout;
-    chart.innerHTML = '<div class="brand-media-sankey-scroll" style="height:' + layout.height + 'px">' +
+    chart._brandMediaSankeyCanvasCopy = {
+      hint: copy("canvasHint", "Drag to pan, scroll to zoom, and click a product or media to pin its relationships."),
+      controls: copy("canvasControls", "Drag to pan · Scroll to zoom · Click a product or media to pin"),
+      locked: copy("canvasLocked", "Pinned"),
+      zoomOut: copy("canvasZoomOut", "Zoom out"),
+      zoomIn: copy("canvasZoomIn", "Zoom in"),
+      resetView: copy("canvasResetView", "Reset view"),
+      canvasLabel: copy("canvasLabel", "Interactive Revenue flow canvas"),
+      toolbarLabel: copy("canvasToolbar", "Canvas controls")
+    };
+    var canvasCopy = chart._brandMediaSankeyCanvasCopy;
+    chart.innerHTML = '<div class="brand-media-sankey-canvas-viewport" data-brand-media-sankey-canvas tabindex="0" role="group" aria-label="' +
+      escapeHtml(canvasCopy.canvasLabel) + '">' +
+      '<div class="brand-media-sankey-canvas-grid" aria-hidden="true"></div>' +
+      '<div class="brand-media-sankey-canvas-stage" data-brand-media-sankey-canvas-stage style="width:' +
+      layout.width + 'px;height:' + layout.height + 'px">' +
+      '<div class="brand-media-sankey-scroll" style="width:' + layout.width + 'px;height:' + layout.height + 'px">' +
       tileLayout.tiles.map(function (tile) {
         return '<canvas class="brand-media-sankey-canvas brand-media-sankey-tile" data-brand-media-sankey-tile="' +
           tile.index + '" aria-hidden="true"></canvas>';
       }).join("") +
       '<div class="brand-media-sankey-node-layer"></div>' +
-      '</div>';
+      '</div></div>' +
+      '<div class="brand-media-sankey-canvas-toolbar" role="toolbar" aria-label="' + escapeHtml(canvasCopy.toolbarLabel) + '">' +
+      '<button type="button" data-brand-media-sankey-canvas-action="zoom-out" aria-label="' + escapeHtml(canvasCopy.zoomOut) +
+      '" title="' + escapeHtml(canvasCopy.zoomOut) + '"><span aria-hidden="true">−</span></button>' +
+      '<span class="brand-media-sankey-canvas-zoom" data-brand-media-sankey-canvas-zoom>100%</span>' +
+      '<button type="button" data-brand-media-sankey-canvas-action="zoom-in" aria-label="' + escapeHtml(canvasCopy.zoomIn) +
+      '" title="' + escapeHtml(canvasCopy.zoomIn) + '"><span aria-hidden="true">+</span></button>' +
+      '<button type="button" class="brand-media-sankey-canvas-reset" data-brand-media-sankey-canvas-action="reset-view" aria-label="' +
+      escapeHtml(canvasCopy.resetView) + '" title="' + escapeHtml(canvasCopy.resetView) + '"><span aria-hidden="true">↺</span></button>' +
+      '</div>' +
+      '<div class="brand-media-sankey-canvas-status" data-brand-media-sankey-canvas-status aria-live="polite">' +
+      escapeHtml(canvasCopy.hint) + '</div>' +
+      '<div class="brand-media-sankey-canvas-help" aria-hidden="true">' + escapeHtml(canvasCopy.controls) + '</div>';
     chart.setAttribute("aria-label", copy("chartTitle", "Revenue flow: brand to products to media"));
-    chart.scrollTop = 0;
-    chart.scrollLeft = 0;
     _brandMediaIndexSankeyElements(chart);
     _brandMediaBindSankeyScroll(chart);
     _brandMediaBindSankeyInteractions(chart);
+    _brandMediaBindSankeyCanvasInteractions(chart);
+    _brandMediaSankeyCanvasResetView(chart);
     _brandMediaSankeyRenderTiles(chart);
+    if (chart._brandMediaSankeyLockedNodeId) {
+      _brandMediaSankeyApplyFocus(chart, model, chart._brandMediaSankeyLockedNodeId, "locked");
+    }
   }
 
   function _brandMediaRenderTable(payload) {
@@ -30342,6 +30644,7 @@ var _NUMERIC_COL_PATTERNS = [
       brandMediaSankeyTileLayout: _brandMediaBuildSankeyTileLayout,
       brandMediaSankeyProductAsin: _brandMediaSankeyProductAsin,
       brandMediaSankeyHoverState: _brandMediaSankeyHoverState,
+      brandMediaSankeyToggleSelection: _brandMediaSankeyToggleSelection,
       brandMediaSankeyPayload: function (payload) {
         return _brandMediaBuildSankeyModel(payload);
       },
