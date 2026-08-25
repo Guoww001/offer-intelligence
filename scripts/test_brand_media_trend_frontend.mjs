@@ -219,6 +219,21 @@ assertEqual(
   [0, 1, 2, 4],
   "hovering media should focus its related product and brand links"
 );
+assertEqual(
+  hooks.brandMediaSankeyToggleSelection(sankeyModel, "", "product:ASIN-A"),
+  "product:ASIN-A",
+  "clicking a product should pin its relationship focus"
+);
+assertEqual(
+  hooks.brandMediaSankeyToggleSelection(sankeyModel, "product:ASIN-A", "product:ASIN-A"),
+  "",
+  "clicking the pinned product again should return to the main view"
+);
+assertEqual(
+  hooks.brandMediaSankeyToggleSelection(sankeyModel, "product:ASIN-A", "media:9"),
+  "media:9",
+  "clicking another node should move the pinned relationship focus"
+);
 const indexedOnlyModel = Object.assign({}, sankeyModel, { links: [] });
 const indexedProductHover = hooks.brandMediaSankeyHoverState(indexedOnlyModel, "product:ASIN-A");
 assertEqual(
@@ -370,8 +385,10 @@ if (!appSource.includes("_brandMediaSankeyProductAsin(node)") ||
     !appSource.includes("_brandMediaBindSankeyInteractions(chart)") ||
     !appSource.includes("brand-media-sankey-canvas") ||
     !appSource.includes("brand-media-sankey-node-layer") ||
-    !appSource.includes("data-brand-media-sankey-tile")) {
-  throw new Error("Revenue flow should render static Canvas tiles with ASIN node interactions");
+    !appSource.includes("data-brand-media-sankey-tile") ||
+    !appSource.includes("_brandMediaSankeyToggleLockedNode(chart") ||
+    !appSource.includes("data-brand-media-sankey-canvas-action")) {
+  throw new Error("Revenue flow should render static Canvas tiles with pinned ASIN node interactions");
 }
 if (appSource.includes('class="brand-media-sankey-link"') ||
     appSource.includes('class="brand-media-sankey-svg"')) {
@@ -391,10 +408,12 @@ if (sankeyHoverSource.includes("querySelectorAll")) {
 }
 if (!appSource.includes("_brandMediaSankeyFocus") ||
     !appSource.includes("_brandMediaSankeyRenderTiles") ||
+    !appSource.includes("_brandMediaSankeyCanvasZoom") ||
+    !appSource.includes("_brandMediaSankeyCanvasClamp") ||
     appSource.includes("_brandMediaSankeyRenderFrame")) {
-  throw new Error("Sankey hover should redraw static Canvas tiles without a scroll frame renderer");
+  throw new Error("Sankey should redraw static Canvas tiles with canvas navigation controls");
 }
-const sankeyScrollSourceStart = appSource.indexOf('chart.addEventListener("scroll"');
+const sankeyScrollSourceStart = appSource.indexOf('scrollTarget.addEventListener("scroll"');
 const sankeyScrollSourceEnd = appSource.indexOf("if (typeof ResizeObserver", sankeyScrollSourceStart);
 const sankeyScrollSource = appSource.slice(sankeyScrollSourceStart, sankeyScrollSourceEnd);
 if (sankeyScrollSource.includes("_brandMediaSankeyScheduleFrame")) {
@@ -411,9 +430,13 @@ if (!stylesSource.includes(".revenue-flow-panel.is-expanded") ||
 }
 if (!stylesSource.includes(".brand-media-sankey-tile") ||
     !stylesSource.includes(".brand-media-sankey-canvas") ||
+    !stylesSource.includes(".brand-media-sankey-canvas-viewport") ||
+    !stylesSource.includes(".brand-media-sankey-canvas-grid") ||
+    !stylesSource.includes(".brand-media-sankey-canvas-stage") ||
     !stylesSource.includes(".brand-media-sankey-node-layer") ||
-    !stylesSource.includes("position: absolute")) {
-  throw new Error("Sankey should style static Canvas tiles and a lightweight node layer");
+    !stylesSource.includes("position: absolute") ||
+    !stylesSource.includes("touch-action: none")) {
+  throw new Error("Sankey should style static Canvas tiles and a pannable lightweight node layer");
 }
 if (stylesSource.includes(".brand-media-sankey-link") ||
     stylesSource.includes(".brand-media-sankey-svg") ||
