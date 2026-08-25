@@ -163,8 +163,8 @@ const sankeyPayload = {
     available: true,
     nodes: [
       { id: "brand:101", type: "brand", label: "Alpha", value: 155 },
-      { id: "product:ASIN-A", type: "product", label: "Widget A", value: 140 },
-      { id: "product:ASIN-B", type: "product", label: "Widget B", value: 15 },
+      { id: "product:ASIN-A", type: "product", label: "Widget A full product name", productKey: "ASIN-A", value: 140 },
+      { id: "product:ASIN-B", type: "product", label: "Widget B full product name", productKey: "ASIN-B", value: 15 },
       { id: "media:9", type: "media", label: "Media Nine", value: 145 },
       { id: "media:12", type: "media", label: "Media Twelve", value: 10 }
     ],
@@ -188,6 +188,33 @@ if (sankeyModel.totalRevenue !== 155 || sankeyModel.links.length !== 5) {
 if (!hooks.brandMediaSankeyPayload(sankeyPayload)) {
   throw new Error("Sankey payload hook should expose the rendered model");
 }
+assertEqual(
+  hooks.brandMediaSankeyProductAsin(sankeyModel.products[0]),
+  "ASIN-A",
+  "product nodes should expose their ASIN as the compact label"
+);
+const productHover = hooks.brandMediaSankeyHoverState(sankeyModel, "product:ASIN-A");
+assertEqual(
+  Array.from(productHover.nodeIds).sort(),
+  ["brand:101", "media:9", "media:12", "product:ASIN-A"].sort(),
+  "hovering a product should focus its connected media"
+);
+assertEqual(
+  Array.from(productHover.linkIndexes).sort(function (a, b) { return a - b; }),
+  [0, 2, 3],
+  "hovering a product should focus its brand and product-media links"
+);
+const mediaHover = hooks.brandMediaSankeyHoverState(sankeyModel, "media:9");
+assertEqual(
+  Array.from(mediaHover.nodeIds).sort(),
+  ["brand:101", "media:9", "product:ASIN-A", "product:ASIN-B"].sort(),
+  "hovering media should focus every related product"
+);
+assertEqual(
+  Array.from(mediaHover.linkIndexes).sort(function (a, b) { return a - b; }),
+  [0, 1, 2, 4],
+  "hovering media should focus its related product and brand links"
+);
 
 
 const lockPayload = {
@@ -275,6 +302,7 @@ const indexHtml = fs.readFileSync("public/index.html", "utf8");
   'id="revenueFlowRangeButtons"',
   'id="revenueFlowStartDate"',
   'id="revenueFlowEndDate"',
+  'id="revenueFlowChartExpand"',
   'id="revenueFlowChart"',
   'id="revenueFlowCount"',
   'id="revenueFlowKpis"'
@@ -291,6 +319,32 @@ if (!indexHtml.includes('data-i18n="brandMedia.manager"')) {
 const appSource = fs.readFileSync("public/app.js", "utf8");
 if (!appSource.includes("/api/ui/db/brand-media-sankey?") || !appSource.includes('switchPage("revenue-flow")')) {
   throw new Error("Revenue flow should use the selected brand/date endpoint from its standalone page");
+}
+if (!appSource.includes("var width = 1160") ||
+    !appSource.includes("var columnX = { brand: 36, product: 400, media: 820 }")) {
+  throw new Error("Revenue flow should leave more space before the rightmost media column");
+}
+if (!appSource.includes("_revenueFlowSetChartExpanded") ||
+    !appSource.includes("revenue-flow-chart-expanded")) {
+  throw new Error("Revenue flow should support toggling a full-screen chart view");
+}
+if (!appSource.includes("_brandMediaSankeyProductAsin(node)") ||
+    !appSource.includes("data-brand-media-sankey-link-index") ||
+    !appSource.includes("_brandMediaBindSankeyInteractions(chart)")) {
+  throw new Error("Revenue flow should render ASIN labels and bind Sankey hover interactions");
+}
+const stylesSource = fs.readFileSync("public/styles.css", "utf8");
+if (!/\.brand-media-sankey-chart-wrap\s*\{[^}]*height:\s*clamp\(/s.test(stylesSource) ||
+    !/\.brand-media-sankey-chart-wrap\s*\{[^}]*overflow-y:\s*auto/s.test(stylesSource)) {
+  throw new Error("Revenue flow should expose a vertically scrollable Sankey viewport");
+}
+if (!stylesSource.includes(".revenue-flow-panel.is-expanded") ||
+    !stylesSource.includes("body.revenue-flow-chart-expanded")) {
+  throw new Error("Revenue flow should provide full-screen panel styling");
+}
+if (!stylesSource.includes(".brand-media-sankey-node.is-muted") ||
+    !stylesSource.includes(".brand-media-sankey-link.is-focused")) {
+  throw new Error("Revenue flow should style focused and muted Sankey relationships");
 }
 const vercelConfig = fs.readFileSync("vercel.json", "utf8");
 if (!vercelConfig.includes("/api/ui/db/brand-media-sankey") ||

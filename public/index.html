@@ -7,7 +7,7 @@
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-      <link rel="stylesheet" href="./styles.css?v=20260817-agent-timeline-elegance2" />
+      <link rel="stylesheet" href="./styles.css?v=20260825-revenue-flow-scroll" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -1150,7 +1150,15 @@
                 <h3 id="revenueFlowTitle" data-i18n="revenueFlow.chartTitle">Revenue flow: brand → products → media</h3>
                 <p data-i18n="revenueFlow.chartSubtitle">Revenue-generating products and their corresponding media for the selected time range.</p>
               </div>
-              <span class="brand-media-line-count" id="revenueFlowCount" aria-live="polite"></span>
+              <div class="brand-media-chart-meta">
+                <span class="brand-media-line-count" id="revenueFlowCount" aria-live="polite"></span>
+                <button type="button" class="brand-media-chart-expand" id="revenueFlowChartExpand" aria-controls="revenueFlowPanel" aria-expanded="false" aria-label="Expand chart" title="Expand chart">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6"></path>
+                  </svg>
+                  <span class="brand-media-chart-expand-label sr-only" data-i18n="revenueFlow.expandChart">Expand chart</span>
+                </button>
+              </div>
             </div>
             <div class="brand-media-sankey-chart-wrap" id="revenueFlowChart" role="img" aria-live="polite"></div>
           </section>

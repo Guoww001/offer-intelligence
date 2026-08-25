@@ -21971,6 +21971,10 @@ body.brand-media-chart-expanded {
   overflow: hidden;
 }
 
+body.revenue-flow-chart-expanded {
+  overflow: hidden;
+}
+
 .brand-media-chart-panel.is-expanded {
   position: fixed;
   inset: 0;
@@ -22007,6 +22011,29 @@ body.brand-media-chart-expanded {
 .brand-media-chart-panel.is-expanded .brand-media-legend {
   max-height: none;
   min-height: 0;
+}
+
+.revenue-flow-panel.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  padding: clamp(18px, 2.5vw, 32px);
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(20, 38, 73, 0.22);
+}
+
+.revenue-flow-panel.is-expanded .brand-media-sankey-chart-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
 }
 
 
@@ -22285,25 +22312,50 @@ body.brand-media-chart-expanded {
 }
 
 .brand-media-sankey-chart-wrap {
+  height: clamp(390px, calc(100vh - 280px), 720px);
   min-height: 390px;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(36, 107, 254, 0.42) rgba(52, 77, 117, 0.08);
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
   border: 1px solid rgba(52, 77, 117, 0.1);
   border-radius: 15px;
   background: #fff;
 }
 
 .brand-media-sankey-scroll {
-  min-width: 820px;
+  min-width: 1160px;
   min-height: 390px;
 }
 
 .brand-media-sankey-svg {
   display: block;
   width: 100%;
-  min-width: 820px;
+  min-width: 1160px;
   height: auto;
   overflow: visible;
+}
+
+.brand-media-sankey-chart-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.brand-media-sankey-chart-wrap::-webkit-scrollbar-track {
+  background: rgba(52, 77, 117, 0.06);
+  border-radius: 999px;
+}
+
+.brand-media-sankey-chart-wrap::-webkit-scrollbar-thumb {
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: rgba(36, 107, 254, 0.42);
+}
+
+.brand-media-sankey-chart-wrap::-webkit-scrollbar-thumb:hover {
+  background: rgba(36, 107, 254, 0.62);
 }
 
 .brand-media-sankey-column-title {
@@ -22323,6 +22375,36 @@ body.brand-media-chart-expanded {
 
 .brand-media-sankey-link:hover {
   opacity: 0.66;
+}
+
+.brand-media-sankey-link.is-focused {
+  opacity: 0.82;
+}
+
+.brand-media-sankey-link.is-muted {
+  opacity: 0.06;
+}
+
+.brand-media-sankey-node {
+  transition: opacity 140ms ease;
+}
+
+.brand-media-sankey-node-product,
+.brand-media-sankey-node-media {
+  cursor: pointer;
+}
+
+.brand-media-sankey-node.is-focused {
+  opacity: 1;
+}
+
+.brand-media-sankey-node.is-muted {
+  opacity: 0.16;
+}
+
+.brand-media-sankey-node:focus rect {
+  stroke: #0b4ecb;
+  stroke-width: 2;
 }
 
 .brand-media-sankey-node rect {
