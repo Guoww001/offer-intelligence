@@ -185,6 +185,10 @@ if (!sankeyModel || sankeyModel.productCount !== 2 || sankeyModel.mediaCount !==
 if (sankeyModel.totalRevenue !== 155 || sankeyModel.links.length !== 5) {
   throw new Error("Sankey model should preserve Revenue values and links");
 }
+if (!sankeyModel.hoverIndex || !sankeyModel.hoverIndex["product:ASIN-A"] ||
+    !sankeyModel.hoverIndex["media:9"]) {
+  throw new Error("Sankey model should precompute hover relationships for every interactive node");
+}
 if (!hooks.brandMediaSankeyPayload(sankeyPayload)) {
   throw new Error("Sankey payload hook should expose the rendered model");
 }
@@ -215,6 +219,40 @@ assertEqual(
   [0, 1, 2, 4],
   "hovering media should focus its related product and brand links"
 );
+const indexedOnlyModel = Object.assign({}, sankeyModel, { links: [] });
+const indexedProductHover = hooks.brandMediaSankeyHoverState(indexedOnlyModel, "product:ASIN-A");
+assertEqual(
+  Array.from(indexedProductHover.nodeIds).sort(),
+  ["brand:101", "media:9", "media:12", "product:ASIN-A"].sort(),
+  "indexed product hover should not rescan raw links"
+);
+const indexedMediaHover = hooks.brandMediaSankeyHoverState(indexedOnlyModel, "media:9");
+assertEqual(
+  Array.from(indexedMediaHover.linkIndexes).sort(function (a, b) { return a - b; }),
+  [0, 1, 2, 4],
+  "indexed media hover should preserve all related links"
+);
+const sankeyLayout = hooks.brandMediaSankeyLayout(sankeyModel, 1160);
+if (!sankeyLayout || sankeyLayout.width !== 1160 || sankeyLayout.links.length !== 5) {
+  throw new Error("Sankey should expose a reusable Canvas layout with every flow link");
+}
+if (!sankeyLayout.nodes.length || !sankeyLayout.links.every(function (link) {
+  return Number.isFinite(link.top) && Number.isFinite(link.bottom) && link.bottom >= link.top;
+})) {
+  throw new Error("Sankey Canvas layout should expose node entries and link paint bounds");
+}
+const visibleSankeyEntries = hooks.brandMediaSankeyVisibleEntries(sankeyLayout, 180, 100, 20);
+if (!visibleSankeyEntries || visibleSankeyEntries.startY !== 160 || visibleSankeyEntries.endY !== 300 ||
+    !visibleSankeyEntries.nodes.length || !visibleSankeyEntries.links.length) {
+  throw new Error("Sankey should select only entries intersecting the scroll viewport and overscan");
+}
+const sankeyTileLayout = hooks.brandMediaSankeyTileLayout(sankeyLayout, 160);
+if (!sankeyTileLayout || sankeyTileLayout.tileHeight !== 160 || sankeyTileLayout.tiles.length !== 3 ||
+    !sankeyTileLayout.tiles.every(function (tile, index) {
+      return tile.index === index && tile.endY > tile.startY && Array.isArray(tile.links);
+    })) {
+  throw new Error("Sankey should split the full graph into independently drawable Canvas tiles");
+}
 
 
 const lockPayload = {
@@ -320,18 +358,47 @@ const appSource = fs.readFileSync("public/app.js", "utf8");
 if (!appSource.includes("/api/ui/db/brand-media-sankey?") || !appSource.includes('switchPage("revenue-flow")')) {
   throw new Error("Revenue flow should use the selected brand/date endpoint from its standalone page");
 }
-if (!appSource.includes("var width = 1160") ||
+if (!appSource.includes("var graphWidth = Number(width || 1160)") ||
     !appSource.includes("var columnX = { brand: 36, product: 400, media: 820 }")) {
-  throw new Error("Revenue flow should leave more space before the rightmost media column");
+  throw new Error("Revenue flow layout should preserve the three-column width and spacing");
 }
 if (!appSource.includes("_revenueFlowSetChartExpanded") ||
     !appSource.includes("revenue-flow-chart-expanded")) {
   throw new Error("Revenue flow should support toggling a full-screen chart view");
 }
 if (!appSource.includes("_brandMediaSankeyProductAsin(node)") ||
-    !appSource.includes("data-brand-media-sankey-link-index") ||
-    !appSource.includes("_brandMediaBindSankeyInteractions(chart)")) {
-  throw new Error("Revenue flow should render ASIN labels and bind Sankey hover interactions");
+    !appSource.includes("_brandMediaBindSankeyInteractions(chart)") ||
+    !appSource.includes("brand-media-sankey-canvas") ||
+    !appSource.includes("brand-media-sankey-node-layer") ||
+    !appSource.includes("data-brand-media-sankey-tile")) {
+  throw new Error("Revenue flow should render static Canvas tiles with ASIN node interactions");
+}
+if (appSource.includes('class="brand-media-sankey-link"') ||
+    appSource.includes('class="brand-media-sankey-svg"')) {
+  throw new Error("Revenue flow should not generate the old long SVG Sankey");
+}
+if (!appSource.includes("getContext(\"2d\")") ||
+    !appSource.includes('addEventListener("scroll"') ||
+    !appSource.includes("requestAnimationFrame") ||
+    !appSource.includes("_brandMediaSankeyVisibleEntries")) {
+  throw new Error("Sankey scrolling should schedule visible-range Canvas rendering");
+}
+const sankeyHoverSourceStart = appSource.indexOf("function _brandMediaSankeyClearHover");
+const sankeyHoverSourceEnd = appSource.indexOf("function _brandMediaSankeyNodeFromTarget");
+const sankeyHoverSource = appSource.slice(sankeyHoverSourceStart, sankeyHoverSourceEnd);
+if (sankeyHoverSource.includes("querySelectorAll")) {
+  throw new Error("Sankey hover should update indexed elements instead of scanning the full SVG");
+}
+if (!appSource.includes("_brandMediaSankeyFocus") ||
+    !appSource.includes("_brandMediaSankeyRenderTiles") ||
+    appSource.includes("_brandMediaSankeyRenderFrame")) {
+  throw new Error("Sankey hover should redraw static Canvas tiles without a scroll frame renderer");
+}
+const sankeyScrollSourceStart = appSource.indexOf('chart.addEventListener("scroll"');
+const sankeyScrollSourceEnd = appSource.indexOf("if (typeof ResizeObserver", sankeyScrollSourceStart);
+const sankeyScrollSource = appSource.slice(sankeyScrollSourceStart, sankeyScrollSourceEnd);
+if (sankeyScrollSource.includes("_brandMediaSankeyScheduleFrame")) {
+  throw new Error("Sankey scroll should move pre-rendered tiles without scheduling Canvas redraws");
 }
 const stylesSource = fs.readFileSync("public/styles.css", "utf8");
 if (!/\.brand-media-sankey-chart-wrap\s*\{[^}]*height:\s*clamp\(/s.test(stylesSource) ||
@@ -342,9 +409,17 @@ if (!stylesSource.includes(".revenue-flow-panel.is-expanded") ||
     !stylesSource.includes("body.revenue-flow-chart-expanded")) {
   throw new Error("Revenue flow should provide full-screen panel styling");
 }
-if (!stylesSource.includes(".brand-media-sankey-node.is-muted") ||
-    !stylesSource.includes(".brand-media-sankey-link.is-focused")) {
-  throw new Error("Revenue flow should style focused and muted Sankey relationships");
+if (!stylesSource.includes(".brand-media-sankey-tile") ||
+    !stylesSource.includes(".brand-media-sankey-canvas") ||
+    !stylesSource.includes(".brand-media-sankey-node-layer") ||
+    !stylesSource.includes("position: absolute")) {
+  throw new Error("Sankey should style static Canvas tiles and a lightweight node layer");
+}
+if (stylesSource.includes(".brand-media-sankey-link") ||
+    stylesSource.includes(".brand-media-sankey-svg") ||
+    stylesSource.includes(".brand-media-sankey-viewport") ||
+    /\.brand-media-sankey-[^}]+\{[^}]*position:\s*sticky/s.test(stylesSource)) {
+  throw new Error("Sankey CSS should not depend on a sticky viewport or the old SVG surface");
 }
 const vercelConfig = fs.readFileSync("vercel.json", "utf8");
 if (!vercelConfig.includes("/api/ui/db/brand-media-sankey") ||
