@@ -19360,6 +19360,16 @@ var _NUMERIC_COL_PATTERNS = [
     return text.slice(0, Math.max(1, limit - 1)) + "…";
   }
 
+  function _brandMediaSankeyProductAsin(node) {
+    if (!node) return "";
+    var productKey = String(node.productKey || "").trim();
+    if (!productKey) {
+      var nodeId = String(node.id || "");
+      if (nodeId.indexOf("product:") === 0) productKey = nodeId.slice(8).trim();
+    }
+    return productKey || String(node.label || "").trim();
+  }
+
   function _brandMediaBuildSankeyModel(payload) {
     var sankey = payload && payload.sankey ? payload.sankey : payload;
     if (!sankey || sankey.available === false) return null;
@@ -19426,6 +19436,111 @@ var _NUMERIC_COL_PATTERNS = [
     };
   }
 
+  function _brandMediaSankeyHoverState(model, nodeId) {
+    var empty = { nodeIds: new Set(), linkIndexes: new Set() };
+    if (!model || !model.nodeById || !model.nodeById[nodeId]) return empty;
+    var node = model.nodeById[nodeId];
+    var brandId = model.brand && model.brand.id;
+    var focusNodeIds = new Set(brandId ? [brandId, node.id] : [node.id]);
+    var linkIndexes = new Set();
+    if (node.type === "brand") {
+      [model.brand].concat(model.products || [], model.media || []).filter(Boolean).forEach(function (entry) {
+        focusNodeIds.add(entry.id);
+      });
+      (model.links || []).forEach(function (_, index) { linkIndexes.add(index); });
+      return { nodeIds: focusNodeIds, linkIndexes: linkIndexes };
+    }
+    if (node.type === "product") {
+      (model.links || []).forEach(function (link, index) {
+        if (link.source !== node.id && link.target !== node.id) return;
+        linkIndexes.add(index);
+        focusNodeIds.add(link.source === node.id ? link.target : link.source);
+      });
+    } else if (node.type === "media") {
+      (model.links || []).forEach(function (link, index) {
+        if (link.target !== node.id) return;
+        focusNodeIds.add(link.source);
+        linkIndexes.add(index);
+      });
+      (model.links || []).forEach(function (link, index) {
+        if (link.source === brandId && focusNodeIds.has(link.target)) linkIndexes.add(index);
+      });
+    }
+    return { nodeIds: focusNodeIds, linkIndexes: linkIndexes };
+  }
+
+  function _brandMediaSankeyClearHover(chart) {
+    if (!chart) return;
+    var svg = chart.querySelector ? chart.querySelector(".brand-media-sankey-svg") : null;
+    if (svg) {
+      svg.classList.remove("brand-media-sankey-chart-has-focus");
+      Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-node]"), function (node) {
+        node.classList.remove("is-focused", "is-muted");
+      });
+      Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-link-index]"), function (link) {
+        link.classList.remove("is-focused", "is-muted");
+      });
+    }
+    chart._brandMediaSankeyHoverNodeId = "";
+  }
+
+  function _brandMediaSankeyApplyHover(chart, model, nodeId) {
+    if (!chart || !model || !nodeId || !model.nodeById || !model.nodeById[nodeId]) {
+      _brandMediaSankeyClearHover(chart);
+      return;
+    }
+    var node = model.nodeById[nodeId];
+    if (node.type === "brand") {
+      _brandMediaSankeyClearHover(chart);
+      return;
+    }
+    var svg = chart.querySelector ? chart.querySelector(".brand-media-sankey-svg") : null;
+    if (!svg) return;
+    var hoverState = _brandMediaSankeyHoverState(model, nodeId);
+    svg.classList.add("brand-media-sankey-chart-has-focus");
+    Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-node]"), function (nodeElement) {
+      var isFocused = hoverState.nodeIds.has(String(nodeElement.getAttribute("data-brand-media-sankey-node") || ""));
+      nodeElement.classList.toggle("is-focused", isFocused);
+      nodeElement.classList.toggle("is-muted", !isFocused);
+    });
+    Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-link-index]"), function (linkElement) {
+      var index = Number(linkElement.getAttribute("data-brand-media-sankey-link-index"));
+      var isFocused = hoverState.linkIndexes.has(index);
+      linkElement.classList.toggle("is-focused", isFocused);
+      linkElement.classList.toggle("is-muted", !isFocused);
+    });
+    chart._brandMediaSankeyHoverNodeId = nodeId;
+  }
+
+  function _brandMediaSankeyNodeFromTarget(chart, target) {
+    if (!chart || !target || typeof target.closest !== "function") return null;
+    var node = target.closest("[data-brand-media-sankey-node]");
+    return node && chart.contains && chart.contains(node) ? node : null;
+  }
+
+  function _brandMediaBindSankeyInteractions(chart) {
+    if (!chart || chart._brandMediaSankeyInteractionsBound) return;
+    chart._brandMediaSankeyInteractionsBound = true;
+    function handleNodeTarget(event) {
+      var node = _brandMediaSankeyNodeFromTarget(chart, event.target);
+      if (!node) {
+        _brandMediaSankeyClearHover(chart);
+        return;
+      }
+      var nodeId = String(node.getAttribute("data-brand-media-sankey-node") || "");
+      if (nodeId === chart._brandMediaSankeyHoverNodeId) return;
+      _brandMediaSankeyApplyHover(chart, chart._brandMediaSankeyModel, nodeId);
+    }
+    chart.addEventListener("pointerover", handleNodeTarget);
+    chart.addEventListener("focusin", handleNodeTarget);
+    chart.addEventListener("pointerleave", function () {
+      _brandMediaSankeyClearHover(chart);
+    });
+    chart.addEventListener("focusout", function (event) {
+      if (!event.relatedTarget || !chart.contains(event.relatedTarget)) _brandMediaSankeyClearHover(chart);
+    });
+  }
+
   function _brandMediaRenderSankeyChart(payload, chart, countElement, currentState, copyPrefix) {
     if (!chart) return;
     var prefix = String(copyPrefix || "brandMedia");
@@ -19450,6 +19565,7 @@ var _NUMERIC_COL_PATTERNS = [
     }
     var model = !message ? _brandMediaBuildSankeyModel(payload) : null;
     chart._brandMediaSankeyModel = model;
+    chart._brandMediaSankeyHoverNodeId = "";
     if (countElement) {
       countElement.textContent = model
         ? _brandMediaCount(model.productCount) + " " +
@@ -19463,6 +19579,7 @@ var _NUMERIC_COL_PATTERNS = [
         escapeHtml(message || copy("empty", "No product-to-media Revenue flow is available for the selected range.")) +
         '</div>';
       chart.setAttribute("aria-label", message || copy("empty", "No product-to-media Revenue flow is available for the selected range."));
+      _brandMediaSankeyClearHover(chart);
       return;
     }
 
@@ -19512,7 +19629,7 @@ var _NUMERIC_COL_PATTERNS = [
     var maxLink = model.links.reduce(function (max, link) {
       return Math.max(max, link.value);
     }, 0) || 1;
-    var linkMarkup = model.links.map(function (link) {
+    var linkMarkup = model.links.map(function (link, linkIndex) {
       var source = layoutById[link.source];
       var target = layoutById[link.target];
       if (!source || !target) return "";
@@ -19526,7 +19643,7 @@ var _NUMERIC_COL_PATTERNS = [
       var curve = Math.max(60, (endX - startX) * 0.46);
       var color = source.node.type === "brand" ? "#17233d" : "#246bfe";
       var title = source.node.label + " → " + target.node.label + ": " + _brandMediaMoney(link.value);
-      return '<path class="brand-media-sankey-link" d="M ' + startX + " " + sourceY +
+      return '<path class="brand-media-sankey-link" data-brand-media-sankey-link-index="' + linkIndex + '" d="M ' + startX + " " + sourceY +
         " C " + (startX + curve) + " " + sourceY + ", " +
         (endX - curve) + " " + targetY + ", " + endX + " " + targetY +
         '" stroke="' + color + '" stroke-width="' + strokeWidth.toFixed(2) +
@@ -19535,12 +19652,19 @@ var _NUMERIC_COL_PATTERNS = [
 
     function nodeMarkup(entry, position, color) {
       var node = entry.node;
-      var label = _brandMediaSankeyLabel(node.label, position === "brand" ? 44 : 36);
-      var title = node.label + ": " + _brandMediaMoney(node.value);
+      var label = position === "product"
+        ? _brandMediaSankeyProductAsin(node)
+        : _brandMediaSankeyLabel(node.label, position === "brand" ? 44 : 36);
+      var title = position === "product"
+        ? _brandMediaSankeyProductAsin(node) + " · " + node.label + ": " + _brandMediaMoney(node.value)
+        : node.label + ": " + _brandMediaMoney(node.value);
+      var interactionAttributes = position === "brand"
+        ? ""
+        : ' tabindex="0" aria-label="' + escapeHtml(title) + '"';
       var labelX = entry.x + entry.width + 14;
       var valueY = entry.y + Math.min(entry.height - 3, 17);
       return '<g class="brand-media-sankey-node brand-media-sankey-node-' + node.type +
-        '" data-brand-media-sankey-node="' + escapeHtml(node.id) + '">' +
+        '" data-brand-media-sankey-node="' + escapeHtml(node.id) + '"' + interactionAttributes + '>' +
         '<rect x="' + entry.x + '" y="' + entry.y.toFixed(2) + '" width="' + entry.width +
         '" height="' + entry.height.toFixed(2) + '" rx="6" fill="' + color + '"></rect>' +
         '<title>' + escapeHtml(title) + '</title>' +
@@ -19568,6 +19692,7 @@ var _NUMERIC_COL_PATTERNS = [
       '</g></svg>';
     chart.innerHTML = '<div class="brand-media-sankey-scroll">' + svg + '</div>';
     chart.setAttribute("aria-label", copy("chartTitle", "Revenue flow: brand to products to media"));
+    _brandMediaBindSankeyInteractions(chart);
   }
 
   function _brandMediaRenderTable(payload) {
@@ -29780,6 +29905,8 @@ var _NUMERIC_COL_PATTERNS = [
       brandMediaChartPayload: _brandMediaChartPayload,
       brandMediaClickChartModel: _brandMediaBuildClicksChartModel,
       brandMediaSankeyModel: _brandMediaBuildSankeyModel,
+      brandMediaSankeyProductAsin: _brandMediaSankeyProductAsin,
+      brandMediaSankeyHoverState: _brandMediaSankeyHoverState,
       brandMediaSankeyPayload: function (payload) {
         return _brandMediaBuildSankeyModel(payload);
       },
