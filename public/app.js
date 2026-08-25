@@ -13910,29 +13910,95 @@ var _NUMERIC_COL_PATTERNS = [
     return summary;
   }
 
-  // 商户严格解析：输入包含商户 ID 时以 ID 为准；否则精确匹配品牌/商户名，最后允许名称子串匹配。
-  function agentResolveMerchantStrict(name) {
-    if (!name) return null;
-    var raw = String(name).trim();
-    var lower = raw.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
-    if (!lower) return null;
-    var idMatch = raw.match(/\b\d{5,8}(?:\.0)?\b/);
+  function agentMerchantCandidate(offer) {
+    return {
+      merchantId: String(offer && offer.merchantId || "").trim(),
+      name: String(offer && (offer.brand || offer.merchantName) || "").trim(),
+      tier: String(offer && offer.tier || "").trim(),
+      category: String(offer ? displayCategory(offer) : "").trim()
+    };
+  }
+
+  function agentMerchantCandidateText(candidate) {
+    candidate = candidate || {};
+    return [
+      candidate.name,
+      candidate.merchantId ? "ID " + candidate.merchantId : "",
+      candidate.tier,
+      candidate.category
+    ].filter(Boolean).join(" / ");
+  }
+
+  function agentPublicMerchantResolution(resolution) {
+    resolution = resolution || {};
+    return {
+      status: resolution.status || "not_found",
+      input: resolution.input || "",
+      candidates: Array.isArray(resolution.candidates) ? resolution.candidates : []
+    };
+  }
+
+  function agentMerchantResolutionError(resolution) {
+    resolution = resolution || {};
+    var input = resolution.input || "";
+    if (resolution.status === "ambiguous") {
+      var candidates = (resolution.candidates || []).map(agentMerchantCandidateText).filter(Boolean);
+      return "商户 '" + input + "' 匹配多个候选，请使用商户 ID 或完整名称：" + candidates.join("；");
+    }
+    if (resolution.status === "invalid_filter") {
+      var allowed = Array.isArray(resolution.allowed) ? resolution.allowed.join("、") : String(resolution.allowed || "");
+      return "无法识别过滤条件 " + (resolution.field || "merchant") + "='" + (resolution.value || input) + "'"
+        + (allowed ? "，允许值：" + allowed : "");
+    }
+    return "未找到商户 '" + input + "'";
+  }
+
+  function agentMerchantFailure(resolution) {
+    return {
+      ok: false,
+      error: agentMerchantResolutionError(resolution),
+      resolution: agentPublicMerchantResolution(resolution)
+    };
+  }
+
+  // 统一商户解析：ID 优先；名称精确匹配优先于唯一子串匹配；多候选不得猜选。
+  function agentResolveMerchant(name) {
+    var input = String(name || "").trim().slice(0, 80);
+    if (!input) return { status: "not_found", input: input, offer: null, candidates: [] };
+
+    var idMatch = input.match(/\b\d{5,8}(?:\.0)?\b/);
+    var matches;
     if (idMatch) {
       var merchantId = idMatch[0].replace(/\.0$/, "");
-      return offers.filter(function (o) {
-        return String(o.merchantId || "").trim() === merchantId;
-      })[0] || null;
+      matches = offers.filter(function (offer) {
+        return String(offer.merchantId || "").trim() === merchantId;
+      });
+    } else {
+      var lower = input.toLowerCase().replace(/\s+/g, " ").trim();
+      matches = offers.filter(function (offer) {
+        return normalizedOfferName(offer, "brand") === lower
+          || normalizedOfferName(offer, "merchantName") === lower;
+      });
+      if (!matches.length) {
+        matches = offers.filter(function (offer) {
+          return normalizedOfferName(offer, "brand").indexOf(lower) !== -1
+            || normalizedOfferName(offer, "merchantName").indexOf(lower) !== -1;
+        });
+      }
     }
-    var exact = offers.filter(function (o) {
-      return normalizedOfferName(o, "brand") === lower ||
-        normalizedOfferName(o, "merchantName") === lower ||
-        String(o.merchantId || "").trim() === raw;
-    })[0];
-    if (exact) return exact;
-    return offers.filter(function (o) {
-      return normalizedOfferName(o, "brand").indexOf(lower) !== -1 ||
-        normalizedOfferName(o, "merchantName").indexOf(lower) !== -1;
-    })[0] || null;
+
+    var status = matches.length === 1 ? "resolved" : (matches.length ? "ambiguous" : "not_found");
+    return {
+      status: status,
+      input: input,
+      offer: status === "resolved" ? matches[0] : null,
+      candidates: matches.slice(0, 5).map(agentMerchantCandidate)
+    };
+  }
+
+  function agentResolveMerchantStrict(name) {
+    var resolution = agentResolveMerchant(name);
+    return resolution.status === "resolved" ? resolution.offer : null;
   }
 
   var AGENT_TOOL_KIND_LABELS = {
@@ -14045,9 +14111,14 @@ var _NUMERIC_COL_PATTERNS = [
     var raw = String(monthArg || "").trim();
     var promptText = String(prompt || "").trim();
     var rawIso = raw.match(/^(20\d{2})[-\/](0?[1-9]|1[0-2])$/);
+    var rawMention = agentPaymentMonthMention(raw);
+    var promptMention = agentPaymentMonthMention(promptText);
+    var monthName = rawMention.mentioned
+      ? rawMention.name
+      : (promptMention.mentioned ? promptMention.name : (monthNameFromText(raw) || monthNameFromText(promptText)));
     var monthIndex = rawIso
       ? Number(rawIso[2]) - 1
-      : PAYMENT_MONTHS.indexOf(monthNameFromText(raw) || monthNameFromText(promptText));
+      : PAYMENT_MONTHS.indexOf(monthName);
     if (monthIndex < 0 || monthIndex >= PAYMENT_MONTHS.length) return raw;
 
     var promptYear = agentPaymentYearFromPrompt(promptText);
@@ -14059,17 +14130,134 @@ var _NUMERIC_COL_PATTERNS = [
     return year + "-" + String(monthIndex + 1).padStart(2, "0");
   }
 
+  function agentInvalidFilterResolution(field, value, allowed) {
+    return {
+      status: "invalid_filter",
+      field: field,
+      value: value === undefined || value === null ? "" : String(value),
+      allowed: Array.isArray(allowed) ? allowed.slice() : allowed
+    };
+  }
+
+  function agentInvalidFilterFailure(field, value, allowed) {
+    var resolution = agentInvalidFilterResolution(field, value, allowed);
+    var allowedText = Array.isArray(allowed) ? allowed.join("、") : String(allowed || "");
+    return {
+      ok: false,
+      error: "无法识别过滤条件 " + field + "='" + resolution.value + "'" + (allowedText ? "，允许值：" + allowedText : ""),
+      resolution: resolution
+    };
+  }
+
+  function agentPaymentStatusResolution(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return { status: "none", input: "", value: "" };
+    var lower = raw.toLowerCase();
+    var normalized = "";
+    if (lower === "pending" || /待处理|未到期|等待/.test(raw)) normalized = "pending";
+    else if (lower === "overdue" || /逾期|到期/.test(raw)) normalized = "overdue";
+    else if (lower === "unpaid" || /未付|没付|未支付/.test(raw)) normalized = "unpaid";
+    else if (lower === "paid" || /已付|已支付/.test(raw)) normalized = "paid";
+    else if (lower === "partial" || /部分/.test(raw)) normalized = "partial";
+    if (!normalized) return agentInvalidFilterResolution("status", raw, ["paid", "pending", "unpaid", "overdue", "partial"]);
+    return { status: "resolved", input: raw, value: normalized };
+  }
+
+  function agentPaymentMonthMention(value) {
+    var text = String(value || "").trim();
+    var numeric = text.match(/(?:^|[^0-9])(\d{1,2})\s*(?:月|月份)/);
+    if (numeric) {
+      var numericMonth = Number(numeric[1]);
+      return {
+        mentioned: true,
+        name: numericMonth >= 1 && numericMonth <= 12 ? PAYMENT_MONTHS[numericMonth - 1] : null
+      };
+    }
+    var iso = text.match(/\b20\d{2}[-\/](\d{1,2})\b/);
+    if (iso) {
+      var isoMonth = Number(iso[1]);
+      return {
+        mentioned: true,
+        name: isoMonth >= 1 && isoMonth <= 12 ? PAYMENT_MONTHS[isoMonth - 1] : null
+      };
+    }
+    var named = monthNameFromText(text);
+    return { mentioned: !!named, name: named || null };
+  }
+
+  function agentPromptHasPaymentMonth(prompt) {
+    return agentPaymentMonthMention(prompt).mentioned;
+  }
+
+  function agentPaymentMonthResolution(monthArg, prompt) {
+    var raw = String(monthArg || "").trim();
+    var promptText = String(prompt || "").trim();
+    var rawMention = agentPaymentMonthMention(raw);
+    if (raw && (!rawMention.mentioned || !rawMention.name)) {
+      return agentInvalidFilterResolution("month", raw, "YYYY-MM 或有效月份");
+    }
+
+    var promptIso = promptText.match(/\b(20\d{2})[-\/](0?[1-9]|1[0-2])\b/);
+    var promptMention = agentPaymentMonthMention(promptText);
+    if (!raw && promptMention.mentioned && !promptMention.name) {
+      return agentInvalidFilterResolution("month", promptText, "YYYY-MM 或有效月份");
+    }
+    if (!raw && !promptMention.name && !promptIso) return { status: "none", input: "", value: "" };
+
+    var source = raw || (promptIso ? promptIso[0] : "");
+    var normalized = agentPaymentMonthForQuery(source, promptText);
+    if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(normalized)) {
+      return agentInvalidFilterResolution("month", raw || promptText, "YYYY-MM 或有效月份");
+    }
+    return { status: "resolved", input: raw || promptText, value: normalized };
+  }
+
+  function agentPaymentTierResolution(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return { status: "none", input: "", value: "" };
+    var normalized = canonicalTierName(raw);
+    if (TIER_MOVE_OPTIONS.indexOf(normalized) === -1) {
+      return agentInvalidFilterResolution("tier", raw, TIER_MOVE_OPTIONS);
+    }
+    return { status: "resolved", input: raw, value: normalized };
+  }
+
+  function agentTrendMonthsResolution(value) {
+    if (value === undefined || value === null || String(value).trim() === "") {
+      return { status: "none", input: "", value: 12 };
+    }
+    var raw = String(value).trim();
+    var numeric = typeof value === "number" ? value : (/^\d+$/.test(raw) ? Number(raw) : NaN);
+    if (!Number.isInteger(numeric) || numeric < 2 || numeric > 24) {
+      return agentInvalidFilterResolution("months", raw, "2-24 的整数");
+    }
+    return { status: "resolved", input: raw, value: numeric };
+  }
+
+  function agentTrendMetricResolution(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return { status: "none", input: "", value: "" };
+    var lower = raw.toLowerCase();
+    var valid = TREND_METRIC_DEFS.map(function (definition) { return definition.key; });
+    var normalized = valid.find(function (key) { return key.toLowerCase() === lower; });
+    if (!normalized) return agentInvalidFilterResolution("metric", raw, valid);
+    return { status: "resolved", input: raw, value: normalized };
+  }
+
   async function agentExecuteTool(name, args, context) {
     args = args || {};
     context = context || {};
     if (name === "merchant_analysis") {
       var merchant = typeof args.merchant === "string" ? args.merchant.trim().slice(0, 80) : "";
       if (!merchant) return { ok: false, error: "merchant 参数缺失" };
-      var strictOffer = agentResolveMerchantStrict(merchant);
-      if (!strictOffer) return { ok: false, error: "未找到商户 '" + merchant + "'" };
+      var merchantResolution = agentResolveMerchant(merchant);
+      if (merchantResolution.status !== "resolved") return agentMerchantFailure(merchantResolution);
+      var strictOffer = merchantResolution.offer;
       var canonicalMerchant = strictOffer.brand || strictOffer.merchantName || String(strictOffer.merchantId || "");
       var summary = analyzeMerchant(canonicalMerchant);
-      if (!summary) return { ok: false, error: "未找到商户 '" + merchant + "'" };
+      if (!summary) return agentMerchantFailure({
+        status: "not_found", input: merchant, candidates: []
+      });
       var monthlyRows = await fetchMerchantMonthlyRowsForAgent(strictOffer, context.signal || null);
       return {
         ok: true,
@@ -14087,17 +14275,42 @@ var _NUMERIC_COL_PATTERNS = [
       return { ok: true, data: compactAgentToolResult("category_analysis", catSummary, state.language || "zh") };
     }
     if (name === "merchant_comparison") {
-      var mList = Array.isArray(args.merchants)
-        ? args.merchants.filter(function (x) { return typeof x === "string" && x.trim(); }).slice(0, 5)
-        : [];
+      var rawMerchantList = Array.isArray(args.merchants) ? args.merchants : [];
+      var mList = rawMerchantList.slice(0, 5);
       if (mList.length < 2) return { ok: false, error: "merchants 至少需要 2 个商户" };
       var resolved = [];
-      var notFound = [];
+      var invalidMerchants = [];
       mList.forEach(function (m) {
-        var o = agentResolveMerchantStrict(m);
-        if (o) resolved.push(o.brand || o.merchantName || m); else notFound.push(m);
+        if (typeof m !== "string" || !m.trim()) {
+          invalidMerchants.push({
+            resolution: agentInvalidFilterResolution("merchants", m, "非空商户名称或 ID")
+          });
+          return;
+        }
+        var resolution = agentResolveMerchant(m);
+        if (resolution.status === "resolved") {
+          resolved.push(resolution.offer.brand || resolution.offer.merchantName || m);
+        } else {
+          invalidMerchants.push({ resolution: resolution });
+        }
       });
-      if (resolved.length < 2) return { ok: false, error: "未找到足够的商户做对比：" + notFound.join("、") };
+      if (invalidMerchants.length || resolved.length < 2) {
+        var merchantErrors = invalidMerchants.map(function (item) {
+          return agentMerchantResolutionError(item.resolution);
+        });
+        return {
+          ok: false,
+          error: "商户对比无法执行：" + merchantErrors.join("；"),
+          resolution: {
+            status: "invalid_filter",
+            field: "merchants",
+            merchants: mList.map(function (m) {
+              if (typeof m !== "string" || !m.trim()) return agentInvalidFilterResolution("merchants", m, "非空商户名称或 ID");
+              return agentPublicMerchantResolution(agentResolveMerchant(m));
+            })
+          }
+        };
+      }
       var cmpSummary = analyzeMerchantComparison(resolved);
       if (!cmpSummary) return { ok: false, error: "无法生成商户对比结果" };
       return { ok: true, data: compactAgentToolResult("merchant_comparison", cmpSummary, state.language || "zh") };
@@ -14149,52 +14362,47 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (name === "payment_status") {
       var p = args || {};
-      var statusArg = typeof p.status === "string" ? p.status.trim() : "";
-      var monthArg = agentPaymentMonthForQuery(p.month, context.prompt);
-      var tierArg = typeof p.tier === "string" ? p.tier.trim() : "";
+      var statusResolution = agentPaymentStatusResolution(p.status);
+      if (statusResolution.status === "invalid_filter") {
+        return agentInvalidFilterFailure("status", statusResolution.value, statusResolution.allowed);
+      }
+      var monthResolution = agentPaymentMonthResolution(p.month, context.prompt);
+      if (monthResolution.status === "invalid_filter") {
+        return agentInvalidFilterFailure("month", monthResolution.value, monthResolution.allowed);
+      }
+      var tierResolution = agentPaymentTierResolution(p.tier);
+      if (tierResolution.status === "invalid_filter") {
+        return agentInvalidFilterFailure("tier", tierResolution.value, tierResolution.allowed);
+      }
+      var statusArg = statusResolution.value;
+      var monthArg = monthResolution.value;
+      var tierArg = tierResolution.value;
       var merchantArg = typeof p.merchant === "string" ? p.merchant.trim().slice(0, 80) : "";
+      var paymentMerchantResolution = merchantArg ? agentResolveMerchant(merchantArg) : null;
+      if (paymentMerchantResolution && paymentMerchantResolution.status !== "resolved") {
+        return agentMerchantFailure(paymentMerchantResolution);
+      }
       var payRows = getPaymentRecords();
       if (statusArg) {
-        var stLower = statusArg.toLowerCase();
-        var zhStatus = /逾期|到期/.test(statusArg) ? "overdue"
-          : (/未付|没付|未支付/.test(statusArg) ? "unpaid"
-          : (/待处理|未到期|等待/.test(statusArg) ? "pending"
-          : (/已付|已支付/.test(statusArg) ? "paid"
-          : (/部分/.test(statusArg) ? "partial" : ""))));
-        var stFinal = zhStatus || stLower;
-        if (stFinal === "overdue") payRows = payRows.filter(isPaymentOverdue);
-        else if (["paid", "pending", "unpaid", "partial"].indexOf(stFinal) !== -1) {
-          payRows = payRows.filter(function (r) { return String(r.paymentStatus || "").toLowerCase() === stFinal; });
-        }
+        if (statusArg === "overdue") payRows = payRows.filter(isPaymentOverdue);
+        else payRows = payRows.filter(function (r) { return String(r.paymentStatus || "").toLowerCase() === statusArg; });
       }
       if (monthArg) {
-        if (/^\d{4}-\d{2}$/.test(monthArg)) {
-          payRows = payRows.filter(function (r) { return r.reportMonthKey === monthArg; });
-        } else {
-          var monthName = monthNameFromText(monthArg);
-          if (monthName) payRows = payRows.filter(function (r) { return r.reportMonth === monthName; });
-        }
+        payRows = payRows.filter(function (r) { return r.reportMonthKey === monthArg; });
       }
       if (tierArg) {
-        var payTier = canonicalTierName(tierArg) || tierArg;
-        payRows = payRows.filter(function (r) { return r.tier === payTier; });
+        payRows = payRows.filter(function (r) { return r.tier === tierArg; });
       }
       if (merchantArg) {
-        var merchantNeedle = normalize(merchantArg);
-        var exactMerchantRows = payRows.filter(function (r) {
+        var paymentMerchant = paymentMerchantResolution.offer;
+        var paymentMerchantId = normalize(paymentMerchant.merchantId);
+        var paymentMerchantNames = [paymentMerchant.brand, paymentMerchant.merchantName]
+          .map(normalize).filter(Boolean);
+        payRows = payRows.filter(function (r) {
           var rowName = normalize(r.merchantName);
           var rowId = normalize(r.merchantId);
-          return rowName === merchantNeedle || rowId === merchantNeedle;
+          return (paymentMerchantId && rowId === paymentMerchantId) || paymentMerchantNames.indexOf(rowName) !== -1;
         });
-        if (exactMerchantRows.length) {
-          payRows = exactMerchantRows;
-        } else {
-          payRows = payRows.filter(function (r) {
-            var rowName = normalize(r.merchantName);
-            var rowId = normalize(r.merchantId);
-            return rowName.indexOf(merchantNeedle) !== -1 || rowId.indexOf(merchantNeedle) !== -1;
-          });
-        }
       }
       var paySummary = updatePaymentSummary(payRows);
       var payDetailRows = payRows.slice(0, 30);
@@ -14236,13 +14444,22 @@ var _NUMERIC_COL_PATTERNS = [
   async function agentRunTrendTool(args, context) {
     var target = typeof args.target === "string" ? args.target.trim().slice(0, 80) : "";
     context = context || {};
-    var monthsArg = typeof args.months === "number" ? args.months
-      : (typeof args.months === "string" ? parseInt(args.months, 10) : 0);
-    var metric = typeof args.metric === "string" ? args.metric.trim().toLowerCase() : "";
+    var monthsResolution = agentTrendMonthsResolution(args.months);
+    if (monthsResolution.status === "invalid_filter") {
+      return agentInvalidFilterFailure("months", monthsResolution.value, monthsResolution.allowed);
+    }
+    var metricResolution = agentTrendMetricResolution(args.metric);
+    if (metricResolution.status === "invalid_filter") {
+      return agentInvalidFilterFailure("metric", metricResolution.value, metricResolution.allowed);
+    }
+    var monthsArg = monthsResolution.value;
+    var metric = metricResolution.value;
     var entityType = typeof args.entityType === "string" ? args.entityType.trim().toLowerCase() : "";
     if (!target) return { ok: false, error: "target 参数缺失（商户名/品类名/Tier 名）" };
-    if (monthsArg && (monthsArg < 2 || monthsArg > 24)) monthsArg = 0;
-    var requested = monthsArg > 0 ? monthsArg : 12;
+    if (entityType && ["merchant", "category", "tier"].indexOf(entityType) === -1) {
+      return agentInvalidFilterFailure("entityType", entityType, ["merchant", "category", "tier"]);
+    }
+    var requested = monthsArg;
     var language = state.language || "zh";
 
     function estimatedResult(summary, entity, label) {
@@ -14259,8 +14476,9 @@ var _NUMERIC_COL_PATTERNS = [
     var label = target;
 
     if (entity === "merchant") {
-      var offer = findLiveOffer(target);
-      if (!offer) return { ok: false, error: "未找到商户 '" + target + "' 的数据" };
+      var merchantResolution = agentResolveMerchant(target);
+      if (merchantResolution.status !== "resolved") return agentMerchantFailure(merchantResolution);
+      var offer = merchantResolution.offer;
       label = offer.brand || offer.merchantName || target;
       var payload = await fetchMerchantMetrics(offer.merchantId, requested, context.signal || null);
       monthlyMetrics = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
@@ -14304,7 +14522,7 @@ var _NUMERIC_COL_PATTERNS = [
     return [
       {
         name: "merchant_analysis",
-        description: "获取单个商户的核心指标及其在同品类中的百分位、品类/Tier/全站均值对比、强弱项、Top3 同行(Peer)、付款风险和最近12个月真实月度数据（DB可用时）。参数 merchant 为品牌名或商户ID；同时提供 ID 和商户名时优先按 ID 查询。多个商户只需分别查询同一批字段时，请对每个商户分别调用本工具，不要改用 merchant_comparison。",
+        description: "获取单个商户的核心指标及其在同品类中的百分位、品类/Tier/全站均值对比、强弱项、Top3 同行(Peer)、付款风险和最近12个月真实月度数据（DB可用时）。参数 merchant 为品牌名或商户ID；同时提供 ID 和商户名时优先按 ID 查询，名称子串只有唯一命中时才继续，多个候选会返回歧义而不会猜选。多个商户只需分别查询同一批字段时，请对每个商户分别调用本工具，不要改用 merchant_comparison。",
         parameters: {
           type: "object",
           properties: { merchant: { type: "string", description: "商户品牌名或商户ID，如 Shokz、362342；同时提供 ID 和名称时以 ID 为准。" } },
@@ -14322,7 +14540,7 @@ var _NUMERIC_COL_PATTERNS = [
       },
       {
         name: "merchant_comparison",
-        description: "仅在用户明确要求比较、差异、优劣、排名或谁更好时，对比 2-5 个商户的核心指标（EPC/AOV/CVR/Orders/Clicks/佣金/佣金率/Sales），返回各商户指标并列、相对第一个商户的差异(deltas)与付款风险。参数 merchants 为品牌名或商户ID数组；同时提供 ID 和商户名时优先按 ID 查询。若用户只是要求分别查询多个商户的字段，请为每个商户调用 merchant_analysis，不要使用本工具。",
+        description: "仅在用户明确要求比较、差异、优劣、排名或谁更好时，对比 2-5 个商户的核心指标（EPC/AOV/CVR/Orders/Clicks/佣金/佣金率/Sales），返回各商户指标并列、相对第一个商户的差异(deltas)与付款风险。参数 merchants 为品牌名或商户ID数组；同时提供 ID 和商户名时优先按 ID 查询，任何歧义或未找到的商户都会使本工具失败并返回候选，不会跳过或猜选。若用户只是要求分别查询多个商户的字段，请为每个商户调用 merchant_analysis，不要使用本工具。",
         parameters: {
           type: "object",
           properties: { merchants: { type: "array", items: { type: "string" }, description: "商户名数组，至少 2 个" } },
@@ -14356,20 +14574,20 @@ var _NUMERIC_COL_PATTERNS = [
       },
       {
         name: "payment_status",
-        description: "查询付款记录：可按状态（paid/pending/unpaid/overdue/partial 或中文 已付款/待处理/未付款/逾期/部分付款）、月份（YYYY-MM，如 2025-04）、Tier、商户过滤。返回汇总计数与记录列表。",
+        description: "查询付款记录：可按状态（paid/pending/unpaid/overdue/partial 或中文 已付款/待处理/未付款/逾期/部分付款）、月份（YYYY-MM，如 2025-04）、Tier、商户过滤。状态、月份和 Tier 无法识别时返回 invalid_filter，不扩大为全量查询；商户名或 ID 按统一商户解析，歧义或未找到时返回候选或 not_found。返回汇总计数与记录列表。",
         parameters: {
           type: "object",
           properties: {
             status: { type: "string", description: "可选：paid/pending/unpaid/overdue/partial" },
             month: { type: "string", description: "可选：YYYY-MM，如 2026-06；用户未写年份时按当前年份处理，不要根据历史数据猜年份" },
             tier: { type: "string", description: "可选：Tier 名" },
-            merchant: { type: "string", description: "可选：商户名（预留，当前按无此过滤处理）" }
+            merchant: { type: "string", description: "可选：商户名或商户ID；名称子串必须唯一命中，歧义时请改用完整名称或 ID" }
           }
         }
       },
       {
         name: "trend",
-        description: "获取商户/品类/Tier 的月度趋势（Revenue/Orders/Clicks/EPC/AOV/Payout 等），返回逐月数值与首末月变化。参数 entityType 为 merchant/category/tier（可省略，自动识别）；target 为目标名；months 为月数（2-24，默认 12）；metric 可选（如 revenue）。DB 无月度数据时返回估算趋势（estimated=true）。",
+        description: "获取商户/品类/Tier 的月度趋势（Revenue/Orders/Clicks/EPC/AOV/Payout 等），返回逐月数值与首末月变化。参数 entityType 为 merchant/category/tier（可省略，自动识别）；target 为目标名；months 为月数（2-24，默认 12），显式非法值返回 invalid_filter；metric 可选且必须属于支持的指标（如 revenue），非法值返回 invalid_filter。商户目标复用统一解析并拒绝歧义或未找到。DB 无月度数据时返回估算趋势（estimated=true）。",
         parameters: {
           type: "object",
           properties: {
