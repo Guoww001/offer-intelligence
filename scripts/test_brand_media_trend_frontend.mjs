@@ -251,6 +251,9 @@ const sankeyLayout = hooks.brandMediaSankeyLayout(sankeyModel, 1160);
 if (!sankeyLayout || sankeyLayout.width !== 1160 || sankeyLayout.links.length !== 5) {
   throw new Error("Sankey should expose a reusable Canvas layout with every flow link");
 }
+if (!Number.isFinite(sankeyLayout.surfaceWidth) || sankeyLayout.surfaceWidth <= sankeyLayout.width) {
+  throw new Error("Sankey should reserve horizontal surface space for the right-most media labels");
+}
 if (!sankeyLayout.nodes.length || !sankeyLayout.links.every(function (link) {
   return Number.isFinite(link.top) && Number.isFinite(link.bottom) && link.bottom >= link.top;
 })) {
@@ -332,6 +335,11 @@ assertEqual(
 );
 
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
+const authSource = fs.readFileSync("public/auth.js", "utf8");
+if (!indexHtml.includes("styles.css?v=20260825-revenue-flow-pan") ||
+    !authSource.includes("app.js?v=20260825-revenue-flow-pan")) {
+  throw new Error("Revenue flow should invalidate the cached app and stylesheet assets");
+}
 [
   'id="brandMediaPage"',
   'id="brandMediaChartPanel"',
@@ -410,8 +418,12 @@ if (!appSource.includes("_brandMediaSankeyFocus") ||
     !appSource.includes("_brandMediaSankeyRenderTiles") ||
     !appSource.includes("_brandMediaSankeyCanvasZoom") ||
     !appSource.includes("_brandMediaSankeyCanvasClamp") ||
+    !appSource.includes('data-brand-media-sankey-canvas-action="toggle-pan"') ||
+    !appSource.includes("_brandMediaSankeyPanMode") ||
+    !appSource.includes("event.ctrlKey") ||
+    !appSource.includes("event.code === \"Space\"") ||
     appSource.includes("_brandMediaSankeyRenderFrame")) {
-  throw new Error("Sankey should redraw static Canvas tiles with canvas navigation controls");
+  throw new Error("Sankey should expose static Canvas navigation and a universal two-axis pan tool");
 }
 const sankeyScrollSourceStart = appSource.indexOf('scrollTarget.addEventListener("scroll"');
 const sankeyScrollSourceEnd = appSource.indexOf("if (typeof ResizeObserver", sankeyScrollSourceStart);
@@ -421,8 +433,9 @@ if (sankeyScrollSource.includes("_brandMediaSankeyScheduleFrame")) {
 }
 const stylesSource = fs.readFileSync("public/styles.css", "utf8");
 if (!/\.brand-media-sankey-chart-wrap\s*\{[^}]*height:\s*clamp\(/s.test(stylesSource) ||
-    !/\.brand-media-sankey-chart-wrap\s*\{[^}]*overflow-y:\s*auto/s.test(stylesSource)) {
-  throw new Error("Revenue flow should expose a vertically scrollable Sankey viewport");
+    !/\.brand-media-sankey-chart-wrap\s*\{[^}]*overflow:\s*hidden/s.test(stylesSource) ||
+    !/\.brand-media-sankey-canvas-viewport\s*\{[^}]*overflow:\s*auto/s.test(stylesSource)) {
+  throw new Error("Revenue flow should use one unclipped, vertically and horizontally scrollable Sankey viewport");
 }
 if (!stylesSource.includes(".revenue-flow-panel.is-expanded") ||
     !stylesSource.includes("body.revenue-flow-chart-expanded")) {
@@ -434,6 +447,8 @@ if (!stylesSource.includes(".brand-media-sankey-tile") ||
     !stylesSource.includes(".brand-media-sankey-canvas-grid") ||
     !stylesSource.includes(".brand-media-sankey-canvas-stage") ||
     !stylesSource.includes(".brand-media-sankey-node-layer") ||
+    !stylesSource.includes(".brand-media-sankey-canvas-viewport.is-pan-mode") ||
+    !stylesSource.includes(".brand-media-sankey-canvas-toolbar button.is-active") ||
     !stylesSource.includes("position: absolute") ||
     !stylesSource.includes("touch-action: none")) {
   throw new Error("Sankey should style static Canvas tiles and a pannable lightweight node layer");

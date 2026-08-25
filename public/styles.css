@@ -22320,12 +22320,9 @@ body.revenue-flow-chart-expanded {
   position: relative;
   height: clamp(390px, calc(100vh - 280px), 720px);
   min-height: 390px;
-  overflow-x: auto;
-  overflow-y: auto;
+  min-width: 0;
+  overflow: hidden;
   overscroll-behavior: contain;
-  scrollbar-color: rgba(36, 107, 254, 0.42) rgba(52, 77, 117, 0.08);
-  scrollbar-gutter: stable both-edges;
-  scrollbar-width: thin;
   border: 1px solid rgba(52, 77, 117, 0.1);
   border-radius: 15px;
   background: #f5f7fb;
@@ -22342,8 +22339,13 @@ body.revenue-flow-chart-expanded {
   position: relative;
   width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 390px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(36, 107, 254, 0.42) rgba(52, 77, 117, 0.08);
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
   isolation: isolate;
   background: #f5f7fb;
   cursor: grab;
@@ -22353,6 +22355,10 @@ body.revenue-flow-chart-expanded {
 
 .brand-media-sankey-canvas-viewport.is-panning {
   cursor: grabbing;
+}
+
+.brand-media-sankey-canvas-viewport.is-pan-mode {
+  cursor: grab;
 }
 
 .brand-media-sankey-canvas-grid {
@@ -22377,7 +22383,7 @@ body.revenue-flow-chart-expanded {
 
 .brand-media-sankey-canvas {
   display: block;
-  width: 1160px;
+  width: 1246px;
   pointer-events: none;
 }
 
@@ -22391,7 +22397,7 @@ body.revenue-flow-chart-expanded {
   position: absolute;
   top: 0;
   left: 0;
-  width: 1160px;
+  width: 1246px;
   min-height: 100%;
   pointer-events: none;
   contain: layout paint;
@@ -22433,6 +22439,12 @@ body.revenue-flow-chart-expanded {
 .brand-media-sankey-canvas-toolbar button:focus-visible {
   background: #edf3ff;
   outline: none;
+}
+
+.brand-media-sankey-canvas-toolbar button.is-active {
+  background: #e5efff;
+  color: #145be8;
+  box-shadow: inset 0 0 0 1px rgba(36, 107, 254, 0.2);
 }
 
 .brand-media-sankey-canvas-toolbar .brand-media-sankey-canvas-reset {
@@ -22499,24 +22511,12 @@ body.revenue-flow-chart-expanded {
   background: rgba(36, 107, 254, 0.42);
 }
 
-.brand-media-sankey-chart-wrap::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.brand-media-sankey-chart-wrap::-webkit-scrollbar-track {
-  background: rgba(52, 77, 117, 0.06);
-  border-radius: 999px;
-}
-
-.brand-media-sankey-chart-wrap::-webkit-scrollbar-thumb {
-  border: 2px solid #fff;
-  border-radius: 999px;
-  background: rgba(36, 107, 254, 0.42);
-}
-
-.brand-media-sankey-chart-wrap::-webkit-scrollbar-thumb:hover {
+.brand-media-sankey-canvas-viewport::-webkit-scrollbar-thumb:hover {
   background: rgba(36, 107, 254, 0.62);
+}
+
+.brand-media-sankey-chart-wrap::-webkit-scrollbar {
+  display: none;
 }
 
 .brand-media-sankey-node {
@@ -22541,6 +22541,16 @@ body.revenue-flow-chart-expanded {
 .brand-media-sankey-node-product,
 .brand-media-sankey-node-media {
   cursor: pointer;
+}
+
+.brand-media-sankey-canvas-viewport.is-pan-mode .brand-media-sankey-node-product,
+.brand-media-sankey-canvas-viewport.is-pan-mode .brand-media-sankey-node-media {
+  cursor: grab;
+}
+
+.brand-media-sankey-canvas-viewport.is-panning .brand-media-sankey-node-product,
+.brand-media-sankey-canvas-viewport.is-panning .brand-media-sankey-node-media {
+  cursor: grabbing;
 }
 
 .brand-media-sankey-node-bar {
@@ -22597,6 +22607,7 @@ body.revenue-flow-chart-expanded {
   box-shadow: 0 0 0 2px rgba(11, 78, 203, 0.2);
 }
 
+.brand-media-sankey-canvas-viewport.is-scrolling .brand-media-sankey-node,
 .brand-media-sankey-chart-wrap.is-scrolling .brand-media-sankey-node {
   pointer-events: none;
 }

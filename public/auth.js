@@ -1,5 +1,5 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260821-offer-tracker-range1";
+  const APP_SCRIPT = "./app.js?v=20260825-revenue-flow-pan";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
