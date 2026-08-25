@@ -543,20 +543,87 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
 
 // ── Test 6: 简称/子串解析（数据名可带后缀，如 "Shokz Official"） ──
 {
-  const fullName = hooks.firstOfferName();
-  const query = fullName.length > 6 ? fullName.slice(0, 5) : fullName;
+  const merchantOffers = sandbox.window.CHATBOT_DATA.offers.filter((offer) => offer && (offer.brand || offer.merchantName));
+  let substringOffer = null;
+  let query = "";
+  for (const offer of merchantOffers) {
+    const fullName = String(offer.brand || offer.merchantName || "").trim();
+    if (fullName.length <= 6) continue;
+    const prefix = fullName.slice(0, 5).toLowerCase();
+    const matches = merchantOffers.filter((candidate) => {
+      const candidateName = String(candidate.brand || candidate.merchantName || "").toLowerCase();
+      return candidateName.indexOf(prefix) !== -1;
+    });
+    if (matches.length === 1) {
+      substringOffer = offer;
+      query = fullName.slice(0, 5);
+      break;
+    }
+  }
+  assertTruthy(substringOffer && query, "fixture must contain a uniquely resolvable merchant substring");
   const result = await hooks.agentExecuteTool("merchant_analysis", { merchant: query });
   assertTruthy(result.ok, "substring-of-brand query should resolve via containment: " + query);
   assertIncludes(result.data.headline.toLowerCase(), query.toLowerCase(), "headline should belong to the matched offer");
   const garbage = await hooks.agentExecuteTool("merchant_analysis", { merchant: "__agent_test_missing_merchant__" });
   assertEqual(garbage.ok, false, "garbage must still reject");
+  assertEqual(garbage.resolution && garbage.resolution.status, "not_found",
+    "unknown merchant should expose a not_found resolution");
+}
+
+// ── Test 6b: 商户歧义必须失败关闭，并由所有商户路径统一处理 ──
+{
+  fetchCalls = [];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/ui/db/merchant") === 0) {
+      return { ok: true, json: async function () { return { ok: true, monthlyAmazonMetrics: [] }; } };
+    }
+    return sseResponse('data: [DONE]\n\n');
+  };
+  const ambiguousMerchant = await hooks.agentExecuteTool("merchant_analysis", { merchant: "US" });
+  assertEqual(ambiguousMerchant.ok, false, "ambiguous merchant must not select the first substring match");
+  assertEqual(ambiguousMerchant.resolution && ambiguousMerchant.resolution.status, "ambiguous",
+    "ambiguous merchant should expose its status");
+  assertTruthy(ambiguousMerchant.resolution.candidates.length > 1,
+    "ambiguous resolution should include multiple candidates");
+  assertTruthy(ambiguousMerchant.resolution.candidates[0].name,
+    "ambiguous candidates should include merchant names");
+  assertTruthy(Object.prototype.hasOwnProperty.call(ambiguousMerchant.resolution.candidates[0], "tier"),
+    "ambiguous candidates should include tier fields");
+  assertTruthy(Object.prototype.hasOwnProperty.call(ambiguousMerchant.resolution.candidates[0], "category"),
+    "ambiguous candidates should include category fields");
+  assertIncludes(ambiguousMerchant.error, ambiguousMerchant.resolution.candidates[0].merchantId,
+    "ambiguous error should include the first candidate ID");
+  assertIncludes(ambiguousMerchant.error, ambiguousMerchant.resolution.candidates[1].merchantId,
+    "ambiguous error should include the second candidate ID");
+
+  const ambiguousComparison = await hooks.agentExecuteTool("merchant_comparison", {
+    merchants: ["US", hooks.firstOfferName()]
+  });
+  assertEqual(ambiguousComparison.ok, false, "comparison must reject an ambiguous merchant");
+  assertEqual(ambiguousComparison.resolution && ambiguousComparison.resolution.merchants[0].status, "ambiguous",
+    "comparison should use the shared merchant resolver");
+
+  const ambiguousTrend = await hooks.agentExecuteTool("trend", {
+    entityType: "merchant", target: "US", months: 2
+  });
+  assertEqual(ambiguousTrend.ok, false, "merchant trend must reject an ambiguous merchant");
+  assertEqual(ambiguousTrend.resolution && ambiguousTrend.resolution.status, "ambiguous",
+    "trend should use the shared merchant resolver");
+
+  const ambiguousPayment = await hooks.agentExecuteTool("payment_status", { merchant: "US" });
+  assertEqual(ambiguousPayment.ok, false, "payment lookup must reject an ambiguous merchant");
+  assertEqual(ambiguousPayment.resolution && ambiguousPayment.resolution.status, "ambiguous",
+    "payment should use the shared merchant resolver");
 }
 
 // ── Test 7: merchant_comparison（2 个真实商户 + notFound 上报） ──
 {
-  const nameA = hooks.firstOfferName();
+  const firstOfferRecord = sandbox.window.CHATBOT_DATA.offers[0];
+  const nameA = String(firstOfferRecord.merchantId) + " " + (firstOfferRecord.brand || firstOfferRecord.merchantName);
   const secondOffer = sandbox.window.CHATBOT_DATA.offers[1] || null;
-  const nameB = secondOffer ? (secondOffer.brand || secondOffer.merchantName) : nameA;
+  const nameB = secondOffer
+    ? String(secondOffer.merchantId) + " " + (secondOffer.brand || secondOffer.merchantName)
+    : nameA;
   const result = await hooks.agentExecuteTool("merchant_comparison", { merchants: [nameA, nameB] });
   assertTruthy(result.ok, "comparison of two real offers should succeed");
   assertTruthy(result.data.entities && result.data.entities.length >= 2, "comparison should carry entities");
@@ -665,6 +732,28 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   const overdue = await hooks.agentExecuteTool("payment_status", { status: "overdue" });
   assertTruthy(overdue.ok, "overdue filter should succeed");
   assertTruthy(overdue.data.rows.every(function (r) { return r.status !== "Paid"; }), "overdue rows must not be Paid");
+
+  const pending = await hooks.agentExecuteTool("payment_status", { status: "未到期" });
+  assertTruthy(pending.ok, "Chinese pending filter should succeed");
+  assertEqual(pending.data.filter.status, "pending",
+    "未到期 must normalize to pending instead of overdue");
+
+  const invalidStatus = await hooks.agentExecuteTool("payment_status", { status: "settled" });
+  assertEqual(invalidStatus.ok, false, "unknown payment status must not return all rows");
+  assertEqual(invalidStatus.resolution && invalidStatus.resolution.status, "invalid_filter",
+    "unknown status should be invalid_filter");
+  assertEqual(invalidStatus.resolution && invalidStatus.resolution.field, "status",
+    "invalid status should identify its field");
+
+  const invalidMonth = await hooks.agentExecuteTool("payment_status", { month: "13月" });
+  assertEqual(invalidMonth.ok, false, "unknown payment month must not be ignored");
+  assertEqual(invalidMonth.resolution && invalidMonth.resolution.status, "invalid_filter",
+    "unknown month should be invalid_filter");
+
+  const invalidTier = await hooks.agentExecuteTool("payment_status", { tier: "Tier 9" });
+  assertEqual(invalidTier.ok, false, "unknown payment tier must not return an empty success");
+  assertEqual(invalidTier.resolution && invalidTier.resolution.status, "invalid_filter",
+    "unknown tier should be invalid_filter");
 }
 
 // ── Test 10b: 未写年份的付款月份默认当前年，明确年份必须保留 ──
@@ -679,6 +768,15 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
     "a month without an explicit year should be normalized to the current year");
   assertTruthy(currentYearPayment.data.rows.some((row) => row.month === "2026-06"),
     "current-year payment lookup should return current-year rows");
+
+  const decemberPayment = await hooks.agentExecuteTool(
+    "payment_status",
+    { month: "12月" },
+    { prompt: "12月份付款记录" }
+  );
+  assertTruthy(decemberPayment.ok, "numeric December payment lookup should succeed");
+  assertEqual(decemberPayment.data.filter.month, "2026-12",
+    "numeric December must not be misread as February");
 
   const explicitYearPayment = await hooks.agentExecuteTool(
     "payment_status",
@@ -744,6 +842,35 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(result.data.entityType, "merchant", "entityType should be merchant");
 }
 
+// ── Test 11b: 趋势非法月份和指标必须失败关闭 ──
+{
+  const name = hooks.firstOfferName();
+  fetchCalls = [];
+  mockFetchImpl = function (url) {
+    if (url.indexOf("/api/ui/db/merchant") === 0) {
+      return { ok: true, json: async function () { return { ok: true, monthlyAmazonMetrics: [] }; } };
+    }
+    return sseResponse('data: [DONE]\n\n');
+  };
+  const invalidMonths = await hooks.agentExecuteTool("trend", {
+    entityType: "merchant", target: name, months: 1
+  });
+  assertEqual(invalidMonths.ok, false, "trend months below two must not default to twelve");
+  assertEqual(invalidMonths.resolution && invalidMonths.resolution.status, "invalid_filter",
+    "invalid trend months should be invalid_filter");
+  assertEqual(invalidMonths.resolution && invalidMonths.resolution.field, "months",
+    "invalid trend months should identify its field");
+
+  const invalidMetric = await hooks.agentExecuteTool("trend", {
+    entityType: "merchant", target: name, months: 2, metric: "madeUpMetric"
+  });
+  assertEqual(invalidMetric.ok, false, "unknown trend metric must not display all metrics");
+  assertEqual(invalidMetric.resolution && invalidMetric.resolution.status, "invalid_filter",
+    "invalid trend metric should be invalid_filter");
+  assertEqual(invalidMetric.resolution && invalidMetric.resolution.field, "metric",
+    "invalid trend metric should identify its field");
+}
+
 // ── Test 12: trend 商户估算降级（DB 返回 null） ──
 {
   const name = hooks.firstOfferName();
@@ -797,7 +924,7 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
 // ── Test 13: 三商户对比必须保留参考商户到每个同行的差异 ──
 {
   const names = Array.from(new Set(sandbox.window.CHATBOT_DATA.offers.slice(0, 5)
-    .map((o) => o.brand || o.merchantName)
+    .map((o) => String(o.merchantId) + " " + (o.brand || o.merchantName))
     .filter(Boolean)));
   assertTruthy(names.length >= 3, "fixture must contain three merchants");
   const result = await hooks.agentExecuteTool("merchant_comparison", { merchants: names.slice(0, 3) });
@@ -843,7 +970,10 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
 {
   const payment = (sandbox.window.CHATBOT_DATA.paymentRecords || []).find((r) => r.merchantName);
   if (payment) {
-    const result = await hooks.agentExecuteTool("payment_status", { merchant: payment.merchantName });
+    const paymentMerchantQuery = payment.merchantId
+      ? String(payment.merchantId) + " " + payment.merchantName
+      : payment.merchantName;
+    const result = await hooks.agentExecuteTool("payment_status", { merchant: paymentMerchantQuery });
     assertTruthy(result.ok, "merchant payment filter should succeed");
     assertTruthy(result.data.rows.every((r) => r.merchant === payment.merchantName),
       "merchant payment filter should constrain rows");
@@ -1003,4 +1133,4 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(timelineRoot.open, false, "successful Agent timeline should collapse after completion");
 }
 
-console.log("OK 30 scenarios");
+console.log("OK 32 scenarios");
