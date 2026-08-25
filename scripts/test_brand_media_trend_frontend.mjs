@@ -275,6 +275,7 @@ const indexHtml = fs.readFileSync("public/index.html", "utf8");
   'id="revenueFlowRangeButtons"',
   'id="revenueFlowStartDate"',
   'id="revenueFlowEndDate"',
+  'id="revenueFlowChartExpand"',
   'id="revenueFlowChart"',
   'id="revenueFlowCount"',
   'id="revenueFlowKpis"'
@@ -291,6 +292,23 @@ if (!indexHtml.includes('data-i18n="brandMedia.manager"')) {
 const appSource = fs.readFileSync("public/app.js", "utf8");
 if (!appSource.includes("/api/ui/db/brand-media-sankey?") || !appSource.includes('switchPage("revenue-flow")')) {
   throw new Error("Revenue flow should use the selected brand/date endpoint from its standalone page");
+}
+if (!appSource.includes("var width = 1160") ||
+    !appSource.includes("var columnX = { brand: 36, product: 400, media: 820 }")) {
+  throw new Error("Revenue flow should leave more space before the rightmost media column");
+}
+if (!appSource.includes("_revenueFlowSetChartExpanded") ||
+    !appSource.includes("revenue-flow-chart-expanded")) {
+  throw new Error("Revenue flow should support toggling a full-screen chart view");
+}
+const stylesSource = fs.readFileSync("public/styles.css", "utf8");
+if (!/\.brand-media-sankey-chart-wrap\s*\{[^}]*height:\s*clamp\(/s.test(stylesSource) ||
+    !/\.brand-media-sankey-chart-wrap\s*\{[^}]*overflow-y:\s*auto/s.test(stylesSource)) {
+  throw new Error("Revenue flow should expose a vertically scrollable Sankey viewport");
+}
+if (!stylesSource.includes(".revenue-flow-panel.is-expanded") ||
+    !stylesSource.includes("body.revenue-flow-chart-expanded")) {
+  throw new Error("Revenue flow should provide full-screen panel styling");
 }
 const vercelConfig = fs.readFileSync("vercel.json", "utf8");
 if (!vercelConfig.includes("/api/ui/db/brand-media-sankey") ||
