@@ -22326,16 +22326,31 @@ body.revenue-flow-chart-expanded {
 }
 
 .brand-media-sankey-scroll {
+  position: relative;
   min-width: 1160px;
   min-height: 390px;
 }
 
-.brand-media-sankey-svg {
+.brand-media-sankey-canvas {
   display: block;
-  width: 100%;
-  min-width: 1160px;
-  height: auto;
-  overflow: visible;
+  width: 1160px;
+  pointer-events: none;
+}
+
+.brand-media-sankey-tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.brand-media-sankey-node-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1160px;
+  min-height: 100%;
+  pointer-events: none;
+  contain: layout paint;
 }
 
 .brand-media-sankey-chart-wrap::-webkit-scrollbar {
@@ -22358,35 +22373,23 @@ body.revenue-flow-chart-expanded {
   background: rgba(36, 107, 254, 0.62);
 }
 
-.brand-media-sankey-column-title {
-  fill: #7890ba;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.brand-media-sankey-link {
-  opacity: 0.28;
-  pointer-events: stroke;
-  transition: opacity 140ms ease;
-  vector-effect: non-scaling-stroke;
-}
-
-.brand-media-sankey-link:hover {
-  opacity: 0.66;
-}
-
-.brand-media-sankey-link.is-focused {
-  opacity: 0.82;
-}
-
-.brand-media-sankey-link.is-muted {
-  opacity: 0.06;
-}
-
 .brand-media-sankey-node {
-  transition: opacity 140ms ease;
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1f3b68;
+  font: inherit;
+  line-height: 1;
+  opacity: 1;
+  transition: none;
+  pointer-events: auto;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .brand-media-sankey-node-product,
@@ -22394,40 +22397,57 @@ body.revenue-flow-chart-expanded {
   cursor: pointer;
 }
 
-.brand-media-sankey-node.is-focused {
-  opacity: 1;
+.brand-media-sankey-node-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  width: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  background: var(--brand-media-node-color, #246bfe);
+  box-sizing: border-box;
 }
 
-.brand-media-sankey-node.is-muted {
-  opacity: 0.16;
+.brand-media-sankey-node-label,
+.brand-media-sankey-node-value {
+  position: absolute;
+  left: 26px;
+  display: block;
+  max-width: 330px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.brand-media-sankey-node:focus rect {
-  stroke: #0b4ecb;
-  stroke-width: 2;
-}
-
-.brand-media-sankey-node rect {
-  stroke: rgba(255, 255, 255, 0.9);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.brand-media-sankey-node text {
-  fill: #1f3b68;
+.brand-media-sankey-node-label {
+  top: 1px;
+  color: #1f3b68;
   font-size: 12px;
   font-weight: 700;
-  pointer-events: none;
 }
 
 .brand-media-sankey-node-value {
-  fill: #7890ba !important;
-  font-size: 10px !important;
-  font-weight: 600 !important;
+  top: 17px;
+  color: #7890ba;
+  font-size: 10px;
+  font-weight: 600;
 }
 
-.brand-media-sankey-node-brand text {
-  fill: #17233d;
+.brand-media-sankey-chart-has-focus .brand-media-sankey-node {
+  opacity: 0.16;
+}
+
+.brand-media-sankey-chart-has-focus .brand-media-sankey-node.is-focused {
+  opacity: 1;
+}
+
+.brand-media-sankey-node:focus-visible .brand-media-sankey-node-bar {
+  border-color: #0b4ecb;
+  box-shadow: 0 0 0 2px rgba(11, 78, 203, 0.2);
+}
+
+.brand-media-sankey-chart-wrap.is-scrolling .brand-media-sankey-node {
+  pointer-events: none;
 }
 
 .brand-media-sankey-empty {

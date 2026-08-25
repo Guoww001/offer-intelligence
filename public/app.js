@@ -19419,6 +19419,52 @@ var _NUMERIC_COL_PATTERNS = [
         (productIds[link.source] && mediaIds[link.target]);
     });
     if (!links.length) return null;
+
+    var hoverIndex = {};
+    var allNodeIds = new Set();
+    var allLinkIndexes = new Set();
+    var brandLinkIndexByProductId = {};
+    var mediaProductsById = {};
+    nodes.forEach(function (node) {
+      allNodeIds.add(node.id);
+      hoverIndex[node.id] = {
+        nodeIds: new Set([brand.id, node.id]),
+        linkIndexes: new Set()
+      };
+    });
+    links.forEach(function (link, index) {
+      allLinkIndexes.add(index);
+      var sourceState = hoverIndex[link.source];
+      var targetState = hoverIndex[link.target];
+      if (sourceState) {
+        sourceState.nodeIds.add(link.target);
+        sourceState.linkIndexes.add(index);
+      }
+      if (targetState) {
+        targetState.nodeIds.add(link.source);
+        targetState.linkIndexes.add(index);
+      }
+      if (link.source === brand.id && productIds[link.target]) {
+        brandLinkIndexByProductId[link.target] = index;
+      } else if (productIds[link.source] && mediaIds[link.target]) {
+        if (!mediaProductsById[link.target]) mediaProductsById[link.target] = new Set();
+        mediaProductsById[link.target].add(link.source);
+      }
+    });
+    media.forEach(function (mediaNode) {
+      var state = hoverIndex[mediaNode.id];
+      var productIdsForMedia = mediaProductsById[mediaNode.id];
+      if (!state || !productIdsForMedia) return;
+      productIdsForMedia.forEach(function (productId) {
+        if (brandLinkIndexByProductId[productId] != null) {
+          state.linkIndexes.add(brandLinkIndexByProductId[productId]);
+        }
+      });
+    });
+    hoverIndex[brand.id] = {
+      nodeIds: allNodeIds,
+      linkIndexes: allLinkIndexes
+    };
     var totalRevenue = Number(
       sankey.summary && sankey.summary.totalRevenue ||
       brand.value ||
@@ -19430,58 +19476,289 @@ var _NUMERIC_COL_PATTERNS = [
       media: media,
       links: links,
       nodeById: nodeById,
+      hoverIndex: hoverIndex,
       totalRevenue: totalRevenue,
       productCount: products.length,
       mediaCount: media.length
     };
   }
 
+  function _brandMediaBuildSankeyLayout(model, width) {
+    if (!model) return null;
+    var graphWidth = Number(width || 1160);
+    var itemCount = Math.max(model.products.length, model.media.length, 1);
+    var height = Math.max(390, 128 + itemCount * 31);
+    var top = 70;
+    var bottom = 26;
+    var innerHeight = height - top - bottom;
+    var columnX = { brand: 36, product: 400, media: 820 };
+    var nodeWidth = 12;
+    var nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
+
+    function layoutColumn(columnNodes, x, position, colorFactory) {
+      var total = columnNodes.reduce(function (sum, node) { return sum + node.value; }, 0) || 1;
+      var available = innerHeight - nodeGap * Math.max(0, columnNodes.length - 1);
+      var scale = available / total;
+      var totalHeight = 0;
+      var layout = columnNodes.map(function (node, index) {
+        var nodeHeight = Math.max(14, node.value * scale);
+        totalHeight += nodeHeight;
+        return {
+          node: node,
+          x: x,
+          y: 0,
+          width: nodeWidth,
+          height: nodeHeight,
+          position: position,
+          color: typeof colorFactory === "function" ? colorFactory(index + 1) : colorFactory,
+          outOffset: 0,
+          inOffset: 0
+        };
+      });
+      totalHeight += nodeGap * Math.max(0, layout.length - 1);
+      var y = top + Math.max(0, (innerHeight - totalHeight) / 2);
+      layout.forEach(function (entry) {
+        entry.y = y;
+        y += entry.height + nodeGap;
+      });
+      return layout;
+    }
+
+    var brandLayout = layoutColumn([model.brand], columnX.brand, "brand", "#17233d");
+    var productLayout = layoutColumn(model.products, columnX.product, "product", "#246bfe");
+    var mediaLayout = layoutColumn(model.media, columnX.media, "media", function (index) {
+      return brandMediaColor(index);
+    });
+    var nodes = brandLayout.concat(productLayout, mediaLayout);
+    var layoutById = {};
+    nodes.forEach(function (entry) {
+      layoutById[entry.node.id] = entry;
+    });
+    var maxLink = model.links.reduce(function (max, link) {
+      return Math.max(max, link.value);
+    }, 0) || 1;
+    var links = [];
+    model.links.forEach(function (link, linkIndex) {
+      var source = layoutById[link.source];
+      var target = layoutById[link.target];
+      if (!source || !target) return;
+      var strokeWidth = Math.max(1.5, Math.min(34, 2 + (link.value / maxLink) * 30));
+      var sourceY = source.y + source.outOffset + strokeWidth / 2;
+      var targetY = target.y + target.inOffset + strokeWidth / 2;
+      source.outOffset += strokeWidth;
+      target.inOffset += strokeWidth;
+      var startX = source.x + source.width;
+      var endX = target.x;
+      var curve = Math.max(60, (endX - startX) * 0.46);
+      var color = source.node.type === "brand" ? "#17233d" : "#246bfe";
+      links.push({
+        index: linkIndex,
+        source: link.source,
+        target: link.target,
+        value: link.value,
+        sourceY: sourceY,
+        targetY: targetY,
+        startX: startX,
+        endX: endX,
+        curve: curve,
+        strokeWidth: strokeWidth,
+        color: color,
+        top: Math.min(sourceY, targetY) - strokeWidth / 2,
+        bottom: Math.max(sourceY, targetY) + strokeWidth / 2
+      });
+    });
+    return {
+      width: graphWidth,
+      height: height,
+      top: top,
+      bottom: bottom,
+      columnX: columnX,
+      nodeWidth: nodeWidth,
+      nodeGap: nodeGap,
+      nodes: nodes,
+      links: links,
+      layoutById: layoutById
+    };
+  }
+
+  function _brandMediaSankeyVisibleEntries(layout, scrollTop, viewportHeight, overscan) {
+    if (!layout) return { startY: 0, endY: 0, nodes: [], links: [] };
+    var scroll = Math.max(0, Number(scrollTop || 0));
+    var viewport = Math.max(0, Number(viewportHeight || 0));
+    var buffer = Math.max(0, Number(overscan || 0));
+    var startY = Math.max(0, scroll - buffer);
+    var endY = Math.min(layout.height, scroll + viewport + buffer);
+    return {
+      startY: startY,
+      endY: endY,
+      nodes: layout.nodes.filter(function (entry) {
+        return entry.y + entry.height >= startY && entry.y <= endY;
+      }),
+      links: layout.links.filter(function (entry) {
+        return entry.bottom >= startY && entry.top <= endY;
+      })
+    };
+  }
+
+  function _brandMediaBuildSankeyTileLayout(layout, tileHeight) {
+    if (!layout) return null;
+    var height = Math.max(1, Number(tileHeight || 640));
+    var tileCount = Math.max(1, Math.ceil(layout.height / height));
+    var tiles = Array.from({ length: tileCount }, function (_, index) {
+      var startY = index * height;
+      var endY = Math.min(layout.height, startY + height);
+      return {
+        index: index,
+        startY: startY,
+        endY: endY,
+        height: endY - startY,
+        links: layout.links.filter(function (entry) {
+          return entry.bottom >= startY && entry.top <= endY;
+        })
+      };
+    });
+    return {
+      tileHeight: height,
+      tiles: tiles
+    };
+  }
+
   function _brandMediaSankeyHoverState(model, nodeId) {
     var empty = { nodeIds: new Set(), linkIndexes: new Set() };
     if (!model || !model.nodeById || !model.nodeById[nodeId]) return empty;
-    var node = model.nodeById[nodeId];
-    var brandId = model.brand && model.brand.id;
-    var focusNodeIds = new Set(brandId ? [brandId, node.id] : [node.id]);
-    var linkIndexes = new Set();
-    if (node.type === "brand") {
-      [model.brand].concat(model.products || [], model.media || []).filter(Boolean).forEach(function (entry) {
-        focusNodeIds.add(entry.id);
+    return model.hoverIndex && model.hoverIndex[nodeId]
+      ? model.hoverIndex[nodeId]
+      : empty;
+  }
+
+  function _brandMediaIndexSankeyElements(chart) {
+    if (!chart) return;
+    var scroll = chart.querySelector ? chart.querySelector(".brand-media-sankey-scroll") : null;
+    var nodeLayer = scroll && scroll.querySelector ? scroll.querySelector(".brand-media-sankey-node-layer") : null;
+    var tileElements = [];
+    if (scroll && scroll.querySelectorAll) {
+      Array.prototype.forEach.call(scroll.querySelectorAll("[data-brand-media-sankey-tile]"), function (canvas) {
+        tileElements.push({
+          index: Number(canvas.getAttribute("data-brand-media-sankey-tile")),
+          canvas: canvas
+        });
       });
-      (model.links || []).forEach(function (_, index) { linkIndexes.add(index); });
-      return { nodeIds: focusNodeIds, linkIndexes: linkIndexes };
+      tileElements.sort(function (a, b) { return a.index - b.index; });
     }
-    if (node.type === "product") {
-      (model.links || []).forEach(function (link, index) {
-        if (link.source !== node.id && link.target !== node.id) return;
-        linkIndexes.add(index);
-        focusNodeIds.add(link.source === node.id ? link.target : link.source);
-      });
-    } else if (node.type === "media") {
-      (model.links || []).forEach(function (link, index) {
-        if (link.target !== node.id) return;
-        focusNodeIds.add(link.source);
-        linkIndexes.add(index);
-      });
-      (model.links || []).forEach(function (link, index) {
-        if (link.source === brandId && focusNodeIds.has(link.target)) linkIndexes.add(index);
-      });
+    chart._brandMediaSankeyScroll = scroll;
+    chart._brandMediaSankeyTileElements = tileElements;
+    chart._brandMediaSankeyNodeLayer = nodeLayer;
+  }
+
+  function _brandMediaSankeyDrawTile(chart, tile, canvas) {
+    var layout = chart && chart._brandMediaSankeyLayout;
+    if (!canvas || !layout || typeof canvas.getContext !== "function") return;
+    var context = canvas.getContext("2d");
+    if (!context) return;
+    var pixelRatio = typeof window !== "undefined" ? Number(window.devicePixelRatio || 1) : 1;
+    pixelRatio = Math.min(1.5, Math.max(1, pixelRatio || 1));
+    var pixelWidth = Math.max(1, Math.round(layout.width * pixelRatio));
+    var pixelHeight = Math.max(1, Math.round(tile.height * pixelRatio));
+    if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+    if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    canvas.style.width = layout.width + "px";
+    canvas.style.height = tile.height + "px";
+    canvas.style.top = tile.startY + "px";
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, layout.width, tile.height);
+    context.fillStyle = "#7890ba";
+    context.font = "800 11px Arial, sans-serif";
+    context.textBaseline = "alphabetic";
+    var labels = chart._brandMediaSankeyLabels || {};
+    [
+      [labels.brand || "Brand", layout.columnX.brand],
+      [labels.products || "Revenue products", layout.columnX.product],
+      [labels.media || "Media", layout.columnX.media]
+    ].forEach(function (item) {
+      var y = 25 - tile.startY;
+      if (y >= -16 && y <= tile.height + 16) context.fillText(item[0], item[1], y);
+    });
+    var focus = chart._brandMediaSankeyFocus;
+    tile.links.forEach(function (entry) {
+      var opacity = !focus
+        ? 0.28
+        : focus.linkIndexes.has(entry.index) ? 0.82 : 0.06;
+      context.globalAlpha = opacity;
+      context.strokeStyle = entry.color;
+      context.lineWidth = entry.strokeWidth;
+      context.lineCap = "butt";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(entry.startX, entry.sourceY - tile.startY);
+      context.bezierCurveTo(
+        entry.startX + entry.curve, entry.sourceY - tile.startY,
+        entry.endX - entry.curve, entry.targetY - tile.startY,
+        entry.endX, entry.targetY - tile.startY
+      );
+      context.stroke();
+    });
+    context.globalAlpha = 1;
+  }
+
+  function _brandMediaSankeyNodeMarkup(entry, focus) {
+    var node = entry.node;
+    var position = entry.position;
+    var label = position === "product"
+      ? _brandMediaSankeyProductAsin(node)
+      : _brandMediaSankeyLabel(node.label, position === "brand" ? 44 : 36);
+    var title = position === "product"
+      ? _brandMediaSankeyProductAsin(node) + " · " + node.label + ": " + _brandMediaMoney(node.value)
+      : node.label + ": " + _brandMediaMoney(node.value);
+    var interactionAttributes = position === "brand"
+      ? ' aria-hidden="true"'
+      : ' tabindex="0" role="button" aria-label="' + escapeHtml(title) + '"';
+    var focused = focus && focus.nodeIds.has(node.id) ? " is-focused" : "";
+    return '<div class="brand-media-sankey-node brand-media-sankey-node-' + node.type + focused +
+      '" data-brand-media-sankey-node="' + escapeHtml(node.id) + '" style="left:' + entry.x +
+      'px;top:' + entry.y.toFixed(2) + 'px;width:' + entry.width + 'px;height:' +
+      entry.height.toFixed(2) + 'px;--brand-media-node-color:' + entry.color + ';"' +
+      interactionAttributes + '>' +
+      '<span class="brand-media-sankey-node-bar" aria-hidden="true"></span>' +
+      '<span class="brand-media-sankey-node-label" aria-hidden="true">' + escapeHtml(label) + '</span>' +
+      '<span class="brand-media-sankey-node-value" aria-hidden="true">' +
+      escapeHtml(_brandMediaMoney(node.value)) + '</span></div>';
+  }
+
+  function _brandMediaSankeyRenderNodes(chart) {
+    var layer = chart && chart._brandMediaSankeyNodeLayer;
+    var layout = chart && chart._brandMediaSankeyLayout;
+    if (!layer || !layout) return;
+    layer.style.height = layout.height + "px";
+    layer.innerHTML = layout.nodes.map(function (entry) {
+      return _brandMediaSankeyNodeMarkup(entry, chart._brandMediaSankeyFocus);
+    }).join("");
+  }
+
+  function _brandMediaSankeyRenderTiles(chart) {
+    if (!chart || !chart._brandMediaSankeyLayout) return;
+    if (!chart._brandMediaSankeyTileElements || !chart._brandMediaSankeyNodeLayer) {
+      _brandMediaIndexSankeyElements(chart);
     }
-    return { nodeIds: focusNodeIds, linkIndexes: linkIndexes };
+    var layout = chart._brandMediaSankeyLayout;
+    var tileLayout = chart._brandMediaSankeyTileLayout || _brandMediaBuildSankeyTileLayout(layout, 640);
+    chart._brandMediaSankeyTileLayout = tileLayout;
+    tileLayout.tiles.forEach(function (tile) {
+      var tileElement = chart._brandMediaSankeyTileElements.filter(function (entry) {
+        return entry.index === tile.index;
+      })[0];
+      if (tileElement) _brandMediaSankeyDrawTile(chart, tile, tileElement.canvas);
+    });
+    _brandMediaSankeyRenderNodes(chart);
   }
 
   function _brandMediaSankeyClearHover(chart) {
     if (!chart) return;
-    var svg = chart.querySelector ? chart.querySelector(".brand-media-sankey-svg") : null;
-    if (svg) {
-      svg.classList.remove("brand-media-sankey-chart-has-focus");
-      Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-node]"), function (node) {
-        node.classList.remove("is-focused", "is-muted");
-      });
-      Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-link-index]"), function (link) {
-        link.classList.remove("is-focused", "is-muted");
-      });
-    }
+    if (!chart._brandMediaSankeyFocus && !chart._brandMediaSankeyHoverNodeId) return;
+    chart._brandMediaSankeyFocus = null;
     chart._brandMediaSankeyHoverNodeId = "";
+    chart._brandMediaSankeyFocusVersion = Number(chart._brandMediaSankeyFocusVersion || 0) + 1;
+    if (chart.classList) chart.classList.remove("brand-media-sankey-chart-has-focus");
+    _brandMediaSankeyRenderTiles(chart);
   }
 
   function _brandMediaSankeyApplyHover(chart, model, nodeId) {
@@ -19494,22 +19771,15 @@ var _NUMERIC_COL_PATTERNS = [
       _brandMediaSankeyClearHover(chart);
       return;
     }
-    var svg = chart.querySelector ? chart.querySelector(".brand-media-sankey-svg") : null;
-    if (!svg) return;
     var hoverState = _brandMediaSankeyHoverState(model, nodeId);
-    svg.classList.add("brand-media-sankey-chart-has-focus");
-    Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-node]"), function (nodeElement) {
-      var isFocused = hoverState.nodeIds.has(String(nodeElement.getAttribute("data-brand-media-sankey-node") || ""));
-      nodeElement.classList.toggle("is-focused", isFocused);
-      nodeElement.classList.toggle("is-muted", !isFocused);
-    });
-    Array.prototype.forEach.call(svg.querySelectorAll("[data-brand-media-sankey-link-index]"), function (linkElement) {
-      var index = Number(linkElement.getAttribute("data-brand-media-sankey-link-index"));
-      var isFocused = hoverState.linkIndexes.has(index);
-      linkElement.classList.toggle("is-focused", isFocused);
-      linkElement.classList.toggle("is-muted", !isFocused);
-    });
+    chart._brandMediaSankeyFocus = {
+      nodeIds: new Set(hoverState.nodeIds),
+      linkIndexes: new Set(hoverState.linkIndexes)
+    };
+    chart._brandMediaSankeyFocusVersion = Number(chart._brandMediaSankeyFocusVersion || 0) + 1;
     chart._brandMediaSankeyHoverNodeId = nodeId;
+    if (chart.classList) chart.classList.add("brand-media-sankey-chart-has-focus");
+    _brandMediaSankeyRenderTiles(chart);
   }
 
   function _brandMediaSankeyNodeFromTarget(chart, target) {
@@ -19522,9 +19792,10 @@ var _NUMERIC_COL_PATTERNS = [
     if (!chart || chart._brandMediaSankeyInteractionsBound) return;
     chart._brandMediaSankeyInteractionsBound = true;
     function handleNodeTarget(event) {
+      if (chart.classList && chart.classList.contains("is-scrolling")) return;
       var node = _brandMediaSankeyNodeFromTarget(chart, event.target);
       if (!node) {
-        _brandMediaSankeyClearHover(chart);
+        if (chart._brandMediaSankeyHoverNodeId) _brandMediaSankeyClearHover(chart);
         return;
       }
       var nodeId = String(node.getAttribute("data-brand-media-sankey-node") || "");
@@ -19541,8 +19812,40 @@ var _NUMERIC_COL_PATTERNS = [
     });
   }
 
+  function _brandMediaBindSankeyScroll(chart) {
+    if (!chart || chart._brandMediaSankeyScrollBound) return;
+    chart._brandMediaSankeyScrollBound = true;
+    chart.addEventListener("scroll", function () {
+      if (chart.classList) chart.classList.add("is-scrolling");
+      if (chart._brandMediaSankeyScrollTimer) clearTimeout(chart._brandMediaSankeyScrollTimer);
+      chart._brandMediaSankeyScrollTimer = setTimeout(function () {
+        chart._brandMediaSankeyScrollTimer = null;
+        if (chart.classList) chart.classList.remove("is-scrolling");
+      }, 120);
+    }, { passive: true });
+  }
+
+  function _brandMediaSankeyResetRenderState(chart) {
+    if (!chart) return;
+    if (chart._brandMediaSankeyScrollTimer) clearTimeout(chart._brandMediaSankeyScrollTimer);
+    if (chart.classList) {
+      chart.classList.remove("brand-media-sankey-chart-has-focus");
+      chart.classList.remove("is-scrolling");
+    }
+    chart._brandMediaSankeyLayout = null;
+    chart._brandMediaSankeyTileLayout = null;
+    chart._brandMediaSankeyTileElements = null;
+    chart._brandMediaSankeyScroll = null;
+    chart._brandMediaSankeyNodeLayer = null;
+    chart._brandMediaSankeyVisible = null;
+    chart._brandMediaSankeyFocus = null;
+    chart._brandMediaSankeyHoverNodeId = "";
+    chart._brandMediaSankeyFocusVersion = 0;
+  }
+
   function _brandMediaRenderSankeyChart(payload, chart, countElement, currentState, copyPrefix) {
     if (!chart) return;
+    _brandMediaSankeyResetRenderState(chart);
     var prefix = String(copyPrefix || "brandMedia");
     function copy(key, fallback) {
       return t(prefix + "." + key, fallback);
@@ -19565,7 +19868,6 @@ var _NUMERIC_COL_PATTERNS = [
     }
     var model = !message ? _brandMediaBuildSankeyModel(payload) : null;
     chart._brandMediaSankeyModel = model;
-    chart._brandMediaSankeyHoverNodeId = "";
     if (countElement) {
       countElement.textContent = model
         ? _brandMediaCount(model.productCount) + " " +
@@ -19579,120 +19881,32 @@ var _NUMERIC_COL_PATTERNS = [
         escapeHtml(message || copy("empty", "No product-to-media Revenue flow is available for the selected range.")) +
         '</div>';
       chart.setAttribute("aria-label", message || copy("empty", "No product-to-media Revenue flow is available for the selected range."));
-      _brandMediaSankeyClearHover(chart);
       return;
     }
 
-    var width = 1160;
-    var itemCount = Math.max(model.products.length, model.media.length, 1);
-    var height = Math.max(390, 128 + itemCount * 31);
-    var top = 70;
-    var bottom = 26;
-    var innerHeight = height - top - bottom;
-    var columnX = { brand: 36, product: 400, media: 820 };
-    var nodeWidth = 12;
-    var nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
-    function layoutColumn(columnNodes, x) {
-      var total = columnNodes.reduce(function (sum, node) { return sum + node.value; }, 0) || 1;
-      var available = innerHeight - nodeGap * Math.max(0, columnNodes.length - 1);
-      var scale = available / total;
-      var totalHeight = 0;
-      var layout = columnNodes.map(function (node) {
-        var nodeHeight = Math.max(14, node.value * scale);
-        totalHeight += nodeHeight;
-        return {
-          node: node,
-          x: x,
-          y: 0,
-          width: nodeWidth,
-          height: nodeHeight,
-          outOffset: 0,
-          inOffset: 0
-        };
-      });
-      totalHeight += nodeGap * Math.max(0, layout.length - 1);
-      var y = top + Math.max(0, (innerHeight - totalHeight) / 2);
-      layout.forEach(function (entry) {
-        entry.y = y;
-        y += entry.height + nodeGap;
-      });
-      return layout;
-    }
-
-    var brandLayout = layoutColumn([model.brand], columnX.brand);
-    var productLayout = layoutColumn(model.products, columnX.product);
-    var mediaLayout = layoutColumn(model.media, columnX.media);
-    var layoutById = {};
-    brandLayout.concat(productLayout, mediaLayout).forEach(function (entry) {
-      layoutById[entry.node.id] = entry;
-    });
-    var maxLink = model.links.reduce(function (max, link) {
-      return Math.max(max, link.value);
-    }, 0) || 1;
-    var linkMarkup = model.links.map(function (link, linkIndex) {
-      var source = layoutById[link.source];
-      var target = layoutById[link.target];
-      if (!source || !target) return "";
-      var strokeWidth = Math.max(1.5, Math.min(34, 2 + (link.value / maxLink) * 30));
-      var sourceY = source.y + source.outOffset + strokeWidth / 2;
-      var targetY = target.y + target.inOffset + strokeWidth / 2;
-      source.outOffset += strokeWidth;
-      target.inOffset += strokeWidth;
-      var startX = source.x + source.width;
-      var endX = target.x;
-      var curve = Math.max(60, (endX - startX) * 0.46);
-      var color = source.node.type === "brand" ? "#17233d" : "#246bfe";
-      var title = source.node.label + " → " + target.node.label + ": " + _brandMediaMoney(link.value);
-      return '<path class="brand-media-sankey-link" data-brand-media-sankey-link-index="' + linkIndex + '" d="M ' + startX + " " + sourceY +
-        " C " + (startX + curve) + " " + sourceY + ", " +
-        (endX - curve) + " " + targetY + ", " + endX + " " + targetY +
-        '" stroke="' + color + '" stroke-width="' + strokeWidth.toFixed(2) +
-        '" fill="none"><title>' + escapeHtml(title) + '</title></path>';
-    }).join("");
-
-    function nodeMarkup(entry, position, color) {
-      var node = entry.node;
-      var label = position === "product"
-        ? _brandMediaSankeyProductAsin(node)
-        : _brandMediaSankeyLabel(node.label, position === "brand" ? 44 : 36);
-      var title = position === "product"
-        ? _brandMediaSankeyProductAsin(node) + " · " + node.label + ": " + _brandMediaMoney(node.value)
-        : node.label + ": " + _brandMediaMoney(node.value);
-      var interactionAttributes = position === "brand"
-        ? ""
-        : ' tabindex="0" aria-label="' + escapeHtml(title) + '"';
-      var labelX = entry.x + entry.width + 14;
-      var valueY = entry.y + Math.min(entry.height - 3, 17);
-      return '<g class="brand-media-sankey-node brand-media-sankey-node-' + node.type +
-        '" data-brand-media-sankey-node="' + escapeHtml(node.id) + '"' + interactionAttributes + '>' +
-        '<rect x="' + entry.x + '" y="' + entry.y.toFixed(2) + '" width="' + entry.width +
-        '" height="' + entry.height.toFixed(2) + '" rx="6" fill="' + color + '"></rect>' +
-        '<title>' + escapeHtml(title) + '</title>' +
-        '<text x="' + labelX + '" y="' + valueY.toFixed(2) + '">' + escapeHtml(label) + '</text>' +
-        '<text class="brand-media-sankey-node-value" x="' + labelX +
-        '" y="' + (valueY + 16).toFixed(2) + '">' + escapeHtml(_brandMediaMoney(node.value)) +
-        '</text></g>';
-    }
-
-    var svg = '<svg class="brand-media-sankey-svg" viewBox="0 0 ' + width + " " + height +
-      '" width="' + width + '" height="' + height + '" role="img" aria-label="' + escapeHtml(copy("chartTitle", "Revenue flow: brand to products to media")) + '">' +
-      '<text class="brand-media-sankey-column-title" x="' + columnX.brand + '" y="25">' +
-      escapeHtml(copy("brandColumn", "Brand")) + '</text>' +
-      '<text class="brand-media-sankey-column-title" x="' + columnX.product + '" y="25">' +
-      escapeHtml(copy("products", "Revenue products")) + '</text>' +
-      '<text class="brand-media-sankey-column-title" x="' + columnX.media + '" y="25">' +
-      escapeHtml(copy("media", "Media")) + '</text>' +
-      '<g class="brand-media-sankey-links">' + linkMarkup + '</g>' +
-      '<g class="brand-media-sankey-nodes">' +
-      brandLayout.map(function (entry) { return nodeMarkup(entry, "brand", "#17233d"); }).join("") +
-      productLayout.map(function (entry) { return nodeMarkup(entry, "product", "#246bfe"); }).join("") +
-      mediaLayout.map(function (entry, index) {
-        return nodeMarkup(entry, "media", brandMediaColor(index + 1));
+    var layout = _brandMediaBuildSankeyLayout(model, 1160);
+    chart._brandMediaSankeyLayout = layout;
+    chart._brandMediaSankeyLabels = {
+      brand: copy("brandColumn", "Brand"),
+      products: copy("products", "Revenue products"),
+      media: copy("media", "Media")
+    };
+    var tileLayout = _brandMediaBuildSankeyTileLayout(layout, 640);
+    chart._brandMediaSankeyTileLayout = tileLayout;
+    chart.innerHTML = '<div class="brand-media-sankey-scroll" style="height:' + layout.height + 'px">' +
+      tileLayout.tiles.map(function (tile) {
+        return '<canvas class="brand-media-sankey-canvas brand-media-sankey-tile" data-brand-media-sankey-tile="' +
+          tile.index + '" aria-hidden="true"></canvas>';
       }).join("") +
-      '</g></svg>';
-    chart.innerHTML = '<div class="brand-media-sankey-scroll">' + svg + '</div>';
+      '<div class="brand-media-sankey-node-layer"></div>' +
+      '</div>';
     chart.setAttribute("aria-label", copy("chartTitle", "Revenue flow: brand to products to media"));
+    chart.scrollTop = 0;
+    chart.scrollLeft = 0;
+    _brandMediaIndexSankeyElements(chart);
+    _brandMediaBindSankeyScroll(chart);
     _brandMediaBindSankeyInteractions(chart);
+    _brandMediaSankeyRenderTiles(chart);
   }
 
   function _brandMediaRenderTable(payload) {
@@ -29905,6 +30119,9 @@ var _NUMERIC_COL_PATTERNS = [
       brandMediaChartPayload: _brandMediaChartPayload,
       brandMediaClickChartModel: _brandMediaBuildClicksChartModel,
       brandMediaSankeyModel: _brandMediaBuildSankeyModel,
+      brandMediaSankeyLayout: _brandMediaBuildSankeyLayout,
+      brandMediaSankeyVisibleEntries: _brandMediaSankeyVisibleEntries,
+      brandMediaSankeyTileLayout: _brandMediaBuildSankeyTileLayout,
       brandMediaSankeyProductAsin: _brandMediaSankeyProductAsin,
       brandMediaSankeyHoverState: _brandMediaSankeyHoverState,
       brandMediaSankeyPayload: function (payload) {
