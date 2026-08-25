@@ -22377,6 +22377,36 @@ body.revenue-flow-chart-expanded {
   opacity: 0.66;
 }
 
+.brand-media-sankey-link.is-focused {
+  opacity: 0.82;
+}
+
+.brand-media-sankey-link.is-muted {
+  opacity: 0.06;
+}
+
+.brand-media-sankey-node {
+  transition: opacity 140ms ease;
+}
+
+.brand-media-sankey-node-product,
+.brand-media-sankey-node-media {
+  cursor: pointer;
+}
+
+.brand-media-sankey-node.is-focused {
+  opacity: 1;
+}
+
+.brand-media-sankey-node.is-muted {
+  opacity: 0.16;
+}
+
+.brand-media-sankey-node:focus rect {
+  stroke: #0b4ecb;
+  stroke-width: 2;
+}
+
 .brand-media-sankey-node rect {
   stroke: rgba(255, 255, 255, 0.9);
   stroke-width: 1;
