@@ -486,6 +486,7 @@
       merchantId: "",
       merchantName: "",
       merchantSearch: "",
+      chartExpanded: false,
       startDate: "",
       endDate: "",
       quickRange: "90",
@@ -666,6 +667,7 @@
     revenueFlowKpis: document.getElementById("revenueFlowKpis"),
     revenueFlowPanel: document.getElementById("revenueFlowPanel"),
     revenueFlowChart: document.getElementById("revenueFlowChart"),
+    revenueFlowChartExpand: document.getElementById("revenueFlowChartExpand"),
     revenueFlowCount: document.getElementById("revenueFlowCount"),
     publisherSelectorSearch: document.getElementById("publisherSelectorSearch"),
     publisherSelectorDropdown: document.getElementById("publisherSelectorDropdown"),
@@ -1330,6 +1332,8 @@
       "revenueFlow.selectBrand": "先选择一个品牌，即可加载该品牌的 Revenue 流向。",
       "revenueFlow.totalRevenue": "Revenue",
       "revenueFlow.linkCount": "条流向",
+      "revenueFlow.expandChart": "展开图表",
+      "revenueFlow.collapseChart": "退出展开视图",
       "label.All markets": "全市场",
       "label.All": "全部",
       "action.search": "搜索",
@@ -19462,13 +19466,13 @@ var _NUMERIC_COL_PATTERNS = [
       return;
     }
 
-    var width = 1120;
+    var width = 1160;
     var itemCount = Math.max(model.products.length, model.media.length, 1);
     var height = Math.max(390, 128 + itemCount * 31);
     var top = 70;
     var bottom = 26;
     var innerHeight = height - top - bottom;
-    var columnX = { brand: 36, product: 390, media: 760 };
+    var columnX = { brand: 36, product: 400, media: 820 };
     var nodeWidth = 12;
     var nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
     function layoutColumn(columnNodes, x) {
@@ -19905,6 +19909,35 @@ var _NUMERIC_COL_PATTERNS = [
     }).join("");
   }
 
+  function _revenueFlowChartExpandLabel(expanded) {
+    return expanded
+      ? t("revenueFlow.collapseChart", "Exit expanded view")
+      : t("revenueFlow.expandChart", "Expand chart");
+  }
+
+  function _revenueFlowSyncChartExpandButton() {
+    var button = els.revenueFlowChartExpand;
+    if (!button) return;
+    var expanded = Boolean(state.revenueFlow && state.revenueFlow.chartExpanded);
+    var label = _revenueFlowChartExpandLabel(expanded);
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+    var labelElement = button.querySelector(".brand-media-chart-expand-label");
+    if (labelElement) labelElement.textContent = label;
+    button.classList.toggle("is-expanded", expanded);
+  }
+
+  function _revenueFlowSetChartExpanded(expanded) {
+    if (!els.revenueFlowPanel) return;
+    state.revenueFlow.chartExpanded = Boolean(expanded);
+    els.revenueFlowPanel.classList.toggle("is-expanded", state.revenueFlow.chartExpanded);
+    if (document.body) {
+      document.body.classList.toggle("revenue-flow-chart-expanded", state.revenueFlow.chartExpanded);
+    }
+    _revenueFlowSyncChartExpandButton();
+  }
+
   function _revenueFlowRenderCurrentView() {
     _brandMediaRenderSankeyChart(
       state.revenueFlow.payload,
@@ -19994,6 +20027,7 @@ var _NUMERIC_COL_PATTERNS = [
       current.startDate = state.brandMedia.startDate || current.startDate;
       current.endDate = state.brandMedia.endDate || current.endDate;
     }
+    _revenueFlowSyncChartExpandButton();
     _revenueFlowSyncControls();
     _revenueFlowLoadCatalog();
     if (current.payload) {
@@ -20063,6 +20097,16 @@ var _NUMERIC_COL_PATTERNS = [
         _revenueFlowSyncControls();
         _revenueFlowLoad();
       });
+    });
+    if (els.revenueFlowChartExpand) {
+      els.revenueFlowChartExpand.addEventListener("click", function () {
+        _revenueFlowSetChartExpanded(!state.revenueFlow.chartExpanded);
+      });
+    }
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" || !state.revenueFlow.chartExpanded) return;
+      _revenueFlowSetChartExpanded(false);
+      if (els.revenueFlowChartExpand) els.revenueFlowChartExpand.focus();
     });
     document.addEventListener("click", function (event) {
       if (!event.target.closest(".revenue-flow-controls .brand-media-combobox")) {
@@ -28297,6 +28341,9 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (page !== "brand-media" && state.brandMedia && state.brandMedia.chartExpanded) {
       _brandMediaSetChartExpanded(false);
+    }
+    if (page !== "revenue-flow" && state.revenueFlow && state.revenueFlow.chartExpanded) {
+      _revenueFlowSetChartExpanded(false);
     }
     state.page = page;
     updatePageModeClass(page);
