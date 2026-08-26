@@ -20270,6 +20270,7 @@ var _NUMERIC_COL_PATTERNS = [
       links: links,
       nodeById: nodeById,
       hoverIndex: hoverIndex,
+      brandIdByProductId: brandIdByProductId,
       totalRevenue: totalRevenue,
       brandCount: brands.length,
       productCount: products.length,
@@ -20381,9 +20382,7 @@ var _NUMERIC_COL_PATTERNS = [
           width: nodeWidth,
           height: nodeHeight,
           position: position,
-          color: typeof colorFactory === "function" ? colorFactory(index + 1) : colorFactory,
-          outOffset: 0,
-          inOffset: 0
+          color: typeof colorFactory === "function" ? colorFactory(index + 1) : colorFactory
         };
       });
       totalHeight += nodeGap * Math.max(0, layout.length - 1);
@@ -20407,38 +20406,134 @@ var _NUMERIC_COL_PATTERNS = [
     nodes.forEach(function (entry) {
       layoutById[entry.node.id] = entry;
     });
-    var maxLink = model.links.reduce(function (max, link) {
-      return Math.max(max, link.value);
-    }, 0) || 1;
-    var links = [];
-    model.links.forEach(function (link, linkIndex) {
+    var brandIdByProductId = Object.assign({}, model.brandIdByProductId || {});
+    model.links.forEach(function (link) {
       var source = layoutById[link.source];
       var target = layoutById[link.target];
-      if (!source || !target) return;
-      var strokeWidth = Math.max(1.5, Math.min(34, 2 + (link.value / maxLink) * 30));
-      var sourceY = source.y + source.outOffset + strokeWidth / 2;
-      var targetY = target.y + target.inOffset + strokeWidth / 2;
-      source.outOffset += strokeWidth;
-      target.inOffset += strokeWidth;
+      if (source && target && source.position === "brand" && target.position === "product") {
+        brandIdByProductId[target.node.id] = source.node.id;
+      }
+    });
+    var workingLinks = model.links.map(function (link, linkIndex) {
+      var source = layoutById[link.source];
+      var target = layoutById[link.target];
+      if (!source || !target) return null;
       var startX = source.x + source.width;
       var endX = target.x;
       var curve = Math.max(60, (endX - startX) * 0.46);
-      var color = source.node.type === "brand" ? source.color : "#246bfe";
-      links.push({
+      var brandId = source.position === "brand"
+        ? source.node.id
+        : brandIdByProductId[source.node.id];
+      var brandLayoutEntry = brandId ? layoutById[brandId] : null;
+      var color = source.position === "brand"
+        ? source.color
+        : model.brands.length > 1 && brandLayoutEntry
+          ? brandLayoutEntry.color
+          : "#246bfe";
+      return {
         index: linkIndex,
         source: link.source,
         target: link.target,
-        value: link.value,
-        sourceY: sourceY,
-        targetY: targetY,
+        value: Math.max(0, Number(link.value || 0)),
+        brandId: brandId || "",
         startX: startX,
         endX: endX,
         curve: curve,
-        strokeWidth: strokeWidth,
         color: color,
-        top: Math.min(sourceY, targetY) - strokeWidth / 2,
-        bottom: Math.max(sourceY, targetY) + strokeWidth / 2
+        sourceLayout: source,
+        targetLayout: target
+      };
+    }).filter(Boolean);
+    var outgoingByNodeId = {};
+    var incomingByNodeId = {};
+    workingLinks.forEach(function (entry) {
+      if (!outgoingByNodeId[entry.source]) outgoingByNodeId[entry.source] = [];
+      if (!incomingByNodeId[entry.target]) incomingByNodeId[entry.target] = [];
+      outgoingByNodeId[entry.source].push(entry);
+      incomingByNodeId[entry.target].push(entry);
+    });
+
+    Object.keys(outgoingByNodeId).forEach(function (nodeId) {
+      outgoingByNodeId[nodeId].sort(function (a, b) {
+        return a.targetLayout.y - b.targetLayout.y || a.index - b.index;
       });
+    });
+    Object.keys(incomingByNodeId).forEach(function (nodeId) {
+      incomingByNodeId[nodeId].sort(function (a, b) {
+        var target = layoutById[nodeId];
+        if (target && target.position === "media") {
+          var aBrand = layoutById[a.brandId];
+          var bBrand = layoutById[b.brandId];
+          var brandOrder = Number(aBrand && aBrand.y || 0) - Number(bBrand && bBrand.y || 0);
+          if (brandOrder) return brandOrder;
+        }
+        return a.sourceLayout.y - b.sourceLayout.y || a.index - b.index;
+      });
+    });
+
+    function allocateLinkSegments(groups, topKey, bottomKey, shareKey, totalKey) {
+      Object.keys(groups).forEach(function (nodeId) {
+        var entries = groups[nodeId];
+        var nodeLayout = layoutById[nodeId];
+        if (!entries.length || !nodeLayout) return;
+        var total = entries.reduce(function (sum, entry) {
+          return sum + entry.value;
+        }, 0);
+        var cursor = nodeLayout.y;
+        var nodeBottom = nodeLayout.y + nodeLayout.height;
+        entries.forEach(function (entry, index) {
+          var share = total > 0 ? entry.value / total : 1 / entries.length;
+          var segmentBottom = index === entries.length - 1
+            ? nodeBottom
+            : Math.min(nodeBottom, cursor + nodeLayout.height * share);
+          entry[topKey] = cursor;
+          entry[bottomKey] = segmentBottom;
+          entry[shareKey] = share;
+          entry[totalKey] = total;
+          cursor = segmentBottom;
+        });
+      });
+    }
+
+    allocateLinkSegments(
+      outgoingByNodeId,
+      "sourceTop",
+      "sourceBottom",
+      "sourceShare",
+      "sourceTotal"
+    );
+    allocateLinkSegments(
+      incomingByNodeId,
+      "targetTop",
+      "targetBottom",
+      "targetShare",
+      "targetTotal"
+    );
+
+    var links = workingLinks.map(function (entry) {
+      return {
+        index: entry.index,
+        source: entry.source,
+        target: entry.target,
+        value: entry.value,
+        brandId: entry.brandId,
+        sourceTop: entry.sourceTop,
+        sourceBottom: entry.sourceBottom,
+        targetTop: entry.targetTop,
+        targetBottom: entry.targetBottom,
+        sourceY: (entry.sourceTop + entry.sourceBottom) / 2,
+        targetY: (entry.targetTop + entry.targetBottom) / 2,
+        sourceShare: entry.sourceShare,
+        targetShare: entry.targetShare,
+        sourceTotal: entry.sourceTotal,
+        targetTotal: entry.targetTotal,
+        startX: entry.startX,
+        endX: entry.endX,
+        curve: entry.curve,
+        color: entry.color,
+        top: Math.min(entry.sourceTop, entry.targetTop),
+        bottom: Math.max(entry.sourceBottom, entry.targetBottom)
+      };
     });
     return {
       width: graphWidth,
@@ -20616,21 +20711,25 @@ var _NUMERIC_COL_PATTERNS = [
     var focus = chart._brandMediaSankeyFocus;
     tile.links.forEach(function (entry) {
       var opacity = !focus
-        ? 0.28
+        ? 0.34
         : focus.linkIndexes.has(entry.index) ? 0.82 : 0.06;
       context.globalAlpha = opacity;
-      context.strokeStyle = entry.color;
-      context.lineWidth = entry.strokeWidth;
-      context.lineCap = "butt";
-      context.lineJoin = "round";
+      context.fillStyle = entry.color;
       context.beginPath();
-      context.moveTo(entry.startX, entry.sourceY - tile.startY);
+      context.moveTo(entry.startX, entry.sourceTop - tile.startY);
       context.bezierCurveTo(
-        entry.startX + entry.curve, entry.sourceY - tile.startY,
-        entry.endX - entry.curve, entry.targetY - tile.startY,
-        entry.endX, entry.targetY - tile.startY
+        entry.startX + entry.curve, entry.sourceTop - tile.startY,
+        entry.endX - entry.curve, entry.targetTop - tile.startY,
+        entry.endX, entry.targetTop - tile.startY
       );
-      context.stroke();
+      context.lineTo(entry.endX, entry.targetBottom - tile.startY);
+      context.bezierCurveTo(
+        entry.endX - entry.curve, entry.targetBottom - tile.startY,
+        entry.startX + entry.curve, entry.sourceBottom - tile.startY,
+        entry.startX, entry.sourceBottom - tile.startY
+      );
+      context.closePath();
+      context.fill();
     });
     context.globalAlpha = 1;
   }
