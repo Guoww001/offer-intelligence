@@ -345,6 +345,48 @@ assertApprox(
   130 / 145,
   "rendered media ribbon segment should preserve its target percentage"
 );
+const productAToMedia9Detail = hooks.brandMediaSankeyFlowDetail(sankeyModel, productAToMedia9);
+if (!productAToMedia9Detail || productAToMedia9Detail.sourceLabel !== "ASIN-A" ||
+    productAToMedia9Detail.targetLabel !== "Media Nine" || productAToMedia9Detail.value !== 130 ||
+    Math.abs(productAToMedia9Detail.sourceShare - 130 / 140) > 0.0001 ||
+    Math.abs(productAToMedia9Detail.targetShare - 130 / 145) > 0.0001) {
+  throw new Error("Sankey flow hover should expose the selected flow endpoints, Revenue and shares");
+}
+const flowPointX = (productAToMedia9.startX + productAToMedia9.endX) / 2;
+const flowPointY = (productAToMedia9.sourceY + productAToMedia9.targetY) / 2;
+const highlightedFlow = hooks.brandMediaSankeyFlowHitTest(
+  sankeyLayout,
+  flowPointX,
+  flowPointY,
+  new Set([productAToMedia9.index])
+);
+if (!highlightedFlow || highlightedFlow.index !== productAToMedia9.index) {
+  throw new Error("Sankey flow hit testing should find a highlighted ribbon at its center");
+}
+const unhighlightedFlow = hooks.brandMediaSankeyFlowHitTest(
+  sankeyLayout,
+  flowPointX,
+  flowPointY,
+  new Set([brandToProductA.index])
+);
+if (unhighlightedFlow) {
+  throw new Error("Sankey flow hit testing should ignore ribbons outside the clicked node highlight");
+}
+if (hooks.brandMediaSankeyFlowHitTest(sankeyLayout, flowPointX, flowPointY, new Set())) {
+  throw new Error("Sankey flow hit testing should stay disabled without a clicked-node highlight");
+}
+const tooltipPosition = hooks.brandMediaSankeyFlowTooltipPosition(
+  { left: 0, top: 0, width: 1000, height: 640 },
+  { left: 40, top: 20, right: 960, bottom: 600 },
+  460,
+  220,
+  270,
+  144
+);
+if (!tooltipPosition || tooltipPosition.placement !== "below" ||
+    tooltipPosition.top <= 220 || tooltipPosition.top !== 236) {
+  throw new Error("Sankey flow tooltip should stay below the mouse pointer");
+}
 const visibleSankeyEntries = hooks.brandMediaSankeyVisibleEntries(sankeyLayout, 180, 100, 20);
 if (!visibleSankeyEntries || visibleSankeyEntries.startY !== 160 || visibleSankeyEntries.endY !== 300 ||
     !visibleSankeyEntries.nodes.length || !visibleSankeyEntries.links.length) {
@@ -634,6 +676,13 @@ if (!appSource.includes("_brandMediaSankeyFocus") ||
     appSource.includes("_brandMediaSankeyRenderFrame")) {
   throw new Error("Sankey should expose static Canvas navigation and a universal two-axis pan tool");
 }
+if (!appSource.includes("_brandMediaSankeyFlowDetail") ||
+    !appSource.includes("_brandMediaSankeyFlowHitTest") ||
+    !appSource.includes("data-brand-media-sankey-flow-tooltip") ||
+    !appSource.includes("_brandMediaSankeyLockedNodeId") ||
+    !appSource.includes("focusMode !== \"locked\"")) {
+  throw new Error("Sankey should expose flow details only for ribbons highlighted by a clicked node");
+}
 const sankeyDrawSourceStart = appSource.indexOf("function _brandMediaSankeyDrawTile");
 const sankeyDrawSourceEnd = appSource.indexOf("function _brandMediaSankeyNodeMarkup", sankeyDrawSourceStart);
 const sankeyDrawSource = appSource.slice(sankeyDrawSourceStart, sankeyDrawSourceEnd);
@@ -675,6 +724,13 @@ if (!stylesSource.includes(".brand-media-sankey-tile") ||
     !stylesSource.includes("position: absolute") ||
     !stylesSource.includes("touch-action: none")) {
   throw new Error("Sankey should style static Canvas tiles and a pannable lightweight node layer");
+}
+if (!stylesSource.includes(".brand-media-sankey-flow-tooltip") ||
+    !stylesSource.includes("pointer-events: none")) {
+  throw new Error("Sankey should provide a non-interactive flow detail tooltip");
+}
+if (!/\.brand-media-sankey-flow-tooltip\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s.test(stylesSource)) {
+  throw new Error("Sankey flow tooltip should not leave an empty hidden card in the chart");
 }
 if (stylesSource.includes(".brand-media-sankey-link") ||
     stylesSource.includes(".brand-media-sankey-svg") ||

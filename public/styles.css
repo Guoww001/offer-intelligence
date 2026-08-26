@@ -22449,6 +22449,93 @@ body.revenue-flow-chart-expanded {
   cursor: grab;
 }
 
+.brand-media-sankey-canvas-viewport.has-flow-hover {
+  cursor: pointer;
+}
+
+.brand-media-sankey-canvas-viewport.is-pan-mode.has-flow-hover,
+.brand-media-sankey-canvas-viewport.is-panning.has-flow-hover {
+  cursor: grab;
+}
+
+.brand-media-sankey-flow-tooltip {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  width: min(270px, calc(100% - 24px));
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid rgba(36, 107, 254, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 14px 30px rgba(20, 38, 73, 0.18);
+  color: #244268;
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.brand-media-sankey-flow-tooltip[hidden] {
+  display: none !important;
+}
+
+.brand-media-sankey-flow-tooltip[data-edge="start"] {
+  transform: translateX(0);
+}
+
+.brand-media-sankey-flow-tooltip[data-edge="end"] {
+  transform: translateX(-100%);
+}
+
+.brand-media-sankey-flow-tooltip-title {
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(52, 77, 117, 0.12);
+  color: #153c78;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.brand-media-sankey-flow-tooltip-path {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #31598f;
+  font-weight: 800;
+}
+
+.brand-media-sankey-flow-tooltip-path > span:first-child,
+.brand-media-sankey-flow-tooltip-path > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-media-sankey-flow-tooltip-arrow {
+  flex: 0 0 auto;
+  color: #246bfe;
+  font-size: 14px;
+}
+
+.brand-media-sankey-flow-tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.brand-media-sankey-flow-tooltip-row span {
+  color: #7890ba;
+}
+
+.brand-media-sankey-flow-tooltip-row strong {
+  color: #153c78;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .brand-media-sankey-canvas-grid {
   position: absolute;
   inset: 0;
