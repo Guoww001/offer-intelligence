@@ -113,6 +113,13 @@ def main():
             "startDate": start_date,
             "endDate": end_date,
         }
+        module.google_ads_workbench_payload = lambda user_id, start_date=None, end_date=None, force_refresh=False: {
+            "route": "ui-google-ads-workbench",
+            "userId": int(user_id),
+            "startDate": start_date,
+            "endDate": end_date,
+            "forceRefresh": force_refresh,
+        }
         module.offers_payload = lambda month=None, start_date=None, end_date=None: {
             "route": "ui-offers",
             "month": month,
@@ -285,6 +292,17 @@ def main():
 
         missing_brand_media_merchant = request(module.app, "ui-brand-media-trend", token="")
         assert_equal(missing_brand_media_merchant["status"], 400, "missing brand media merchant response code")
+
+        google_ads = request(
+            module.app,
+            "ui-google-ads-workbench",
+            "userId=19&startDate=2026-07-01&endDate=2026-08-26&refresh=1",
+            token="",
+        )
+        assert_equal(google_ads["status"], 200, "Google Ads workbench response code")
+        assert b'"route":"ui-google-ads-workbench"' in google_ads["body"], google_ads["body"]
+        assert b'"userId":19' in google_ads["body"], google_ads["body"]
+        assert b'"forceRefresh":true' in google_ads["body"], google_ads["body"]
 
         invalid_publisher = request(
             module.app,

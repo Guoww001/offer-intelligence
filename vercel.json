@@ -186,6 +186,18 @@
       ]
     },
     {
+      "src": "^/api/ui/db/google-ads-workbench/?$",
+      "dest": "/api/db/index",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-db-route" },
+          "args": "ui-google-ads-workbench"
+        }
+      ]
+    },
+    {
       "src": "^/api/auth/login/?$",
       "dest": "/api/auth/index",
       "transforms": [

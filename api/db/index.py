@@ -3,6 +3,12 @@ from io import BytesIO
 import json
 
 from auth import _read_json_body, require_auth, session_payload
+from google_ads_workbench import (
+    DEFAULT_WORKBENCH_USER_ID,
+    GoogleAdsApiError,
+    GoogleAdsConfigError,
+    google_ads_workbench_payload,
+)
 from offer_db import (
     DIGITS_RE,
     add_merchant_to_tier1,
@@ -232,6 +238,44 @@ def handle_ui_brand_media_sankey(target, query):
         send_db_error(target, error)
 
 
+def handle_ui_google_ads_workbench(target, query):
+    user_id = int_query_value(
+        query,
+        "userId",
+        DEFAULT_WORKBENCH_USER_ID,
+        1,
+        2_147_483_647,
+    )
+    try:
+        send_json(
+            target,
+            200,
+            google_ads_workbench_payload(
+                user_id,
+                start_date=first_query_value(query, "startDate") or None,
+                end_date=first_query_value(query, "endDate") or None,
+                force_refresh=first_query_value(query, "refresh").lower()
+                in {"1", "true", "yes"},
+            ),
+        )
+    except ValueError as error:
+        send_json(target, 400, {"ok": False, "error": str(error)})
+    except GoogleAdsConfigError:
+        send_json(
+            target,
+            503,
+            {"ok": False, "error": "Google Ads connection is not configured"},
+        )
+    except GoogleAdsApiError:
+        send_json(
+            target,
+            502,
+            {"ok": False, "error": "Google Ads metrics are temporarily unavailable"},
+        )
+    except Exception as error:
+        send_db_error(target, error)
+
+
 def handle_ui_offers(target, query):
     try:
         send_json(
@@ -445,6 +489,7 @@ def app(environ, start_response):
         "ui-publishers",
         "ui-brand-media-sankey",
         "ui-brand-media-trend",
+        "ui-google-ads-workbench",
     }:
         if require_auth(target):
             if route == "ui-status":
@@ -461,6 +506,8 @@ def app(environ, start_response):
                 handle_ui_brand_media_sankey(target, query)
             elif route == "ui-brand-media-trend":
                 handle_ui_brand_media_trend(target, query)
+            elif route == "ui-google-ads-workbench":
+                handle_ui_google_ads_workbench(target, query)
             elif route == "ui-offers":
                 handle_ui_offers(target, query)
             elif route == "ui-tier-sheet":

@@ -74,6 +74,11 @@ def main():
             "ui-monthly-new-merchants",
         ),
         "^/api/ui/db/publishers/?$": ("/api/db/index", "x-oi-db-route", "ui-publishers"),
+        "^/api/ui/db/google-ads-workbench/?$": (
+            "/api/db/index",
+            "x-oi-db-route",
+            "ui-google-ads-workbench",
+        ),
         "^/api/auth/login/?$": ("/api/auth/index", "x-oi-auth-route", "login"),
         "^/api/auth/logout/?$": ("/api/auth/index", "x-oi-auth-route", "logout"),
         "^/api/auth/session/?$": ("/api/auth/index", "x-oi-auth-route", "session"),
