@@ -26,6 +26,7 @@ from offer_db import (
 )
 from chatbot_answer_feedback import CHATBOT_ANSWER_FEEDBACK_TABLE_DDL
 from chatbot_question_logs import CHATBOT_QUESTION_LOGS_TABLE_DDL
+from agent_trace import AGENT_RUNS_TABLE, AGENT_RUNS_TABLE_DDL, AGENT_STEPS_TABLE, AGENT_STEPS_TABLE_DDL
 
 PAYMENT_RECORD_COLUMN_MIGRATIONS = {
     "paymentMadeDate": (
@@ -142,6 +143,22 @@ def main():
             print("  created")
         else:
             print("[ddl] cnpscy_oi_chatbot_answer_feedback already exists, skipping")
+
+        if not table_exists(conn, AGENT_RUNS_TABLE):
+            print(f"[ddl] CREATE TABLE {AGENT_RUNS_TABLE} ...")
+            with conn.cursor() as cur:
+                cur.execute(AGENT_RUNS_TABLE_DDL)
+            print("  created")
+        else:
+            print(f"[ddl] {AGENT_RUNS_TABLE} already exists, skipping")
+
+        if not table_exists(conn, AGENT_STEPS_TABLE):
+            print(f"[ddl] CREATE TABLE {AGENT_STEPS_TABLE} ...")
+            with conn.cursor() as cur:
+                cur.execute(AGENT_STEPS_TABLE_DDL)
+            print("  created")
+        else:
+            print(f"[ddl] {AGENT_STEPS_TABLE} already exists, skipping")
 
         # Tier movement history is immutable and is written in the same
         # transaction as cnpscy_oi_tier_assignments.

@@ -6,8 +6,42 @@ from urllib.parse import parse_qs, urlparse
 from auth import _read_json_body, require_auth
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
+from agent_trace_http import handle_agent_trace
 from chat_agent_http import AGENT_SYNTHESIS_MAX_REQUEST_BYTES, AGENT_SYNTHESIS_MAX_TOKENS, agent_synthesis_system_prompt
 from llm_provider import stream_chat
+
+
+def _agent_trace_context(value):
+    if not isinstance(value, dict):
+        return None
+    phase = str(value.get("tracePhase") or value.get("phase") or "").strip().lower()
+    if phase != "synthesis":
+        return None
+    return {
+        "tracePhase": "synthesis",
+        "runId": str(value.get("runId") or "").strip(),
+        "questionEventId": str(value.get("questionEventId") or "").strip(),
+    }
+
+
+def _agent_usage_payload(metadata, request_bytes=None):
+    metadata = metadata if isinstance(metadata, dict) else {}
+    payload = {
+        "type": "usage",
+        "provider": metadata.get("provider"),
+        "model": metadata.get("model"),
+        "usageAvailable": bool(metadata.get("usageAvailable")),
+        "inputTokens": metadata.get("inputTokens"),
+        "outputTokens": metadata.get("outputTokens"),
+        "totalTokens": metadata.get("totalTokens"),
+    }
+    if request_bytes is not None:
+        payload["inputBytes"] = int(request_bytes)
+    if metadata.get("errorCode"):
+        payload["errorCode"] = metadata.get("errorCode")
+    if metadata.get("outputChunks") is not None:
+        payload["outputChunks"] = metadata.get("outputChunks")
+    return payload
 
 
 class handler(BaseHTTPRequestHandler):
@@ -15,6 +49,9 @@ class handler(BaseHTTPRequestHandler):
         return str((parse_qs(urlparse(self.path).query).get("operation") or [""])[0]).strip().lower()
 
     def do_OPTIONS(self):
+        if self._operation() == "agent_trace":
+            handle_agent_trace(self, "OPTIONS")
+            return
         self.send_response(204)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
@@ -28,6 +65,9 @@ class handler(BaseHTTPRequestHandler):
         if self._operation() == "questions":
             handle_chatbot_question_logs(self, "GET")
             return
+        if self._operation() == "agent_trace":
+            handle_agent_trace(self, "GET")
+            return
         self._send_json(405, {"ok": False, "error": "Method not allowed"})
 
     def do_POST(self):
@@ -37,6 +77,9 @@ class handler(BaseHTTPRequestHandler):
             return
         if self._operation() == "questions":
             handle_chatbot_question_logs(self, "POST")
+            return
+        if self._operation() == "agent_trace":
+            handle_agent_trace(self, "POST")
             return
         if not require_auth(self):
             return
@@ -52,13 +95,19 @@ class handler(BaseHTTPRequestHandler):
             self._send_json(400, {"ok": False, "error": "Invalid JSON body"})
             return
 
+        trace_context = _agent_trace_context(body.get("trace"))
+        if trace_context is None:
+            trace_context = _agent_trace_context(body.get("traceContext"))
+        if trace_context is None:
+            trace_context = _agent_trace_context(body)
+
         memory = str(body.get("memory") or "").strip() or None
         language = str(body.get("language") or "zh").strip()
         if language not in ("en", "zh"):
             language = "zh"
         messages = body.get("messages")
         if isinstance(messages, list) and messages:
-            self._chat_stream_messages(messages, language)
+            self._chat_stream_messages(messages, language, request_bytes=length, trace_context=trace_context)
             return
         prompt = str(body.get("prompt") or "").strip()
         if not prompt:
@@ -102,13 +151,30 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
 
+            usage_metadata = {}
+
+            def on_complete(metadata):
+                usage_metadata.update(metadata or {})
+
             token_count = 0
-            for token in stream_chat(prompt, system_prompt, max_tokens=2048, temperature=0.2, history=history):
+            for token in stream_chat(
+                prompt,
+                system_prompt,
+                max_tokens=2048,
+                temperature=0.2,
+                history=history,
+                on_complete=on_complete,
+            ):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()
                     token_count += 1
 
+            if trace_context:
+                self.wfile.write(
+                    f"data: {json.dumps(_agent_usage_payload(usage_metadata, length), ensure_ascii=False)}\n\n".encode("utf-8")
+                )
+                self.wfile.flush()
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
             print(f"[chat_stream] sent {token_count} tokens for prompt={prompt[:60]!r}", file=sys.stderr)
@@ -124,7 +190,7 @@ class handler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 pass
 
-    def _chat_stream_messages(self, messages, language):
+    def _chat_stream_messages(self, messages, language, request_bytes=None, trace_context=None):
         """SSE streaming for agent synthesis: full message list passthrough."""
         system_prompt = agent_synthesis_system_prompt(language)
         try:
@@ -135,13 +201,30 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
 
+            usage_metadata = {}
+
+            def on_complete(metadata):
+                usage_metadata.update(metadata or {})
+
             token_count = 0
-            for token in stream_chat("", system_prompt, max_tokens=AGENT_SYNTHESIS_MAX_TOKENS, temperature=0.2, messages=messages):
+            for token in stream_chat(
+                "",
+                system_prompt,
+                max_tokens=AGENT_SYNTHESIS_MAX_TOKENS,
+                temperature=0.2,
+                messages=messages,
+                on_complete=on_complete,
+            ):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()
                     token_count += 1
 
+            if trace_context:
+                self.wfile.write(
+                    f"data: {json.dumps(_agent_usage_payload(usage_metadata, request_bytes), ensure_ascii=False)}\n\n".encode("utf-8")
+                )
+                self.wfile.flush()
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
             print(f"[chat_stream_messages] sent {token_count} tokens", file=sys.stderr)

@@ -1680,6 +1680,274 @@
     });
   }
 
+  // Agent Trace 只发送阶段元数据，不发送 Prompt、工具参数、工具结果或回答正文。
+  function normalizeAgentTraceError(error) {
+    if (error && (error.name === "AbortError" || error.stopped)) return "stopped_by_user";
+    var rawCode = error && typeof error === "object" && error.errorCode
+      ? String(error.errorCode).trim().toLowerCase() : "";
+    var allowedCodes = [
+      "unknown", "validation_error", "request_error", "network_error", "database_error",
+      "llm_unavailable", "llm_timeout", "provider_error", "tool_error", "tool_timeout",
+      "synthesis_unavailable", "no_verifiable_source", "stopped_by_user", "trace_write_failed"
+    ];
+    if (allowedCodes.indexOf(rawCode) !== -1) return rawCode;
+    var text = String(error && (error.message || error.error || error) || rawCode || "").toLowerCase();
+    if (/timeout|timed out|超时/.test(text)) return "llm_timeout";
+    if (/synthesis|综合|stream/.test(text)) return "synthesis_unavailable";
+    if (/tool|工具|invalid_filter|not_found|未找到/.test(text)) return "tool_error";
+    if (/no verifiable|可验证|数据来源/.test(text)) return "no_verifiable_source";
+    if (/api key|unavailable|不可用/.test(text)) return "llm_unavailable";
+    if (/database|mysql|sql|数据库/.test(text)) return "database_error";
+    if (/network|fetch|http|网络/.test(text)) return "network_error";
+    return "request_error";
+  }
+
+  function agentTraceDataMeta(result) {
+    var source = result && result.trace && result.trace.dataSource;
+    var data = result && result.data && typeof result.data === "object" ? result.data : (result || {});
+    var estimated = !!(result && result.trace && result.trace.estimated);
+    if (result && result.trace && result.trace.dataAsOf) {
+      // 保留服务端工具元数据中的快照时间，不用浏览器当前时间填充。
+    }
+    if (!["cache", "database", "mixed", "unknown"].includes(source)) {
+      if (data.monthlyDataSource === "db") source = "mixed";
+      else if (data.estimated || estimated) source = "cache";
+      else if (data.tool || data.metrics || data.summary || data.rows) source = "cache";
+      else source = "unknown";
+    }
+    var dataAsOf = result && result.trace && result.trace.dataAsOf
+      ? String(result.trace.dataAsOf)
+      : (data.dataAsOf ? String(data.dataAsOf) : null);
+    if (!dataAsOf && source === "cache") {
+      var sources = window.CHATBOT_DATA && window.CHATBOT_DATA.sources;
+      dataAsOf = sources && sources.checkedAt ? String(sources.checkedAt) : null;
+    }
+    return { dataSource: source, dataAsOf: dataAsOf || null, estimated: !!(data.estimated || estimated) };
+  }
+
+  function createAgentTraceContext(questionEventId, language) {
+    return {
+      runId: createAgentTraceRunId(),
+      questionEventId: String(questionEventId || ""),
+      sessionId: getChatQuestionSessionId(),
+      language: language === "en" ? "en" : "zh",
+      sequence: 0,
+      startedAt: Date.now(),
+      steps: [],
+      retryCounts: Object.create(null),
+      writeChain: Promise.resolve(null),
+      startPromise: null,
+      completionPromise: null
+    };
+  }
+
+  function agentTraceIsoTime(value) {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number") {
+      try { return new Date(value).toISOString(); } catch (error) { return null; }
+    }
+    return String(value);
+  }
+
+  function agentTraceNumber(value) {
+    var numberValue = Number(value);
+    return Number.isFinite(numberValue) && numberValue >= 0 ? Math.floor(numberValue) : null;
+  }
+
+  function agentTraceJsonBytes(value) {
+    var textValue = "";
+    try { textValue = JSON.stringify(value) || ""; } catch (error) { return null; }
+    try {
+      return encodeURIComponent(textValue).replace(/%[0-9a-f]{2}/gi, "x").length;
+    } catch (error) {
+      return textValue.length;
+    }
+  }
+
+  function agentTraceArgumentSignature(value) {
+    if (Array.isArray(value)) {
+      return "[" + value.map(agentTraceArgumentSignature).join(",") + "]";
+    }
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map(function (key) {
+        return JSON.stringify(key) + ":" + agentTraceArgumentSignature(value[key]);
+      }).join(",") + "}";
+    }
+    var serialized = JSON.stringify(value);
+    return serialized === undefined ? String(value) : serialized;
+  }
+
+  function createAgentTraceRunId() {
+    var candidate = createChatQuestionEventId();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)) {
+      return candidate;
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (char) {
+      var random = Math.random() * 16 | 0;
+      var value = char === "x" ? random : (random & 0x3 | 0x8);
+      return value.toString(16);
+    });
+  }
+
+  function agentTraceStepPayload(context, step) {
+    step = step || {};
+    var allowedPhases = ["planning", "tool", "synthesis"];
+    var allowedStatuses = ["success", "failed", "stopped", "timeout"];
+    var phase = allowedPhases.indexOf(String(step.phase || "")) !== -1 ? String(step.phase) : "tool";
+    var status = String(step.status || "failed");
+    if (status === "done") status = "success";
+    if (status === "error") status = "failed";
+    if (allowedStatuses.indexOf(status) === -1) status = "failed";
+    var usageAvailable = step.usageAvailable === true;
+    var dataMeta = agentTraceDataMeta(step.result || step);
+    var dataSource = step.dataSource || dataMeta.dataSource || "unknown";
+    if (["cache", "database", "mixed", "unknown"].indexOf(String(dataSource)) === -1) dataSource = "unknown";
+    var payload = {
+      runId: context.runId,
+      questionEventId: context.questionEventId,
+      sequence: ++context.sequence,
+      phase: phase,
+      toolName: step.toolName ? String(step.toolName).slice(0, 64) : null,
+      status: status,
+      startedAt: agentTraceIsoTime(step.startedAt),
+      completedAt: agentTraceIsoTime(step.completedAt || Date.now()),
+      durationMs: agentTraceNumber(step.durationMs),
+      provider: step.provider ? String(step.provider).slice(0, 64) : null,
+      model: step.model ? String(step.model).slice(0, 128) : null,
+      inputBytes: agentTraceNumber(step.inputBytes),
+      inputTokens: usageAvailable ? agentTraceNumber(step.inputTokens) : null,
+      outputTokens: usageAvailable ? agentTraceNumber(step.outputTokens) : null,
+      totalTokens: usageAvailable ? agentTraceNumber(step.totalTokens) : null,
+      usageAvailable: usageAvailable,
+      outputChunks: agentTraceNumber(step.outputChunks),
+      dataSource: dataSource,
+      dataAsOf: step.dataAsOf || dataMeta.dataAsOf || null,
+      estimated: step.estimated === true || dataMeta.estimated === true,
+      errorCode: step.errorCode ? normalizeAgentTraceError(step.errorCode) : null,
+      retryCount: agentTraceNumber(step.retryCount) || 0
+    };
+    if (payload.errorCode) payload.errorCode = String(payload.errorCode).slice(0, 64);
+    return payload;
+  }
+
+  function agentTraceRequest(context, payload) {
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (controller) controller.abort();
+    }, 2500);
+    var options = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    };
+    if (controller) options.signal = controller.signal;
+    return fetch("/api/chat/stream?operation=agent_trace", options)
+      .then(function (response) {
+        if (!response || !response.ok) throw new Error("Trace HTTP " + (response && response.status || 0));
+        return response.json().catch(function () { return { ok: true }; });
+      })
+      .catch(function (error) {
+        console.warn("[agent-trace] " + (context && context.runId || "unknown") + " write failed:", normalizeAgentTraceError(error));
+        return null;
+      })
+      .finally(function () { clearTimeout(timer); });
+  }
+
+  function startAgentTrace(context) {
+    if (!context || context.startPromise) return context && context.startPromise;
+    context.startPromise = agentTraceRequest(context, {
+      action: "start",
+      runId: context.runId,
+      questionEventId: context.questionEventId,
+      sessionId: context.sessionId,
+      mode: "agent",
+      language: context.language
+    });
+    context.writeChain = context.startPromise;
+    return context.startPromise;
+  }
+
+  function appendAgentTraceSteps(context, steps) {
+    if (!context || !Array.isArray(steps) || !steps.length) return Promise.resolve(null);
+    if (!context.startPromise) startAgentTrace(context);
+    var normalized = steps.map(function (step) {
+      var payload = agentTraceStepPayload(context, step);
+      context.steps.push(payload);
+      return payload;
+    });
+    var requests = [];
+    for (var offset = 0; offset < normalized.length; offset += 16) {
+      var batch = normalized.slice(offset, offset + 16);
+      var request = function (batch) {
+        return function () {
+          return agentTraceRequest(context, {
+            action: "append",
+            runId: context.runId,
+            questionEventId: context.questionEventId,
+            sessionId: context.sessionId,
+            steps: batch
+          });
+        };
+      }(batch);
+      context.writeChain = Promise.resolve(context.writeChain).then(request, request);
+      requests.push(context.writeChain);
+    }
+    return Promise.all(requests).then(function (results) { return results[results.length - 1] || null; });
+  }
+
+  function completeAgentTrace(context, summary) {
+    if (!context) return Promise.resolve(null);
+    if (context.completionPromise) return context.completionPromise;
+    summary = summary || {};
+    var status = ["success", "failed", "stopped", "timeout"].indexOf(String(summary.status || "")) !== -1
+      ? String(summary.status) : "failed";
+    context.completionPromise = Promise.resolve(context.writeChain).then(function () {
+      return agentTraceRequest(context, {
+        action: "complete",
+        runId: context.runId,
+        questionEventId: context.questionEventId,
+        sessionId: context.sessionId,
+        status: status,
+        durationMs: agentTraceNumber(summary.durationMs === undefined ? Date.now() - context.startedAt : summary.durationMs),
+        planningBypassed: summary.planningBypassed === true || context.planningBypassed === true,
+        partial: summary.partial === true,
+        fallbackDelivered: summary.fallbackDelivered === true,
+        stoppedByUser: summary.stoppedByUser === true,
+        plannedToolCalls: agentTraceNumber(summary.plannedToolCalls) || 0,
+        executedToolCalls: agentTraceNumber(summary.executedToolCalls) || 0,
+        failedToolCalls: agentTraceNumber(summary.failedToolCalls) || 0,
+        errorCode: summary.errorCode ? normalizeAgentTraceError(summary.errorCode) : null
+      });
+    });
+    return context.completionPromise;
+  }
+
+  function appendAgentTraceSynthesis(context, reply, status, errorCode, traceMeta) {
+    if (!context) return Promise.resolve(null);
+    reply = reply || {};
+    var usage = reply.usage || {};
+    return appendAgentTraceSteps(context, [Object.assign({
+      phase: "synthesis"
+    }, traceMeta || {}, {
+      status: status || (reply.ok ? "success" : "failed"),
+      startedAt: reply.startedAt || null,
+      completedAt: Date.now(),
+      durationMs: reply.durationMs,
+      provider: usage.provider,
+      model: usage.model,
+      inputBytes: reply.inputBytes === undefined || reply.inputBytes === null ? usage.inputBytes : reply.inputBytes,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+      usageAvailable: usage.usageAvailable === true,
+      outputChunks: reply.responseChunks === undefined || reply.responseChunks === null
+        ? usage.outputChunks : reply.responseChunks,
+      dataSource: "unknown",
+      estimated: false,
+      errorCode: errorCode || usage.errorCode || null
+    })]);
+  }
+
   async function ensureQuestionLogSuccess(context) {
     let started = await Promise.resolve(context.questionPromise);
     if (started && started.recordId) return started;
@@ -7320,6 +7588,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     // 商户月度数据有 fetchMerchantMetrics 的 dbMerchantCache 缓存，同一商户跨品类/跨请求复用，
     // 批处理仍按 6 并发控制 API 压力。
     var allMerchantRows = [];
+    var dataAsOf = null;
     var batchSize = 6;
     for (var i = 0; i < offers.length; i += batchSize) {
       var batch = offers.slice(i, i + batchSize);
@@ -7330,6 +7599,10 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
         var payload = batchResults[r];
         if (payload && Array.isArray(payload.monthlyAmazonMetrics)) {
           allMerchantRows.push(payload.monthlyAmazonMetrics);
+          if (payload.checkedAt) {
+            var candidateCheckedAt = String(payload.checkedAt);
+            if (!dataAsOf || candidateCheckedAt > dataAsOf) dataAsOf = candidateCheckedAt;
+          }
         }
       }
     }
@@ -7367,6 +7640,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       entry.aov = entry.orders > 0 ? entry.revenue / entry.orders : 0;
     }
 
+    result.checkedAt = dataAsOf;
     return result;
   }
 
@@ -13686,7 +13960,12 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   async function fetchMerchantMonthlyRowsForAgent(offer, signal) {
-    return timeoutPromise(fetchMerchantMonthlyRows(offer, signal), 8000, null);
+    if (!offer || !offer.merchantId) return { rows: [], dataAsOf: null };
+    var payload = await timeoutPromise(fetchMerchantMetrics(offer.merchantId, 12, signal), 8000, null);
+    return {
+      rows: payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : [],
+      dataAsOf: payload && payload.checkedAt ? payload.checkedAt : null
+    };
   }
 
   function compactMerchantMonthlyRows(offer, monthlyRows) {
@@ -14279,13 +14558,19 @@ var _NUMERIC_COL_PATTERNS = [
       if (!summary) return agentMerchantFailure({
         status: "not_found", input: merchant, candidates: []
       });
-      var monthlyRows = await fetchMerchantMonthlyRowsForAgent(strictOffer, context.signal || null);
+      var monthlyResult = await fetchMerchantMonthlyRowsForAgent(strictOffer, context.signal || null);
+      var monthlyRows = monthlyResult && Array.isArray(monthlyResult.rows) ? monthlyResult.rows : [];
       return {
         ok: true,
         data: compactAgentToolResult("merchant_analysis", summary, state.language || "zh", {
           offer: strictOffer,
-          monthlyRows: monthlyRows || []
-        })
+          monthlyRows: monthlyRows
+        }),
+        trace: {
+          dataSource: monthlyRows.length ? "mixed" : "cache",
+          dataAsOf: monthlyResult && monthlyResult.dataAsOf || null,
+          estimated: false
+        }
       };
     }
     if (name === "category_analysis") {
@@ -14488,13 +14773,20 @@ var _NUMERIC_COL_PATTERNS = [
         ok: true,
         data: compactAgentToolResult("trend", summary, language, {
           target: label, entityType: entity, estimated: true, metric: metric
-        })
+        }),
+        trace: {
+          dataSource: "cache",
+          dataAsOf: window.CHATBOT_DATA && window.CHATBOT_DATA.sources && window.CHATBOT_DATA.sources.checkedAt || null,
+          estimated: true
+        }
       };
     }
 
     var entity = entityType || detectTrendEntityType(target);
     var monthlyMetrics = null;
     var label = target;
+    var traceDataSource = "database";
+    var traceDataAsOf = null;
 
     if (entity === "merchant") {
       var merchantResolution = agentResolveMerchant(target);
@@ -14503,6 +14795,7 @@ var _NUMERIC_COL_PATTERNS = [
       label = offer.brand || offer.merchantName || target;
       var payload = await fetchMerchantMetrics(offer.merchantId, requested, context.signal || null);
       monthlyMetrics = payload && Array.isArray(payload.monthlyAmazonMetrics) ? payload.monthlyAmazonMetrics : null;
+      traceDataAsOf = payload && payload.checkedAt ? payload.checkedAt : null;
       if (!monthlyMetrics || monthlyMetrics.length < 2) {
         var basic = generateTrendFromOfferSummary(offer, requested);
         if (basic) return estimatedResult(basic, "merchant", label);
@@ -14512,6 +14805,7 @@ var _NUMERIC_COL_PATTERNS = [
       var catMetrics = await fetchCategoryTrendMetrics(target, requested);
       if (catMetrics && catMetrics.length >= 2) {
         monthlyMetrics = catMetrics;
+        traceDataAsOf = catMetrics && catMetrics.checkedAt ? catMetrics.checkedAt : null;
       } else {
         var est = estimateAggregatedTrend(offersInCategory(target, { excludeTier4Black: true }), requested);
         if (est) return estimatedResult(est, "category", target);
@@ -14522,6 +14816,7 @@ var _NUMERIC_COL_PATTERNS = [
       if (!tierOffers || !tierOffers.length) return { ok: false, error: "未找到层级 '" + target + "' 的数据" };
       label = target;
       monthlyMetrics = await timeoutPromise(fetchAggregatedMonthlyMetrics(tierOffers, requested), 8000, null);
+      traceDataAsOf = monthlyMetrics && monthlyMetrics.checkedAt ? monthlyMetrics.checkedAt : null;
       if (!monthlyMetrics || monthlyMetrics.length < 2) {
         var tEst = estimateAggregatedTrend(tierOffers, requested);
         if (tEst) return estimatedResult(tEst, "tier", target);
@@ -14536,7 +14831,7 @@ var _NUMERIC_COL_PATTERNS = [
     summary.target = label;
     return { ok: true, data: compactAgentToolResult("trend", summary, language, {
       target: label, entityType: entity, estimated: false, metric: metric
-    }) };
+    }), trace: { dataSource: traceDataSource, dataAsOf: traceDataAsOf, estimated: false } };
   }
 
   function agentToolDefinitions() {
@@ -14625,9 +14920,20 @@ var _NUMERIC_COL_PATTERNS = [
 
   async function streamAssistantReply(requestBody, opts) {
     // opts: {chatLogEl, language, viewContext:{prompt, recommendationResult}, onError}
+    opts = opts || {};
     var language = opts.language || "zh";
     var chatLogEl = opts.chatLogEl;
     var signal = opts.signal || null;
+    var traceContext = opts.traceContext || null;
+    if (traceContext && requestBody && !requestBody.trace) {
+      requestBody = Object.assign({}, requestBody, {
+        trace: {
+          runId: traceContext.runId,
+          questionEventId: traceContext.questionEventId,
+          tracePhase: opts.tracePhase || "synthesis"
+        }
+      });
+    }
     if (signal && signal.aborted) return { ok: false, stopped: true };
     var loadingText = language === "zh" ? "正在思考…" : "Thinking…";
     var loadingMsg = document.createElement("div");
@@ -14670,7 +14976,8 @@ var _NUMERIC_COL_PATTERNS = [
     chatLogEl.appendChild(msgEl);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
 
-    var tokenCount = 0;
+    var responseChunks = 0;
+    var usageMetadata = null;
     var fullResponse = "";
     var streamHadError = false;
     var streamStopped = false;
@@ -14709,10 +15016,23 @@ var _NUMERIC_COL_PATTERNS = [
             if (payload === "[DONE]") { doneReading = true; break; }
             try {
               var parsed = JSON.parse(payload);
-              if (parsed.token) {
+              if (parsed.type === "usage") {
+                var usageAvailable = parsed.usageAvailable === true;
+                usageMetadata = {
+                  provider: parsed.provider || null,
+                  model: parsed.model || null,
+                  usageAvailable: usageAvailable,
+                  inputTokens: usageAvailable ? agentTraceNumber(parsed.inputTokens) : null,
+                  outputTokens: usageAvailable ? agentTraceNumber(parsed.outputTokens) : null,
+                  totalTokens: usageAvailable ? agentTraceNumber(parsed.totalTokens) : null,
+                  outputChunks: agentTraceNumber(parsed.outputChunks),
+                  inputBytes: agentTraceNumber(parsed.inputBytes),
+                  errorCode: parsed.errorCode || null
+                };
+              } else if (parsed.token) {
                 msgContent.textContent += parsed.token;
                 fullResponse += parsed.token;
-                tokenCount++;
+                responseChunks++;
                 chatLogEl.scrollTop = chatLogEl.scrollHeight;
               }
               if (parsed.error) streamHadError = true;
@@ -14733,15 +15053,37 @@ var _NUMERIC_COL_PATTERNS = [
       if (renderedHtml) msgContent.innerHTML = renderedHtml;
     }
     var finalElapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1);
+    var hasOutputTokenUsage = !!(usageMetadata
+      && usageMetadata.usageAvailable === true
+      && usageMetadata.outputTokens !== null
+      && usageMetadata.outputTokens !== undefined);
+    var usageLabel = hasOutputTokenUsage
+      ? (language === "zh"
+        ? "输出 " + usageMetadata.outputTokens + " tokens"
+        : usageMetadata.outputTokens + " output tokens")
+      : (language === "zh"
+        ? "响应片段数 " + responseChunks
+        : "response chunks " + responseChunks);
     statusBar.textContent = streamStopped
       ? (language === "zh" ? "■ 已停止" : "■ Stopped")
       : (language === "zh"
-        ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + tokenCount + " tokens"
-        : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + tokenCount + " tokens");
+        ? "\u23f1 " + finalElapsed + "秒 \u00b7 \u229e " + usageLabel
+        : "\u23f1 " + finalElapsed + "s \u00b7 \u229e " + usageLabel);
     if (!streamStopped) attachChatViewButton(statusBar, fullResponse, opts.viewContext, language);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
     var ok = !!fullResponse.trim() && !streamHadError && !streamStopped;
-    return { ok: ok, stopped: streamStopped, fullResponse: fullResponse, msgEl: msgEl, statusBar: statusBar };
+    return {
+      ok: ok,
+      stopped: streamStopped,
+      fullResponse: fullResponse,
+      msgEl: msgEl,
+      statusBar: statusBar,
+      usage: usageMetadata,
+      responseChunks: responseChunks,
+      inputBytes: agentTraceJsonBytes(requestBody),
+      startedAt: streamStartTime,
+      durationMs: Date.now() - streamStartTime
+    };
   }
 
   function attachChatViewButton(statusBar, fullResponse, viewContext, language) {
@@ -15201,6 +15543,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   async function runChatAgent(prompt, opts) {
+    opts = opts || {};
     var language = opts.language || "zh";
     var chatLogEl = opts.chatLogEl;
     var copy = agentStepCopy(language);
@@ -15210,14 +15553,70 @@ var _NUMERIC_COL_PATTERNS = [
     var signal = opts.signal || null;
     var memoryText = opts.memoryText || "";
     var history = opts.history || [];
+    var traceContext = opts.traceContext || null;
+    var traceFinished = false;
+    var synthesisTracePhase = { phase: "synthesis" };
+    var toolCallsTotal = 0;
+    var toolResults = [];
+    var omittedCalls = [];
+    if (traceContext) startAgentTrace(traceContext);
+
+    function appendTraceStep(step) {
+      if (!traceContext) return;
+      var safeStep = Object.assign({}, step || {});
+      var result = safeStep.result;
+      delete safeStep.result;
+      var dataMeta = agentTraceDataMeta(result || safeStep);
+      if (!safeStep.dataSource) safeStep.dataSource = dataMeta.dataSource;
+      if (!safeStep.dataAsOf) safeStep.dataAsOf = dataMeta.dataAsOf;
+      if (safeStep.estimated === undefined) safeStep.estimated = dataMeta.estimated;
+      appendAgentTraceSteps(traceContext, [safeStep]).catch(function (error) {
+        console.warn("[agent-trace] step append failed:", normalizeAgentTraceError(error));
+      });
+    }
+
+    function finishTrace(status, errorCode, extra) {
+      if (!traceContext || traceFinished) return;
+      traceFinished = true;
+      extra = extra || {};
+      var failedToolCalls = toolResults.filter(function (item) {
+        return item && item.result && item.result.ok === false;
+      }).length;
+      completeAgentTrace(traceContext, {
+        status: status,
+        durationMs: Date.now() - executionStartedAt,
+        planningBypassed: traceContext.planningBypassed === true,
+        partial: extra.partial === true || omittedCalls.length > 0,
+        fallbackDelivered: extra.fallbackDelivered === true,
+        stoppedByUser: extra.stoppedByUser === true,
+        plannedToolCalls: extra.plannedToolCalls === undefined
+          ? toolCallsTotal + omittedCalls.length : extra.plannedToolCalls,
+        executedToolCalls: extra.executedToolCalls === undefined ? toolCallsTotal : extra.executedToolCalls,
+        failedToolCalls: extra.failedToolCalls === undefined ? failedToolCalls : extra.failedToolCalls,
+        errorCode: errorCode || null
+      }).catch(function (error) {
+        console.warn("[agent-trace] completion failed:", normalizeAgentTraceError(error));
+      });
+    }
 
     function stoppedOutcome() {
       if (execution) execution.finish("stopped", Date.now() - executionStartedAt);
+      finishTrace("stopped", "stopped_by_user", { stoppedByUser: true });
       return { handled: true, ok: false, stopped: true };
     }
 
     function missingDataOutcome(step) {
       var content = agentMissingDataResponse(language);
+      appendTraceStep({
+        phase: "planning",
+        status: "failed",
+        startedAt: executionStartedAt,
+        completedAt: Date.now(),
+        durationMs: Date.now() - executionStartedAt,
+        dataSource: "unknown",
+        estimated: false,
+        errorCode: "no_verifiable_source"
+      });
       if (execution) {
         execution.updateStep(step, {
           status: "done",
@@ -15227,6 +15626,7 @@ var _NUMERIC_COL_PATTERNS = [
         });
         execution.finish("done", Date.now() - executionStartedAt);
       }
+      finishTrace("success", "no_verifiable_source", { fallbackDelivered: true });
       return {
         handled: true,
         ok: true,
@@ -15238,6 +15638,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (signal && signal.aborted) return stoppedOutcome();
 
     if (agentShouldBypassPlanning(prompt)) {
+      if (traceContext) traceContext.planningBypassed = true;
       var directStep = execution ? execution.addStep({
         status: "running",
         label: executionCopy.direct,
@@ -15250,10 +15651,13 @@ var _NUMERIC_COL_PATTERNS = [
           language: language,
           viewContext: opts.viewContext || null,
           onError: opts.onError || null,
-          signal: signal
+          signal: signal,
+          traceContext: traceContext,
+          tracePhase: "synthesis"
         }
       );
       if (directReply.stopped) {
+        appendAgentTraceSynthesis(traceContext, directReply, "stopped", "stopped_by_user", synthesisTracePhase);
         if (execution) execution.updateStep(directStep, {
           status: "stopped",
           label: executionCopy.direct,
@@ -15263,6 +15667,9 @@ var _NUMERIC_COL_PATTERNS = [
         return stoppedOutcome();
       }
       if (!directReply.ok) {
+        var directErrorCode = directReply.usage && directReply.usage.errorCode
+          ? directReply.usage.errorCode : "synthesis_unavailable";
+        appendAgentTraceSynthesis(traceContext, directReply, directErrorCode === "llm_timeout" ? "timeout" : "failed", directErrorCode, synthesisTracePhase);
         if (execution) {
           execution.updateStep(directStep, {
             status: "error",
@@ -15274,6 +15681,8 @@ var _NUMERIC_COL_PATTERNS = [
         }
         return { handled: false, error: directReply.error };
       }
+      appendAgentTraceSynthesis(traceContext, directReply, "success", null, synthesisTracePhase);
+      finishTrace("success", null, { fallbackDelivered: false });
       if (execution) {
         execution.updateStep(directStep, {
           status: "done",
@@ -15293,10 +15702,6 @@ var _NUMERIC_COL_PATTERNS = [
 
     var messages = buildAgentPlanningMessages(memoryText, history, prompt);
 
-    var toolCallsTotal = 0;
-    var toolResults = [];
-    var omittedCalls = [];
-
     function currentExecutionMeta() {
       var omittedTargets = omittedCalls.map(agentToolCallTarget);
       return {
@@ -15311,6 +15716,9 @@ var _NUMERIC_COL_PATTERNS = [
       return Promise.all(calls.map(async function (call) {
         if (signal && signal.aborted) return { stopped: true };
         toolCallsTotal++;
+        var retryKey = String(call.name || "") + "|" + agentTraceArgumentSignature(call.arguments || {});
+        var retryCount = traceContext ? (traceContext.retryCounts[retryKey] || 0) : 0;
+        if (traceContext) traceContext.retryCounts[retryKey] = retryCount + 1;
         var kind = agentToolKindLabel(call.name);
         var timelineStep = execution ? execution.addStep({
           status: "running",
@@ -15319,11 +15727,53 @@ var _NUMERIC_COL_PATTERNS = [
         }) : null;
         var card = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.running + " " + kind + "报告…" });
         var toolStartedAt = Date.now();
-        var result = await agentExecuteTool(call.name, call.arguments || {}, { signal: signal, prompt: prompt });
+        var result;
+        try {
+          result = await agentExecuteTool(call.name, call.arguments || {}, { signal: signal, prompt: prompt });
+        } catch (error) {
+          result = {
+            ok: false,
+            error: "Tool execution failed",
+            errorCode: /timeout|timed out/i.test(String(error && error.message || error))
+              ? "tool_timeout" : "tool_error"
+          };
+        }
+        if (!result || typeof result !== "object") {
+          result = { ok: false, error: "Tool execution failed", errorCode: "tool_error" };
+        }
         if (signal && signal.aborted) {
+          appendTraceStep({
+            phase: "tool",
+            status: "stopped",
+            startedAt: toolStartedAt,
+            completedAt: Date.now(),
+            durationMs: Date.now() - toolStartedAt,
+            toolName: call.name,
+            retryCount: retryCount,
+            dataSource: "unknown",
+            estimated: false,
+            errorCode: "stopped_by_user"
+          });
           if (execution) execution.updateStep(timelineStep, { status: "stopped", label: executionCopy.tool + " · " + agentToolLabel(call.name, language), detail: executionCopy.stopped, elapsedMs: Date.now() - toolStartedAt });
           return { stopped: true };
         }
+        var toolErrorCode = result.ok ? null : (result.errorCode || normalizeAgentTraceError(result.error));
+        var toolStatus = result.ok ? "success" : (toolErrorCode === "tool_timeout" || toolErrorCode === "llm_timeout" ? "timeout" : "failed");
+        var toolMeta = agentTraceDataMeta(result);
+        appendTraceStep({
+          phase: "tool",
+          status: toolStatus,
+          startedAt: toolStartedAt,
+          completedAt: Date.now(),
+          durationMs: Date.now() - toolStartedAt,
+          toolName: call.name,
+          retryCount: retryCount,
+          dataSource: toolMeta.dataSource,
+          dataAsOf: toolMeta.dataAsOf,
+          estimated: toolMeta.estimated,
+          errorCode: toolErrorCode,
+          result: result
+        });
         var text = result.ok
           ? ("✓ " + kind + copy.reportDone + "：" + result.data.headline)
           : ("✗ " + copy.failed + "：" + result.error);
@@ -15341,6 +15791,31 @@ var _NUMERIC_COL_PATTERNS = [
       }));
     }
 
+    function appendPlanningTrace(plan, startedAt, requestBody, forcedStatus, forcedErrorCode) {
+      var telemetry = plan && plan.telemetry || {};
+      var errorCode = forcedErrorCode || telemetry.errorCode
+        || (plan && plan.ok === true ? null : normalizeAgentTraceError(plan && plan.error));
+      var status = forcedStatus || (plan && plan.ok === true ? "success" : "failed");
+      if (!forcedStatus && errorCode === "llm_timeout") status = "timeout";
+      appendTraceStep({
+        phase: "planning",
+        status: status,
+        startedAt: startedAt,
+        completedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        provider: telemetry.provider,
+        model: telemetry.model,
+        inputBytes: telemetry.inputBytes || agentTraceJsonBytes(requestBody),
+        inputTokens: telemetry.inputTokens,
+        outputTokens: telemetry.outputTokens,
+        totalTokens: telemetry.totalTokens,
+        usageAvailable: telemetry.usageAvailable === true,
+        dataSource: "unknown",
+        estimated: false,
+        errorCode: errorCode
+      });
+    }
+
     for (var round = 0; round < AGENT_MAX_PLANNING_ROUNDS; round++) {
       var planStep = execution ? execution.addStep({
         status: "running",
@@ -15349,19 +15824,36 @@ var _NUMERIC_COL_PATTERNS = [
       }) : null;
       var planCard = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.planning });
       var plan;
+      var planStartedAt = Date.now();
+      var planRequestBody = {
+        messages: messages,
+        tools: agentToolDefinitions(),
+        language: language
+      };
+      if (traceContext) {
+        planRequestBody.trace = {
+          runId: traceContext.runId,
+          questionEventId: traceContext.questionEventId,
+          tracePhase: "planning"
+        };
+      }
       try {
         var planOptions = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: messages, tools: agentToolDefinitions(), language: language })
+          body: JSON.stringify(planRequestBody)
         };
         if (signal) planOptions.signal = signal;
         var planResp = await fetch("/api/chat/agent", planOptions);
         plan = planResp.ok ? await planResp.json() : { ok: false, error: "HTTP " + planResp.status };
       } catch (error) {
-        if (agentRequestWasStopped(error, signal)) return stoppedOutcome();
+        if (agentRequestWasStopped(error, signal)) {
+          appendPlanningTrace(null, planStartedAt, planRequestBody, "stopped", "stopped_by_user");
+          return stoppedOutcome();
+        }
         plan = { ok: false, error: String((error && error.message) || error) };
       }
+      appendPlanningTrace(plan, planStartedAt, planRequestBody);
       if (planCard && planCard.remove) planCard.remove();
 
       var planReturnedWithoutTools = plan && plan.ok === true
@@ -15382,6 +15874,7 @@ var _NUMERIC_COL_PATTERNS = [
             });
             execution.finish("done", Date.now() - executionStartedAt);
           }
+          finishTrace("success", null, { fallbackDelivered: false });
           return { handled: true, ok: true, directContent: plan.content };
         }
         if (execution) {
@@ -15463,10 +15956,13 @@ var _NUMERIC_COL_PATTERNS = [
         language: language,
         viewContext: opts.viewContext || null,
         onError: opts.onError || null,
-        signal: signal
+        signal: signal,
+        traceContext: traceContext,
+        tracePhase: "synthesis"
       }
     );
     if (reply.stopped) {
+      appendAgentTraceSynthesis(traceContext, reply, "stopped", "stopped_by_user", synthesisTracePhase);
       if (execution) execution.updateStep(synthesisStep, {
         status: "stopped",
         label: executionCopy.synthesis,
@@ -15476,6 +15972,9 @@ var _NUMERIC_COL_PATTERNS = [
       return stoppedOutcome();
     }
     if (!reply.ok) {
+      var synthesisErrorCode = reply.usage && reply.usage.errorCode
+        ? reply.usage.errorCode : "synthesis_unavailable";
+      appendAgentTraceSynthesis(traceContext, reply, synthesisErrorCode === "llm_timeout" ? "timeout" : "failed", synthesisErrorCode, synthesisTracePhase);
       if (reply.msgEl && !reply.fullResponse.trim() && reply.msgEl.remove) reply.msgEl.remove();
       if (execution) execution.updateStep(synthesisStep, {
         status: "error",
@@ -15491,6 +15990,10 @@ var _NUMERIC_COL_PATTERNS = [
       });
       appendAgentTrendCharts(fallbackReply, toolResults, language);
       if (execution) execution.finish("error", Date.now() - executionStartedAt);
+      finishTrace("success", "synthesis_unavailable", {
+        fallbackDelivered: true,
+        partial: executionMeta.partial
+      });
       return {
         handled: true,
         ok: true,
@@ -15502,6 +16005,7 @@ var _NUMERIC_COL_PATTERNS = [
         plannedToolCalls: executionMeta.plannedToolCalls
       };
     }
+    appendAgentTraceSynthesis(traceContext, reply, "success", null, synthesisTracePhase);
     var completedResponse = ensureAgentMonthlyDataVisible(reply.fullResponse, toolResults, language);
     completedResponse = ensureAgentTierMerchantDataVisible(completedResponse, toolResults, language, prompt);
     completedResponse = ensureAgentPaymentDataVisible(completedResponse, toolResults, language);
@@ -15520,6 +16024,7 @@ var _NUMERIC_COL_PATTERNS = [
       });
       execution.finish("done", Date.now() - executionStartedAt);
     }
+    finishTrace("success", null, { partial: executionMeta.partial });
     return {
       handled: true,
       ok: true,
@@ -15632,6 +16137,7 @@ var _NUMERIC_COL_PATTERNS = [
     var historyBeforePrompt = state.agentPage.history.slice();
     var questionLogIntent = detectQuestionLogIntent(prompt);
     var questionEventId = createChatQuestionEventId();
+    var traceContext = createAgentTraceContext(questionEventId, language);
     var questionLogPromise = beginQuestionLog(prompt, "agent", language, questionLogIntent, questionEventId);
     var questionLogCompletion = null;
     var completeAgentQuestionLog = function (status) {
@@ -15672,7 +16178,8 @@ var _NUMERIC_COL_PATTERNS = [
         history: historyBeforePrompt,
         viewContext: null,
         executionTimeline: true,
-        signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null
+        signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null,
+        traceContext: traceContext
       });
       if (outcome && outcome.handled) {
         if (outcome.stopped) {
@@ -15701,9 +16208,19 @@ var _NUMERIC_COL_PATTERNS = [
           chatLogEl: els.agentChatLog,
           language: language,
           viewContext: null,
-          signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null
+          signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null,
+          traceContext: traceContext,
+          tracePhase: "synthesis"
         }
       );
+      appendAgentTraceSynthesis(traceContext, fallback, fallback.stopped ? "stopped" : (fallback.ok ? "success" : "failed"), fallback.stopped ? "stopped_by_user" : (fallback.usage && fallback.usage.errorCode || "synthesis_unavailable"));
+      completeAgentTrace(traceContext, {
+        status: fallback.stopped ? "stopped" : (fallback.ok ? "success" : "failed"),
+        durationMs: Date.now() - traceContext.startedAt,
+        stoppedByUser: fallback.stopped,
+        fallbackDelivered: !!(fallback.ok && fallback.fullResponse),
+        errorCode: fallback.stopped ? "stopped_by_user" : (!fallback.ok ? "synthesis_unavailable" : null)
+      });
       if (fallback.stopped) {
         appendAgentPageMessage("assistant", t("agent.stopped", "This Agent run was stopped."));
         completeAgentQuestionLog("failed");
@@ -15720,6 +16237,11 @@ var _NUMERIC_COL_PATTERNS = [
     } catch (error) {
       appendAgentPageMessage("assistant", t("agent.error", "The Agent is temporarily unavailable. Please try again."));
       completeAgentQuestionLog("failed");
+      completeAgentTrace(traceContext, {
+        status: "failed",
+        durationMs: Date.now() - traceContext.startedAt,
+        errorCode: normalizeAgentTraceError(error)
+      });
     } finally {
       state.agentPage.submitting = false;
       state.agentPage.abortController = null;
@@ -15744,6 +16266,8 @@ var _NUMERIC_COL_PATTERNS = [
     var questionLogIntent = explicitChatIntent ? explicitChatIntent.key : detectQuestionLogIntent(prompt);
     var questionLogContext = { mode: isDeep ? "report" : "chat" };
     var questionEventId = createChatQuestionEventId();
+    var traceContext = !isDeep && state.agentEnabled !== false
+      ? createAgentTraceContext(questionEventId, language) : null;
     var questionLogPromise = beginQuestionLog(submittedPrompt, questionLogContext.mode, language, questionLogIntent, questionEventId);
     state.chatIntentOverride = explicitChatIntent;
 
@@ -15780,7 +16304,8 @@ var _NUMERIC_COL_PATTERNS = [
           memoryText: memoryText,
           history: chatHistoryBeforePrompt,
           viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
-          onError: null
+          onError: null,
+          traceContext: traceContext
         });
         if (agentOutcome && agentOutcome.handled) {
           if (agentOutcome.directContent) {
@@ -15817,6 +16342,8 @@ var _NUMERIC_COL_PATTERNS = [
           chatLogEl: _chatLog,
           language: language,
           viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
+          traceContext: traceContext,
+          tracePhase: "synthesis",
           onError: function (error) {
             var _errMsg = document.createElement("div");
             _errMsg.className = "message assistant";
@@ -15827,6 +16354,14 @@ var _NUMERIC_COL_PATTERNS = [
           }
         }
       );
+      appendAgentTraceSynthesis(traceContext, replyOutcome, replyOutcome.stopped ? "stopped" : (replyOutcome.ok ? "success" : "failed"), replyOutcome.stopped ? "stopped_by_user" : (replyOutcome.usage && replyOutcome.usage.errorCode || "synthesis_unavailable"));
+      completeAgentTrace(traceContext, {
+        status: replyOutcome.stopped ? "stopped" : (replyOutcome.ok ? "success" : "failed"),
+        durationMs: traceContext ? Date.now() - traceContext.startedAt : null,
+        stoppedByUser: !!replyOutcome.stopped,
+        fallbackDelivered: !!(replyOutcome.ok && replyOutcome.fullResponse),
+        errorCode: replyOutcome.stopped ? "stopped_by_user" : (!replyOutcome.ok ? "synthesis_unavailable" : null)
+      });
       if (!replyOutcome.ok) {
         completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
         return;
@@ -15852,6 +16387,11 @@ var _NUMERIC_COL_PATTERNS = [
         _chatLog.appendChild(_agentErrMsg);
         _chatLog.scrollTop = _chatLog.scrollHeight;
         completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        completeAgentTrace(traceContext, {
+          status: "failed",
+          durationMs: traceContext ? Date.now() - traceContext.startedAt : null,
+          errorCode: normalizeAgentTraceError(error)
+        });
         return;
       }
     }
@@ -30957,6 +31497,12 @@ var _NUMERIC_COL_PATTERNS = [
       buildAgentSynthesisMessages,
       agentFallbackHistory,
       agentHistoryAfterOutcome,
+      createAgentTraceContext,
+      startAgentTrace,
+      appendAgentTraceSteps,
+      completeAgentTrace,
+      normalizeAgentTraceError,
+      agentTraceDataMeta,
       createAgentExecutionTimeline,
       runChatAgent,
       firstOfferName: function () {

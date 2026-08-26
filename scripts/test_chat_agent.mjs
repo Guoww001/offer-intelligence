@@ -994,6 +994,7 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
           return {
             ok: true,
             merchantId: offer.merchantId,
+            checkedAt: "2026-08-26T02:00:00Z",
             monthlyAmazonMetrics: [
               { month: "2026-08", revenue: 1400, orders: 28, clicks: 140, payout: 280, affiliatePayout: 140, aov: 50, conversionRate: 0.2, dpv: 70, atc: 14 },
               { month: "2026-07", revenue: 1000, orders: 20, clicks: 100, payout: 200, affiliatePayout: 100, aov: 50, conversionRate: 0.2, dpv: 50, atc: 10 }
@@ -1015,6 +1016,8 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(result.data.monthly[0].epcAll, 2, "monthly all EPC should use payout/clicks");
   assertEqual(result.data.monthly[0].epcAff, 1, "monthly affiliate EPC should use affiliatePayout/clicks");
   assertEqual(result.data.monthly[1].month, "2026-07", "monthly order should match the DB response order");
+  assertEqual(result.trace.dataSource, "mixed", "merchant monthly Trace should identify mixed cache and DB data");
+  assertEqual(result.trace.dataAsOf, "2026-08-26T02:00:00Z", "merchant monthly Trace should preserve DB checkedAt");
   assertTruthy(fetchCalls.some((call) => call.url.includes("/api/ui/db/merchant") && call.url.includes("months=12") && call.url.includes("minimal=1")), "merchant analysis should request the Report Mode monthly endpoint");
 }
 
