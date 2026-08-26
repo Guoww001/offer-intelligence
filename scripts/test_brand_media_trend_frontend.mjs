@@ -11,6 +11,52 @@ function assertEqual(actual, expected, label) {
   }
 }
 
+function assertApprox(actual, expected, label, tolerance = 1e-9) {
+  if (Math.abs(Number(actual) - Number(expected)) > tolerance) {
+    throw new Error(label + ": expected " + expected + ", got " + actual);
+  }
+}
+
+function assertRibbonPartitions(layout, label) {
+  [
+    { nodeKey: "source", topKey: "sourceTop", bottomKey: "sourceBottom", shareKey: "sourceShare", totalKey: "sourceTotal" },
+    { nodeKey: "target", topKey: "targetTop", bottomKey: "targetBottom", shareKey: "targetShare", totalKey: "targetTotal" }
+  ].forEach(function (side) {
+    const groups = layout.links.reduce(function (index, link) {
+      const nodeId = link[side.nodeKey];
+      if (!index[nodeId]) index[nodeId] = [];
+      index[nodeId].push(link);
+      return index;
+    }, {});
+    Object.keys(groups).forEach(function (nodeId) {
+      const node = layout.layoutById[nodeId];
+      const entries = groups[nodeId].slice().sort(function (a, b) {
+        return a[side.topKey] - b[side.topKey] || a.index - b.index;
+      });
+      assertApprox(entries[0][side.topKey], node.y, label + " should start at the " + side.nodeKey + " node edge");
+      entries.forEach(function (entry, index) {
+        assertApprox(
+          entry[side.shareKey],
+          entry.value / entry[side.totalKey],
+          label + " should calculate each " + side.nodeKey + " share from its local Revenue total"
+        );
+        if (index > 0) {
+          assertApprox(
+            entries[index - 1][side.bottomKey],
+            entry[side.topKey],
+            label + " should keep adjacent " + side.nodeKey + " ribbon segments contiguous"
+          );
+        }
+      });
+      assertApprox(
+        entries[entries.length - 1][side.bottomKey],
+        node.y + node.height,
+        label + " should fill the complete " + side.nodeKey + " node edge"
+      );
+    });
+  });
+}
+
 const elementStub = {
   addEventListener() {},
   classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
@@ -270,10 +316,35 @@ if (sankeyLayout.initialScrollLeft < 200 || sankeyLayout.initialScrollTop < 80 |
   throw new Error("Sankey should start inside real four-sided workspace padding for two-axis panning");
 }
 if (!sankeyLayout.nodes.length || !sankeyLayout.links.every(function (link) {
-  return Number.isFinite(link.top) && Number.isFinite(link.bottom) && link.bottom >= link.top;
+  return Number.isFinite(link.top) && Number.isFinite(link.bottom) && link.bottom >= link.top &&
+    Number.isFinite(link.sourceTop) && Number.isFinite(link.sourceBottom) &&
+    Number.isFinite(link.targetTop) && Number.isFinite(link.targetBottom);
 })) {
-  throw new Error("Sankey Canvas layout should expose node entries and link paint bounds");
+  throw new Error("Sankey Canvas layout should expose node entries and proportional ribbon bounds");
 }
+assertRibbonPartitions(sankeyLayout, "single-brand Sankey");
+const brandToProductA = sankeyLayout.links.find(function (link) {
+  return link.source === "brand:101" && link.target === "product:ASIN-A";
+});
+const productAToMedia9 = sankeyLayout.links.find(function (link) {
+  return link.source === "product:ASIN-A" && link.target === "media:9";
+});
+assertApprox(brandToProductA.sourceShare, 140 / 155, "brand endpoint should use the product share of brand Revenue");
+assertApprox(brandToProductA.targetShare, 1, "brand-product ribbon should fill the product incoming edge");
+assertApprox(productAToMedia9.sourceShare, 130 / 140, "product endpoint should use the media share of product Revenue");
+assertApprox(productAToMedia9.targetShare, 130 / 145, "media endpoint should use the product share of media Revenue");
+assertApprox(
+  (productAToMedia9.sourceBottom - productAToMedia9.sourceTop) /
+    sankeyLayout.layoutById["product:ASIN-A"].height,
+  130 / 140,
+  "rendered product ribbon segment should preserve its source percentage"
+);
+assertApprox(
+  (productAToMedia9.targetBottom - productAToMedia9.targetTop) /
+    sankeyLayout.layoutById["media:9"].height,
+  130 / 145,
+  "rendered media ribbon segment should preserve its target percentage"
+);
 const visibleSankeyEntries = hooks.brandMediaSankeyVisibleEntries(sankeyLayout, 180, 100, 20);
 if (!visibleSankeyEntries || visibleSankeyEntries.startY !== 160 || visibleSankeyEntries.endY !== 300 ||
     !visibleSankeyEntries.nodes.length || !visibleSankeyEntries.links.length) {
@@ -325,6 +396,37 @@ if (responsiveLayout.width !== 1480 || responsiveLayout.columnX.product <= 500 |
     responsiveLayout.columnX.media <= 1000 || responsiveLayout.surfaceWidth < 1480) {
   throw new Error("Sankey columns should expand across a wide chart instead of staying pinned left");
 }
+assertRibbonPartitions(responsiveLayout, "multi-brand Sankey");
+const alphaBrandLayout = responsiveLayout.layoutById["brand:101"];
+const betaBrandLayout = responsiveLayout.layoutById["brand:202"];
+assertApprox(
+  alphaBrandLayout.height / (alphaBrandLayout.height + betaBrandLayout.height),
+  0.7,
+  "multi-brand node lengths should preserve Alpha's 70% Revenue contribution"
+);
+assertApprox(
+  betaBrandLayout.height / (alphaBrandLayout.height + betaBrandLayout.height),
+  0.3,
+  "multi-brand node lengths should preserve Beta's 30% Revenue contribution"
+);
+const alphaMediaRibbon = responsiveLayout.links.find(function (link) {
+  return link.source === "product:101:ASIN-A" && link.target === "media:9";
+});
+const betaMediaRibbon = responsiveLayout.links.find(function (link) {
+  return link.source === "product:202:ASIN-A" && link.target === "media:9";
+});
+assertApprox(alphaMediaRibbon.targetShare, 0.7, "multi-brand media should allocate Alpha's 70% contribution");
+assertApprox(betaMediaRibbon.targetShare, 0.3, "multi-brand media should allocate Beta's 30% contribution");
+assertApprox(
+  alphaMediaRibbon.targetBottom,
+  betaMediaRibbon.targetTop,
+  "multi-brand media ribbons should form contiguous brand contribution blocks"
+);
+if (alphaMediaRibbon.color !== responsiveLayout.layoutById["brand:101"].color ||
+    betaMediaRibbon.color !== responsiveLayout.layoutById["brand:202"].color ||
+    alphaMediaRibbon.color === betaMediaRibbon.color) {
+  throw new Error("multi-brand product-media ribbons should inherit distinct root brand colors");
+}
 
 const skewedProducts = Array.from({ length: 54 }, function (_, index) {
   return {
@@ -351,10 +453,15 @@ if (!skewedLayout || skewedLayout.nodes.some(function (node) {
 })) {
   throw new Error("minimum Sankey node heights should be redistributed without overflowing the canvas");
 }
+assertRibbonPartitions(skewedLayout, "skewed Sankey");
 if (skewedLayout.links.some(function (link) {
-  return link.top < 0 || link.bottom > skewedLayout.height;
+  var source = skewedLayout.layoutById[link.source];
+  var target = skewedLayout.layoutById[link.target];
+  return link.top < 0 || link.bottom > skewedLayout.height ||
+    link.sourceTop < source.y - 0.01 || link.sourceBottom > source.y + source.height + 0.01 ||
+    link.targetTop < target.y - 0.01 || link.targetBottom > target.y + target.height + 0.01;
 })) {
-  throw new Error("Sankey link paint bounds should stay inside the full canvas height");
+  throw new Error("Sankey proportional ribbon bounds should stay inside their nodes and full canvas height");
 }
 
 
@@ -421,8 +528,8 @@ assertEqual(
 
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 const authSource = fs.readFileSync("public/auth.js", "utf8");
-if (!indexHtml.includes("styles.css?v=20260826-revenue-flow-canvas-bounds") ||
-    !authSource.includes("app.js?v=20260826-revenue-flow-canvas-bounds")) {
+if (!indexHtml.includes("styles.css?v=20260826-revenue-flow-proportional-ribbons") ||
+    !authSource.includes("app.js?v=20260826-revenue-flow-proportional-ribbons")) {
   throw new Error("Revenue flow should invalidate the cached app and stylesheet assets");
 }
 [
@@ -514,6 +621,10 @@ if (sankeyHoverSource.includes("querySelectorAll")) {
 if (!appSource.includes("_brandMediaSankeyFocus") ||
     !appSource.includes("_brandMediaSankeyRenderTiles") ||
     !appSource.includes("_brandMediaSankeyConstrainedHeights") ||
+    !appSource.includes("sourceShare") ||
+    !appSource.includes("targetShare") ||
+    !appSource.includes("context.closePath()") ||
+    !appSource.includes("context.fill()") ||
     !appSource.includes("_brandMediaSankeyCanvasZoom") ||
     !appSource.includes("_brandMediaSankeyCanvasClamp") ||
     !appSource.includes('data-brand-media-sankey-canvas-action="toggle-pan"') ||
@@ -522,6 +633,12 @@ if (!appSource.includes("_brandMediaSankeyFocus") ||
     !appSource.includes("event.code === \"Space\"") ||
     appSource.includes("_brandMediaSankeyRenderFrame")) {
   throw new Error("Sankey should expose static Canvas navigation and a universal two-axis pan tool");
+}
+const sankeyDrawSourceStart = appSource.indexOf("function _brandMediaSankeyDrawTile");
+const sankeyDrawSourceEnd = appSource.indexOf("function _brandMediaSankeyNodeMarkup", sankeyDrawSourceStart);
+const sankeyDrawSource = appSource.slice(sankeyDrawSourceStart, sankeyDrawSourceEnd);
+if (sankeyDrawSource.includes("entry.strokeWidth") || sankeyDrawSource.includes("context.stroke()")) {
+  throw new Error("Sankey should render tapered proportional ribbons instead of fixed-width strokes");
 }
 if (!appSource.includes("layout.initialScrollLeft") ||
     !appSource.includes("layout.initialScrollTop")) {
