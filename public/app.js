@@ -19737,33 +19737,102 @@ var _NUMERIC_COL_PATTERNS = [
     };
   }
 
+  function _brandMediaSankeyConstrainedHeights(columnNodes, available, minimumHeight) {
+    var nodes = Array.isArray(columnNodes) ? columnNodes : [];
+    var space = Math.max(0, Number(available || 0));
+    var minimum = Math.max(0, Number(minimumHeight || 0));
+    if (!nodes.length) return [];
+    var heights = nodes.map(function () { return 0; });
+    var values = nodes.map(function (node) {
+      return Math.max(0, Number(node && node.value || 0));
+    });
+    var active = [];
+    var remainingSpace = space;
+    values.forEach(function (value, index) {
+      if (value > 0) active.push(index);
+      else {
+        heights[index] = minimum;
+        remainingSpace -= minimum;
+      }
+    });
+    remainingSpace = Math.max(0, remainingSpace);
+    while (active.length) {
+      var remainingValue = active.reduce(function (sum, index) {
+        return sum + values[index];
+      }, 0);
+      var scale = remainingValue > 0 ? remainingSpace / remainingValue : 0;
+      var constrained = active.filter(function (index) {
+        return values[index] * scale < minimum;
+      });
+      if (!constrained.length) {
+        var allocated = 0;
+        active.forEach(function (index, activeIndex) {
+          var height = activeIndex === active.length - 1
+            ? Math.max(0, remainingSpace - allocated)
+            : values[index] * scale;
+          heights[index] = height;
+          allocated += height;
+        });
+        remainingSpace = 0;
+        break;
+      }
+      var constrainedIndexes = new Set(constrained);
+      constrained.forEach(function (index) {
+        heights[index] = minimum;
+        remainingSpace = Math.max(0, remainingSpace - minimum);
+      });
+      active = active.filter(function (index) { return !constrainedIndexes.has(index); });
+    }
+    return heights;
+  }
+
   function _brandMediaBuildSankeyLayout(model, width) {
     if (!model) return null;
     var graphWidth = Math.max(1160, Number(width || 0));
     var itemCount = Math.max(model.brands.length, model.products.length, model.media.length, 1);
-    var height = Math.max(390, 128 + itemCount * 31);
-    var top = 70;
-    var bottom = 26;
-    var innerHeight = height - top - bottom;
+    var nodeWidth = 12;
+    var minimumNodeHeight = 14;
+    var nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
+    var graphTop = 70;
+    var graphBottom = 26;
+    var minimumGraphHeight = graphTop + graphBottom + minimumNodeHeight * itemCount +
+      nodeGap * Math.max(0, itemCount - 1);
+    var graphHeight = Math.max(390, 128 + itemCount * 31, Math.ceil(minimumGraphHeight));
+    var panPaddingX = Math.max(220, Math.min(360, Math.round(graphWidth * 0.18)));
+    var panPaddingY = 96;
+    var height = graphHeight + panPaddingY * 2;
+    var top = panPaddingY + graphTop;
+    var bottom = panPaddingY + graphBottom;
+    var innerHeight = graphHeight - graphTop - graphBottom;
     var responsiveExtra = Math.max(0, graphWidth - 1160);
-    var columnX = {
+    var graphColumnX = {
       brand: 36,
       product: Math.round(400 + responsiveExtra * 0.45),
       media: Math.round(820 + responsiveExtra * 0.65)
     };
-    var nodeWidth = 12;
-    // Expand the graph with its viewport and reserve label space after the
-    // right-most media column so labels never end at the scroll boundary.
-    var surfaceWidth = Math.max(graphWidth, columnX.media + nodeWidth + 26 + 360 + 28);
-    var nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
+    var columnX = {
+      brand: graphColumnX.brand + panPaddingX,
+      product: graphColumnX.product + panPaddingX,
+      media: graphColumnX.media + panPaddingX
+    };
+    // Keep a real workspace margin on every side. Starting inside that margin
+    // gives pointer panning useful travel in both horizontal directions.
+    var graphSurfaceWidth = Math.max(
+      graphWidth,
+      graphColumnX.media + nodeWidth + 26 + 360 + 28
+    );
+    var surfaceWidth = graphSurfaceWidth + panPaddingX * 2;
 
     function layoutColumn(columnNodes, x, position, colorFactory) {
-      var total = columnNodes.reduce(function (sum, node) { return sum + node.value; }, 0) || 1;
       var available = innerHeight - nodeGap * Math.max(0, columnNodes.length - 1);
-      var scale = available / total;
+      var heights = _brandMediaSankeyConstrainedHeights(
+        columnNodes,
+        available,
+        minimumNodeHeight
+      );
       var totalHeight = 0;
       var layout = columnNodes.map(function (node, index) {
-        var nodeHeight = Math.max(14, node.value * scale);
+        var nodeHeight = heights[index];
         totalHeight += nodeHeight;
         return {
           node: node,
@@ -19835,8 +19904,14 @@ var _NUMERIC_COL_PATTERNS = [
       width: graphWidth,
       surfaceWidth: surfaceWidth,
       height: height,
+      graphHeight: graphHeight,
       top: top,
       bottom: bottom,
+      headerY: panPaddingY + 25,
+      panPaddingX: panPaddingX,
+      panPaddingY: panPaddingY,
+      initialScrollLeft: panPaddingX,
+      initialScrollTop: panPaddingY,
       columnX: columnX,
       nodeWidth: nodeWidth,
       nodeGap: nodeGap,
@@ -19995,7 +20070,7 @@ var _NUMERIC_COL_PATTERNS = [
       [labels.products || "Revenue products", layout.columnX.product],
       [labels.media || "Media", layout.columnX.media]
     ].forEach(function (item) {
-      var y = 25 - tile.startY;
+      var y = Number(layout.headerY || 25) - tile.startY;
       if (y >= -16 && y <= tile.height + 16) context.fillText(item[0], item[1], y);
     });
     var focus = chart._brandMediaSankeyFocus;
@@ -20265,8 +20340,9 @@ var _NUMERIC_COL_PATTERNS = [
     if (!viewport) return;
     chart._brandMediaSankeyCanvasView = { scale: 1 };
     _brandMediaSankeyCanvasApplyView(chart);
-    viewport.scrollLeft = 0;
-    viewport.scrollTop = 0;
+    var layout = chart && chart._brandMediaSankeyLayout;
+    viewport.scrollLeft = Number(layout && layout.initialScrollLeft || 0);
+    viewport.scrollTop = Number(layout && layout.initialScrollTop || 0);
   }
 
   function _brandMediaSankeyCanvasZoom(chart, factor, point) {
