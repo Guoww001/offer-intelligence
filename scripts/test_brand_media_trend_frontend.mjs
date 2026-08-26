@@ -265,6 +265,10 @@ if (!sankeyLayout || sankeyLayout.width !== 1160 || sankeyLayout.links.length !=
 if (!Number.isFinite(sankeyLayout.surfaceWidth) || sankeyLayout.surfaceWidth <= sankeyLayout.width) {
   throw new Error("Sankey should reserve horizontal surface space for the right-most media labels");
 }
+if (sankeyLayout.initialScrollLeft < 200 || sankeyLayout.initialScrollTop < 80 ||
+    sankeyLayout.surfaceWidth - sankeyLayout.width < sankeyLayout.initialScrollLeft * 2) {
+  throw new Error("Sankey should start inside real four-sided workspace padding for two-axis panning");
+}
 if (!sankeyLayout.nodes.length || !sankeyLayout.links.every(function (link) {
   return Number.isFinite(link.top) && Number.isFinite(link.bottom) && link.bottom >= link.top;
 })) {
@@ -276,7 +280,8 @@ if (!visibleSankeyEntries || visibleSankeyEntries.startY !== 160 || visibleSanke
   throw new Error("Sankey should select only entries intersecting the scroll viewport and overscan");
 }
 const sankeyTileLayout = hooks.brandMediaSankeyTileLayout(sankeyLayout, 160);
-if (!sankeyTileLayout || sankeyTileLayout.tileHeight !== 160 || sankeyTileLayout.tiles.length !== 3 ||
+if (!sankeyTileLayout || sankeyTileLayout.tileHeight !== 160 ||
+    sankeyTileLayout.tiles.length !== Math.ceil(sankeyLayout.height / 160) ||
     !sankeyTileLayout.tiles.every(function (tile, index) {
       return tile.index === index && tile.endY > tile.startY && Array.isArray(tile.links);
     })) {
@@ -319,6 +324,37 @@ const responsiveLayout = hooks.brandMediaSankeyLayout(multiBrandModel, 1480);
 if (responsiveLayout.width !== 1480 || responsiveLayout.columnX.product <= 500 ||
     responsiveLayout.columnX.media <= 1000 || responsiveLayout.surfaceWidth < 1480) {
   throw new Error("Sankey columns should expand across a wide chart instead of staying pinned left");
+}
+
+const skewedProducts = Array.from({ length: 54 }, function (_, index) {
+  return {
+    id: "product:skewed:" + index,
+    type: "product",
+    label: "Skewed product " + index,
+    value: index === 0 ? 9000 : 1000 / 53
+  };
+});
+const skewedModel = {
+  brands: [{ id: "brand:skewed", type: "brand", label: "Skewed", value: 10000 }],
+  products: skewedProducts,
+  media: [{ id: "media:skewed", type: "media", label: "Skewed media", value: 10000 }],
+  links: skewedProducts.reduce(function (links, product) {
+    links.push({ source: "brand:skewed", target: product.id, value: product.value });
+    links.push({ source: product.id, target: "media:skewed", value: product.value });
+    return links;
+  }, [])
+};
+const skewedLayout = hooks.brandMediaSankeyLayout(skewedModel, 1466);
+if (!skewedLayout || skewedLayout.nodes.some(function (node) {
+  return node.height < 14 || node.y < skewedLayout.top ||
+    node.y + node.height > skewedLayout.height - skewedLayout.bottom + 0.01;
+})) {
+  throw new Error("minimum Sankey node heights should be redistributed without overflowing the canvas");
+}
+if (skewedLayout.links.some(function (link) {
+  return link.top < 0 || link.bottom > skewedLayout.height;
+})) {
+  throw new Error("Sankey link paint bounds should stay inside the full canvas height");
 }
 
 
@@ -385,8 +421,8 @@ assertEqual(
 
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 const authSource = fs.readFileSync("public/auth.js", "utf8");
-if (!indexHtml.includes("styles.css?v=20260825-revenue-flow-multibrand") ||
-    !authSource.includes("app.js?v=20260825-revenue-flow-multibrand")) {
+if (!indexHtml.includes("styles.css?v=20260826-revenue-flow-canvas-bounds") ||
+    !authSource.includes("app.js?v=20260826-revenue-flow-canvas-bounds")) {
   throw new Error("Revenue flow should invalidate the cached app and stylesheet assets");
 }
 [
@@ -477,6 +513,7 @@ if (sankeyHoverSource.includes("querySelectorAll")) {
 }
 if (!appSource.includes("_brandMediaSankeyFocus") ||
     !appSource.includes("_brandMediaSankeyRenderTiles") ||
+    !appSource.includes("_brandMediaSankeyConstrainedHeights") ||
     !appSource.includes("_brandMediaSankeyCanvasZoom") ||
     !appSource.includes("_brandMediaSankeyCanvasClamp") ||
     !appSource.includes('data-brand-media-sankey-canvas-action="toggle-pan"') ||
@@ -485,6 +522,10 @@ if (!appSource.includes("_brandMediaSankeyFocus") ||
     !appSource.includes("event.code === \"Space\"") ||
     appSource.includes("_brandMediaSankeyRenderFrame")) {
   throw new Error("Sankey should expose static Canvas navigation and a universal two-axis pan tool");
+}
+if (!appSource.includes("layout.initialScrollLeft") ||
+    !appSource.includes("layout.initialScrollTop")) {
+  throw new Error("resetting the Sankey view should return to the centered workspace padding");
 }
 const sankeyScrollSourceStart = appSource.indexOf('scrollTarget.addEventListener("scroll"');
 const sankeyScrollSourceEnd = appSource.indexOf("if (typeof ResizeObserver", sankeyScrollSourceStart);

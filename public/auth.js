@@ -1,5 +1,5 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260825-revenue-flow-multibrand";
+  const APP_SCRIPT = "./app.js?v=20260826-revenue-flow-canvas-bounds";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
