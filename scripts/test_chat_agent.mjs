@@ -44,6 +44,7 @@ function createTestElement() {
     },
     style: {},
     remove() { this.removed = true; },
+    focus() {},
     textContent: "",
     innerHTML: "",
     open: false
@@ -55,12 +56,17 @@ const elementStub = createTestElement();
 let mockFetchImpl = null;
 let fetchCalls = [];
 let intervalDelays = [];
+const storageValues = Object.create(null);
 
 const sandbox = {
   console, Date, Math, Number, String, RegExp, Array, Object, Set, Map, JSON,
   TextDecoder, AbortSignal, setTimeout, clearTimeout,
   window: { __OFFER_INTELLIGENCE_TEST__: true },
-  localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+  localStorage: {
+    getItem(key) { return Object.prototype.hasOwnProperty.call(storageValues, key) ? storageValues[key] : null; },
+    setItem(key, value) { storageValues[key] = String(value); },
+    removeItem(key) { delete storageValues[key]; }
+  },
   document: {
     getElementById() { return elementStub; },
     querySelectorAll() { return []; },
@@ -92,6 +98,7 @@ const _kwCache = JSON.parse(fs.readFileSync("protected_data/db_keywords_cache.js
 sandbox.window.PRODUCT_KEYWORDS = _kwCache;
 runScript("public/chatbot_i18n.js", sandbox);
 runScript("public/tier2_recommendation_rules.js", sandbox);
+runScript("public/agent_memory_state.js", sandbox);
 runScript("public/app.js", sandbox);
 
 const hooks = sandbox.window.OFFER_INTELLIGENCE_TEST_HOOKS;
@@ -99,9 +106,63 @@ assertTruthy(hooks, "app should expose test hooks in test mode");
 assertTruthy(hooks.agentExecuteTool, "agentExecuteTool hook missing");
 assertTruthy(hooks.runChatAgent, "runChatAgent hook missing");
 assertTruthy(hooks.createAgentExecutionTimeline, "createAgentExecutionTimeline hook missing");
+assertTruthy(hooks.agentMemoryMetricKeys, "agentMemoryMetricKeys hook missing");
+assertTruthy(hooks.agentMemoryEventFromToolItem, "agentMemoryEventFromToolItem hook missing");
+assertTruthy(hooks.agentMemoryEventsFromToolResults, "agentMemoryEventsFromToolResults hook missing");
+assertTruthy(hooks.commitAgentPageMemory, "commitAgentPageMemory hook missing");
+assertTruthy(hooks.agentPageMemoryText, "agentPageMemoryText hook missing");
+assertTruthy(hooks.agentPageWelcomeHtml, "agentPageWelcomeHtml hook missing");
+assertTruthy(hooks.resetAgentPageConversation, "resetAgentPageConversation hook missing");
+assertTruthy(hooks.getAgentPageMemoryForTest, "getAgentPageMemoryForTest hook missing");
 
 const firstOffer = hooks.firstOfferName();
 assertTruthy(firstOffer, "fixture offers must not be empty");
+const firstOfferRecord = sandbox.window.CHATBOT_DATA.offers.find((offer) => offer && offer.merchantId);
+const firstCanonicalName = firstOfferRecord.brand || firstOfferRecord.merchantName;
+const memoryEvent = hooks.agentMemoryEventFromToolItem({
+  name: "merchant_analysis",
+  result: {
+    ok: true,
+    data: {
+      merchant: firstCanonicalName,
+      category: firstOfferRecord.mainCategory || firstOfferRecord.category,
+      tier: firstOfferRecord.tier,
+      latestMonth: "2026-08",
+      monthly: [{ month: "2026-08", epc: 1.2 }, { month: "2026-07", epc: 1.1 }],
+      headline: `${firstCanonicalName} overview`,
+      metrics: { epc: 1.2, conversionRate: 0.03 }
+    },
+    trace: { dataSource: "mixed", dataAsOf: "2026-08-26T07:40:00Z", estimated: false }
+  }
+}, `查询 ${firstCanonicalName} 的 EPC 和转化率`, { partial: false });
+assertEqual(memoryEvent.focus.merchants[0].id, String(firstOfferRecord.merchantId), "memory event should use canonical merchant id");
+assertEqual(memoryEvent.query.metrics.join(","), "epc,conversionRate", "memory event should keep requested metric names");
+assertEqual(memoryEvent.query.startMonth, "2026-07", "memory event should derive the actual start month");
+assertEqual(memoryEvent.query.endMonth, "2026-08", "memory event should derive the actual end month");
+assertEqual(memoryEvent.lastTool.dataSource, "mixed", "memory event should retain source metadata");
+assertEqual(JSON.stringify(memoryEvent).includes("1.2"), false, "memory event must not retain metric values");
+assertEqual(JSON.stringify(memoryEvent).includes('"metrics":{'), false, "memory event must not retain metric objects");
+const ambiguousMemoryEvent = hooks.agentMemoryEventFromToolItem({
+  name: "merchant_analysis",
+  result: {
+    ok: false,
+    error: "不得保存的错误正文",
+    resolution: {
+      status: "ambiguous",
+      candidates: [{ merchantId: "1", name: "Alpha" }, { merchantId: "2", name: "Beta" }]
+    }
+  }
+}, "不得保存的原始问题", { partial: false });
+assertEqual(ambiguousMemoryEvent.kind, "candidates", "ambiguous result should become a candidate event");
+assertEqual(ambiguousMemoryEvent.candidates.length, 2, "candidate event should keep candidate entities");
+assertEqual(JSON.stringify(ambiguousMemoryEvent).includes("不得保存"), false, "candidate event must not retain error or prompt text");
+hooks.commitAgentPageMemory([memoryEvent]);
+assertTruthy(storageValues.oi_agent_memory_v1, "successful memory event should persist");
+assertIncludes(hooks.agentPageMemoryText("zh"), String(firstOfferRecord.merchantId), "prompt memory should include merchant id");
+assertIncludes(hooks.agentPageWelcomeHtml(), "已恢复上下文", "welcome should disclose restored context");
+hooks.resetAgentPageConversation();
+assertEqual(storageValues.oi_agent_memory_v1, undefined, "new conversation should clear persisted memory");
+assertEqual(hooks.getAgentPageMemoryForTest().focus.merchants.length, 0, "new conversation should clear in-memory focus");
 const merchantTargets = Array.from(new Map(
   sandbox.window.CHATBOT_DATA.offers
     .filter((offer) => offer && offer.merchantId)
@@ -171,6 +232,8 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   });
   assertEqual(stopped.handled, true, "aborted Agent run should be handled");
   assertEqual(stopped.stopped, true, "aborted Agent run should report stopped");
+  assertEqual(Array.isArray(stopped.memoryEvents) ? stopped.memoryEvents.length : 0, 0,
+    "aborted Agent run should not expose memory events");
 }
 
 // ── Agent conceptual follow-up should answer directly without planning tools ──
@@ -346,6 +409,10 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(outcome.handled, true, "agent should handle the prompt");
   assertEqual(outcome.ok, true, "agent run should succeed");
   assertEqual(outcome.fullResponse, "OK", "synthesis tokens should accumulate");
+  assertTruthy(Array.isArray(outcome.memoryEvents) && outcome.memoryEvents.length,
+    "successful Agent run should expose memory events");
+  assertEqual(outcome.memoryEvents[0].focus.merchants[0].id, String(sandbox.window.CHATBOT_DATA.offers.find((offer) => offer.brand === firstOffer || offer.merchantName === firstOffer).merchantId),
+    "successful memory event should retain resolved merchant id");
   assertEqual(fetchCalls.length, 3, "expect one plan call, one monthly data call, and one synthesis call");
   assertIncludes(JSON.stringify(fetchCalls[2].body), "merchant_analysis", "synthesis body should carry tool result");
 }
