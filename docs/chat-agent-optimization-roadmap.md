@@ -176,7 +176,7 @@
 
 ## 4. P1：可靠性、可维护性和体验优化
 
-### 4.1 建立 Agent Trace 和运行指标
+### 4.1 建立 Agent Trace 和运行指标（已完成）
 
 当前提问日志主要保存问题、模式、意图和成功/失败状态。缺少以下信息：
 
@@ -212,6 +212,10 @@ retryCount
 另外，前端当前在每收到一个 SSE 数据块时递增 `tokenCount`，显示的并不是真实 Token。[public/app.js:14217](../public/app.js#L14217) 应改为 Provider 返回真实 usage，或将文案改为“响应片段数”。
 
 实现成本：M。
+
+实现状态（2026-08-26）：已完成本节范围。浏览器使用与提问日志相同的 `questionEventId` 创建 `runId`，通过现有 `/api/chat/stream?operation=agent_trace` 异步写入 `cnpscy_oi_agent_runs` 和 `cnpscy_oi_agent_steps`；本地 `server.py` 与 Vercel `api/chat/stream.py` 均复用该 operation。planning、tool、synthesis 三阶段记录状态、耗时、调用计数、数据来源、快照时间、估算标志、重试次数和受控错误码；Provider usage 在 `[DONE]` 前通过独立 `type=usage` SSE 事件传递，缺失时保存 `usageAvailable=false` 和 NULL token，并在前端降级为“响应片段数 / response chunks”。Trace 写入超时或失败只记录 `console.warn`，不改变回答、问题日志或 fallback。
+
+隐私边界：Trace 白名单拒绝 `prompt`、`messages`、工具 `arguments`、`toolResult`、回答正文、原始响应和异常堆栈；数据来源无法确认时记录 `unknown`，不会用当前浏览器时间冒充 `dataAsOf`。本次仅实现 4.1，不包含 3.5、3.6、4.2、4.3 的后续能力。
 
 ### 4.2 服务端维护规范工具注册表
 

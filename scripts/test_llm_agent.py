@@ -153,6 +153,7 @@ def test_stream_chat_messages_passthrough():
         assert sent[2] == {"role": "assistant", "content": "A"}
         assert len(sent) == 3  # user_message 未被追加
         assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert captured["stream_options"] == {"include_usage": True}
     finally:
         del sys.modules["openai"]
         if old_provider is None: os.environ.pop("OI_LLM_PROVIDER", None)

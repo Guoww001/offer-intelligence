@@ -25,6 +25,8 @@ def main():
         source = (ROOT / relative).read_text(encoding="utf-8")
         assert "max_tokens=AGENT_SYNTHESIS_MAX_TOKENS" in source, f"{relative} must use the shared Agent synthesis budget"
         assert "AGENT_SYNTHESIS_MAX_REQUEST_BYTES" in source, f"{relative} must use the shared Agent synthesis request limit"
+        assert "usageAvailable" in source, f"{relative} must expose provider usage metadata"
+        assert "type\": \"usage\"" in source, f"{relative} must send a usage SSE event"
     print("Agent synthesis stream configuration checks passed")
 
 

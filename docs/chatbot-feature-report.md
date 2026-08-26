@@ -666,6 +666,18 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - Chatbot 模式栏右侧的低调「日志 / Logs」菜单可通过带会话认证的 `GET /api/chat/stream?operation=questions&format=csv|jsonl` 导出全部记录，Agent 记录通过 `mode=agent` 区分。
 - 不新增独立 API 端点：本地 `server.py` 与 Vercel 现有 `api/chat/stream.py` 根据 `operation=questions` 分流，共享日志 HTTP 处理位于 `chatbot_question_log_http.py`。
 
+### Agent Trace 与运行指标（2026-08-26）
+
+Agent 的一次提问沿用提问日志生成的 `questionEventId`，浏览器再创建 `runId`，通过现有 `POST /api/chat/stream?operation=agent_trace` 异步写入 `cnpscy_oi_agent_runs` 与 `cnpscy_oi_agent_steps`。Trace 不新增 Vercel 路由；本地 `server.py` 和 `api/chat/stream.py` 共享同一 operation、认证和白名单校验。
+
+`runChatAgent()` 将 planning、tool、synthesis 三阶段写成摘要步骤。规划记录请求字节数、Provider、模型、usage 和受控错误码；工具记录名称、耗时、成功/失败、`dataSource`、`dataAsOf`、`estimated` 与内存中的重试次数；综合记录请求字节数、Provider、模型、真实 usage 或 `outputChunks`。Trace run 另外汇总 partial、fallback、停止原因和工具计数。
+
+Provider usage 通过综合 SSE 的独立 `type=usage` 事件在 `[DONE]` 前发送。usage 不可用时，输入/输出/总 token 保持 NULL，`usageAvailable=false`，前端显示“响应片段数 / response chunks”，不会把 SSE 片段数称作 token。工具月度 DB 结果使用 `database` 或 `mixed`，缓存汇总使用 `cache`，无法确认时使用 `unknown`；没有快照时间时保持 NULL。
+
+Trace 写入是异步、短超时和可丢弃的：网络或数据库写入失败只记录 `console.warn`，不阻断回答、问题日志或 fallback。Trace 白名单拒绝保存 `prompt`、`messages`、工具 `arguments`、`toolResult`、回答正文、原始 Provider JSON 和异常堆栈。用户中止记录为 `stopped/stopped_by_user`，Provider 超时和工具失败分别保留 `timeout` 或 `failed` 及受控错误码。
+
+本次实现只覆盖 Agent Trace 与运行指标路线（路线图 4.1）；服务端工具注册表、统一回合生命周期和主动式能力等后续路线不视为已完成。
+
 ### 17.1 不满意反馈
 
 - 每条成功回答仅提供一个低调的“不满意”按钮；Chat Mode 位于该回答底部，Report Mode 位于对应 Deep Window 底部。成功提交后按钮变为“已反馈”并禁用。

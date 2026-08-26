@@ -142,17 +142,41 @@ def handle_agent_request(target) -> None:
         max_tokens=400,
         timeout=AGENT_PLAN_TIMEOUT_SECONDS,
         temperature=0.1,
+        return_metadata=True,
     )
     if result is None:
         send_json(target, 200, {"ok": False, "error": "LLM unavailable"})
         return
+    telemetry = {
+        "provider": result.get("provider"),
+        "model": result.get("model"),
+        "usageAvailable": bool(result.get("usageAvailable")),
+        "inputTokens": result.get("inputTokens"),
+        "outputTokens": result.get("outputTokens"),
+        "totalTokens": result.get("totalTokens"),
+        "inputBytes": length,
+        "errorCode": result.get("errorCode"),
+    }
+    if result.get("ok") is False:
+        send_json(
+            target,
+            200,
+            {
+                "ok": False,
+                "error": "LLM unavailable" if result.get("errorCode") == "llm_unavailable" else "LLM provider unavailable",
+                "telemetry": telemetry,
+            },
+        )
+        return
+    tool_calls = result.get("tool_calls") or result.get("toolCalls") or []
     send_json(
         target,
         200,
         {
             "ok": True,
             "content": result.get("content"),
-            "toolCalls": result.get("tool_calls") or [],
-            "finishReason": "tool_calls" if result.get("tool_calls") else "stop",
+            "toolCalls": tool_calls,
+            "finishReason": result.get("finishReason") or ("tool_calls" if tool_calls else "stop"),
+            "telemetry": telemetry,
         },
     )

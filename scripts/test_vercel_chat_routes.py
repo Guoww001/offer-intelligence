@@ -94,6 +94,27 @@ def main():
         if agent.status != 200 or response_json(agent).get("route") != "agent":
             raise AssertionError("agent route did not dispatch to handle_agent_request")
 
+        stream_path = ROOT / "api" / "chat" / "stream.py"
+        stream_spec = importlib.util.spec_from_file_location("vercel_chat_stream_route", stream_path)
+        stream_module = importlib.util.module_from_spec(stream_spec)
+        stream_spec.loader.exec_module(stream_module)
+        trace_target = FakeTarget()
+        trace_target.path = "/api/chat/stream?operation=agent_trace"
+        trace_target._operation = lambda: "agent_trace"
+
+        def trace_writer(target, method):
+            send_json(target, 200, {"ok": True, "route": "agent_trace", "method": method})
+
+        stream_module.handle_agent_trace = trace_writer
+        stream_module.require_auth = lambda target: True
+        stream_module.handler.do_POST(trace_target)
+        if trace_target.status != 200 or response_json(trace_target).get("route") != "agent_trace":
+            raise AssertionError("Vercel stream operation=agent_trace did not dispatch")
+
+        stream_source = stream_path.read_text(encoding="utf-8")
+        if 'self._operation() == "agent_trace"' not in stream_source:
+            raise AssertionError("Vercel stream route must expose the agent_trace operation")
+
         unknown_route = FakeTarget()
         module.dispatch_request(unknown_route, "POST", "unknown")
         if unknown_route.status != 404:

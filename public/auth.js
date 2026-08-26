@@ -206,7 +206,13 @@
         paymentRecords: offersResp.paymentRecords || [],
         startDate: offersResp.startDate || "",
         endDate: offersResp.endDate || "",
-        sources: { mode: "db", month: offersResp.month, startDate: offersResp.startDate || "", endDate: offersResp.endDate || "" }
+        sources: {
+          mode: "db",
+          month: offersResp.month,
+          startDate: offersResp.startDate || "",
+          endDate: offersResp.endDate || "",
+          checkedAt: offersResp.checkedAt || null
+        }
       };
 
       window.SHEET_REPORT_DATA = {

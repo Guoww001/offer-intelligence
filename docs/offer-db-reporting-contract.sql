@@ -171,3 +171,60 @@ CREATE TABLE IF NOT EXISTS oi_chatbot_answer_feedback (
     FOREIGN KEY (questionEventId) REFERENCES oi_chatbot_question_logs (eventId)
     ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Agent runtime trace. Production setup creates the cnpscy_oi_* names via
+-- scripts/ensure_oi_schema.py; these unprefixed names document the contract.
+CREATE TABLE IF NOT EXISTS oi_agent_runs (
+  runId               CHAR(36) NOT NULL,
+  questionEventId     CHAR(36) NOT NULL,
+  anonymousSessionId  VARCHAR(64) NOT NULL,
+  mode                VARCHAR(16) NOT NULL,
+  language            VARCHAR(8) NOT NULL,
+  status              VARCHAR(16) NOT NULL,
+  startedAt           DATETIME(6) NOT NULL,
+  completedAt         DATETIME(6) DEFAULT NULL,
+  durationMs          BIGINT UNSIGNED DEFAULT NULL,
+  planningBypassed    TINYINT(1) NOT NULL DEFAULT 0,
+  partial             TINYINT(1) NOT NULL DEFAULT 0,
+  fallbackDelivered   TINYINT(1) NOT NULL DEFAULT 0,
+  stoppedByUser       TINYINT(1) NOT NULL DEFAULT 0,
+  plannedToolCalls    INT UNSIGNED NOT NULL DEFAULT 0,
+  executedToolCalls   INT UNSIGNED NOT NULL DEFAULT 0,
+  failedToolCalls     INT UNSIGNED NOT NULL DEFAULT 0,
+  errorCode           VARCHAR(64) DEFAULT NULL,
+  createdAt           DATETIME(6) NOT NULL,
+  PRIMARY KEY (runId),
+  KEY idx_agent_run_question (questionEventId),
+  KEY idx_agent_run_status_started (status, startedAt),
+  KEY idx_agent_run_session_started (anonymousSessionId, startedAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS oi_agent_steps (
+  stepId              CHAR(36) NOT NULL,
+  runId               CHAR(36) NOT NULL,
+  questionEventId     CHAR(36) NOT NULL,
+  sequence            INT UNSIGNED NOT NULL,
+  phase               VARCHAR(16) NOT NULL,
+  toolName            VARCHAR(64) DEFAULT NULL,
+  status              VARCHAR(16) NOT NULL,
+  startedAt           DATETIME(6) DEFAULT NULL,
+  completedAt         DATETIME(6) DEFAULT NULL,
+  durationMs          BIGINT UNSIGNED DEFAULT NULL,
+  provider            VARCHAR(64) DEFAULT NULL,
+  model               VARCHAR(128) DEFAULT NULL,
+  inputBytes          INT UNSIGNED DEFAULT NULL,
+  inputTokens         INT UNSIGNED DEFAULT NULL,
+  outputTokens        INT UNSIGNED DEFAULT NULL,
+  totalTokens         INT UNSIGNED DEFAULT NULL,
+  usageAvailable      TINYINT(1) NOT NULL DEFAULT 0,
+  outputChunks        INT UNSIGNED DEFAULT NULL,
+  dataSource          VARCHAR(16) NOT NULL DEFAULT 'unknown',
+  dataAsOf            VARCHAR(64) DEFAULT NULL,
+  estimated           TINYINT(1) NOT NULL DEFAULT 0,
+  errorCode           VARCHAR(64) DEFAULT NULL,
+  retryCount          INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (stepId),
+  UNIQUE KEY uq_agent_step_run_sequence (runId, sequence),
+  KEY idx_agent_step_question (questionEventId),
+  KEY idx_agent_step_run_phase_status (runId, phase, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

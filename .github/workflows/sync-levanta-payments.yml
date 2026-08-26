@@ -46,6 +46,20 @@ jobs:
           OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
         run: python scripts/ensure_oi_schema.py
 
+      - name: Prune expired Agent Trace rows
+        if: ${{ vars.OFFER_DB_HOST != '' }}
+        continue-on-error: true
+        env:
+          OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
+          OFFER_DB_NAME: ${{ vars.OFFER_DB_NAME }}
+          OFFER_DB_USER: ${{ vars.OFFER_DB_USER }}
+          OFFER_DB_PASSWORD: ${{ secrets.OFFER_DB_PASSWORD }}
+          OFFER_DB_PORT: ${{ vars.OFFER_DB_PORT }}
+        run: |
+          if ! python scripts/prune_agent_trace.py; then
+            echo "::warning::Agent Trace pruning failed; payment sync continues"
+          fi
+
       - name: Sync Levanta payment records to DB
         env:
           OFFER_DB_HOST: ${{ vars.OFFER_DB_HOST }}
