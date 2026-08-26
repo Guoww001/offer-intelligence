@@ -1351,6 +1351,10 @@
       "revenueFlow.canvasResetView": "重置视图",
       "revenueFlow.canvasLabel": "可交互的 Revenue 流向画布",
       "revenueFlow.canvasToolbar": "画布控制",
+      "revenueFlow.flowTitle": "Flow 详情",
+      "revenueFlow.flowRevenue": "Revenue",
+      "revenueFlow.flowSourceShare": "来源占比",
+      "revenueFlow.flowTargetShare": "去向占比",
       "label.All markets": "全市场",
       "label.All": "全部",
       "action.search": "搜索",
@@ -20535,6 +20539,10 @@ var _NUMERIC_COL_PATTERNS = [
         bottom: Math.max(entry.sourceBottom, entry.targetBottom)
       };
     });
+    var linkByIndex = {};
+    links.forEach(function (link) {
+      linkByIndex[link.index] = link;
+    });
     return {
       width: graphWidth,
       surfaceWidth: surfaceWidth,
@@ -20552,6 +20560,7 @@ var _NUMERIC_COL_PATTERNS = [
       nodeGap: nodeGap,
       nodes: nodes,
       links: links,
+      linkByIndex: linkByIndex,
       layoutById: layoutById
     };
   }
@@ -20612,6 +20621,288 @@ var _NUMERIC_COL_PATTERNS = [
     var node = model && model.nodeById ? model.nodeById[next] : null;
     if (!node || (node.type !== "product" && node.type !== "media")) return current;
     return current === next ? "" : next;
+  }
+
+  function _brandMediaSankeyFlowDetail(model, link) {
+    if (!model || !link || !model.nodeById) return null;
+    var source = model.nodeById[link.source];
+    var target = model.nodeById[link.target];
+    if (!source || !target) return null;
+    function nodeLabel(node) {
+      return node.type === "product"
+        ? _brandMediaSankeyProductAsin(node)
+        : _brandMediaSankeyLabel(node.label, 64);
+    }
+    var brandIdByProductId = model.brandIdByProductId || {};
+    var brand = source.type === "brand"
+      ? source
+      : model.nodeById[link.brandId || brandIdByProductId[source.id]];
+    return {
+      index: Number(link.index),
+      sourceId: source.id,
+      sourceType: source.type,
+      sourceLabel: nodeLabel(source),
+      targetId: target.id,
+      targetType: target.type,
+      targetLabel: nodeLabel(target),
+      brandLabel: brand ? _brandMediaSankeyLabel(brand.label, 64) : "",
+      value: Number(link.value || 0),
+      sourceShare: Number(link.sourceShare || 0),
+      targetShare: Number(link.targetShare || 0),
+      sourceTotal: Number(link.sourceTotal || 0),
+      targetTotal: Number(link.targetTotal || 0)
+    };
+  }
+
+  function _brandMediaSankeyCubicAt(start, startControl, endControl, end, ratio) {
+    var inverse = 1 - ratio;
+    return inverse * inverse * inverse * start +
+      3 * inverse * inverse * ratio * startControl +
+      3 * inverse * ratio * ratio * endControl +
+      ratio * ratio * ratio * end;
+  }
+
+  function _brandMediaSankeyRibbonRatio(link, x) {
+    var startX = Number(link.startX || 0);
+    var endX = Number(link.endX || 0);
+    var span = endX - startX;
+    if (span <= 0) return 0;
+    var ratio = Math.min(1, Math.max(0, (x - startX) / span));
+    var curve = Math.max(0, Number(link.curve || 0));
+    for (var iteration = 0; iteration < 4; iteration += 1) {
+      var currentX = _brandMediaSankeyCubicAt(
+        startX,
+        startX + curve,
+        endX - curve,
+        endX,
+        ratio
+      );
+      var inverse = 1 - ratio;
+      var derivative = 3 * inverse * inverse * (startX + curve - startX) +
+        6 * inverse * ratio * (endX - curve - startX - curve) +
+        3 * ratio * ratio * (endX - (endX - curve));
+      if (Math.abs(derivative) < 0.001) break;
+      ratio = Math.min(1, Math.max(0, ratio - (currentX - x) / derivative));
+    }
+    return ratio;
+  }
+
+  function _brandMediaSankeyFlowHitTest(layout, x, y, allowedLinkIndexes) {
+    if (!layout || !layout.linkByIndex || !allowedLinkIndexes ||
+        typeof allowedLinkIndexes.forEach !== "function") return null;
+    var pointX = Number(x);
+    var pointY = Number(y);
+    if (!Number.isFinite(pointX) || !Number.isFinite(pointY)) return null;
+    var closest = null;
+    var closestScore = Infinity;
+    allowedLinkIndexes.forEach(function (index) {
+      var link = layout.linkByIndex[index];
+      if (!link) return;
+      var startX = Number(link.startX || 0);
+      var endX = Number(link.endX || 0);
+      if (pointX < startX - 4 || pointX > endX + 4) return;
+      var ratio = _brandMediaSankeyRibbonRatio(link, pointX);
+      var top = _brandMediaSankeyCubicAt(
+        link.sourceTop,
+        link.sourceTop,
+        link.targetTop,
+        link.targetTop,
+        ratio
+      );
+      var bottom = _brandMediaSankeyCubicAt(
+        link.sourceBottom,
+        link.sourceBottom,
+        link.targetBottom,
+        link.targetBottom,
+        ratio
+      );
+      var thickness = Math.max(0, bottom - top);
+      var tolerance = Math.max(3, Math.min(12, thickness * 0.22));
+      if (pointY < top - tolerance || pointY > bottom + tolerance) return;
+      var score = Math.abs(pointY - (top + bottom) / 2) / Math.max(1, thickness);
+      if (score < closestScore) {
+        closest = link;
+        closestScore = score;
+      }
+    });
+    return closest;
+  }
+
+  function _brandMediaSankeyFlowPercent(value) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "0%";
+    var percent = Math.round(Math.max(0, numeric) * 1000) / 10;
+    return String(percent).replace(/\.0$/, "") + "%";
+  }
+
+  function _brandMediaSankeyFlowTooltip(chart) {
+    return chart && chart.querySelector
+      ? chart.querySelector("[data-brand-media-sankey-flow-tooltip]")
+      : null;
+  }
+
+  function _brandMediaSankeyFlowTooltipPosition(
+    chartRect,
+    viewportRect,
+    clientX,
+    clientY,
+    tooltipWidth,
+    tooltipHeight,
+    scrollLeft,
+    scrollTop
+  ) {
+    var chartLeft = Number(chartRect && chartRect.left || 0);
+    var chartTop = Number(chartRect && chartRect.top || 0);
+    var viewportLeft = Number(viewportRect && viewportRect.left || 0) - chartLeft;
+    var viewportTop = Number(viewportRect && viewportRect.top || 0) - chartTop;
+    var viewportWidth = Math.max(
+      0,
+      Number(viewportRect && viewportRect.right || 0) -
+      Number(viewportRect && viewportRect.left || 0)
+    );
+    var viewportHeight = Math.max(
+      0,
+      Number(viewportRect && viewportRect.bottom || 0) -
+      Number(viewportRect && viewportRect.top || 0)
+    );
+    var horizontalScroll = Math.max(0, Number(scrollLeft || 0));
+    var verticalScroll = Math.max(0, Number(scrollTop || 0));
+    var visibleX = Number(clientX || 0) - Number(viewportRect && viewportRect.left || 0);
+    var visibleY = Number(clientY || 0) - Number(viewportRect && viewportRect.top || 0);
+    var localX = viewportLeft + horizontalScroll + visibleX;
+    var localY = viewportTop + verticalScroll + visibleY;
+    var width = Math.max(0, Number(tooltipWidth || 0));
+    var height = Math.max(0, Number(tooltipHeight || 0));
+    var left = localX;
+    var edge = "center";
+    if (visibleX < width / 2 + 8) {
+      left = viewportLeft + horizontalScroll + 8;
+      edge = "start";
+    } else if (visibleX > viewportWidth - width / 2 - 8) {
+      left = viewportLeft + horizontalScroll + viewportWidth - 8;
+      edge = "end";
+    }
+    var minimumTop = viewportTop + verticalScroll + 8;
+    var maximumTop = Math.max(minimumTop, viewportTop + verticalScroll + viewportHeight - height - 8);
+    var top = Math.min(maximumTop, Math.max(minimumTop, localY + 16));
+    return {
+      left: left,
+      top: top,
+      edge: edge,
+      placement: "below"
+    };
+  }
+
+  function _brandMediaSankeyClearFlowTooltip(chart) {
+    if (!chart) return;
+    var tooltip = _brandMediaSankeyFlowTooltip(chart);
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    var wasVisible = chart._brandMediaSankeyFlowHoverIndex != null || (tooltip && !tooltip.hidden);
+    chart._brandMediaSankeyFlowHoverIndex = null;
+    if (viewport) viewport.classList.remove("has-flow-hover");
+    if (!tooltip || !wasVisible) return;
+    tooltip.hidden = true;
+    tooltip.innerHTML = "";
+    tooltip.removeAttribute("data-edge");
+    tooltip.removeAttribute("data-placement");
+  }
+
+  function _brandMediaSankeyRenderFlowTooltip(chart, detail, event) {
+    var tooltip = _brandMediaSankeyFlowTooltip(chart);
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    if (!tooltip || !viewport || !detail || !event) return;
+    if (chart._brandMediaSankeyFlowHoverIndex !== detail.index) {
+      var copy = chart._brandMediaSankeyCanvasCopy || {};
+      tooltip.innerHTML =
+        '<div class="brand-media-sankey-flow-tooltip-title">' +
+        escapeHtml(copy.flowTitle || "Flow detail") + '</div>' +
+        '<div class="brand-media-sankey-flow-tooltip-path">' +
+        '<span>' + escapeHtml(detail.sourceLabel) + '</span>' +
+        '<span class="brand-media-sankey-flow-tooltip-arrow" aria-hidden="true">→</span>' +
+        '<span>' + escapeHtml(detail.targetLabel) + '</span></div>' +
+        '<div class="brand-media-sankey-flow-tooltip-row"><span>' +
+        escapeHtml(copy.flowRevenue || "Revenue") + '</span><strong>' +
+        escapeHtml(_brandMediaMoney(detail.value)) + '</strong></div>' +
+        '<div class="brand-media-sankey-flow-tooltip-row"><span>' +
+        escapeHtml(copy.flowSourceShare || "Source share") + '</span><strong>' +
+        escapeHtml(_brandMediaSankeyFlowPercent(detail.sourceShare)) + '</strong></div>' +
+        '<div class="brand-media-sankey-flow-tooltip-row"><span>' +
+        escapeHtml(copy.flowTargetShare || "Target share") + '</span><strong>' +
+        escapeHtml(_brandMediaSankeyFlowPercent(detail.targetShare)) + '</strong></div>';
+      chart._brandMediaSankeyFlowHoverIndex = detail.index;
+    }
+    tooltip.hidden = false;
+    viewport.classList.add("has-flow-hover");
+    var viewportRect = viewport.getBoundingClientRect
+      ? viewport.getBoundingClientRect()
+      : {
+        left: 0,
+        top: 0,
+        right: Number(viewport.clientWidth || 0),
+        bottom: Number(viewport.clientHeight || 0)
+      };
+    var tooltipWidth = Number(tooltip.offsetWidth || 240);
+    var tooltipHeight = Number(tooltip.offsetHeight || 132);
+    var position = _brandMediaSankeyFlowTooltipPosition(
+      viewportRect,
+      viewportRect,
+      event.clientX,
+      event.clientY,
+      tooltipWidth,
+      tooltipHeight,
+      viewport.scrollLeft,
+      viewport.scrollTop
+    );
+    tooltip.style.left = position.left + "px";
+    tooltip.style.top = position.top + "px";
+    tooltip.setAttribute("data-edge", position.edge);
+    tooltip.setAttribute("data-placement", position.placement);
+  }
+
+  function _brandMediaSankeyFlowPoint(chart, event) {
+    var viewport = _brandMediaSankeyCanvasViewport(chart);
+    if (!viewport || !event) return null;
+    var rect = viewport.getBoundingClientRect ? viewport.getBoundingClientRect() : { left: 0, top: 0 };
+    var view = chart._brandMediaSankeyCanvasView || { scale: 1 };
+    var scale = Math.max(0.01, Number(view.scale || 1));
+    var viewportX = event.clientX - rect.left;
+    var viewportY = event.clientY - rect.top;
+    return {
+      x: (Number(viewport.scrollLeft || 0) + viewportX) / scale,
+      y: (Number(viewport.scrollTop || 0) + viewportY) / scale
+    };
+  }
+
+  function _brandMediaSankeyUpdateFlowHover(chart, event) {
+    if (!chart || !event) return;
+    var focusMode = String(chart._brandMediaSankeyFocusMode || "");
+    if (!chart._brandMediaSankeyLockedNodeId || focusMode !== "locked" ||
+        !chart._brandMediaSankeyFocus || !chart._brandMediaSankeyFocus.linkIndexes ||
+        (chart.classList && chart.classList.contains("is-scrolling")) ||
+        chart._brandMediaSankeyPanMode || chart._brandMediaSankeySpacePan ||
+        chart._brandMediaSankeyPanning) {
+      _brandMediaSankeyClearFlowTooltip(chart);
+      return;
+    }
+    if (_brandMediaSankeyNodeFromTarget(chart, event.target)) {
+      _brandMediaSankeyClearFlowTooltip(chart);
+      return;
+    }
+    var point = _brandMediaSankeyFlowPoint(chart, event);
+    var link = point
+      ? _brandMediaSankeyFlowHitTest(
+        chart._brandMediaSankeyLayout,
+        point.x,
+        point.y,
+        chart._brandMediaSankeyFocus.linkIndexes
+      )
+      : null;
+    var detail = link ? _brandMediaSankeyFlowDetail(chart._brandMediaSankeyModel, link) : null;
+    if (!detail) {
+      _brandMediaSankeyClearFlowTooltip(chart);
+      return;
+    }
+    _brandMediaSankeyRenderFlowTooltip(chart, detail, event);
   }
 
   function _brandMediaSankeyCanvasViewport(chart) {
@@ -20796,6 +21087,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function _brandMediaSankeyClearHover(chart) {
     if (!chart) return;
+    _brandMediaSankeyClearFlowTooltip(chart);
     var lockedNodeId = String(chart._brandMediaSankeyLockedNodeId || "");
     var model = chart._brandMediaSankeyModel;
     if (lockedNodeId && model && model.nodeById && model.nodeById[lockedNodeId]) {
@@ -20807,6 +21099,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function _brandMediaSankeyClearFocus(chart) {
     if (!chart) return;
+    _brandMediaSankeyClearFlowTooltip(chart);
     chart._brandMediaSankeyFocus = null;
     chart._brandMediaSankeyHoverNodeId = "";
     chart._brandMediaSankeyActiveNodeId = "";
@@ -20867,6 +21160,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   function _brandMediaSankeyToggleLockedNode(chart, nodeId) {
     if (!chart || !chart._brandMediaSankeyModel) return;
+    _brandMediaSankeyClearFlowTooltip(chart);
     var nextNodeId = _brandMediaSankeyToggleSelection(
       chart._brandMediaSankeyModel,
       chart._brandMediaSankeyLockedNodeId,
@@ -20930,6 +21224,7 @@ var _NUMERIC_COL_PATTERNS = [
     });
     chart.addEventListener("pointerleave", function () {
       _brandMediaSankeyClearHover(chart);
+      _brandMediaSankeyClearFlowTooltip(chart);
     });
     chart.addEventListener("focusout", function (event) {
       if (!event.relatedTarget || !chart.contains(event.relatedTarget)) _brandMediaSankeyClearHover(chart);
@@ -20943,6 +21238,7 @@ var _NUMERIC_COL_PATTERNS = [
     chart._brandMediaSankeyScrollTarget = scrollTarget;
     scrollTarget.addEventListener("scroll", function () {
       if (chart.classList) chart.classList.add("is-scrolling");
+      _brandMediaSankeyClearFlowTooltip(chart);
       if (chart._brandMediaSankeyScrollTimer) clearTimeout(chart._brandMediaSankeyScrollTimer);
       chart._brandMediaSankeyScrollTimer = setTimeout(function () {
         chart._brandMediaSankeyScrollTimer = null;
@@ -21049,6 +21345,13 @@ var _NUMERIC_COL_PATTERNS = [
       viewport.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
       event.preventDefault();
     });
+    viewport.addEventListener("pointermove", function (event) {
+      if (pan) return;
+      _brandMediaSankeyUpdateFlowHover(chart, event);
+    });
+    viewport.addEventListener("pointerleave", function () {
+      _brandMediaSankeyClearFlowTooltip(chart);
+    });
     viewport.addEventListener("pointerup", stopPan);
     viewport.addEventListener("pointercancel", stopPan);
     viewport.addEventListener("lostpointercapture", stopPan);
@@ -21126,6 +21429,7 @@ var _NUMERIC_COL_PATTERNS = [
     chart._brandMediaSankeyActiveNodeId = "";
     chart._brandMediaSankeyFocusMode = "";
     chart._brandMediaSankeyFocusVersion = 0;
+    chart._brandMediaSankeyFlowHoverIndex = null;
     chart._brandMediaSankeyCanvasView = null;
     chart._brandMediaSankeyCanvasCopy = null;
     chart._brandMediaSankeyPanMode = false;
@@ -21234,7 +21538,11 @@ var _NUMERIC_COL_PATTERNS = [
       zoomIn: copy("canvasZoomIn", "Zoom in"),
       resetView: copy("canvasResetView", "Reset view"),
       canvasLabel: copy("canvasLabel", "Interactive Revenue flow canvas"),
-      toolbarLabel: copy("canvasToolbar", "Canvas controls")
+      toolbarLabel: copy("canvasToolbar", "Canvas controls"),
+      flowTitle: copy("flowTitle", "Flow detail"),
+      flowRevenue: copy("flowRevenue", "Revenue"),
+      flowSourceShare: copy("flowSourceShare", "Source share"),
+      flowTargetShare: copy("flowTargetShare", "Target share")
     };
     var canvasCopy = chart._brandMediaSankeyCanvasCopy;
     chart.innerHTML = '<div class="brand-media-sankey-canvas-viewport" data-brand-media-sankey-canvas tabindex="0" role="group" aria-label="' +
@@ -21249,6 +21557,7 @@ var _NUMERIC_COL_PATTERNS = [
       }).join("") +
       '<div class="brand-media-sankey-node-layer"></div>' +
       '</div></div>' +
+      '<div class="brand-media-sankey-flow-tooltip" data-brand-media-sankey-flow-tooltip hidden role="status" aria-live="polite"></div>' +
       '<div class="brand-media-sankey-canvas-toolbar" role="toolbar" aria-label="' + escapeHtml(canvasCopy.toolbarLabel) + '">' +
       '<button type="button" class="brand-media-sankey-canvas-pan" data-brand-media-sankey-canvas-action="toggle-pan" aria-pressed="false" aria-label="' + escapeHtml(canvasCopy.pan) +
       '" title="' + escapeHtml(canvasCopy.pan) + '"><span aria-hidden="true">✋</span></button>' +
@@ -31663,6 +31972,9 @@ var _NUMERIC_COL_PATTERNS = [
       brandMediaSankeyTileLayout: _brandMediaBuildSankeyTileLayout,
       brandMediaSankeyProductAsin: _brandMediaSankeyProductAsin,
       brandMediaSankeyHoverState: _brandMediaSankeyHoverState,
+      brandMediaSankeyFlowDetail: _brandMediaSankeyFlowDetail,
+      brandMediaSankeyFlowHitTest: _brandMediaSankeyFlowHitTest,
+      brandMediaSankeyFlowTooltipPosition: _brandMediaSankeyFlowTooltipPosition,
       brandMediaSankeyToggleSelection: _brandMediaSankeyToggleSelection,
       revenueFlowSelectedMerchants: _revenueFlowSelectedMerchants,
       revenueFlowSelectedIds: _revenueFlowSelectedIds,
