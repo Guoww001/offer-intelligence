@@ -500,6 +500,17 @@
       requestKey: "",
       requestSequence: 0
     },
+    googleAds: {
+      userId: "19",
+      startDate: "",
+      endDate: "",
+      quickRange: "60",
+      loading: false,
+      error: "",
+      payload: null,
+      requestKey: "",
+      requestSequence: 0
+    },
     targetOverrides: loadTargetOverrides(),
     targetEditingKey: "",
     targetSort: {
@@ -672,6 +683,22 @@
     revenueFlowChart: document.getElementById("revenueFlowChart"),
     revenueFlowChartExpand: document.getElementById("revenueFlowChartExpand"),
     revenueFlowCount: document.getElementById("revenueFlowCount"),
+    googleAdsNav: document.getElementById("googleAdsNav"),
+    googleAdsPage: document.getElementById("googleAdsPage"),
+    googleAdsIdentity: document.getElementById("googleAdsIdentity"),
+    googleAdsAccountName: document.getElementById("googleAdsAccountName"),
+    googleAdsAccountMeta: document.getElementById("googleAdsAccountMeta"),
+    googleAdsRangeButtons: document.getElementById("googleAdsRangeButtons"),
+    googleAdsStartDate: document.getElementById("googleAdsStartDate"),
+    googleAdsEndDate: document.getElementById("googleAdsEndDate"),
+    googleAdsRefresh: document.getElementById("googleAdsRefresh"),
+    googleAdsStatus: document.getElementById("googleAdsStatus"),
+    googleAdsKpis: document.getElementById("googleAdsKpis"),
+    googleAdsChart: document.getElementById("googleAdsChart"),
+    googleAdsMerchantRows: document.getElementById("googleAdsMerchantRows"),
+    googleAdsMerchantCount: document.getElementById("googleAdsMerchantCount"),
+    googleAdsUnmatchedList: document.getElementById("googleAdsUnmatchedList"),
+    googleAdsMethod: document.getElementById("googleAdsMethod"),
     publisherSelectorSearch: document.getElementById("publisherSelectorSearch"),
     publisherSelectorDropdown: document.getElementById("publisherSelectorDropdown"),
     publisherStartDate: document.getElementById("publisherStartDate"),
@@ -998,6 +1025,7 @@
       "nav.agent": "Agent",
       "nav.payments": "付款",
       "nav.publishers": "媒体",
+      "nav.googleAds": "Google 广告",
       "nav.brandMedia": "品牌媒体趋势",
       "nav.revenueFlow": "Revenue 流向",
       "nav.reports": "报表",
@@ -1340,6 +1368,50 @@
       "revenueFlow.totalRevenue": "Revenue",
       "revenueFlow.linkCount": "条流向",
       "revenueFlow.expandChart": "展开图表",
+      "googleAds.title": "Google 广告工作台",
+      "googleAds.subtitle": "连接 Google 广告投放与媒体 ID 19 的 Amazon 商家级后台回传。",
+      "googleAds.account": "Google Ads 账户",
+      "googleAds.accountPending": "等待账户数据",
+      "googleAds.timeRange": "时间跨度",
+      "googleAds.startDate": "开始日期",
+      "googleAds.endDate": "结束日期",
+      "googleAds.refresh": "刷新",
+      "googleAds.joinNote": "按商家 × 日期保守连接；未匹配花费会继续单独展示。",
+      "googleAds.trendTitle": "每日花费与后台 Revenue",
+      "googleAds.trendSubtitle": "柱形表示 Google 花费，折线表示 YeahPromos Amazon Revenue。",
+      "googleAds.spend": "广告花费",
+      "googleAds.backendRevenue": "后台 Revenue",
+      "googleAds.merchantTitle": "商家连接表",
+      "googleAds.merchantSubtitle": "后台结果按商家只统计一次；Google campaign 汇总到匹配品牌。",
+      "googleAds.merchant": "商家",
+      "googleAds.match": "连接状态",
+      "googleAds.campaigns": "Campaign",
+      "googleAds.googleClicks": "Google 点击",
+      "googleAds.backendClicks": "后台点击",
+      "googleAds.orders": "订单",
+      "googleAds.roas": "商家级 ROAS",
+      "googleAds.cpa": "单均花费",
+      "googleAds.unmatchedTitle": "未匹配 Google campaign",
+      "googleAds.unmatchedSubtitle": "在匹配商家别名或 ASIN 前，相关花费会继续保留。",
+      "googleAds.methodTitle": "数据口径",
+      "googleAds.methodSubtitle": "展示连接范围，以及刻意保持分离的数据。",
+      "googleAds.loading": "正在读取 Google Ads 与后台回传…",
+      "googleAds.loaded": "数据已连接：{campaigns} 个 campaign，{merchants} 个商家。",
+      "googleAds.error": "无法读取 Google Ads 工作台，请检查服务端配置后重试。",
+      "googleAds.empty": "当前时间范围没有可展示的数据。",
+      "googleAds.matchName": "品牌名匹配",
+      "googleAds.matchAsin": "ASIN 匹配",
+      "googleAds.matchManual": "手动别名",
+      "googleAds.unmatched": "未匹配",
+      "googleAds.matchedSpend": "已匹配花费",
+      "googleAds.coverage": "花费匹配率",
+      "googleAds.nativeConversions": "Google 原生转化",
+      "googleAds.merchantRoas": "商家级 ROAS",
+      "googleAds.sourceGoogle": "Google 来源",
+      "googleAds.sourceBackend": "后台来源",
+      "googleAds.joinGrain": "连接粒度",
+      "googleAds.joinRule": "连接规则",
+      "googleAds.caveat": "归因边界",
       "revenueFlow.collapseChart": "退出展开视图",
       "revenueFlow.canvasHint": "拖动任意位置即可向左、右、上、下平移；按住 Space 可临时使用抓手工具",
       "revenueFlow.canvasControls": "拖动平移 · Shift+滚轮横向滚动 · Ctrl/⌘+滚轮缩放 · 点击单品或媒体锁定关联",
@@ -2215,6 +2287,8 @@
       renderOfferListTrackerPage();
     } else if (state.page === "brand-media") {
       renderBrandMediaPage();
+    } else if (state.page === "google-ads") {
+      renderGoogleAdsPage();
     } else if (state.page === "agent") {
       // Agent 页面内容由独立会话状态维护，语言切换只需更新静态文案。
     } else {
@@ -22296,6 +22370,374 @@ var _NUMERIC_COL_PATTERNS = [
     });
   }
 
+  function _googleAdsSetQuickRange(days) {
+    var end = new Date();
+    end.setHours(12, 0, 0, 0);
+    end.setDate(end.getDate() - 1);
+    var start = new Date(end.getTime());
+    start.setDate(start.getDate() - Math.max(1, Number(days || 60)) + 1);
+    state.googleAds.quickRange = String(days || 60);
+    state.googleAds.startDate = _brandMediaIsoDate(start);
+    state.googleAds.endDate = _brandMediaIsoDate(end);
+  }
+
+  function _googleAdsSyncControls() {
+    var current = state.googleAds;
+    if (!current.startDate || !current.endDate) _googleAdsSetQuickRange(current.quickRange || 60);
+    if (els.googleAdsStartDate) els.googleAdsStartDate.value = current.startDate || "";
+    if (els.googleAdsEndDate) els.googleAdsEndDate.value = current.endDate || "";
+    if (els.googleAdsRangeButtons) {
+      els.googleAdsRangeButtons.querySelectorAll("[data-google-ads-range]").forEach(function (button) {
+        button.classList.toggle("active", String(button.dataset.googleAdsRange) === String(current.quickRange || ""));
+      });
+    }
+    if (els.googleAdsRefresh) {
+      els.googleAdsRefresh.disabled = Boolean(current.loading);
+      els.googleAdsRefresh.classList.toggle("is-loading", Boolean(current.loading));
+    }
+  }
+
+  function _googleAdsSetStatus(text, kind) {
+    if (!els.googleAdsStatus) return;
+    els.googleAdsStatus.textContent = text || "";
+    els.googleAdsStatus.dataset.kind = kind || "";
+  }
+
+  function _googleAdsPercent(value, digits) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "—";
+    return (numeric * 100).toLocaleString(undefined, {
+      minimumFractionDigits: digits == null ? 1 : digits,
+      maximumFractionDigits: digits == null ? 1 : digits
+    }) + "%";
+  }
+
+  function _googleAdsRatio(value) {
+    var numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(2) + "×" : "—";
+  }
+
+  function _googleAdsCompactMoney(value) {
+    var numeric = Number(value || 0);
+    var absolute = Math.abs(numeric);
+    if (absolute >= 1000000) return "$" + (numeric / 1000000).toFixed(1) + "m";
+    if (absolute >= 1000) return "$" + (numeric / 1000).toFixed(1) + "k";
+    return "$" + numeric.toFixed(0);
+  }
+
+  function _googleAdsMatchLabel(method) {
+    var value = String(method || "");
+    if (value.indexOf("manual_alias") !== -1) return t("googleAds.matchManual", "Manual alias");
+    if (value.indexOf("asin") !== -1) return t("googleAds.matchAsin", "ASIN match");
+    if (value.indexOf("merchant_name") !== -1) return t("googleAds.matchName", "Brand name");
+    return t("googleAds.unmatched", "Unmatched");
+  }
+
+  function _googleAdsRenderAccount(payload) {
+    var account = payload && payload.googleAds || {};
+    var publisher = payload && payload.publisher || {};
+    if (els.googleAdsIdentity) {
+      var strong = els.googleAdsIdentity.querySelector("strong");
+      var small = els.googleAdsIdentity.querySelector("small");
+      if (strong) strong.textContent = String(publisher.userName || "asdf260821");
+      if (small) small.textContent = "MEDIA ID " + String(publisher.userId || 19);
+    }
+    if (els.googleAdsAccountName) {
+      els.googleAdsAccountName.textContent = account.descriptiveName || "—";
+    }
+    if (els.googleAdsAccountMeta) {
+      var customerId = String(account.customerId || "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3");
+      var metadata = [customerId, account.currencyCode, account.timeZone, account.apiVersion].filter(Boolean);
+      els.googleAdsAccountMeta.textContent = metadata.length
+        ? metadata.join(" · ")
+        : t("googleAds.accountPending", "Waiting for account data");
+    }
+  }
+
+  function _googleAdsRenderKpis(payload) {
+    if (!els.googleAdsKpis) return;
+    var summary = payload && payload.summary;
+    if (!summary) {
+      els.googleAdsKpis.innerHTML = "";
+      return;
+    }
+    var items = [
+      {
+        label: t("googleAds.spend", "Google spend"),
+        value: _brandMediaMoney(summary.spend),
+        note: _brandMediaCount(summary.impressions) + " impressions"
+      },
+      {
+        label: t("googleAds.googleClicks", "Google clicks"),
+        value: _brandMediaCount(summary.googleClicks),
+        note: "CTR " + _googleAdsPercent(summary.googleCtr, 2)
+      },
+      {
+        label: t("googleAds.orders", "Backend orders"),
+        value: _brandMediaCount(summary.orders),
+        note: _brandMediaCount(summary.backendClicks) + " " + t("googleAds.backendClicks", "backend clicks")
+      },
+      {
+        label: t("googleAds.backendRevenue", "Backend Revenue"),
+        value: _brandMediaMoney(summary.revenue),
+        note: _brandMediaMoney(summary.affCommission) + " AFF"
+      },
+      {
+        label: t("googleAds.coverage", "Spend match rate"),
+        value: _googleAdsPercent(summary.matchCoverageBySpend, 1),
+        note: _brandMediaMoney(summary.matchedSpend) + " " + t("googleAds.matchedSpend", "matched spend")
+      },
+      {
+        label: t("googleAds.merchantRoas", "Merchant-level ROAS"),
+        value: _googleAdsRatio(summary.merchantLevelRoas),
+        note: _brandMediaCount(summary.nativeConversions) + " " + t("googleAds.nativeConversions", "Google native conversions")
+      }
+    ];
+    els.googleAdsKpis.innerHTML = items.map(function (item) {
+      return '<article class="google-ads-kpi"><span>' + escapeHtml(item.label) + '</span><strong>' +
+        escapeHtml(item.value) + '</strong><small>' + escapeHtml(item.note) + '</small></article>';
+    }).join("");
+  }
+
+  function _googleAdsRenderChart(payload) {
+    if (!els.googleAdsChart) return;
+    var rows = payload && Array.isArray(payload.daily) ? payload.daily : [];
+    var hasData = rows.some(function (row) {
+      return Number(row.spend || 0) > 0 || Number(row.revenue || 0) > 0;
+    });
+    if (!rows.length || !hasData) {
+      els.googleAdsChart.innerHTML = '<div class="google-ads-chart-empty">' +
+        escapeHtml(t("googleAds.empty", "No data is available for this date range.")) + '</div>';
+      els.googleAdsChart.setAttribute("aria-label", t("googleAds.empty", "No data is available for this date range."));
+      return;
+    }
+    var width = Math.max(760, rows.length * 16 + 94);
+    var height = 292;
+    var margin = { top: 20, right: 44, bottom: 35, left: 50 };
+    var innerWidth = width - margin.left - margin.right;
+    var innerHeight = height - margin.top - margin.bottom;
+    var step = innerWidth / rows.length;
+    var barWidth = Math.max(3, Math.min(10, step * .58));
+    var maxSpend = Math.max.apply(null, rows.map(function (row) { return Number(row.spend || 0); })) || 1;
+    var maxRevenue = Math.max.apply(null, rows.map(function (row) { return Number(row.revenue || 0); })) || 1;
+    var grid = [0, .25, .5, .75, 1].map(function (ratio) {
+      var y = margin.top + innerHeight * (1 - ratio);
+      return '<line class="google-ads-chart-grid" x1="' + margin.left + '" y1="' + y.toFixed(2) +
+        '" x2="' + (width - margin.right) + '" y2="' + y.toFixed(2) + '"></line>' +
+        '<text class="google-ads-chart-axis" x="' + (margin.left - 8) + '" y="' + (y + 3).toFixed(2) +
+        '" text-anchor="end">' + escapeHtml(_googleAdsCompactMoney(maxRevenue * ratio)) + '</text>' +
+        '<text class="google-ads-chart-axis" x="' + (width - margin.right + 8) + '" y="' + (y + 3).toFixed(2) +
+        '" text-anchor="start">' + escapeHtml(_googleAdsCompactMoney(maxSpend * ratio)) + '</text>';
+    }).join("");
+    var bars = rows.map(function (row, index) {
+      var value = Number(row.spend || 0);
+      var barHeight = Math.max(0, value / maxSpend * innerHeight);
+      var x = margin.left + index * step + (step - barWidth) / 2;
+      var y = margin.top + innerHeight - barHeight;
+      var title = row.date + " · " + t("googleAds.spend", "Spend") + " " + _brandMediaMoney(value) +
+        " · " + t("googleAds.backendRevenue", "Backend Revenue") + " " + _brandMediaMoney(row.revenue);
+      return '<rect class="google-ads-chart-bar" x="' + x.toFixed(2) + '" y="' + y.toFixed(2) +
+        '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '"><title>' +
+        escapeHtml(title) + '</title></rect>';
+    }).join("");
+    var points = rows.map(function (row, index) {
+      return {
+        x: margin.left + index * step + step / 2,
+        y: margin.top + innerHeight - Number(row.revenue || 0) / maxRevenue * innerHeight,
+        row: row
+      };
+    });
+    var line = points.map(function (point, index) {
+      return (index ? "L " : "M ") + point.x.toFixed(2) + " " + point.y.toFixed(2);
+    }).join(" ");
+    var pointMarkup = points.map(function (point) {
+      var title = point.row.date + " · " + t("googleAds.backendRevenue", "Backend Revenue") + " " +
+        _brandMediaMoney(point.row.revenue) + " · " + t("googleAds.orders", "Orders") + " " +
+        _brandMediaCount(point.row.orders);
+      return '<circle class="google-ads-chart-point" cx="' + point.x.toFixed(2) + '" cy="' + point.y.toFixed(2) +
+        '" r="2.5"><title>' + escapeHtml(title) + '</title></circle>';
+    }).join("");
+    var labelEvery = Math.max(1, Math.ceil(rows.length / 8));
+    var xLabels = rows.map(function (row, index) {
+      if (index % labelEvery !== 0 && index !== rows.length - 1) return "";
+      var x = margin.left + index * step + step / 2;
+      return '<text class="google-ads-chart-axis" x="' + x.toFixed(2) + '" y="' + (height - 12) +
+        '" text-anchor="middle">' + escapeHtml(String(row.date || "").slice(5)) + '</text>';
+    }).join("");
+    els.googleAdsChart.innerHTML = '<svg class="google-ads-chart-svg" viewBox="0 0 ' + width + " " + height +
+      '" width="' + width + '" height="' + height + '" role="img" aria-label="' +
+      escapeHtml(t("googleAds.trendTitle", "Spend and backend Revenue by day")) + '">' +
+      grid + bars + '<path class="google-ads-chart-line" d="' + line + '"></path>' + pointMarkup + xLabels + '</svg>';
+    els.googleAdsChart.setAttribute("aria-label", t("googleAds.trendTitle", "Spend and backend Revenue by day"));
+  }
+
+  function _googleAdsRenderMerchantTable(payload) {
+    var rows = payload && Array.isArray(payload.merchants) ? payload.merchants : [];
+    if (els.googleAdsMerchantCount) {
+      els.googleAdsMerchantCount.textContent = rows.length
+        ? _brandMediaCount(rows.length) + " " + t("googleAds.merchant", "merchants")
+        : "";
+    }
+    if (!els.googleAdsMerchantRows) return;
+    if (!rows.length) {
+      els.googleAdsMerchantRows.innerHTML = '<tr><td colspan="10" class="google-ads-empty-cell">' +
+        escapeHtml(t("googleAds.empty", "No data is available for this date range.")) + '</td></tr>';
+      return;
+    }
+    els.googleAdsMerchantRows.innerHTML = rows.map(function (row) {
+      var matched = Number(row.campaignCount || 0) > 0;
+      var campaignNames = (row.campaigns || []).map(function (campaign) { return campaign.campaignName; }).join(" · ");
+      return '<tr><td class="google-ads-merchant-cell"><strong>' + escapeHtml(String(row.merchantName || row.merchantId)) +
+        '</strong><small>ID ' + escapeHtml(String(row.merchantId || "")) + '</small></td><td><span class="google-ads-match-pill' +
+        (matched ? '' : ' unmatched') + '">' + escapeHtml(_googleAdsMatchLabel(row.matchMethod)) + '</span></td><td class="google-ads-numeric" title="' +
+        escapeHtml(campaignNames) + '">' + _brandMediaCount(row.campaignCount) + '</td><td class="google-ads-numeric">' +
+        escapeHtml(_brandMediaMoney(row.spend)) + '</td><td class="google-ads-numeric">' + _brandMediaCount(row.googleClicks) +
+        '</td><td class="google-ads-numeric">' + _brandMediaCount(row.backendClicks) + '</td><td class="google-ads-numeric">' +
+        _brandMediaCount(row.orders) + '</td><td class="google-ads-numeric">' + escapeHtml(_brandMediaMoney(row.revenue)) +
+        '</td><td class="google-ads-numeric">' + escapeHtml(_googleAdsRatio(row.merchantRoas)) +
+        '</td><td class="google-ads-numeric">' + escapeHtml(row.costPerOrder == null ? "—" : _brandMediaMoney(row.costPerOrder)) + '</td></tr>';
+    }).join("");
+  }
+
+  function _googleAdsRenderUnmatched(payload) {
+    if (!els.googleAdsUnmatchedList) return;
+    var rows = payload && Array.isArray(payload.unmatchedCampaigns) ? payload.unmatchedCampaigns : [];
+    if (!rows.length) {
+      els.googleAdsUnmatchedList.innerHTML = '<div class="google-ads-empty-block">' +
+        escapeHtml(t("googleAds.empty", "No unmatched campaigns in this date range.")) + '</div>';
+      return;
+    }
+    els.googleAdsUnmatchedList.innerHTML = rows.slice(0, 12).map(function (row) {
+      return '<div class="google-ads-unmatched-row"><strong title="' + escapeHtml(row.campaignName) + '">' +
+        escapeHtml(row.campaignName) + '</strong><span>' + escapeHtml(_brandMediaMoney(row.spend)) + '</span><span>' +
+        _brandMediaCount(row.googleClicks) + ' clicks</span></div>';
+    }).join("");
+  }
+
+  function _googleAdsRenderMethod(payload) {
+    if (!els.googleAdsMethod) return;
+    var sources = payload && payload.sources || {};
+    if (!payload) {
+      els.googleAdsMethod.innerHTML = "";
+      return;
+    }
+    var items = [
+      [t("googleAds.sourceGoogle", "Google source"), sources.googleAds || "GoogleAdsService.SearchStream"],
+      [t("googleAds.sourceBackend", "Backend source"), sources.backendOrders || "cnpscy_amazon_order"],
+      [t("googleAds.joinGrain", "Join grain"), sources.joinGrain || "merchant + date"],
+      [t("googleAds.joinRule", "Join rule"), sources.joinRule || "merchant name / ASIN / manual alias"],
+      [t("googleAds.caveat", "Attribution boundary"), sources.attributionCaveat || "Merchant-level comparison only"]
+    ];
+    els.googleAdsMethod.innerHTML = items.map(function (item) {
+      return '<dt>' + escapeHtml(item[0]) + '</dt><dd>' + escapeHtml(item[1]) + '</dd>';
+    }).join("");
+  }
+
+  function _googleAdsRenderCurrentView() {
+    var payload = state.googleAds.payload;
+    _googleAdsRenderAccount(payload);
+    _googleAdsRenderKpis(payload);
+    _googleAdsRenderChart(payload);
+    _googleAdsRenderMerchantTable(payload);
+    _googleAdsRenderUnmatched(payload);
+    _googleAdsRenderMethod(payload);
+    _googleAdsSyncControls();
+  }
+
+  function _googleAdsLoad(forceRefresh) {
+    var current = state.googleAds;
+    if (!current.startDate || !current.endDate || current.startDate > current.endDate) {
+      current.error = "invalid-range";
+      _googleAdsSetStatus(t("googleAds.error", "Unable to load the Google Ads workbench. Check the server configuration and retry."), "error");
+      return;
+    }
+    var key = current.userId + "|" + current.startDate + "|" + current.endDate;
+    if (!forceRefresh && current.requestKey === key && current.payload && !current.error) {
+      _googleAdsRenderCurrentView();
+      return;
+    }
+    current.requestKey = key;
+    current.loading = true;
+    current.error = "";
+    var sequence = ++current.requestSequence;
+    _googleAdsSetStatus(t("googleAds.loading", "Loading Google Ads and backend returns..."), "loading");
+    _googleAdsSyncControls();
+    var params = new URLSearchParams({
+      userId: current.userId,
+      startDate: current.startDate,
+      endDate: current.endDate
+    });
+    if (forceRefresh) params.set("refresh", "1");
+    fetch("/api/ui/db/google-ads-workbench?" + params.toString())
+      .then(function (response) {
+        return response.text().then(function (text) {
+          var payload = {};
+          try { payload = text ? JSON.parse(text) : {}; } catch (parseError) {
+            throw new Error("Google Ads workbench returned an invalid response");
+          }
+          if (!response.ok || payload.ok === false) {
+            throw new Error(payload.error || "Failed to load Google Ads workbench");
+          }
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        if (sequence !== current.requestSequence) return;
+        current.loading = false;
+        current.error = "";
+        current.payload = payload;
+        var copy = t("googleAds.loaded", "Connected {campaigns} campaigns to {merchants} backend merchants.");
+        copy = copy.replace("{campaigns}", _brandMediaCount((payload.summary || {}).campaignCount));
+        copy = copy.replace("{merchants}", _brandMediaCount((payload.summary || {}).backendMerchantCount));
+        _googleAdsSetStatus(copy, "success");
+        _googleAdsRenderCurrentView();
+      })
+      .catch(function (error) {
+        if (sequence !== current.requestSequence) return;
+        current.loading = false;
+        current.error = String(error && error.message || "google-ads-load-error");
+        _googleAdsSyncControls();
+        _googleAdsSetStatus(t("googleAds.error", "Unable to load the Google Ads workbench. Check the server configuration and retry."), "error");
+      });
+  }
+
+  function renderGoogleAdsPage() {
+    _googleAdsSyncControls();
+    if (state.googleAds.payload) {
+      _googleAdsRenderCurrentView();
+      return;
+    }
+    if (!state.googleAds.loading) _googleAdsLoad(false);
+  }
+
+  function _bindGoogleAdsPageInteractions() {
+    if (els.googleAdsRangeButtons) {
+      els.googleAdsRangeButtons.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-google-ads-range]");
+        if (!button) return;
+        _googleAdsSetQuickRange(button.dataset.googleAdsRange);
+        state.googleAds.requestKey = "";
+        _googleAdsSyncControls();
+        _googleAdsLoad(false);
+      });
+    }
+    [els.googleAdsStartDate, els.googleAdsEndDate].filter(Boolean).forEach(function (input) {
+      input.addEventListener("change", function () {
+        state.googleAds.startDate = els.googleAdsStartDate.value || "";
+        state.googleAds.endDate = els.googleAdsEndDate.value || "";
+        state.googleAds.quickRange = "";
+        state.googleAds.requestKey = "";
+        _googleAdsSyncControls();
+        _googleAdsLoad(false);
+      });
+    });
+    if (els.googleAdsRefresh) {
+      els.googleAdsRefresh.addEventListener("click", function () {
+        _googleAdsLoad(true);
+      });
+    }
+  }
+
   function getFilteredPublishers(data) {
     if (!data || !data.publishers) return [];
     var market = state.publisherMarket || "all";
@@ -30406,6 +30848,7 @@ var _NUMERIC_COL_PATTERNS = [
       agent: t("nav.agent", "Agent"),
       payments: t("nav.payments", "Payments"),
       publishers: t("nav.publishers", "Publishers"),
+      "google-ads": t("nav.googleAds", "Google Ads"),
       "brand-media": t("nav.brandMedia", "Brand media"),
       "revenue-flow": t("nav.revenueFlow", "Revenue flow"),
       sheets: t("nav.targets", "Targets"),
@@ -30542,6 +30985,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isOfferListTracker = page === "offer-list-tracker";
     const isBrandMedia = page === "brand-media";
     const isRevenueFlow = page === "revenue-flow";
+    const isGoogleAds = page === "google-ads";
     const isReportPage = pageBelongsToReports(page);
     if (isReportPage) state.reportsOpen = true;
     if (isDashboardPage) state.dashboardOpen = true;
@@ -30549,6 +30993,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.dashboardAgentPage) els.dashboardAgentPage.classList.toggle("hidden", !isAgent);
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
+    if (els.googleAdsPage) els.googleAdsPage.classList.toggle("hidden", !isGoogleAds);
     if (els.brandMediaPage) els.brandMediaPage.classList.toggle("hidden", !isBrandMedia);
     if (els.revenueFlowPage) els.revenueFlowPage.classList.toggle("hidden", !isRevenueFlow);
     els.monthlyNewMerchantsPage.classList.toggle("hidden", !isMonthlyNewMerchants);
@@ -30565,6 +31010,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.agentNav) els.agentNav.classList.toggle("active", isAgent);
     els.paymentsNav.classList.toggle("active", page === "payments");
     els.publishersNav.classList.toggle("active", page === "publishers");
+    if (els.googleAdsNav) els.googleAdsNav.classList.toggle("active", isGoogleAds);
     if (els.brandMediaNav) els.brandMediaNav.classList.toggle("active", isBrandMedia);
     if (els.revenueFlowNav) els.revenueFlowNav.classList.toggle("active", isRevenueFlow);
     els.sheetsNav.classList.toggle("active", isReportPage);
@@ -30592,6 +31038,7 @@ var _NUMERIC_COL_PATTERNS = [
     }
     if (isBrandMedia) renderBrandMediaPage();
     if (isRevenueFlow) renderRevenueFlowPage();
+    if (isGoogleAds) renderGoogleAdsPage();
     if (isSheets) renderSheetPage();
     if (isCategory) ensureDashboardCategoryReportData();
     if (isTier) renderTierPage(state.selectedTierPage);
@@ -30771,6 +31218,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.agentNav) els.agentNav.addEventListener("click", () => switchPage("agent"));
     els.paymentsNav.addEventListener("click", () => switchPage("payments"));
     els.publishersNav.addEventListener("click", () => switchPage("publishers"));
+    if (els.googleAdsNav) els.googleAdsNav.addEventListener("click", () => switchPage("google-ads"));
+    _bindGoogleAdsPageInteractions();
     if (els.brandMediaNav) els.brandMediaNav.addEventListener("click", () => switchPage("brand-media"));
     _bindBrandMediaPageInteractions();
     if (els.revenueFlowNav) els.revenueFlowNav.addEventListener("click", () => switchPage("revenue-flow"));

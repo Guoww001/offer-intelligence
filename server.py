@@ -64,6 +64,12 @@ from offer_db import (
     tier_summary_payload,
     upsert_monthly_new_merchant,
 )
+from google_ads_workbench import (
+    DEFAULT_WORKBENCH_USER_ID,
+    GoogleAdsApiError,
+    GoogleAdsConfigError,
+    google_ads_workbench_payload,
+)
 import skills  # noqa: F401 — trigger skill auto-registration before llm_classify uses registry
 from llm_classify import classify_intent, generate_analysis_text
 from llm_provider import stream_chat
@@ -615,6 +621,34 @@ class Handler(BaseHTTPRequestHandler):
                     start_date=first_query_value(query, "startDate") or None,
                     end_date=first_query_value(query, "endDate") or None,
                 ))
+                return
+
+            if parsed.path == "/api/ui/db/google-ads-workbench":
+                user_id = int_query_value(
+                    query,
+                    "userId",
+                    DEFAULT_WORKBENCH_USER_ID,
+                    1,
+                    2_147_483_647,
+                )
+                try:
+                    self.send_json(200, google_ads_workbench_payload(
+                        user_id,
+                        start_date=first_query_value(query, "startDate") or None,
+                        end_date=first_query_value(query, "endDate") or None,
+                        force_refresh=first_query_value(query, "refresh").lower()
+                        in {"1", "true", "yes"},
+                    ))
+                except GoogleAdsConfigError:
+                    self.send_json(503, {
+                        "ok": False,
+                        "error": "Google Ads connection is not configured",
+                    })
+                except GoogleAdsApiError:
+                    self.send_json(502, {
+                        "ok": False,
+                        "error": "Google Ads metrics are temporarily unavailable",
+                    })
                 return
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})

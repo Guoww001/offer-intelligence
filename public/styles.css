@@ -7,6 +7,539 @@
   font-display: swap;
 }
 
+/* Google Ads workbench */
+.google-ads-page {
+  --google-blue: #1769d2;
+  --google-blue-dark: #0d4fa8;
+  --google-cyan: #18a5a8;
+  --google-ink: #142b3b;
+  --google-muted: #667b89;
+  --google-line: #dce6eb;
+  --google-soft: #f4f8fa;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 4px 2px 28px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.google-ads-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.google-ads-eyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--google-blue);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.google-ads-header h2 {
+  margin: 0;
+  color: var(--google-ink);
+  font-size: clamp(28px, 2.6vw, 39px);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+}
+
+.google-ads-header p {
+  max-width: 680px;
+  margin: 8px 0 0;
+  color: var(--google-muted);
+  font-size: 13px;
+}
+
+.google-ads-identity {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--google-line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(20, 43, 59, 0.06);
+}
+
+.google-ads-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #18a56f;
+  box-shadow: 0 0 0 4px rgba(24, 165, 111, 0.12);
+}
+
+.google-ads-identity strong {
+  color: var(--google-ink);
+  font-size: 12px;
+}
+
+.google-ads-identity small {
+  grid-column: 2;
+  margin-top: 2px;
+  color: var(--google-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.google-ads-controls {
+  padding: 14px;
+  border-color: var(--google-line);
+  box-shadow: 0 8px 24px rgba(20, 43, 59, 0.05);
+}
+
+.google-ads-control-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.35fr) minmax(230px, 1.1fr) minmax(150px, .7fr) minmax(150px, .7fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.google-ads-account-card {
+  display: grid;
+  min-height: 62px;
+  align-content: center;
+  padding: 9px 11px;
+  border: 1px solid var(--google-line);
+  border-left: 3px solid var(--google-blue);
+  border-radius: 8px;
+  background: var(--google-soft);
+}
+
+.google-ads-account-card span,
+.google-ads-page .brand-media-field > span {
+  color: var(--google-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.google-ads-account-card strong {
+  margin-top: 3px;
+  color: var(--google-ink);
+  font-size: 13px;
+}
+
+.google-ads-account-card small {
+  margin-top: 2px;
+  color: var(--google-muted);
+  font-size: 10px;
+}
+
+.google-ads-page .brand-media-field input {
+  min-height: 39px;
+}
+
+.google-ads-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 39px;
+  padding: 0 14px;
+  border: 1px solid var(--google-blue);
+  border-radius: 8px;
+  background: var(--google-blue);
+  color: #fff;
+  cursor: pointer;
+  font: 800 11px/1 "Plus Jakarta Sans", sans-serif;
+  box-shadow: 0 8px 18px rgba(23, 105, 210, .18);
+}
+
+.google-ads-refresh:hover {
+  background: var(--google-blue-dark);
+}
+
+.google-ads-refresh:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
+.google-ads-refresh svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.google-ads-refresh.is-loading svg {
+  animation: google-ads-spin .9s linear infinite;
+}
+
+@keyframes google-ads-spin {
+  to { transform: rotate(360deg); }
+}
+
+.google-ads-control-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 21px;
+  margin-top: 10px;
+}
+
+.google-ads-control-footer p {
+  margin: 0;
+  color: var(--google-muted);
+  font-size: 10px;
+}
+
+#googleAdsStatus[data-kind="error"] { color: #b62f36; }
+#googleAdsStatus[data-kind="success"] { color: #137650; }
+#googleAdsStatus[data-kind="loading"] { color: var(--google-blue); }
+
+.google-ads-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.google-ads-kpi {
+  position: relative;
+  min-width: 0;
+  padding: 14px 13px 13px;
+  overflow: hidden;
+  border: 1px solid var(--google-line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(20, 43, 59, .045);
+}
+
+.google-ads-kpi::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--google-blue);
+  content: "";
+}
+
+.google-ads-kpi:nth-child(3)::before,
+.google-ads-kpi:nth-child(4)::before { background: var(--google-cyan); }
+
+.google-ads-kpi span {
+  display: block;
+  color: var(--google-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.google-ads-kpi strong {
+  display: block;
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--google-ink);
+  font-size: clamp(18px, 1.6vw, 25px);
+  font-weight: 800;
+  letter-spacing: -.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-ads-kpi small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--google-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-ads-trend-panel,
+.google-ads-table-panel,
+.google-ads-unmatched-panel,
+.google-ads-method-panel {
+  padding: 16px;
+  border-color: var(--google-line);
+  box-shadow: 0 8px 24px rgba(20, 43, 59, .045);
+}
+
+.google-ads-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.google-ads-panel-heading.compact { margin-bottom: 12px; }
+
+.google-ads-section-index {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--google-blue);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+
+.google-ads-panel-heading h3 {
+  margin: 0;
+  color: var(--google-ink);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -.015em;
+}
+
+.google-ads-panel-heading p {
+  margin: 5px 0 0;
+  color: var(--google-muted);
+  font-size: 10px;
+}
+
+.google-ads-legend {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: var(--google-muted);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.google-ads-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.google-ads-legend i {
+  display: inline-block;
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.google-ads-legend-spend { background: rgba(23, 105, 210, .52); }
+.google-ads-legend-revenue { background: var(--google-cyan); }
+
+.google-ads-chart {
+  min-height: 292px;
+  overflow-x: auto;
+  border-top: 1px solid #edf2f4;
+}
+
+.google-ads-chart-svg {
+  display: block;
+  min-width: 760px;
+  width: 100%;
+  height: auto;
+}
+
+.google-ads-chart-grid { stroke: #e9eff2; stroke-width: 1; }
+.google-ads-chart-axis { fill: #738692; font: 9px "Plus Jakarta Sans", sans-serif; }
+.google-ads-chart-bar { fill: rgba(23, 105, 210, .5); }
+.google-ads-chart-bar:hover { fill: rgba(23, 105, 210, .78); }
+.google-ads-chart-line { fill: none; stroke: var(--google-cyan); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.google-ads-chart-point { fill: #fff; stroke: var(--google-cyan); stroke-width: 1.7; }
+
+.google-ads-chart-empty {
+  display: grid;
+  min-height: 292px;
+  place-items: center;
+  color: var(--google-muted);
+  font-size: 11px;
+}
+
+.google-ads-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--google-line);
+  border-radius: 8px;
+}
+
+.google-ads-table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.google-ads-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--google-line);
+  background: #f5f8fa;
+  color: #5e7482;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.google-ads-table td {
+  padding: 10px;
+  border-bottom: 1px solid #edf2f4;
+  color: #294454;
+  font-size: 10px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.google-ads-table tr:last-child td { border-bottom: 0; }
+.google-ads-table tbody tr:hover { background: #f8fbfc; }
+.google-ads-numeric { text-align: right !important; font-variant-numeric: tabular-nums; }
+
+.google-ads-merchant-cell strong,
+.google-ads-merchant-cell small {
+  display: block;
+}
+
+.google-ads-merchant-cell strong { color: var(--google-ink); font-size: 11px; }
+.google-ads-merchant-cell small { margin-top: 2px; color: var(--google-muted); font-size: 8px; }
+
+.google-ads-match-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(24, 165, 111, .11);
+  color: #137650;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.google-ads-match-pill::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.google-ads-match-pill.unmatched {
+  background: rgba(106, 126, 140, .1);
+  color: #6a7e8c;
+}
+
+.google-ads-count {
+  color: var(--google-muted);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.google-ads-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  gap: 16px;
+}
+
+.google-ads-unmatched-list {
+  display: grid;
+  gap: 7px;
+}
+
+.google-ads-unmatched-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid #e6edf1;
+  border-radius: 7px;
+  background: #f8fafb;
+}
+
+.google-ads-unmatched-row strong {
+  overflow: hidden;
+  color: var(--google-ink);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-ads-unmatched-row span {
+  color: var(--google-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.google-ads-method-panel dl {
+  display: grid;
+  grid-template-columns: 122px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.google-ads-method-panel dt {
+  color: var(--google-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.google-ads-method-panel dd {
+  margin: 0;
+  color: #294454;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.google-ads-empty-cell,
+.google-ads-empty-block {
+  padding: 26px !important;
+  color: var(--google-muted) !important;
+  font-size: 10px !important;
+  text-align: center !important;
+}
+
+@media (max-width: 1050px) {
+  .google-ads-control-grid {
+    grid-template-columns: minmax(210px, 1.2fr) minmax(220px, 1fr) minmax(145px, .7fr) minmax(145px, .7fr);
+  }
+  .google-ads-refresh { grid-column: 4; justify-self: end; }
+  .google-ads-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 820px) {
+  .google-ads-page { padding-inline: 0; }
+  .google-ads-header { align-items: flex-start; }
+  .google-ads-control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .google-ads-account-card,
+  .google-ads-range-field { grid-column: 1 / -1; }
+  .google-ads-refresh { grid-column: 2; }
+  .google-ads-bottom-grid { grid-template-columns: 1fr; }
+  .google-ads-control-footer { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 560px) {
+  .google-ads-header { flex-direction: column; }
+  .google-ads-identity { width: 100%; box-sizing: border-box; }
+  .google-ads-control-grid { grid-template-columns: 1fr; }
+  .google-ads-account-card,
+  .google-ads-range-field,
+  .google-ads-refresh { grid-column: 1; }
+  .google-ads-refresh { width: 100%; }
+  .google-ads-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .google-ads-panel-heading { flex-direction: column; }
+  .google-ads-legend { flex-wrap: wrap; }
+  .google-ads-method-panel dl { grid-template-columns: 1fr; }
+  .google-ads-method-panel dd { padding-bottom: 7px; border-bottom: 1px solid #edf2f4; }
+}
+
 /* Offer List Tracker */
 .offer-tracker-page {
   --tracker-blue: #1769d2;

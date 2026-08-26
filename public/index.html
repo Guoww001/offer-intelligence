@@ -136,6 +136,12 @@
             </span>
             <span data-i18n="nav.publishers">Publishers</span>
           </button>
+          <button class="page-nav-button" id="googleAdsNav" type="button">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8.5 5 3 15.5A3 3 0 0 0 5.6 20h.2a3 3 0 0 0 2.7-1.7L14 7.8"/><path d="m12.2 5 5.5 10.5"/><circle cx="18.3" cy="17" r="3"/></svg>
+            </span>
+            <span data-i18n="nav.googleAds">Google Ads</span>
+          </button>
           <button class="page-nav-button" id="brandMediaNav" type="button">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M7 15l3-4 3 2 5-7"/><path d="M15 6h3v3"/></svg>
@@ -1163,6 +1169,127 @@
             </div>
             <div class="brand-media-sankey-chart-wrap" id="revenueFlowChart" role="region" aria-live="polite"></div>
           </section>
+        </section>
+
+        <section class="google-ads-page hidden" id="googleAdsPage" aria-label="Google Ads workbench">
+          <header class="google-ads-header">
+            <div>
+              <span class="google-ads-eyebrow">PAID MEDIA × BACKEND RETURN</span>
+              <h2 data-i18n="googleAds.title">Google Ads workbench</h2>
+              <p data-i18n="googleAds.subtitle">Connect Google campaign spend with Amazon merchant-level results for media ID 19.</p>
+            </div>
+            <div class="google-ads-identity" id="googleAdsIdentity">
+              <span class="google-ads-live-dot" aria-hidden="true"></span>
+              <strong>asdf260821</strong>
+              <small>MEDIA ID 19</small>
+            </div>
+          </header>
+
+          <section class="panel google-ads-controls" aria-label="Google Ads workbench controls">
+            <div class="google-ads-control-grid">
+              <div class="google-ads-account-card">
+                <span data-i18n="googleAds.account">Google Ads account</span>
+                <strong id="googleAdsAccountName">—</strong>
+                <small id="googleAdsAccountMeta" data-i18n="googleAds.accountPending">Waiting for account data</small>
+              </div>
+              <div class="brand-media-field google-ads-range-field">
+                <span data-i18n="googleAds.timeRange">Time range</span>
+                <div class="brand-media-range-buttons" id="googleAdsRangeButtons" aria-label="Quick date ranges">
+                  <button type="button" data-google-ads-range="30">30D</button>
+                  <button type="button" data-google-ads-range="60">60D</button>
+                  <button type="button" data-google-ads-range="90">90D</button>
+                  <button type="button" data-google-ads-range="180">180D</button>
+                </div>
+              </div>
+              <label class="brand-media-field google-ads-date-field">
+                <span data-i18n="googleAds.startDate">Start date</span>
+                <input id="googleAdsStartDate" type="date" aria-label="Google Ads workbench start date" />
+              </label>
+              <label class="brand-media-field google-ads-date-field">
+                <span data-i18n="googleAds.endDate">End date</span>
+                <input id="googleAdsEndDate" type="date" aria-label="Google Ads workbench end date" />
+              </label>
+              <button class="google-ads-refresh" id="googleAdsRefresh" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                <span data-i18n="googleAds.refresh">Refresh</span>
+              </button>
+            </div>
+            <div class="google-ads-control-footer">
+              <p id="googleAdsStatus" role="status" aria-live="polite"></p>
+              <p data-i18n="googleAds.joinNote">Joined conservatively at merchant × date; unmatched spend remains visible.</p>
+            </div>
+          </section>
+
+          <section class="google-ads-kpis" id="googleAdsKpis" aria-label="Google Ads workbench summary"></section>
+
+          <section class="panel google-ads-trend-panel" aria-labelledby="googleAdsTrendTitle">
+            <div class="google-ads-panel-heading">
+              <div>
+                <span class="google-ads-section-index">01</span>
+                <h3 id="googleAdsTrendTitle" data-i18n="googleAds.trendTitle">Spend and backend Revenue by day</h3>
+                <p data-i18n="googleAds.trendSubtitle">Google spend is shown as bars; YeahPromos Amazon Revenue is shown as a line.</p>
+              </div>
+              <div class="google-ads-legend" aria-label="Chart legend">
+                <span><i class="google-ads-legend-spend"></i><span data-i18n="googleAds.spend">Spend</span></span>
+                <span><i class="google-ads-legend-revenue"></i><span data-i18n="googleAds.backendRevenue">Backend Revenue</span></span>
+              </div>
+            </div>
+            <div class="google-ads-chart" id="googleAdsChart" role="img" aria-live="polite"></div>
+          </section>
+
+          <section class="panel google-ads-table-panel" aria-labelledby="googleAdsMerchantTitle">
+            <div class="google-ads-panel-heading">
+              <div>
+                <span class="google-ads-section-index">02</span>
+                <h3 id="googleAdsMerchantTitle" data-i18n="googleAds.merchantTitle">Merchant connection table</h3>
+                <p data-i18n="googleAds.merchantSubtitle">Backend outcomes are counted once per merchant; Google campaigns are grouped under the matched brand.</p>
+              </div>
+              <span class="google-ads-count" id="googleAdsMerchantCount"></span>
+            </div>
+            <div class="google-ads-table-wrap">
+              <table class="google-ads-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="googleAds.merchant">Merchant</th>
+                    <th data-i18n="googleAds.match">Connection</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.campaigns">Campaigns</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.spend">Spend</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.googleClicks">Google clicks</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.backendClicks">Backend clicks</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.orders">Orders</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.backendRevenue">Backend Revenue</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.roas">Merchant ROAS</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.cpa">Cost / order</th>
+                  </tr>
+                </thead>
+                <tbody id="googleAdsMerchantRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="google-ads-bottom-grid">
+            <section class="panel google-ads-unmatched-panel" aria-labelledby="googleAdsUnmatchedTitle">
+              <div class="google-ads-panel-heading compact">
+                <div>
+                  <span class="google-ads-section-index">03</span>
+                  <h3 id="googleAdsUnmatchedTitle" data-i18n="googleAds.unmatchedTitle">Unmatched Google campaigns</h3>
+                  <p data-i18n="googleAds.unmatchedSubtitle">Campaign spend is retained until a merchant alias or ASIN can be resolved.</p>
+                </div>
+              </div>
+              <div class="google-ads-unmatched-list" id="googleAdsUnmatchedList"></div>
+            </section>
+
+            <section class="panel google-ads-method-panel" aria-labelledby="googleAdsMethodTitle">
+              <div class="google-ads-panel-heading compact">
+                <div>
+                  <span class="google-ads-section-index">04</span>
+                  <h3 id="googleAdsMethodTitle" data-i18n="googleAds.methodTitle">Data contract</h3>
+                  <p data-i18n="googleAds.methodSubtitle">What is joined, and what is deliberately kept separate.</p>
+                </div>
+              </div>
+              <dl id="googleAdsMethod"></dl>
+            </section>
+          </div>
         </section>
 
         <section class="monthly-new-merchants-page hidden" id="monthlyNewMerchantsPage" aria-label="Monthly new merchants">
