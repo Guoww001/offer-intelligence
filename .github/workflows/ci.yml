@@ -29,6 +29,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install and validate modern frontend
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run build
+
       - name: Check JavaScript syntax
         run: |
           node --check public/auth.js
@@ -61,6 +68,8 @@ jobs:
           python scripts/test_tier_visual_status_rules.py
           python scripts/test_offer_network_lookup.py
           python scripts/test_workflow_cache_split.py
+          node scripts/test_frontend_migration_inventory.mjs
+          node scripts/test_frontend_build_contract.mjs
           node scripts/test_chatbot_intent_flow.mjs
           node scripts/test_commission_all_aff.mjs
           node scripts/test_merchant_monthly.mjs

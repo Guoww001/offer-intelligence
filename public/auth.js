@@ -1,5 +1,6 @@
 (function () {
   const APP_SCRIPT = "./app.js?v=20260826-agent-memory1";
+  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260827-vue-m1";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -187,6 +188,33 @@
     });
   }
 
+  async function loadModernApp() {
+    try {
+      await loadScript(MODERN_APP_SCRIPT);
+      if (!window.OI_MODERN_APP || typeof window.OI_MODERN_APP.bootstrap !== "function") {
+        throw new Error("Modern frontend bootstrap API is unavailable");
+      }
+      let language = "zh";
+      try {
+        language = localStorage.getItem("offerLanguage") === "en" ? "en" : "zh";
+      } catch (_error) {
+        language = "zh";
+      }
+      window.OI_MODERN_APP.bootstrap({
+        chatbotData: window.CHATBOT_DATA || {},
+        sheetReportData: window.SHEET_REPORT_DATA || {},
+        productKeywords: window.PRODUCT_KEYWORDS || {},
+        language,
+        llmEnabled: window.__OI_LLM_ENABLED !== false,
+        agentEnabled: window.__OI_AGENT_ENABLED !== false
+      });
+      return true;
+    } catch (error) {
+      console.warn("Modern frontend unavailable; continuing with the legacy dashboard.", error);
+      return false;
+    }
+  }
+
   let _dataLoading = false;
 
   async function loadDashboardAssets() {
@@ -232,6 +260,7 @@
     }
     setStatus("", "");
     loadingProgress.driftTo(94, "Building dashboard…", "Applying filters and preparing report views");
+    await loadModernApp();
     await loadScript(APP_SCRIPT);
 
     // Background: load keyword data after dashboard renders

@@ -1,0 +1,9 @@
+:root {
+  --oi-modern-font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+[data-modern-root] {
+  min-width: 0;
+  isolation: isolate;
+  font-family: var(--oi-modern-font-family);
+}

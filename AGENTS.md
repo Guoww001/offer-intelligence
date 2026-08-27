@@ -12,6 +12,8 @@ Internal YeahPromos Amazon offer intelligence dashboard — a Python-served stat
 
 ### Run locally
 ```bash
+npm --prefix frontend ci
+npm --prefix frontend run build
 python server.py
 # Opens at http://127.0.0.1:8765
 ```
@@ -42,6 +44,10 @@ python scripts/import_product_name_keywords.py --source "/path/to/brand and asin
 
 ### Run tests (same as CI)
 ```bash
+npm --prefix frontend ci
+npm --prefix frontend run typecheck
+npm --prefix frontend run test -- --run
+npm --prefix frontend run build
 node --check public/auth.js
 node --check public/app.js
 node --check public/chatbot_i18n.js
