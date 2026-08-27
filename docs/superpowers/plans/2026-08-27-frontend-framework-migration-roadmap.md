@@ -167,7 +167,6 @@ interface ModernAppApi {
 
 interface LegacyBridgeApi {
   navigate(page: ModernPageName): void;
-  requestRender(page: ModernPageName): void;
   download(type: string, payload: unknown): boolean;
 }
 ```
@@ -514,10 +513,17 @@ Vue feature
 - 新增：`frontend/src/shared/i18n/messages.en.ts`
 - 新增：`frontend/src/shared/api/client.test.ts`
 - 新增：`frontend/src/shared/i18n/index.test.ts`
+- 修改：`frontend/src/shared/contracts/offer.ts`
+- 修改：`frontend/src/features/offer-tracker/offerTrackerModel.ts`
+- 修改：`frontend/src/features/offer-tracker/OfferTrackerPage.vue`
+- 修改：`frontend/src/features/offer-tracker/OfferTrackerFilters.vue`
+- 修改：`frontend/src/features/offer-tracker/OfferTrackerTable.vue`
 - 修改：`frontend/src/legacy/contracts.ts`
 - 修改：`frontend/src/entry.ts`
 - 修改：`public/app.js`
 - 修改：`public/chatbot_i18n.js`
+- 修改：`scripts/test_zh_chatbot.mjs`
+- 修改：`scripts/test_offer_list_tracker_frontend.mjs`
 - 修改：`docs/frontend-migration-inventory.md`
 
 **接口：**
@@ -526,12 +532,12 @@ Vue feature
 - `setLanguage("zh" | "en")` 更新已迁移页面；legacy 语言切换通过 bridge 同步。
 - 共享契约只定义已被两个以上页面复用的字段，不复制完整数据库响应。
 
-- [ ] **步骤 1：为 API 错误和语言同步建立失败测试**
-- [ ] **步骤 2：运行目标测试确认 RED**
-- [ ] **步骤 3：实现最小 API client、错误类型和 i18n store**
-- [ ] **步骤 4：让 Offer Tracker 改用共享模块，确认没有行为变化**
-- [ ] **步骤 5：删除 Offer Tracker 对同类 legacy helper 的调用**
-- [ ] **步骤 6：运行 TypeScript、Vitest、旧中英文回归和构建**
+- [x] **步骤 1：为 API 错误和语言同步建立失败测试**
+- [x] **步骤 2：运行目标测试确认 RED**
+- [x] **步骤 3：实现最小 API client、错误类型和 i18n store**
+- [x] **步骤 4：让 Offer Tracker 改用共享模块，确认没有行为变化**
+- [x] **步骤 5：删除 Offer Tracker 对同类 legacy helper 的调用**
+- [x] **步骤 6：运行 TypeScript、Vitest、旧中英文回归和构建**
 
 验证命令：
 
@@ -544,6 +550,16 @@ node scripts/test_offer_list_tracker_frontend.mjs
 ```
 
 退出门槛：Offer Tracker 不再通过 bridge 调用格式化、语言或筛选函数；bridge 只保留导航与尚未迁移的 XLSX 下载。
+
+**M3 执行记录（2026-08-27）：**
+
+- RED 证据：共享 API 与 i18n 目标测试先因 `./client`、`./errors` 和 `./index` 不存在而失败；实现前未改动 Offer Tracker 生产代码。
+- 共享模块：新增 `apiRequest<T>()`、`ApiError`、Tier/Payment 最小稳定契约、中文/英文成对消息目录和基于 Vue `ref` 的 i18n store。API client 统一处理 JSON、非 2xx、业务 `ok: false`、无效 JSON、网络错误和超时，并保留状态码与 `errorCode`。
+- Offer Tracker 接入：`entry.ts` 使用 shared API client 加载日期范围；页面、筛选器、表格和 model 使用 shared i18n 与既有格式化模块；现代入口仍只通过 `OI_LEGACY_BRIDGE.download("offer-tracker", payload)` 复用 XLSX，未引入 legacy 筛选、排序或格式化 helper。
+- bridge 收口：删除 `LegacyBridgeApi.requestRender` 及 `public/app.js` 对应暴露；`OI_LEGACY_BRIDGE` 当前只保留 `navigate` 和 `download`。`chatbot_i18n.js` 增加受控语言归一化，旧应用仍由 `state.language` 管理并通过 `OI_MODERN_APP.setLanguage()` 同步现代页面。
+- 验证证据：`npm --prefix frontend run typecheck`、`npm --prefix frontend run test -- --run`、`npm --prefix frontend run build`、`node scripts/test_frontend_build_contract.mjs`、`node scripts/test_frontend_migration_inventory.mjs`、`node scripts/test_zh_chatbot.mjs`、`node scripts/test_offer_list_tracker_frontend.mjs`、`python scripts/test_offer_tracker_date_range.py`、`python scripts/test_vercel_function_budget.py`、`node --check public/app.js`、`node --check public/chatbot_i18n.js` 和 `git diff --check` 均退出码为 0；Vitest 为 5 个测试文件、32 项测试；modern 产物为 `oi-modern.js` 100.61 kB（gzip 35.73 kB）与 `oi-modern.css` 7.54 kB（gzip 1.84 kB）。
+- 浏览器证据：在隔离的 `OI_AUTH_ENABLED=0`、8766 端口验证 modern root、Offer Tracker 默认数据渲染、日期范围提交和中文/英文语言同步。日期接口在当前本地数据库环境返回既有 503，页面显示受控英文/中文错误提示且无未捕获 console error；API client 的非 2xx 状态保留由 4 项单测覆盖。服务已停止并复查 8766 无监听。
+- 交付边界：M3 未提交、未推送、未部署；Offer Tracker 高级保存视图、列面板、规则面板和旧导出对话框仍保留在 dual fallback。
 
 ---
 
@@ -830,7 +846,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M0 ADR 与盘点 | 已验证 | ADR、12 页面迁移清单和 `test_frontend_migration_inventory.mjs` 已落地并进入 CI；目标检查通过 |
 | M1 双运行骨架 | 已验证 | Vue/TS/Vite、只读 Legacy Bridge、认证启动链、Vercel/CI 构建均已接入；目标测试和真实浏览器双运行验收通过 |
 | M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页/导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；高级面板仍保留在 legacy |
-| M3 共享模块 | 未开始 | 当前共享逻辑仍在 legacy JS |
+| M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
 | M4 Shell 与低风险页面 | 未开始 | 当前仍由 `switchPage()` 直接管理 |
 | M5 Targets/Category/Tier | 未开始 | 当前仍由 legacy 路径渲染 |
 | M6 Chatbot/Agent | 未开始 | 当前仍由原生 JS 执行 |
@@ -844,10 +860,10 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M2 已按各自执行计划完成实现、测试和浏览器验收，后续阶段仍需单独授权和分批执行。
+- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M2 的浏览器验收证据继续有效，后续阶段仍需单独授权和分批执行。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M2 已完成，M3 及后续阶段尚未开始。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 及后续阶段尚未开始。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。

@@ -411,12 +411,17 @@ assert(html.includes('aria-controls="offerTrackerNetworkMenu"'), "network filter
 assert(html.includes('id="offerTrackerSelectAllFiltered"'), "tracker should provide an all-matching cross-page selection action");
 
 const appSource = fs.readFileSync("public/app.js", "utf8");
+const entrySource = fs.readFileSync("frontend/src/entry.ts", "utf8");
 assert(appSource.includes('aria-label="Select current page"'), "the table header should retain current-page selection");
 assert(appSource.includes('commission: "AFF Commission"'), "tracker table headers should identify AFF Commission");
 assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
 assert(appSource.includes('bbPolicy: "BB Preference"'), "tracker table headers should include the BB preference column");
 assert(appSource.includes('DB_OFFERS_UI_API'), "tracker should request the selected date range from the offers API");
 assert(appSource.includes("OI_LEGACY_BRIDGE"), "legacy app should expose the modern bridge");
+assert(!appSource.includes("requestRender:"), "legacy bridge should not expose the removed requestRender helper");
+assert(entrySource.includes("apiRequest"), "modern Offer Tracker should use the shared API client");
+assert(!entrySource.includes("fetch("), "modern Offer Tracker entry should not call fetch directly");
+assert(entrySource.includes("createI18nStore"), "modern Offer Tracker should use the shared i18n store");
 assert(appSource.includes("Modern Offer Tracker unavailable; continuing with the legacy tracker."), "tracker should retain a controlled modern fallback warning");
 assert(appSource.includes('"Mammotion", "3W", "Gosovr"'), "tracker should preserve the confirmed prohibited-BB brand list");
 const selectionHandlerStart = appSource.indexOf("function handleOfferTrackerSelectionChange");

@@ -211,7 +211,7 @@
 
 - [x] **Step 4: 实现 legacy XLSX 下载适配器**
 
-  添加 `downloadModernOfferTracker(payload)`：校验 rows 数组、根据 view 构建现有两张工作表、复用旧 workbook builder；payload 无效或无行时返回 false，不抛出未处理异常。把 `navigate`、`requestRender`、`download` 挂到 `window.OI_LEGACY_BRIDGE`，只暴露迁移需要的能力。
+  添加 `downloadModernOfferTracker(payload)`：校验 rows 数组、根据 view 构建现有两张工作表、复用旧 workbook builder；payload 无效或无行时返回 false，不抛出未处理异常。M2 阶段曾把 `navigate`、`requestRender`、`download` 挂到 `window.OI_LEGACY_BRIDGE`；M3 完成后已删除 `requestRender`，当前只保留导航和下载。
 
 - [x] **Step 5: 运行静态回归和 JS 语法检查**
 

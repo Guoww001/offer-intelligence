@@ -180,8 +180,12 @@
     return /[\u4e00-\u9fff]/.test(String(value || ""));
   }
 
+  function normalizeLanguage(value) {
+    return value === "en" ? "en" : "zh";
+  }
+
   function responseLanguage(prompt, currentLanguage = "en") {
-    return hasChinese(prompt) || currentLanguage === "zh" ? "zh" : "en";
+    return hasChinese(prompt) || normalizeLanguage(currentLanguage) === "zh" ? "zh" : "en";
   }
 
   function detectIntent(prompt) {
@@ -292,6 +296,7 @@
 
   window.CHATBOT_I18N = {
     hasChinese,
+    normalizeLanguage,
     responseLanguage,
     detectIntent,
     tierFromPrompt,

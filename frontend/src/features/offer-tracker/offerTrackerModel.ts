@@ -2,6 +2,8 @@ import {
   toFiniteNumber,
   toNullableNumber
 } from "../../shared/format/number";
+import { translateMessage } from "../../shared/i18n";
+import { TIER_NAMES } from "../../shared/contracts/tier";
 import type {
   OfferRecord,
   OfferTrackerAovType,
@@ -43,7 +45,7 @@ const OPEN_BB_BRANDS = [
   "enence", "kinzeno"
 ] as const;
 
-const OFFER_TRACKER_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"] as const;
+const OFFER_TRACKER_TIERS = TIER_NAMES;
 
 const OFFER_COLUMNS: readonly OfferTrackerExportColumn[] = Object.freeze([
   { label: "Priority", key: "priority" },
@@ -420,30 +422,33 @@ export function offerTrackerExportColumns(view: OfferTrackerView): readonly Offe
 }
 
 export function priorityLabel(key: OfferTrackerPriorityKey, language: "zh" | "en" = "zh"): string {
-  const labels: Record<OfferTrackerPriorityKey, { zh: string; en: string }> = {
-    high: { zh: "高优先级 Offer", en: "High Priority" },
-    recommended: { zh: "推荐 Offer", en: "Recommended" },
-    "low-aov": { zh: "低 AOV 优选", en: "Low-AOV Pick" }
+  const fallback: Record<OfferTrackerPriorityKey, string> = {
+    high: "高优先级 Offer",
+    recommended: "推荐 Offer",
+    "low-aov": "低 AOV 优选"
   };
-  return labels[key][language];
+  const messageKey = key === "low-aov"
+    ? "offerTracker.priority.lowAov"
+    : `offerTracker.priority.${key}`;
+  return translateMessage(language, messageKey, fallback[key]);
 }
 
 export function aovTypeLabel(type: OfferTrackerAovType, language: "zh" | "en" = "zh"): string {
-  const labels: Record<OfferTrackerAovType, { zh: string; en: string }> = {
-    actual: { zh: "真实", en: "Actual" },
-    estimated: { zh: "预估", en: "Estimated" },
-    unavailable: { zh: "无可用数据", en: "Unavailable" }
+  const fallback: Record<OfferTrackerAovType, string> = {
+    actual: "真实",
+    estimated: "预估",
+    unavailable: "无可用数据"
   };
-  return labels[type][language];
+  return translateMessage(language, `offerTracker.aovType.${type}`, fallback[type]);
 }
 
 export function bbPolicyLabel(policy: Exclude<OfferTrackerBbPolicy, "all">, language: "zh" | "en" = "zh"): string {
-  const labels: Record<Exclude<OfferTrackerBbPolicy, "all">, { zh: string; en: string }> = {
-    mind: { zh: "介意 BB", en: "Mind BB" },
-    open: { zh: "不介意 BB", en: "Doesn't mind BB" },
-    unknown: { zh: "未知", en: "Unknown" }
+  const fallback: Record<Exclude<OfferTrackerBbPolicy, "all">, string> = {
+    mind: "介意 BB",
+    open: "不介意 BB",
+    unknown: "未知"
   };
-  return labels[policy][language];
+  return translateMessage(language, `offerTracker.bbPolicy.${policy}`, fallback[policy]);
 }
 
 export function offerTrackerTierValues(rows: readonly OfferTrackerRow[]): readonly string[] {

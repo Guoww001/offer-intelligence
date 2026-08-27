@@ -29,6 +29,18 @@ assertEqual(
 );
 
 assertEqual(
+  i18n.normalizeLanguage("fr"),
+  "zh",
+  "Unsupported UI languages should fall back to Chinese.",
+);
+
+assertEqual(
+  i18n.responseLanguage("show five offers", "fr"),
+  "zh",
+  "Unsupported current language should use the controlled Chinese fallback.",
+);
+
+assertEqual(
   i18n.detectIntent("推荐5个美妆offer"),
   "recommendation",
   "Chinese recommendation prompts should be detected.",

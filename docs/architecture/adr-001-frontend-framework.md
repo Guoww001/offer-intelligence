@@ -69,7 +69,7 @@ Next、Nuxt 等会同时改变静态构建、路由和服务端边界，与当�
 迁移期间只允许两个临时全局对象：
 
 - `window.OI_MODERN_APP`：接收启动数据、挂载/卸载页面、同步语言、报告可用页面。
-- `window.OI_LEGACY_BRIDGE`：向旧应用请求导航、重渲染和尚未迁移的下载能力。
+- `window.OI_LEGACY_BRIDGE`：向旧应用请求导航和尚未迁移的下载能力；M3 后不再暴露页面重渲染 helper。
 
 禁止把旧 `state`、`els`、任意内部函数或 DOM 查询器暴露给 Vue。桥接 payload 必须是结构化数据；迁移完成后删除两个全局对象。
 
@@ -104,4 +104,3 @@ Next、Nuxt 等会同时改变静态构建、路由和服务端边界，与当�
 - 共享 Shell 迁移需要可复制、可后退的 URL 路由；
 - 团队形成明确且长期的 React 或其他框架标准；
 - modern 首屏 bundle 超过 Roadmap 的 250 KB gzip 门槛且无法合理拆分。
-

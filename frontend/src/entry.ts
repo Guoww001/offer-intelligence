@@ -1,4 +1,4 @@
-import { createApp, h, ref } from "vue";
+import { createApp, h } from "vue";
 
 import "./shared/styles/modern-root.css";
 import "./features/offer-tracker/offerTracker.css";
@@ -14,6 +14,8 @@ import type {
   OfferTrackerDateRange,
   OfferTrackerExportPayload
 } from "./shared/contracts/offer";
+import { apiRequest } from "./shared/api/client";
+import { createI18nStore } from "./shared/i18n";
 import OfferTrackerPage from "./features/offer-tracker/OfferTrackerPage.vue";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -22,6 +24,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : String(value ?? "").trim();
+}
+
+interface OfferTrackerOffersPayload {
+  readonly offers?: unknown;
 }
 
 function chatbotRecord(data: LegacyBootstrapData): Record<string, unknown> {
@@ -48,12 +54,9 @@ async function loadOfferTrackerRange(range: OfferTrackerDateRange): Promise<read
     start_date: range.startDate,
     end_date: range.endDate
   });
-  const response = await fetch(`/api/ui/db/offers?${query.toString()}`, {
-    credentials: "same-origin",
-    headers: { Accept: "application/json" }
-  });
-  if (!response.ok) throw new Error(`Offer Tracker API 请求失败: ${response.status}`);
-  const payload: unknown = await response.json();
+  const payload = await apiRequest<OfferTrackerOffersPayload>(
+    `/api/ui/db/offers?${query.toString()}`
+  );
   if (!isRecord(payload) || !Array.isArray(payload.offers)) {
     throw new Error("Offer Tracker API 响应缺少 offers");
   }
@@ -68,7 +71,7 @@ function downloadOfferTracker(payload: OfferTrackerExportPayload): boolean {
 
 const offerTrackerFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
-  const language = ref(snapshot.language);
+  const i18n = createI18nStore(snapshot.language);
   const offers = offerRecords(snapshot);
   const range = defaultDateRange(snapshot);
   const app = createApp({
@@ -76,7 +79,7 @@ const offerTrackerFactory: ModernPageFactory = (element): ModernPageController =
     setup() {
       return () => h(OfferTrackerPage, {
         offers,
-        language: language.value,
+        language: i18n.language.value,
         defaultDateRange: range,
         loadRange: loadOfferTrackerRange,
         download: downloadOfferTracker
@@ -86,7 +89,7 @@ const offerTrackerFactory: ModernPageFactory = (element): ModernPageController =
   app.mount(element);
   return {
     setLanguage(nextLanguage) {
-      language.value = nextLanguage;
+      i18n.setLanguage(nextLanguage);
     },
     unmount() {
       app.unmount();

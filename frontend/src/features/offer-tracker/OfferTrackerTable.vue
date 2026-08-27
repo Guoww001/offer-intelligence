@@ -4,6 +4,7 @@ import { computed } from "vue";
 import { formatMoney } from "../../shared/format/money";
 import { formatInteger } from "../../shared/format/number";
 import { formatPercentage } from "../../shared/format/percentage";
+import { translateMessage } from "../../shared/i18n";
 import type {
   OfferTrackerRow,
   OfferTrackerSelectionSummary,
@@ -32,73 +33,53 @@ const emit = defineEmits<{
 }>();
 
 const isProductsView = computed(() => props.view === "products");
-const copy = computed(() => props.language === "zh"
-  ? {
-    selected: "已选择",
-    selectAll: "选择全部匹配",
-    clearAll: "清除匹配选择",
-    currentPage: "选择当前页",
-    priority: "优先级",
-    merchant: "商户",
-    tier: "Tier",
-    commission: "AFF 佣金",
-    aov: "AOV",
-    revenue: "Revenue",
-    aovType: "AOV 类型",
-    bbPolicy: "BB Preference",
-    category: "品类",
-    recommendation: "推荐说明",
-    topAsins: "Top Rank ASINs",
-    empty: "没有符合当前筛选条件的 Offer，请调整筛选条件。",
-    previous: "上一页",
-    next: "下一页",
-    results: "Offer Tracker 结果",
-    pagination: "Offer Tracker 分页",
-    selectRow: "选择",
-    unknown: "未知"
-  }
-  : {
-    selected: "Selected",
-    selectAll: "Select all matching",
-    clearAll: "Clear matching selection",
-    currentPage: "Select current page",
-    priority: "Priority",
-    merchant: "Merchant",
-    tier: "Tier",
-    commission: "AFF Commission",
-    aov: "AOV",
-    revenue: "Revenue",
-    aovType: "AOV Type",
-    bbPolicy: "BB Preference",
-    category: "Category",
-    recommendation: "Recommendation",
-    topAsins: "Top Rank ASINs",
-    empty: "No offers match the current filters. Adjust the filters and try again.",
-    previous: "Previous",
-    next: "Next",
-    results: "Offer Tracker results",
-    pagination: "Offer Tracker pagination",
-    selectRow: "Select",
-    unknown: "Unknown"
-  });
+const copy = computed(() => {
+  const message = (key: string, fallback: string) => translateMessage(props.language, key, fallback);
+  return {
+    selected: message("offerTracker.selected", "已选择"),
+    selectAll: message("offerTracker.selectAll", "选择全部匹配"),
+    clearAll: message("offerTracker.clearAll", "清除匹配选择"),
+    currentPage: message("offerTracker.currentPage", "选择当前页"),
+    priority: message("offerTracker.priority", "优先级"),
+    merchant: message("offerTracker.merchant", "商户"),
+    tier: message("offerTracker.tier", "Tier"),
+    commission: message("offerTracker.commission", "AFF 佣金"),
+    aov: message("offerTracker.aov", "AOV"),
+    revenue: message("offerTracker.revenue", "Revenue"),
+    aovType: message("offerTracker.aovType", "AOV 类型"),
+    bbPolicy: message("offerTracker.bbPolicy", "BB Preference"),
+    category: message("offerTracker.category", "品类"),
+    recommendation: message("offerTracker.recommendation", "推荐说明"),
+    topAsins: message("offerTracker.topAsins", "Top Rank ASINs"),
+    empty: message("offerTracker.empty", "没有符合当前筛选条件的 Offer，请调整筛选条件。"),
+    previous: message("offerTracker.previous", "上一页"),
+    next: message("offerTracker.next", "下一页"),
+    results: message("offerTracker.results", "Offer Tracker 结果"),
+    pagination: message("offerTracker.pagination", "Offer Tracker 分页"),
+    selectRow: message("offerTracker.selectRow", "选择"),
+    unknown: message("common.unknown", "未知")
+  };
+});
 
 function checked(event: Event): boolean {
   return event.target instanceof HTMLInputElement && event.target.checked;
 }
 
 function rangeLabel(): string {
-  if (!props.totalRows) return props.language === "zh" ? "0 个 Offer" : "0 offers";
+  if (!props.totalRows) return translateMessage(props.language, "offerTracker.rangeEmpty", "0 个 Offer");
   const start = (props.page - 1) * props.pageSize + 1;
   const end = Math.min(props.page * props.pageSize, props.totalRows);
-  return props.language === "zh"
-    ? `显示第 ${formatInteger(start)}–${formatInteger(end)} 条，共 ${formatInteger(props.totalRows)} 个 Offer`
-    : `Showing ${formatInteger(start)}–${formatInteger(end)} of ${formatInteger(props.totalRows)} offers`;
+  return translateMessage(props.language, "offerTracker.range", "显示第 {start}–{end} 条，共 {total} 个 Offer", {
+    start: formatInteger(start),
+    end: formatInteger(end),
+    total: formatInteger(props.totalRows)
+  });
 }
 
 function selectedLabel(): string {
-  return props.language === "zh"
-    ? `${copy.value.selected} ${formatInteger(props.summary.selectedCount)} 个`
-    : `${copy.value.selected} ${formatInteger(props.summary.selectedCount)} offers`;
+  return translateMessage(props.language, "offerTracker.selectedCount", "已选择 {count} 个", {
+    count: formatInteger(props.summary.selectedCount)
+  });
 }
 </script>
 
@@ -191,7 +172,7 @@ function selectedLabel(): string {
         :disabled="page <= 1"
         @click="emit('page-change', page - 1)"
       >{{ copy.previous }}</button>
-      <span>{{ props.language === 'zh' ? `第 ${page} / ${totalPages} 页` : `Page ${page} / ${totalPages}` }}</span>
+      <span>{{ translateMessage(props.language, 'offerTracker.page', '第 {page} / {total} 页', { page, total: totalPages }) }}</span>
       <button
         type="button"
         :aria-label="copy.next"

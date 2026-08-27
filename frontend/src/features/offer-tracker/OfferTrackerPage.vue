@@ -7,6 +7,7 @@ import type {
   OfferTrackerExportPayload,
   UiLanguage
 } from "../../shared/contracts/offer";
+import { translateMessage } from "../../shared/i18n";
 import OfferTrackerFilters from "./OfferTrackerFilters.vue";
 import OfferTrackerTable from "./OfferTrackerTable.vue";
 import { useOfferTracker, type OfferTrackerLoader } from "./useOfferTracker";
@@ -28,43 +29,27 @@ const tracker = useOfferTracker({
   loadRange: props.loadRange
 });
 
-const copy = computed(() => props.language === "zh"
-  ? {
-    eyebrow: "Offer 规划工作台",
-    subtitle: "按优先级生成 Offer 清单，并导出可直接分享的工作簿。",
-    offersView: "Offers 视图",
-    productsView: "产品视图",
-    matched: "匹配 Offer",
-    matchedNote: "当前筛选范围",
-    high: "高优先级",
-    highNote: "Score ≥ 8",
-    recommended: "推荐",
-    recommendedNote: "常规机会池",
-    lowAov: "低 AOV 优选",
-    lowAovNote: "AOV ≤ 100",
-    summary: "Offer Tracker 摘要",
-    exportHint: "选择后可只导出已选 Offer；导出沿用现有 XLSX 生成器。",
-    exportCurrent: "导出当前筛选",
-    exportSelected: "导出已选择"
-  }
-  : {
-    eyebrow: "Offer planning workspace",
-    subtitle: "Build priority-based offer lists and export ready-to-share workbooks.",
-    offersView: "Offers view",
-    productsView: "Products view",
-    matched: "Matched offers",
-    matchedNote: "Current filter range",
-    high: "High priority",
-    highNote: "Score ≥ 8",
-    recommended: "Recommended",
-    recommendedNote: "Standard opportunity pool",
-    lowAov: "Low-AOV picks",
-    lowAovNote: "AOV ≤ 100",
-    summary: "Offer Tracker summary",
-    exportHint: "Select rows to export only chosen Offers; XLSX uses the existing generator.",
-    exportCurrent: "Export current results",
-    exportSelected: "Export selected"
-  });
+const copy = computed(() => {
+  const message = (key: string, fallback: string) => translateMessage(props.language, key, fallback);
+  return {
+    eyebrow: message("offerTracker.eyebrow", "Offer 规划工作台"),
+    subtitle: message("offerTracker.subtitle", "按优先级生成 Offer 清单，并导出可直接分享的工作簿。"),
+    offersView: message("offerTracker.offersView", "Offers 视图"),
+    productsView: message("offerTracker.productsView", "产品视图"),
+    matched: message("offerTracker.matched", "匹配 Offer"),
+    matchedNote: message("offerTracker.matchedNote", "当前筛选范围"),
+    high: message("offerTracker.high", "高优先级"),
+    highNote: message("offerTracker.highNote", "Score ≥ 8"),
+    recommended: message("offerTracker.recommended", "推荐"),
+    recommendedNote: message("offerTracker.recommendedNote", "常规机会池"),
+    lowAov: message("offerTracker.lowAov", "低 AOV 优选"),
+    lowAovNote: message("offerTracker.lowAovNote", "AOV ≤ 100"),
+    summary: message("offerTracker.summary", "Offer Tracker 摘要"),
+    exportHint: message("offerTracker.exportHint", "选择后可只导出已选 Offer；导出沿用现有 XLSX 生成器。"),
+    exportCurrent: message("offerTracker.exportCurrent", "导出当前筛选"),
+    exportSelected: message("offerTracker.exportSelected", "导出已选择")
+  };
+});
 
 const {
   draftFilters,
@@ -92,7 +77,7 @@ const errorMessage = computed(() => {
   if (!error.value) return "";
   return props.language === "zh"
     ? error.value
-    : "Failed to load filtered data. Please try again.";
+    : translateMessage(props.language, "offerTracker.loadError", "Failed to load filtered data. Please try again.");
 });
 
 function emitDownload(selectedOnly: boolean): void {

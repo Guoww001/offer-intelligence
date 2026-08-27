@@ -1,6 +1,6 @@
 export type OfferRecord = Readonly<Record<string, unknown>>;
 
-export type UiLanguage = "zh" | "en";
+export type { UiLanguage } from "../i18n";
 export type OfferTrackerView = "offers" | "products";
 export type OfferTrackerBbPolicy = "all" | "mind" | "open" | "unknown";
 export type OfferTrackerRevenueStatus = "all" | "positive" | "none";

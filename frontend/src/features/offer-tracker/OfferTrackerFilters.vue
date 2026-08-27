@@ -6,6 +6,7 @@ import type {
   OfferTrackerRevenueSort,
   UiLanguage
 } from "../../shared/contracts/offer";
+import { translateMessage } from "../../shared/i18n";
 
 const props = defineProps<{
   modelValue: TrackerFilters;
@@ -17,65 +18,38 @@ const props = defineProps<{
   loading: boolean;
 }>();
 
-const copy = computed(() => props.language === "zh"
-  ? {
-    search: "搜索 Offer",
-    searchPlaceholder: "商户、ID、网络或品类",
-    tiers: "Tier 筛选",
-    categories: "品类筛选",
-    networks: "Network 筛选",
-    startDate: "开始日期",
-    endDate: "结束日期",
-    minAov: "最小 AOV",
-    maxAov: "最大 AOV",
-    minCommission: "最小 AFF Commission",
-    maxCommission: "最大 AFF Commission",
-    bbPolicy: "BB Preference",
-    revenueStatus: "Revenue 状态",
-    sort: "排序",
-    all: "全部",
-    mind: "介意 BB",
-    open: "不介意 BB",
-    unknown: "未知",
-    positiveRevenue: "有 Revenue",
-    noRevenue: "无 Revenue",
-    priority: "优先级",
-    revenueDesc: "Revenue 从高到低",
-    revenueAsc: "Revenue 从低到高",
-    rangeHint: "日期范围最多 366 天",
-    reset: "重置",
-    apply: "应用筛选",
-    loading: "加载中…"
-  }
-  : {
-    search: "Search offers",
-    searchPlaceholder: "Search merchant, ID, network, or category",
-    tiers: "Tier filters",
-    categories: "Category filters",
-    networks: "Network filters",
-    startDate: "Start date",
-    endDate: "End date",
-    minAov: "Min AOV",
-    maxAov: "Max AOV",
-    minCommission: "Min AFF Commission",
-    maxCommission: "Max AFF Commission",
-    bbPolicy: "BB Preference",
-    revenueStatus: "Revenue status",
-    sort: "Sort",
-    all: "All",
-    mind: "Mind BB",
-    open: "Doesn't mind BB",
-    unknown: "Unknown",
-    positiveRevenue: "Positive revenue",
-    noRevenue: "No revenue",
-    priority: "Priority",
-    revenueDesc: "Revenue: high to low",
-    revenueAsc: "Revenue: low to high",
-    rangeHint: "Date range cannot exceed 366 days",
-    reset: "Reset",
-    apply: "Apply filters",
-    loading: "Loading…"
-  });
+const copy = computed(() => {
+  const message = (key: string, fallback: string) => translateMessage(props.language, key, fallback);
+  return {
+    search: message("offerTracker.search", "搜索 Offer"),
+    searchPlaceholder: message("offerTracker.searchPlaceholder", "商户、ID、网络或品类"),
+    tiers: message("offerTracker.tiers", "Tier 筛选"),
+    categories: message("offerTracker.categories", "品类筛选"),
+    networks: message("offerTracker.networks", "Network 筛选"),
+    startDate: message("offerTracker.startDate", "开始日期"),
+    endDate: message("offerTracker.endDate", "结束日期"),
+    minAov: message("offerTracker.minAov", "最小 AOV"),
+    maxAov: message("offerTracker.maxAov", "最大 AOV"),
+    minCommission: message("offerTracker.minCommission", "最小 AFF Commission"),
+    maxCommission: message("offerTracker.maxCommission", "最大 AFF Commission"),
+    bbPolicy: message("offerTracker.bbPolicy", "BB Preference"),
+    revenueStatus: message("offerTracker.revenueStatus", "Revenue 状态"),
+    sort: message("offerTracker.sort", "排序"),
+    all: message("common.all", "全部"),
+    mind: message("offerTracker.mind", "介意 BB"),
+    open: message("offerTracker.open", "不介意 BB"),
+    unknown: message("common.unknown", "未知"),
+    positiveRevenue: message("offerTracker.positiveRevenue", "有 Revenue"),
+    noRevenue: message("offerTracker.noRevenue", "无 Revenue"),
+    priority: message("offerTracker.priority", "优先级"),
+    revenueDesc: message("offerTracker.revenueDesc", "Revenue 从高到低"),
+    revenueAsc: message("offerTracker.revenueAsc", "Revenue 从低到高"),
+    rangeHint: message("offerTracker.rangeHint", "日期范围最多 366 天"),
+    reset: message("common.reset", "重置"),
+    apply: message("common.apply", "应用筛选"),
+    loading: message("common.loading", "加载中…")
+  };
+});
 
 const emit = defineEmits<{
   (event: "update:modelValue", value: TrackerFilters): void;

@@ -150,9 +150,9 @@
       "storage": ["offerListTrackerRulesV1", "offerListTrackerColumnsV1", "offerListTrackerSavedViewsV1"],
       "exports": ["downloadOfferTrackerWorkbook()", "triggerWorkbookDownload()"],
       "overlays": ["Offer Tracker export dialog", "column panel", "rules panel", "saved views menu"],
-      "tests": ["scripts/test_offer_list_tracker_frontend.mjs", "scripts/test_offer_tracker_date_range.py", "frontend/src/features/offer-tracker/offerTrackerModel.test.ts", "frontend/src/features/offer-tracker/OfferTrackerPage.test.ts"],
+      "tests": ["scripts/test_offer_list_tracker_frontend.mjs", "scripts/test_offer_tracker_date_range.py", "frontend/src/features/offer-tracker/offerTrackerModel.test.ts", "frontend/src/features/offer-tracker/OfferTrackerPage.test.ts", "frontend/src/shared/api/client.test.ts", "frontend/src/shared/i18n/index.test.ts"],
       "testGap": "核心路径已完成真实浏览器验收；尚缺旧/新页面同一 fixture 的逐字段自动差异报告，高级保存视图、列面板、规则面板和导出对话框仍只在 legacy 回退实现。",
-      "notes": "M2 首个试点已进入 dual：核心筛选、排序、选择、分页和导出入口由 Vue 接管；保存视图、列面板、规则面板和旧导出对话框仍保留在 legacy 回退实现。选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
+      "notes": "M2 首个试点已进入 dual：核心筛选、排序、选择、分页和导出入口由 Vue 接管；M3 已接入共享 API client、错误类型和 i18n；保存视图、列面板、规则面板和旧导出对话框仍保留在 legacy 回退实现。选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
     },
     {
       "pageKey": "sheets",
@@ -210,7 +210,8 @@
 | --- | --- | --- |
 | 认证与数据预载 | `public/auth.js` | M1 保持会话、登录和 `/api/ui/db/offers` 语义；modern bundle 失败时仍可进入旧应用 |
 | 全局导航 | `switchPage()`、`syncNavigationGroupState()` | Shell 迁移前保持唯一权威入口，禁止新旧两侧各维护一套路由状态 |
-| 语言 | `state.language`、`offerLanguage`、`chatbot_i18n.js` | modern 与 legacy 双向同步，中文/英文文案成对迁移 |
+| 语言 | `state.language`、`offerLanguage`、`chatbot_i18n.js`、`frontend/src/shared/i18n/` | legacy 仍由 `state.language` 管理，通过 `OI_MODERN_APP.setLanguage()` 同步 modern；迁移文案必须中文/英文成对维护 |
+| 共享 API、错误与契约 | `frontend/src/shared/api/`、`frontend/src/shared/contracts/` | M3 的 modern 页面使用统一 JSON/错误/超时边界；契约只保留跨页面稳定字段，不复制完整数据库响应 |
 | 导出 | `downloadRowsAsXlsx()`、`triggerWorkbookDownload()` | M2–M5 通过窄 bridge 复用，字段级等价后迁移为共享模块 |
 | Deep Window | `_deepPanels` 与相关渲染函数 | 页面切换、最小化、恢复和请求中止在 Chatbot 阶段统一迁移 |
 | 数据启动对象 | `window.CHATBOT_DATA`、`window.SHEET_REPORT_DATA`、`window.PRODUCT_KEYWORDS` | 只在 `LegacyBootstrapData` 边界读取，Vue feature 不得直接读取任意全局对象 |
@@ -219,7 +220,7 @@
 ## 当前测试缺口优先级
 
 1. P0：Revenue Flow 没有独立回归，进入其迁移任务前必须建立 Sankey 数据、选择上限、缓存和图表生命周期测试。
-2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 前仍需补旧/新页面逐字段差异报告并迁移高级面板。
+2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
 3. P1：Payments 缺少页面级筛选、排序、加载和导出交互测试。
 4. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
 5. P1：Brand Media、Google Ads 和 Tier 的现有源码回归仍需补真实浏览器交互证据。
@@ -230,3 +231,4 @@
 | --- | --- | --- | --- | --- |
 | 2026-08-27 | 全部页面 | 无清单 | `legacy` | M0 首次盘点；尚未开始框架运行时代码 |
 | 2026-08-27 | Offer List Tracker | `legacy` | `dual` | Vue 核心筛选/排序/选择/分页/导出入口、legacy fallback、Vitest/构建契约和应用内浏览器验收通过；高级面板仍由 legacy 提供 |
+| 2026-08-27 | 共享前端模块 | 未建立 | 已建立 | M3 新增 shared API/error、Tier/Payment 契约和 i18n；Offer Tracker 已接入，Vitest、类型检查、构建和旧回归通过；其他页面仍待后续迁移 |

@@ -1,3 +1,5 @@
+import type { UiLanguage } from "../shared/i18n";
+
 export const MODERN_PAGE_NAMES = [
   "offer-list-tracker",
   "payments",
@@ -14,7 +16,7 @@ export const MODERN_PAGE_NAMES = [
 ] as const;
 
 export type ModernPageName = (typeof MODERN_PAGE_NAMES)[number];
-export type UiLanguage = "zh" | "en";
+export type { UiLanguage } from "../shared/i18n";
 
 export interface LegacyBootstrapData {
   chatbotData: unknown;
@@ -42,6 +44,5 @@ export type ModernPageFactory = (element: HTMLElement) => ModernPageController;
 
 export interface LegacyBridgeApi {
   navigate(page: ModernPageName): void;
-  requestRender(page: ModernPageName): void;
   download(type: string, payload: unknown): boolean;
 }

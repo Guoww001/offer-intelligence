@@ -1652,7 +1652,10 @@
   }
 
   function responseLanguageFor(prompt = state.currentQuery) {
-    if (chatbotI18n.responseLanguage) return chatbotI18n.responseLanguage(prompt, state.language);
+    const language = chatbotI18n.normalizeLanguage
+      ? chatbotI18n.normalizeLanguage(state.language)
+      : (state.language === "zh" ? "zh" : "en");
+    if (chatbotI18n.responseLanguage) return chatbotI18n.responseLanguage(prompt, language);
     return state.language === "zh" ? "zh" : "en";
   }
 
@@ -32873,14 +32876,6 @@ var _NUMERIC_COL_PATTERNS = [
 
   window.OI_LEGACY_BRIDGE = {
     navigate: (page) => switchPage(page),
-    requestRender: (page) => {
-      if (page === "offer-list-tracker" && state.page === page) {
-        if (els.offerListTrackerPage && els.offerListTrackerPage.classList.contains("is-modern")) return;
-        renderOfferListTrackerPage();
-        return;
-      }
-      switchPage(page);
-    },
     download: (type, payload) => type === "offer-tracker" && downloadModernOfferTracker(payload)
   };
 
