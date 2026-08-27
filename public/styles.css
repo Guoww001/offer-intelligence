@@ -559,6 +559,32 @@
   width: 100%;
 }
 
+/* Payments modern migration */
+.payments-page.is-modern > :not(#paymentsModernRoot) {
+  display: none !important;
+}
+
+.payments-page:not(.is-modern) > #paymentsModernRoot {
+  display: none !important;
+}
+
+.payments-page.is-modern > #paymentsModernRoot {
+  display: block;
+}
+
+.payments-page > #paymentsModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.payments-page.is-modern {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 .offer-tracker-page {
   --tracker-blue: #1769d2;
   --tracker-blue-dark: #0c4fa8;

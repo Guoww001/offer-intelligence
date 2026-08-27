@@ -614,6 +614,16 @@ node scripts/test_offer_list_tracker_frontend.mjs
 
 ---
 
+**M4 Payments 执行记录（2026-08-27）：**
+
+- 计划与范围：根据 M4 低风险数据页面顺序，先独立迁移 Payments；未修改 `/api/levanta/payments`、认证、数据库或其他页面，Payments legacy markup、渲染和事件代码仍作为受控 fallback 保留。
+- RED 证据：`paymentModel.test.ts`、`usePayments.test.ts`、`PaymentsPage.test.ts` 和 `scripts/test_payments_frontend.mjs` 均先在目标模块、组件或入口尚不存在时失败；月份筛选回归也先捕获了重复暴露 `reportMonthKey` 的问题。
+- 实现边界：新增 PaymentRecord/筛选/排序/摘要契约、纯 model、`usePayments`、Payments modern 页面组件和 scoped 样式；live sync 失败不替换 saved rows；placeholder 生成后仍经过零金额过滤；导出通过 `OI_LEGACY_BRIDGE.download("payments", payload)` 复用现有 XLSX 生成器；页面视觉对齐参考图的紧凑页头、4×2 摘要卡、两行筛选、品类副标题和面板内下载入口。
+- 入口与回退：`entry.ts` 注册 `payments` factory；`switchPage()` 挂载前同步 `state.language`，成功 mount 后跳过 legacy Payments 内部渲染和自动同步，离开页面先卸载；modern bundle 不可用时恢复 `renderPaymentsPage()` 和原有静默同步。
+- 验证证据：8 个 Vitest 文件、46 项测试通过；`npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、Payments/build/inventory 契约、`node scripts/test_zh_chatbot.mjs`、`node --check public/auth.js`、`node --check public/app.js`、Python 编译检查和 `git diff --check` 通过；`python -m scripts.test_payment_placeholders` 已运行并返回 0，但当前环境缺少 `output/payment_records.json`，其集成部分按脚本逻辑跳过。
+- 浏览器证据：browser-act 当前无已配置浏览器，因此使用应用内 Edge，在 `OI_AUTH_ENABLED=0`、8766 隔离服务验证 Payments modern root、legacy 父级隐藏边界、桌面/390px 移动布局、4×2 摘要卡、固定高度结果区和表格独立滚动、语言切换后再进入 Payments、状态/搜索筛选、同步失败 alert 和 saved rows 保留；页面级横向溢出为 false，桌面表格保留横向滚动。`/api/levanta/payments` 因缺少 `LEVANTA_API_KEY` 返回受控 503，未将其误判为成功同步；导出按钮可用，浏览器下载事件监听未捕获 Blob 下载，字段级导出由组件测试与 bridge/build 契约覆盖。
+- 当前状态：Payments 已进入迁移清单 `modern`；M4 仍为进行中，下一步需等待 review checkpoint 后再开始 Publishers。当前未提交、未推送、未创建 PR；8766 本地服务已停止并确认端口空闲。
+
 ### 任务 6：M5——迁移 Targets、Category Report 与 Tier 管理
 
 **迁移顺序：** `sheets` → `category` → `tier`
@@ -847,7 +857,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M1 双运行骨架 | 已验证 | Vue/TS/Vite、只读 Legacy Bridge、认证启动链、Vercel/CI 构建均已接入；目标测试和真实浏览器双运行验收通过 |
 | M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页/导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；高级面板仍保留在 legacy |
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
-| M4 Shell 与低风险页面 | 未开始 | 当前仍由 `switchPage()` 直接管理 |
+| M4 Shell 与低风险页面 | 进行中 | Payments 已由 Vue modern root 接管并保留 fallback；Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 与 Shell 尚未迁移 |
 | M5 Targets/Category/Tier | 未开始 | 当前仍由 legacy 路径渲染 |
 | M6 Chatbot/Agent | 未开始 | 当前仍由原生 JS 执行 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
@@ -860,10 +870,10 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M2 的浏览器验收证据继续有效，后续阶段仍需单独授权和分批执行。
+- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M4 Payments 已完成本批次验收，M4 其余页面仍需分批执行，后续阶段仍需单独授权。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 及后续阶段尚未开始。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 已完成，M4 其余页面及后续阶段尚未完成。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。

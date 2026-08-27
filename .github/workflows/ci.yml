@@ -70,6 +70,7 @@ jobs:
           python scripts/test_workflow_cache_split.py
           node scripts/test_frontend_migration_inventory.mjs
           node scripts/test_frontend_build_contract.mjs
+          node scripts/test_payments_frontend.mjs
           node scripts/test_chatbot_intent_flow.mjs
           node scripts/test_commission_all_aff.mjs
           node scripts/test_merchant_monthly.mjs

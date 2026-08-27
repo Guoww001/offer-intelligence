@@ -52,17 +52,17 @@
     {
       "pageKey": "payments",
       "label": "Payments",
-      "status": "legacy",
-      "roots": ["#paymentsPage"],
-      "legacyEntry": ["switchPage()", "renderPaymentsPage()", "refreshLevantaPayments()", "downloadPaymentsXlsx()"],
+      "status": "modern",
+      "roots": ["#paymentsPage", "#paymentsModernRoot"],
+      "legacyEntry": ["switchPage()", "renderPaymentsPage()", "refreshLevantaPayments()", "downloadPaymentsXlsx()", "downloadModernPayments()"],
       "state": ["state.payments", "state.paymentSort", "state.paymentSource", "state.livePaymentsLoaded", "state.livePaymentsLoading"],
       "apis": ["/api/levanta/payments"],
       "storage": ["offerPaymentLastAutoSync"],
       "exports": ["downloadPaymentsXlsx()"],
       "overlays": [],
-      "tests": ["scripts/test_payment_placeholders.py", "scripts/test_zh_chatbot.mjs"],
-      "testGap": "缺少 Payments 页面筛选、排序、加载和导出交互的独立浏览器/组件回归。",
-      "notes": "付款记录包含 Paid、Pending、Unpaid、Overdue、Partial；零 Revenue 且零 Commission 记录必须从页面和导出排除。"
+      "tests": ["scripts/test_payment_placeholders.py", "scripts/test_zh_chatbot.mjs", "scripts/test_payments_frontend.mjs", "frontend/src/features/payments/paymentModel.test.ts", "frontend/src/features/payments/usePayments.test.ts", "frontend/src/features/payments/PaymentsPage.test.ts"],
+      "testGap": "",
+      "notes": "Payments 默认由 Vue modern root 渲染；保留 legacy fallback。付款记录包含 Paid、Pending、Unpaid、Overdue、Partial；零 Revenue 且零 Commission 记录必须从页面和导出排除。现代页面已对齐参考 Payments 布局：紧凑页头、4×2 摘要卡、两行筛选、固定高度可滚动表格和表头下载入口。"
     },
     {
       "pageKey": "publishers",
@@ -221,9 +221,8 @@
 
 1. P0：Revenue Flow 没有独立回归，进入其迁移任务前必须建立 Sankey 数据、选择上限、缓存和图表生命周期测试。
 2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
-3. P1：Payments 缺少页面级筛选、排序、加载和导出交互测试。
-4. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
-5. P1：Brand Media、Google Ads 和 Tier 的现有源码回归仍需补真实浏览器交互证据。
+3. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
+4. P1：Brand Media、Google Ads 和 Tier 的现有源码回归仍需补真实浏览器交互证据。
 
 ## 状态更新记录
 
@@ -232,3 +231,4 @@
 | 2026-08-27 | 全部页面 | 无清单 | `legacy` | M0 首次盘点；尚未开始框架运行时代码 |
 | 2026-08-27 | Offer List Tracker | `legacy` | `dual` | Vue 核心筛选/排序/选择/分页/导出入口、legacy fallback、Vitest/构建契约和应用内浏览器验收通过；高级面板仍由 legacy 提供 |
 | 2026-08-27 | 共享前端模块 | 未建立 | 已建立 | M3 新增 shared API/error、Tier/Payment 契约和 i18n；Offer Tracker 已接入，Vitest、类型检查、构建和旧回归通过；其他页面仍待后续迁移 |
+| 2026-08-27 | Payments | `legacy` | `modern` | Vue model/composable/组件、live API 错误保留 saved rows、月份/状态/搜索/排序、零金额排除、窄 XLSX bridge、legacy fallback、全量 Vitest/类型检查/构建和应用内 Edge 浏览器验收通过；browser-act 无已配置浏览器，8766 隔离服务的 API 仍因缺少 `LEVANTA_API_KEY` 返回 503，受控错误路径已验证 |

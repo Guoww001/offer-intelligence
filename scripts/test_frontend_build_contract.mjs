@@ -60,8 +60,8 @@ read("frontend/src/entry.ts");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260827-vue-m2'),
-  "index.html 缺少本地 modern CSS"
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260827-vue-m4-payments'),
+  "index.html 缺少 M4 本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
 assert(
@@ -71,8 +71,8 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260827-vue-m2";'),
-  "auth.js 缺少本地 modern bundle 常量"
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260827-vue-m4-payments";'),
+  "auth.js 缺少 M4 本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
 assert(auth.includes("window.OI_MODERN_APP.bootstrap("), "auth.js 未调用 modern bootstrap");
@@ -83,6 +83,13 @@ assert(modernLoaderSource.includes("await loadScript(MODERN_APP_SCRIPT);"), "mod
 assert(modernLoaderSource.includes("catch (error)"), "modern 加载失败时必须进入受控回退");
 assert(modernLoaderSource.includes("return false;"), "modern 加载失败时必须允许 legacy 继续启动");
 assert(auth.indexOf("await loadModernApp();") < auth.indexOf("await loadScript(APP_SCRIPT);"), "modern bundle 必须在 legacy app.js 前初始化");
+
+const legacyApp = read("public/app.js");
+const paymentsSwitchStart = legacyApp.indexOf("if (isPayments) {");
+const paymentsSwitchEnd = legacyApp.indexOf('if (page === "publishers")', paymentsSwitchStart);
+assert(paymentsSwitchStart >= 0 && paymentsSwitchEnd > paymentsSwitchStart, "Payments 页面切换边界不存在");
+const paymentsSwitchSource = legacyApp.slice(paymentsSwitchStart, paymentsSwitchEnd);
+assert(paymentsSwitchSource.includes("modernApp.setLanguage(state.language)"), "Payments 挂载前必须同步现代页面语言");
 
 const vercel = JSON.parse(read("vercel.json"));
 assert(vercel.installCommand === "npm --prefix frontend ci", "Vercel installCommand 不正确");
@@ -122,5 +129,6 @@ vm.runInNewContext(fs.readFileSync(bundlePath, "utf8"), sandbox, { filename: bun
 const modernApp = sandbox.window.OI_MODERN_APP;
 assert(modernApp && typeof modernApp.bootstrap === "function", "modern bundle 未注册 OI_MODERN_APP");
 assert(modernApp.hasPage("offer-list-tracker") === true, "M2 必须注册 Offer Tracker 页面");
+assert(modernApp.hasPage("payments") === true, "M4 必须注册 Payments 页面");
 
 console.log("PASS: frontend build contract");

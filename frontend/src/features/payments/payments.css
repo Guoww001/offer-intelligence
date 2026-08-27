@@ -1,0 +1,440 @@
+.payments-modern-page {
+  --payments-ink: #17243a;
+  --payments-muted: #68778d;
+  --payments-line: #dce4ee;
+  --payments-soft: #f5f8fc;
+  --payments-accent: #1769d2;
+  --payments-accent-dark: #0f4fa4;
+  box-sizing: border-box;
+  color: var(--payments-ink);
+  display: grid;
+  gap: 13px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: calc(100vh - 36px);
+  height: calc(100dvh - 36px);
+  max-width: none;
+  margin: 0 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 20px 28px;
+  width: 100%;
+}
+
+.payments-modern-page *,
+.payments-modern-page *::before,
+.payments-modern-page *::after {
+  box-sizing: border-box;
+}
+
+.payments-modern-page button,
+.payments-modern-page input,
+.payments-modern-page select {
+  font: inherit;
+}
+
+.payments-modern-page button {
+  cursor: pointer;
+}
+
+.payments-modern-page button:disabled,
+.payments-modern-page select:disabled,
+.payments-modern-page input:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.payments-modern-page button:focus-visible,
+.payments-modern-page input:focus-visible,
+.payments-modern-page select:focus-visible {
+  outline: 3px solid rgba(23, 105, 210, .25);
+  outline-offset: 2px;
+}
+
+.payments-modern-header,
+.payments-modern-table-heading {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.payments-modern-header {
+  min-height: 48px;
+}
+
+.payments-modern-eyebrow {
+  display: none;
+}
+
+.payments-modern-header h1 {
+  font-size: 28px;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.payments-modern-header p {
+  color: var(--payments-muted);
+  margin: 3px 0 0;
+}
+
+.payments-modern-stamp {
+  font-size: 13px;
+}
+
+.payments-modern-sync,
+.payments-modern-download {
+  border: 1px solid var(--payments-accent);
+  border-radius: 9px;
+  font-weight: 800;
+  min-height: 40px;
+  padding: 9px 14px;
+}
+
+.payments-modern-sync {
+  background: #fff;
+  border-color: var(--payments-line);
+  color: var(--payments-ink);
+}
+
+.payments-modern-sync:hover:not(:disabled) {
+  background: #f7fafc;
+  border-color: #b8c8d8;
+}
+
+.payments-modern-download {
+  background: #fff;
+  color: var(--payments-accent-dark);
+}
+
+.payments-modern-download:hover:not(:disabled) {
+  background: #eef5ff;
+}
+
+.payments-modern-summary {
+  display: grid;
+  column-gap: 10px;
+  row-gap: 11px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.payments-modern-summary-card,
+.payments-modern-filters,
+.payments-modern-table-panel {
+  background: #fff;
+  border: 1px solid var(--payments-line);
+  border-radius: 9px;
+  box-shadow: 0 8px 22px rgba(37, 48, 56, .04);
+}
+
+.payments-modern-summary-card {
+  align-content: center;
+  display: grid;
+  gap: 5px;
+  min-height: 83px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.payments-modern-summary-card span {
+  color: var(--payments-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.payments-modern-summary-card strong {
+  font-size: 24px;
+  letter-spacing: -.03em;
+}
+
+.payments-modern-summary-card--status {
+  min-height: 70px;
+  padding: 10px 14px;
+}
+
+.payments-modern-filters {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  padding: 18px 16px 19px;
+}
+
+.payments-modern-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.payments-modern-filters label > span {
+  color: var(--payments-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.payments-modern-filters select,
+.payments-modern-filters input[type="search"] {
+  background: #fff;
+  border: 1px solid var(--payments-line);
+  border-radius: 8px;
+  color: var(--payments-ink);
+  min-height: 42px;
+  min-width: 0;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.payments-modern-search {
+  grid-column: span 2;
+}
+
+.payments-modern-notice {
+  border-radius: 9px;
+  margin: 0;
+  padding: 11px 13px;
+}
+
+.payments-modern-notice.error {
+  background: #fff3f1;
+  border: 1px solid #f2c7c0;
+  color: #a6362c;
+}
+
+.payments-modern-results {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.payments-modern-results.has-notice {
+  gap: 13px;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.payments-modern-results:not(.has-notice) {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.payments-modern-table-panel {
+  display: grid;
+  gap: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.payments-modern-table-heading {
+  min-height: 66px;
+  padding: 13px 16px 12px;
+}
+
+.payments-modern-table-heading h2 {
+  font-size: 18px;
+  letter-spacing: -.01em;
+  margin: 0;
+}
+
+.payments-modern-table-heading p {
+  color: var(--payments-muted);
+  font-size: 12px;
+  margin: 5px 0 0;
+}
+
+.payments-modern-table-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.payments-modern-download {
+  background: #fff;
+  border-color: var(--payments-line);
+  color: var(--payments-ink);
+  min-width: 100px;
+}
+
+.payments-modern-download:hover:not(:disabled) {
+  background: #f7fafc;
+  border-color: #b8c8d8;
+}
+
+.payments-modern-table-wrap {
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+}
+
+.payments-modern-table {
+  border-collapse: collapse;
+  min-width: 1600px;
+  width: 100%;
+}
+
+.payments-modern-table th,
+.payments-modern-table td {
+  border-top: 1px solid var(--payments-line);
+  padding: 12px 13px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.payments-modern-table th {
+  background: #f8fafd;
+  color: var(--payments-muted);
+  font-size: 11px;
+  font-weight: 850;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.payments-modern-table th button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+}
+
+.payments-modern-table td {
+  color: var(--payments-ink);
+  font-size: 13px;
+}
+
+.payments-modern-table tbody tr:hover {
+  background: #f9fbff;
+}
+
+.payments-modern-table td[data-column="merchantName"] {
+  min-width: 150px;
+}
+
+.payments-modern-table td[data-column="merchantName"] strong,
+.payments-modern-table td[data-column="merchantName"] small {
+  display: block;
+}
+
+.payments-modern-table td[data-column="merchantName"] small {
+  color: var(--payments-muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.payments-modern-table td[data-column="revenueMade"],
+.payments-modern-table td[data-column="commissionMade"] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.payments-modern-status {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 4px 8px;
+}
+
+.payments-modern-status[data-status="paid"] {
+  background: #e8f7ed;
+  color: #18713a;
+}
+
+.payments-modern-status[data-status="pending"],
+.payments-modern-status[data-status="partial"] {
+  background: #fff4d8;
+  color: #8b6100;
+}
+
+.payments-modern-status[data-status="unpaid"],
+.payments-modern-status[data-status="overdue"] {
+  background: #fff0ed;
+  color: #a6362c;
+}
+
+.payments-modern-status[data-status="unknown"] {
+  background: #eef1f5;
+  color: #68778d;
+}
+
+.payments-modern-table [data-empty-state] td {
+  color: var(--payments-muted);
+  padding: 44px 18px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .payments-modern-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payments-modern-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .payments-modern-page {
+    height: auto;
+    overflow: visible;
+    padding: 20px 12px 30px;
+  }
+
+  .payments-modern-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payments-modern-sync {
+    width: 100%;
+  }
+
+  .payments-modern-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payments-modern-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .payments-modern-search {
+    grid-column: auto;
+  }
+
+  .payments-modern-table-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payments-modern-table-actions,
+  .payments-modern-download {
+    width: 100%;
+  }
+
+  .payments-modern-results,
+  .payments-modern-table-panel {
+    overflow: visible;
+  }
+
+  .payments-modern-table-panel {
+    height: auto;
+  }
+
+  .payments-modern-table-wrap {
+    max-height: 65vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payments-modern-page * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

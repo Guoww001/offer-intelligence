@@ -78,6 +78,7 @@ const unknownPages = [...inventoryByPage.keys()].filter((pageKey) => !routedPage
 assert(missingPages.length === 0, `迁移清单缺少 switchPage() 页面: ${missingPages.join(", ")}`);
 assert(unknownPages.length === 0, `迁移清单包含 switchPage() 未识别页面: ${unknownPages.join(", ")}`);
 assert(inventoryByPage.get("offer-list-tracker")?.status === "dual", "Offer Tracker M2 完成后必须保持 dual 状态");
+assert(inventoryByPage.get("payments")?.status === "modern", "Payments M4 完成后必须进入 modern 状态");
 
 const ci = fs.readFileSync(ciPath, "utf8");
 assert(

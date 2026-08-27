@@ -2,6 +2,7 @@ import { createApp, h } from "vue";
 
 import "./shared/styles/modern-root.css";
 import "./features/offer-tracker/offerTracker.css";
+import "./features/payments/payments.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
 import type {
@@ -14,9 +15,11 @@ import type {
   OfferTrackerDateRange,
   OfferTrackerExportPayload
 } from "./shared/contracts/offer";
+import type { PaymentExportPayload, PaymentLivePayload } from "./shared/contracts/payment";
 import { apiRequest } from "./shared/api/client";
 import { createI18nStore } from "./shared/i18n";
 import OfferTrackerPage from "./features/offer-tracker/OfferTrackerPage.vue";
+import PaymentsPage from "./features/payments/PaymentsPage.vue";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -30,6 +33,11 @@ interface OfferTrackerOffersPayload {
   readonly offers?: unknown;
 }
 
+interface PaymentsApiPayload {
+  readonly records?: unknown;
+  readonly checkedAt?: unknown;
+}
+
 function chatbotRecord(data: LegacyBootstrapData): Record<string, unknown> {
   return isRecord(data.chatbotData) ? data.chatbotData : {};
 }
@@ -39,6 +47,23 @@ function offerRecords(data: LegacyBootstrapData): readonly OfferRecord[] {
   return Array.isArray(rows)
     ? rows.filter((row): row is OfferRecord => isRecord(row))
     : [];
+}
+
+function paymentRecords(data: LegacyBootstrapData): readonly Record<string, unknown>[] {
+  const rows = chatbotRecord(data).paymentRecords;
+  return Array.isArray(rows)
+    ? rows.filter((row): row is Record<string, unknown> => isRecord(row))
+    : [];
+}
+
+function sheetRows(data: LegacyBootstrapData): readonly Record<string, unknown>[] {
+  const sheetReport = isRecord(data.sheetReportData) ? data.sheetReportData : {};
+  const sheets = sheetReport.sheets;
+  if (!Array.isArray(sheets)) return [];
+  return sheets.flatMap((sheet) => {
+    if (!isRecord(sheet) || !Array.isArray(sheet.rows)) return [];
+    return sheet.rows.filter((row): row is Record<string, unknown> => isRecord(row));
+  });
 }
 
 function defaultDateRange(data: LegacyBootstrapData): OfferTrackerDateRange {
@@ -67,6 +92,24 @@ function downloadOfferTracker(payload: OfferTrackerExportPayload): boolean {
   const bridge = window.OI_LEGACY_BRIDGE;
   if (!bridge) return false;
   return bridge.download("offer-tracker", payload);
+}
+
+async function loadPayments(): Promise<PaymentLivePayload> {
+  const payload = await apiRequest<PaymentsApiPayload>("/api/levanta/payments");
+  if (!isRecord(payload) || !Array.isArray(payload.records)) {
+    throw new Error("Payments API 响应缺少 records");
+  }
+  const checkedAt = stringValue(payload.checkedAt).slice(0, 10);
+  return {
+    records: payload.records,
+    ...(checkedAt ? { checkedAt } : {})
+  };
+}
+
+function downloadPayments(payload: PaymentExportPayload): boolean {
+  const bridge = window.OI_LEGACY_BRIDGE;
+  if (!bridge) return false;
+  return bridge.download("payments", payload);
 }
 
 const offerTrackerFactory: ModernPageFactory = (element): ModernPageController => {
@@ -98,4 +141,35 @@ const offerTrackerFactory: ModernPageFactory = (element): ModernPageController =
   };
 };
 
-window.OI_MODERN_APP = createModernAppApi({ "offer-list-tracker": offerTrackerFactory });
+const paymentsFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernPaymentsMount",
+    setup() {
+      return () => h(PaymentsPage, {
+        records: paymentRecords(snapshot),
+        offers: offerRecords(snapshot),
+        sheetRows: sheetRows(snapshot),
+        language: i18n.language.value,
+        loadLive: loadPayments,
+        download: downloadPayments
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
+window.OI_MODERN_APP = createModernAppApi({
+  "offer-list-tracker": offerTrackerFactory,
+  payments: paymentsFactory
+});

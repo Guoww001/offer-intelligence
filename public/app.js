@@ -2289,7 +2289,13 @@
     setDatasetStamp();
     setPaymentStamp(state.livePaymentsLoaded ? "live" : "saved");
     if (state.page === "payments") {
-      renderPaymentsPage();
+      if (els.paymentsPage && els.paymentsPage.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        renderPaymentsPage();
+      }
     } else if (state.page === "sheets") {
       renderSheetPage();
     } else if (state.page === "tier") {
@@ -31440,6 +31446,18 @@ var _NUMERIC_COL_PATTERNS = [
       const modernRoot = document.getElementById("offerListTrackerModernRoot");
       if (modernRoot) modernRoot.classList.add("hidden");
     }
+    if (previousPage === "payments" && page !== "payments") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("payments");
+        }
+      } catch (error) {
+        console.warn("Modern Payments unmount failed; continuing with the legacy payments page.", error);
+      }
+      if (els.paymentsPage) els.paymentsPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("paymentsModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.drawerOpen) {
       closeMonthlyNewMerchantDrawer({ restoreFocus: false });
     }
@@ -31465,6 +31483,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isAgent = page === "agent";
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isOfferListTracker = page === "offer-list-tracker";
+    const isPayments = page === "payments";
     const isBrandMedia = page === "brand-media";
     const isRevenueFlow = page === "revenue-flow";
     const isGoogleAds = page === "google-ads";
@@ -31506,9 +31525,65 @@ var _NUMERIC_COL_PATTERNS = [
         _minimizeDeepPanel(p.id);
       }
     });
-    if (page === "payments") {
-      renderPaymentsPage();
-      if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
+    if (isPayments) {
+      const modernRoot = document.getElementById("paymentsModernRoot");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "payments"
+        && els.paymentsPage
+        && els.paymentsPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("payments"));
+          if (modernPageAvailable) {
+            modernMounted = Boolean(modernApp.mountPage("payments", modernRoot));
+          }
+        }
+      } catch (error) {
+        console.warn("Modern Payments unavailable; continuing with the legacy payments page.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.paymentsPage) els.paymentsPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.paymentsPage) els.paymentsPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (
+            !modernPageAvailable
+            || !modernApp
+            || typeof modernApp.hasPage !== "function"
+            || typeof modernApp.mountPage !== "function"
+          )
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Payments unavailable; continuing with the legacy payments page.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderPaymentsPage();
+        if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
+      }
     }
     if (page === "publishers") {
       renderPublishersPage();
@@ -32874,9 +32949,27 @@ var _NUMERIC_COL_PATTERNS = [
     return true;
   }
 
+  function downloadModernPayments(payload) {
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.rows)) return false;
+    const rows = payload.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row));
+    if (!rows.length) return false;
+    downloadRowsAsXlsx(rows, {
+      downloadType: "payments",
+      filePrefix: "payment_records_modern",
+      exportScope: "current_filters",
+      sheetName: "Payments",
+      downloadColumns: paymentExportColumns()
+    });
+    return true;
+  }
+
   window.OI_LEGACY_BRIDGE = {
     navigate: (page) => switchPage(page),
-    download: (type, payload) => type === "offer-tracker" && downloadModernOfferTracker(payload)
+    download: (type, payload) => (
+      type === "offer-tracker"
+        ? downloadModernOfferTracker(payload)
+        : type === "payments" && downloadModernPayments(payload)
+    )
   };
 
   cacheOriginalTierSheetRows();
