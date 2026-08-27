@@ -422,6 +422,6 @@ retryCount
 
 本次新增回归结果：Agent 测试共 32 个场景通过；6 个工具调用按 4+2 批次完整执行；7 个工具调用执行 6 个并明确返回 1 个 `omittedTargets`；歧义商户统一返回候选，非法付款/趋势过滤统一返回 `invalid_filter`。综合请求配置测试同时确认规划上限为 64KB、综合上限为 128KB，且两个综合入口均传入共享读取上限。
 
-4.5 首期新增 `scripts/test_agent_memory_state.mjs`，覆盖状态规范化、同轮合并、跨轮替换、候选确认/拒绝、7 天过期、版本失配、存储异常、隐私字段剔除、页面恢复/清除和静态加载契约；该测试已加入 `.github/workflows/ci.yml`。实现已提交并推送至 `origin/fix/revenue-flow-tooltip-hover`，当前提交为 `8325b45`。
+4.5 首期新增 `scripts/test_agent_memory_state.mjs`，覆盖状态规范化、同轮合并、跨轮替换、候选确认/拒绝、7 天过期、版本失配、存储异常、隐私字段剔除、页面恢复/清除和静态加载契约；该测试已加入 `.github/workflows/ci.yml`。实现已提交并推送至 `origin/fix/revenue-flow-tooltip-hover`。
 
 当前发现的 3 个独立 UI 契约测试失败：`test_agent_stop_button.mjs` 的固定 `\n` 源码匹配受 Windows CRLF 影响，`test_agent_execution_timeline.mjs` 和 `test_dashboard_chat_pages.mjs` 要求的时间线/Dashboard CSS 契约在当前基线中不存在；它们尚未全部纳入 CI，建议在 Phase 1 一并修复测试方式和 CI 配置。本次 4.5 实现未扩大到这些无关 UI 修复。
