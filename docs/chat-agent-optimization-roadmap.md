@@ -2,7 +2,7 @@
 
 > 审查日期：2026-08-21
 > 审查范围：Agent 规划、工具执行、综合、上下文、趋势图、历史、中止、日志、反馈、测试和 Dashboard 交互
-> 当前状态：审查结论与实施建议；截至 2026-08-26，P0.1 综合请求读取上限、P0.2 工具调用批处理、P0.3 可验证数据来源边界、P0.4 实体/过滤失败关闭和 4.5 结构化记忆首期已完成定向实现与回归验证
+> 当前状态：审查结论与实施建议；截至 2026-08-27，P0.1 综合请求读取上限、P0.2 工具调用批处理、P0.3 可验证数据来源边界、P0.4 实体/过滤失败关闭、4.2 服务端工具注册表和 4.5 结构化记忆首期已完成定向实现与回归验证
 
 ## 1. 当前能力基线
 
@@ -215,7 +215,7 @@ retryCount
 
 实现状态（2026-08-26）：已完成本节范围。浏览器使用与提问日志相同的 `questionEventId` 创建 `runId`，通过现有 `/api/chat/stream?operation=agent_trace` 异步写入 `cnpscy_oi_agent_runs` 和 `cnpscy_oi_agent_steps`；本地 `server.py` 与 Vercel `api/chat/stream.py` 均复用该 operation。planning、tool、synthesis 三阶段记录状态、耗时、调用计数、数据来源、快照时间、估算标志、重试次数和受控错误码；Provider usage 在 `[DONE]` 前通过独立 `type=usage` SSE 事件传递，缺失时保存 `usageAvailable=false` 和 NULL token，并在前端降级为“响应片段数 / response chunks”。Trace 写入超时或失败只记录 `console.warn`，不改变回答、问题日志或 fallback。
 
-隐私边界：Trace 白名单拒绝 `prompt`、`messages`、工具 `arguments`、`toolResult`、回答正文、原始响应和异常堆栈；数据来源无法确认时记录 `unknown`，不会用当前浏览器时间冒充 `dataAsOf`。本次仅实现 4.1，不包含 3.5、3.6、4.2、4.3 的后续能力。
+隐私边界：Trace 白名单拒绝 `prompt`、`messages`、工具 `arguments`、`toolResult`、回答正文、原始响应和异常堆栈；数据来源无法确认时记录 `unknown`，不会用当前浏览器时间冒充 `dataAsOf`。本次实现 4.1 和 4.2，不包含 3.5、3.6、4.3 的后续能力。
 
 ### 4.2 服务端维护规范工具注册表
 
@@ -227,13 +227,18 @@ retryCount
 - `api/chat/stream.py:59`
 - `llm_provider.py:246`
 
-建议：
+已实现：
 
-- 服务端维护规范工具名称、描述和 Schema。
-- 规划请求只提交问题、语言和需要启用的工具集合。
-- 综合请求改为结构化的 `question + context + toolResults`。
-- 服务端校验工具名、字段白名单和结果来源后再组装 LLM 消息。
-- 工具结果增加 `runId` 或签名，避免客户端伪造数据结果。
+- 服务端通过 `agent_tool_registry.py` 维护七个规范工具的名称、双语描述、参数 Schema 和结果字段白名单；客户端只能提交启用名称集合。
+- `/api/chat/agent` 使用 `v2` 规划协议，服务端生成 `agentRunId`、规范化调用 ID，并用 `agent-tools-v1` 注册表版本签发计划证明。
+- `/api/chat/stream` 的 Agent 综合请求使用结构化的 `question + context + toolResults + planProofs`；本地 `server.py` 与 Vercel `api/chat/stream.py` 复用 `agent_contract.py` 的同一套校验和消息组装。
+- 计划证明使用 `OI_SESSION_SECRET` 的独立 HMAC purpose，有效期 600 秒，绑定运行 ID、问题哈希、工具名和参数哈希；参数被替换、跨运行使用或过期时返回 `run_binding_failed`。
+- 服务端校验工具名、参数范围、结果字段白名单、受控来源、结果字节数和嵌套安全键后再组装 Provider 消息；客户端 `messages`、工具 `description/parameters` 和原始错误文本不再进入 Agent HTTP 请求。
+- 前端保留浏览器只读工具执行和现有时间线，仅发送服务端返回的已绑定调用，并将结果投影为 `callId`、`toolName`、`arguments`、受控 `result`。
+
+边界说明：当前工具仍由浏览器执行，HMAC 只能证明本次运行的调用元数据和参数没有被替换，不能证明浏览器返回的数据值真实。结果真实性仍需未来的服务端工具执行方案；本次没有新增数据库表、字段或 Trace 持久化内容。
+
+实现状态（2026-08-27）：已完成。相关回归包括 `scripts/test_agent_tool_registry.py`、`scripts/test_agent_contract.py`、`scripts/test_agent_planning_contract.py`、`scripts/test_agent_synthesis_contract.py`、`scripts/test_agent_http.py`、`scripts/test_chat_stream_agent_config.py`、`scripts/test_llm_agent.py`、`scripts/test_chat_agent.mjs` 和 `scripts/test_agent_trace.mjs`。
 
 实现成本：M。
 

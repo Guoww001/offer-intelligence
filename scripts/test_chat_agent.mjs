@@ -76,7 +76,21 @@ const sandbox = {
   fetch: async function (url, init) {
     fetchCalls.push({ url: String(url), body: init && init.body ? JSON.parse(init.body) : null });
     if (!mockFetchImpl) throw new Error("no mockFetchImpl for " + url);
-    return mockFetchImpl(String(url), fetchCalls[fetchCalls.length - 1]);
+    const response = mockFetchImpl(String(url), fetchCalls[fetchCalls.length - 1]);
+    if (String(url).indexOf("/api/chat/agent") === 0 && response && typeof response.json === "function") {
+      const originalJson = response.json;
+      response.json = async function () {
+        const payload = await originalJson();
+        if (!payload || payload.ok !== true) return payload;
+        return Object.assign({
+          contractVersion: "v2",
+          registryVersion: "agent-tools-v1",
+          agentRunId: "run-agent-fixture-2026",
+          planProof: Array.isArray(payload.toolCalls) && payload.toolCalls.length ? "fixture-plan-proof" : undefined
+        }, payload);
+      };
+    }
+    return response;
   },
   setInterval(_callback, delay) { intervalDelays.push(delay); return intervalDelays.length; },
   clearInterval() {}
@@ -503,7 +517,11 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
           ok: true,
           content: null,
           finishReason: "tool_calls",
-          toolCalls: [{ id: "comparison", name: "merchant_comparison", arguments: { merchants } }]
+          toolCalls: merchants.map((merchant, index) => ({
+            id: "r1c" + (index + 1),
+            name: "merchant_analysis",
+            arguments: { merchant }
+          }))
         };
       } };
     }
@@ -570,6 +588,12 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(outcome.handled, true, "agent should handle failed-tool case");
   assertEqual(outcome.directContent, "未找到该商户", "second plan round content should surface");
   assertEqual(planCount, 2, "expect a corrective second planning round");
+  assertEqual(fetchCalls[0].body.contractVersion, "v2", "initial plan should use the v2 contract");
+  assertEqual(fetchCalls[0].body.messages, undefined, "initial plan must not send messages");
+  assertEqual(fetchCalls[0].body.tools, undefined, "initial plan must not send tool definitions");
+  assertTruthy(fetchCalls[1].body.retry, "failed tool should trigger a structured retry");
+  assertEqual(fetchCalls[1].body.retry.failedCalls[0].callId, "c1", "retry should bind the failed call ID");
+  assertEqual(fetchCalls[1].body.retry.failedCalls[0].errorCode, "not_found", "retry should send a fixed error code");
 }
 
 // ── Test 4: 规划失败 → handled:false（调用方回退单发） ──
@@ -1203,4 +1227,59 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
   assertEqual(timelineRoot.open, false, "successful Agent timeline should collapse after completion");
 }
 
-console.log("OK 32 scenarios");
+// 鈹€鈹€ Test 33: Agent HTTP body 鍙紶杈撶粍鍚堝崗璁瓧娈碉紝涓嶅啀浼犺緭 messages/Schema 鈹€鈹€
+{
+  fetchCalls = [];
+  let planBody = null;
+  let synthesisBody = null;
+  mockFetchImpl = function (url, call) {
+    if (url.indexOf("/api/chat/agent") === 0) {
+      planBody = call.body;
+      return { ok: true, json: async function () {
+        return {
+          ok: true,
+          contractVersion: "v2",
+          registryVersion: "agent-tools-v1",
+          agentRunId: "run-agent-client-contract-2026",
+          planProof: "signed-plan-proof",
+          content: null,
+          finishReason: "tool_calls",
+          toolCalls: [{ id: "r1c1", name: "merchant_analysis", arguments: { merchant: firstOffer } }]
+        };
+      } };
+    }
+    if (url.indexOf("/api/ui/db/merchant") === 0) {
+      return { ok: true, json: async function () { return { ok: true, monthlyAmazonMetrics: [] }; } };
+    }
+    synthesisBody = call.body;
+    return sseResponse('data: {"token":"contract-ok"}\n\ndata: [DONE]\n\n');
+  };
+  const contractOutcome = await hooks.runChatAgent("Shokz current performance", {
+    language: "zh", chatLogEl: chatLogStub, memoryText: "", history: [], viewContext: null
+  });
+  assertEqual(contractOutcome.ok, true, "structured Agent contract fixture should succeed");
+  assertTruthy(planBody && synthesisBody, "structured Agent test should capture planning and synthesis bodies");
+  assertEqual(Object.prototype.hasOwnProperty.call(planBody, "messages"), false,
+    "planning body must not include messages");
+  assertEqual(Object.prototype.hasOwnProperty.call(planBody, "tools"), false,
+    "planning body must not include tools");
+  assertEqual(JSON.stringify(planBody).includes("description"), false,
+    "planning body must not include tool descriptions");
+  assertEqual(JSON.stringify(planBody).includes("parameters"), false,
+    "planning body must not include tool parameters");
+  assertEqual(planBody.contractVersion, "v2", "planning body must use v2");
+  assertTruthy(Array.isArray(planBody.enabledTools), "planning body should contain enabled tool names");
+  assertEqual(Object.prototype.hasOwnProperty.call(synthesisBody, "messages"), false,
+    "synthesis body must not include messages");
+  assertEqual(synthesisBody.contractVersion, "v2", "synthesis body must use v2");
+  assertEqual(synthesisBody.agentRunId, "run-agent-client-contract-2026", "synthesis must bind the run ID");
+  assertEqual(synthesisBody.planProofs[0], "signed-plan-proof", "synthesis must carry the server plan proof");
+  assertTruthy(synthesisBody.context && synthesisBody.toolResults, "synthesis should contain structured context and results");
+  assertEqual(synthesisBody.toolResults[0].callId, "r1c1", "synthesis should use the server call ID");
+  assertEqual(synthesisBody.toolResults[0].toolName, "merchant_analysis", "synthesis should carry the tool name");
+  assertTruthy(synthesisBody.toolResults[0].arguments, "synthesis should carry the bound arguments");
+  assertEqual(Object.prototype.hasOwnProperty.call(synthesisBody.toolResults[0].result, "error"), false,
+    "synthesis result must not carry the raw error field");
+}
+
+console.log("OK 33 scenarios");

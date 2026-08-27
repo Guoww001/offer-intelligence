@@ -288,7 +288,8 @@ def stream_chat(
         temperature: Sampling temperature.
         history: Optional list of {role, content} dicts for conversation context.
         messages: Optional full message list ({role, content}) that replaces
-            ``user_message`` and ``history`` when provided (agent synthesis).
+            ``user_message`` and ``history`` when provided. Agent 综合场景中，
+            ``messages`` 只能由服务端内部组装，不能作为客户端请求入口。
     """
     provider = _provider()
     model = _model_name()

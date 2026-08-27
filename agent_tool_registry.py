@@ -39,7 +39,7 @@ AGENT_TREND_METRICS = (
     "directSales",
     "haloSales",
 )
-AGENT_DATA_SOURCES = ("database", "cache", "unavailable", "unknown")
+AGENT_DATA_SOURCES = ("database", "cache", "mixed", "unavailable", "unknown")
 AGENT_RESULT_MAX_BYTES = 6000
 AGENT_TIER_RESULT_MAX_BYTES = 18000
 AGENT_MAX_RESULT_STRING_CHARS = 1000

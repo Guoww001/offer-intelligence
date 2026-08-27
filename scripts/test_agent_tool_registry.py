@@ -127,6 +127,16 @@ def test_tool_results_allow_only_registered_fields_and_safe_source():
     assert error is None
     assert valid["data"]["merchant"] == "Shokz"
 
+    mixed, error = validate_tool_result(
+        "merchant_analysis",
+        {
+            "ok": True,
+            "data": {"merchant": "Shokz"},
+            "source": {"dataSource": "mixed", "dataAsOf": "2026-08-27", "estimated": False},
+        },
+    )
+    assert error is None and mixed["source"]["dataSource"] == "mixed"
+
     invalid, error = validate_tool_result(
         "merchant_analysis",
         {"ok": True, "data": {"merchant": "Shokz", "rawPrompt": "secret"}},

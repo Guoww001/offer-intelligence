@@ -14060,6 +14060,44 @@ var _NUMERIC_COL_PATTERNS = [
     return messages;
   }
 
+  function agentEnabledToolNames() {
+    return [
+      "merchant_analysis",
+      "category_analysis",
+      "merchant_comparison",
+      "tier_analysis",
+      "category_comparison",
+      "payment_status",
+      "trend"
+    ];
+  }
+
+  function buildAgentPlanningRequest(prompt, language, traceContext, retry) {
+    var request = {
+      contractVersion: "v2",
+      question: agentClipText(prompt, AGENT_PROMPT_CHARS),
+      language: language === "en" ? "en" : "zh",
+      enabledTools: agentEnabledToolNames()
+    };
+    if (traceContext) {
+      request.trace = {
+        runId: traceContext.runId,
+        questionEventId: traceContext.questionEventId,
+        tracePhase: "planning"
+      };
+    }
+    if (retry && retry.agentRunId && retry.previousPlanProof && Array.isArray(retry.failedCalls)) {
+      request.retry = {
+        agentRunId: String(retry.agentRunId),
+        previousPlanProof: String(retry.previousPlanProof),
+        failedCalls: retry.failedCalls.map(function (item) {
+          return { callId: String(item.callId), errorCode: String(item.errorCode) };
+        })
+      };
+    }
+    return request;
+  }
+
   function agentToolPromptData(toolName, data) {
     var source = data && typeof data === "object" ? data : {};
     var fields = AGENT_TOOL_PROMPT_FIELDS[toolName] || ["headline", "note"];
@@ -14078,6 +14116,104 @@ var _NUMERIC_COL_PATTERNS = [
       return "工具 " + name + " 失败：" + String(result && result.error || "未知错误");
     }
     return "工具 " + name + " 结果：\n" + JSON.stringify(agentToolPromptData(name, result.data));
+  }
+
+  function projectAgentResolutionForServer(resolution) {
+    if (!resolution || typeof resolution !== "object") return null;
+    var projected = {};
+    ["status", "field", "allowed", "candidates", "value"].forEach(function (field) {
+      if (!Object.prototype.hasOwnProperty.call(resolution, field)) return;
+      var value = resolution[field];
+      if (field === "candidates") {
+        if (!Array.isArray(value)) return;
+        projected.candidates = value.slice(0, 100).map(function (candidate) {
+          if (!candidate || typeof candidate !== "object") return {};
+          var item = {};
+          ["merchantId", "name", "tier", "category"].forEach(function (key) {
+            if (Object.prototype.hasOwnProperty.call(candidate, key)) item[key] = String(candidate[key]).slice(0, 200);
+          });
+          return item;
+        });
+        return;
+      }
+      if (field === "allowed" && Array.isArray(value)) {
+        projected.allowed = value.slice(0, 100).map(function (item) { return String(item).slice(0, 200); });
+        return;
+      }
+      if (value === null || typeof value === "boolean" || typeof value === "number") {
+        if (typeof value !== "number" || Number.isFinite(value)) projected[field] = value;
+        return;
+      }
+      if (typeof value === "string") projected[field] = value.slice(0, 200);
+    });
+    return Object.keys(projected).length ? projected : null;
+  }
+
+  function projectAgentToolResultForServer(item) {
+    var result = item && item.result && typeof item.result === "object" ? item.result : {};
+    var toolName = String(item && item.name || "").slice(0, 64);
+    var trace = agentTraceDataMeta(result);
+    var dataSource = ["database", "cache", "mixed", "unavailable", "unknown"].indexOf(trace.dataSource) !== -1
+      ? trace.dataSource : "unknown";
+    var projectedResult = {
+      ok: result.ok === true,
+      source: {
+        dataSource: dataSource,
+        dataAsOf: trace.dataAsOf ? String(trace.dataAsOf).slice(0, 100) : null,
+        estimated: trace.estimated === true
+      }
+    };
+    if (projectedResult.ok) {
+      projectedResult.data = agentToolPromptData(toolName, result.data);
+    } else {
+      var allowedErrorCodes = ["tool_error", "tool_timeout", "llm_timeout", "invalid_arguments", "invalid_filter", "not_found", "stopped_by_user"];
+      var errorCode = String(result.errorCode || "").trim().toLowerCase();
+      if (allowedErrorCodes.indexOf(errorCode) === -1) {
+        var resolutionStatus = result.resolution && result.resolution.status;
+        errorCode = allowedErrorCodes.indexOf(resolutionStatus) !== -1 ? resolutionStatus : "tool_error";
+      }
+      projectedResult.errorCode = errorCode;
+      var resolution = projectAgentResolutionForServer(result.resolution);
+      if (resolution) projectedResult.resolution = resolution;
+    }
+    return {
+      callId: String(item && item.id || "").slice(0, 128),
+      toolName: toolName,
+      arguments: item && item.arguments && typeof item.arguments === "object" ? item.arguments : {},
+      result: projectedResult
+    };
+  }
+
+  function buildAgentSynthesisRequest(prompt, language, memoryText, history, toolResults, run, traceContext) {
+    run = run || {};
+    var request = {
+      contractVersion: "v2",
+      agentRunId: String(run.agentRunId || ""),
+      planProofs: Array.isArray(run.planProofs) ? run.planProofs.slice(0, 2) : [],
+      question: agentClipText(prompt, AGENT_PROMPT_CHARS),
+      language: language === "en" ? "en" : "zh",
+      context: {
+        memory: agentClipText(memoryText, AGENT_SYNTHESIS_MEMORY_CHARS),
+        history: agentRecentHistory(history, AGENT_SYNTHESIS_HISTORY_LIMIT, AGENT_SYNTHESIS_MESSAGE_CHARS)
+      },
+      toolResults: (Array.isArray(toolResults) ? toolResults : []).map(projectAgentToolResultForServer)
+    };
+    if (traceContext) {
+      request.trace = {
+        runId: traceContext.runId,
+        questionEventId: traceContext.questionEventId,
+        tracePhase: "synthesis"
+      };
+    }
+    return request;
+  }
+
+  function agentRetryErrorCode(result) {
+    var allowed = ["tool_error", "tool_timeout", "invalid_arguments", "invalid_filter", "not_found", "stopped_by_user"];
+    var code = String(result && result.errorCode || "").trim().toLowerCase();
+    if (allowed.indexOf(code) !== -1) return code;
+    var resolutionStatus = result && result.resolution && result.resolution.status;
+    return allowed.indexOf(resolutionStatus) !== -1 ? resolutionStatus : "tool_error";
   }
 
   function agentToolCallTarget(call) {
@@ -15303,6 +15439,10 @@ var _NUMERIC_COL_PATTERNS = [
                   inputBytes: agentTraceNumber(parsed.inputBytes),
                   errorCode: parsed.errorCode || null
                 };
+              } else if (parsed.errorCode) {
+                usageMetadata = usageMetadata || {};
+                usageMetadata.errorCode = String(parsed.errorCode);
+                streamHadError = true;
               } else if (parsed.token) {
                 msgContent.textContent += parsed.token;
                 fullResponse += parsed.token;
@@ -15982,7 +16122,9 @@ var _NUMERIC_COL_PATTERNS = [
       };
     }
 
-    var messages = buildAgentPlanningMessages(memoryText, history, prompt);
+    var planningRetry = null;
+    var agentRunId = "";
+    var planProofs = [];
 
     function currentExecutionMeta() {
       var omittedTargets = omittedCalls.map(agentToolCallTarget);
@@ -16069,13 +16211,14 @@ var _NUMERIC_COL_PATTERNS = [
           detail: agentToolResultDetail(call.name, call.arguments || {}, result, language),
           elapsedMs: Date.now() - toolStartedAt
         });
-        return { id: call.id, name: call.name, result: result };
+        return { id: call.id, name: call.name, arguments: call.arguments || {}, result: result };
       }));
     }
 
     function appendPlanningTrace(plan, startedAt, requestBody, forcedStatus, forcedErrorCode) {
       var telemetry = plan && plan.telemetry || {};
       var errorCode = forcedErrorCode || telemetry.errorCode
+        || (plan && plan.errorCode)
         || (plan && plan.ok === true ? null : normalizeAgentTraceError(plan && plan.error));
       var status = forcedStatus || (plan && plan.ok === true ? "success" : "failed");
       if (!forcedStatus && errorCode === "llm_timeout") status = "timeout";
@@ -16107,18 +16250,7 @@ var _NUMERIC_COL_PATTERNS = [
       var planCard = execution ? null : renderAgentStepCard(chatLogEl, { status: "running", text: copy.planning });
       var plan;
       var planStartedAt = Date.now();
-      var planRequestBody = {
-        messages: messages,
-        tools: agentToolDefinitions(),
-        language: language
-      };
-      if (traceContext) {
-        planRequestBody.trace = {
-          runId: traceContext.runId,
-          questionEventId: traceContext.questionEventId,
-          tracePhase: "planning"
-        };
-      }
+      var planRequestBody = buildAgentPlanningRequest(prompt, language, traceContext, planningRetry);
       try {
         var planOptions = {
           method: "POST",
@@ -16134,6 +16266,18 @@ var _NUMERIC_COL_PATTERNS = [
           return stoppedOutcome();
         }
         plan = { ok: false, error: String((error && error.message) || error) };
+      }
+      if (plan && plan.ok === true && Array.isArray(plan.toolCalls) && plan.toolCalls.length) {
+        var responseRunId = String(plan.agentRunId || "");
+        if (plan.contractVersion !== "v2" || plan.registryVersion !== "agent-tools-v1"
+          || !responseRunId || !plan.planProof) {
+          plan = { ok: false, errorCode: "invalid_agent_contract", telemetry: plan.telemetry };
+        } else if (agentRunId && agentRunId !== responseRunId) {
+          plan = { ok: false, errorCode: "run_binding_failed", telemetry: plan.telemetry };
+        } else {
+          agentRunId = responseRunId;
+          if (planProofs.indexOf(plan.planProof) === -1) planProofs.push(plan.planProof);
+        }
       }
       appendPlanningTrace(plan, planStartedAt, planRequestBody);
       if (planCard && planCard.remove) planCard.remove();
@@ -16176,7 +16320,7 @@ var _NUMERIC_COL_PATTERNS = [
         return { handled: false, error: plan && plan.error };
       }
 
-      var plannedCalls = normalizeAgentToolCalls(plan.toolCalls, prompt);
+      var plannedCalls = Array.isArray(plan.toolCalls) ? plan.toolCalls.slice() : [];
       var remainingBudget = Math.max(0, AGENT_MAX_TOOL_CALLS - toolCallsTotal);
       var executableCalls = plannedCalls.slice(0, remainingBudget);
       var omittedInPlan = plannedCalls.slice(executableCalls.length);
@@ -16213,14 +16357,22 @@ var _NUMERIC_COL_PATTERNS = [
       if (needsVerifiableSource && !planResults.length) return missingDataOutcome(planStep);
       if (failedCount === 0 || toolCallsTotal >= AGENT_MAX_TOOL_CALLS || !planResults.length) break;
 
-      for (var f = 0; f < planResults.length; f++) {
-        var item = planResults[f];
-        messages.push({ role: "user", content: agentToolResultPromptText(item) });
-      }
-      messages.push({
-        role: "user",
-        content: "有 " + failedCount + " 个工具失败。请修正参数后重试（这是最后一轮），或停止调用工具并基于已有结果回答。"
+      var failedCalls = planResults.filter(function (item) {
+        return item && item.result && item.result.ok === false;
+      }).map(function (item) {
+        return { callId: String(item.id || ""), errorCode: agentRetryErrorCode(item.result) };
+      }).filter(function (item) {
+        return item.callId;
       });
+      if (plan.planProof && agentRunId && failedCalls.length && round < AGENT_MAX_PLANNING_ROUNDS - 1) {
+        planningRetry = {
+          agentRunId: agentRunId,
+          previousPlanProof: plan.planProof,
+          failedCalls: failedCalls
+        };
+        continue;
+      }
+
     }
 
     if (agentPromptRequiresVerifiableData(prompt)
@@ -16229,7 +16381,15 @@ var _NUMERIC_COL_PATTERNS = [
     }
 
     var executionMeta = currentExecutionMeta();
-    var synthMessages = buildAgentSynthesisMessages(memoryText, history, prompt, toolResults, language, executionMeta);
+    var synthesisRequest = buildAgentSynthesisRequest(
+      prompt,
+      language,
+      memoryText,
+      history,
+      toolResults,
+      { agentRunId: agentRunId, planProofs: planProofs },
+      traceContext
+    );
 
     var synthesisStep = execution ? execution.addStep({
       status: "running",
@@ -16237,7 +16397,7 @@ var _NUMERIC_COL_PATTERNS = [
       detail: executionCopy.synthesisDetail
     }) : null;
     var reply = await streamAssistantReply(
-      { messages: synthMessages, language: language },
+      synthesisRequest,
       {
         chatLogEl: chatLogEl,
         language: language,
@@ -32623,6 +32783,10 @@ var _NUMERIC_COL_PATTERNS = [
   if (window.__OFFER_INTELLIGENCE_TEST__) {
     window.OFFER_INTELLIGENCE_TEST_HOOKS = {
       agentToolDefinitions,
+      agentEnabledToolNames,
+      buildAgentPlanningRequest,
+      projectAgentToolResultForServer,
+      buildAgentSynthesisRequest,
       agentExecuteTool,
       renderAgentTrendChartHtml,
       appendAgentTrendCharts,
