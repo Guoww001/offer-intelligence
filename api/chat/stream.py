@@ -7,6 +7,13 @@ from auth import _read_json_body, require_auth
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
 from agent_trace_http import handle_agent_trace
+from agent_contract import (
+    AGENT_CONTRACT_VERSION,
+    build_synthesis_messages,
+    public_agent_error_payload,
+    validate_bound_tool_results,
+    validate_synthesis_request,
+)
 from chat_agent_http import AGENT_SYNTHESIS_MAX_REQUEST_BYTES, AGENT_SYNTHESIS_MAX_TOKENS, agent_synthesis_system_prompt
 from llm_provider import stream_chat
 
@@ -94,6 +101,39 @@ class handler(BaseHTTPRequestHandler):
         except (ValueError, Exception):
             self._send_json(400, {"ok": False, "error": "Invalid JSON body"})
             return
+        if not isinstance(body, dict):
+            self._send_json(400, {"ok": False, "error": "JSON body must be an object"})
+            return
+
+        if body.get("contractVersion") == AGENT_CONTRACT_VERSION:
+            request, error = validate_synthesis_request(body)
+            if error:
+                self._send_json(int(error.get("status") or 400), public_agent_error_payload(error))
+                return
+            validated_results, error = validate_bound_tool_results(request)
+            if error:
+                self._send_json(int(error.get("status") or 400), public_agent_error_payload(error))
+                return
+            trace_context = _agent_trace_context(request.get("trace"))
+            messages = build_synthesis_messages(request, validated_results)
+            self._chat_stream_messages(
+                messages,
+                request["language"],
+                request_bytes=length,
+                trace_context=trace_context,
+                agent_synthesis=True,
+            )
+            return
+
+        if "messages" in body or "contractVersion" in body:
+            self._send_json(
+                400,
+                public_agent_error_payload({
+                    "errorCode": "agent_contract_version_required",
+                    "field": "contractVersion",
+                }),
+            )
+            return
 
         trace_context = _agent_trace_context(body.get("trace"))
         if trace_context is None:
@@ -105,10 +145,6 @@ class handler(BaseHTTPRequestHandler):
         language = str(body.get("language") or "zh").strip()
         if language not in ("en", "zh"):
             language = "zh"
-        messages = body.get("messages")
-        if isinstance(messages, list) and messages:
-            self._chat_stream_messages(messages, language, request_bytes=length, trace_context=trace_context)
-            return
         prompt = str(body.get("prompt") or "").strip()
         if not prompt:
             self._send_json(400, {"ok": False, "error": "prompt is required"})
@@ -190,7 +226,14 @@ class handler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 pass
 
-    def _chat_stream_messages(self, messages, language, request_bytes=None, trace_context=None):
+    def _chat_stream_messages(
+        self,
+        messages,
+        language,
+        request_bytes=None,
+        trace_context=None,
+        agent_synthesis=False,
+    ):
         """SSE streaming for agent synthesis: full message list passthrough."""
         system_prompt = agent_synthesis_system_prompt(language)
         try:
@@ -232,9 +275,13 @@ class handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             print("[chat_stream_messages] client disconnected", file=sys.stderr)
         except Exception as exc:
-            print(f"[chat_stream_messages] error: {exc}", file=sys.stderr)
+            if agent_synthesis:
+                print("[chat_stream_messages] agent_synthesis_unavailable", file=sys.stderr)
+            else:
+                print(f"[chat_stream_messages] error: {exc}", file=sys.stderr)
             try:
-                self.wfile.write(f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n".encode("utf-8"))
+                error_payload = {"errorCode": "agent_synthesis_unavailable"} if agent_synthesis else {"error": str(exc)}
+                self.wfile.write(f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n".encode("utf-8"))
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):

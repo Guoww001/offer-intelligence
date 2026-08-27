@@ -111,6 +111,7 @@ def test_call_llm_tools_deepseek_payload():
 
 
 def test_stream_chat_messages_passthrough():
+    assert "服务端" in (llm_provider.stream_chat.__doc__ or "")
     captured = {}
 
     class FakeChunk:

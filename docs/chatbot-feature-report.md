@@ -377,10 +377,14 @@ call_llm_tools()   → Agent 规划调用，归一化 DeepSeek/Claude 工具结�
 
 Agent 规划请求继续使用 64KB 请求体上限；综合请求由本地和 Vercel 两个流入口显式传入共享的 128KB 读取上限。浏览器端 `runChatAgent()` 保留完整规划结果，按每批最多 4 个工具调用执行，达到总预算 6 个后将剩余目标标记为 `partial`，并通过 `omittedTargets` 暴露给综合模型和用户。具体数据问题只有在工具结果、结构化上下文或用户提供数值至少有一项可验证时才允许无工具直答；没有来源时返回补充商户、时间范围和指标的提示。商户和过滤条件在工具执行前按 `ambiguous`、`not_found`、`invalid_filter` 失败关闭，不会把歧义解析成第一项或把非法过滤扩大成全量查询。
 
+Agent 规划入口使用 `v2` 请求协议，服务端从 `agent_tool_registry.py` 读取 `agent-tools-v1` 注册表定义；浏览器只发送 `question`、`language`、`enabledTools` 和受控 Trace。综合入口使用 `v2` 结构化请求，服务端验证 `agentRunId`、`planProofs`、`context` 和 `toolResults` 后才组装 Provider 消息。客户端提交 `messages`、工具 Schema、未知结果字段或篡改参数时拒绝请求；普通 Chat Mode 仍使用 `prompt/history`。
+
 | 路由 | 方法 | Handler | 说明 |
 |------|------|---------|------|
 | `/api/chat/classify` | POST | `handle_llm_classify()` | body ≤2KB，调用 `classify_intent()` |
 | `/api/chat/analyze` | POST | `handle_llm_analyze()` | body ≤8KB，调用 `generate_analysis_text()` |
+| `/api/chat/agent` | POST | `handle_agent_request()` | v2 规划请求；服务端注册表、参数校验和 HMAC 计划证明 |
+| `/api/chat/stream` | POST | `handle_chat_stream()` | 普通 Chat 使用 `prompt/history`；Agent 综合使用 v2 结构化结果 |
 
 ### 8.4 api/chat/ — Vercel Serverless
 
@@ -388,6 +392,8 @@ Agent 规划请求继续使用 64KB 请求体上限；综合请求由本地和 V
 api/chat/actions.py   -> class handler: trusted route header -> classify/analyze/agent
 api/chat/stream.py    -> class handler: SSE stream (50s graceful deadline)
 ```
+
+`api/chat/actions.py` 的 Agent 路由与本地 `/api/chat/agent` 共同调用 `chat_agent_http.handle_agent_request()`；两个综合入口共同调用 `agent_contract.validate_synthesis_request()`、`validate_bound_tool_results()` 和 `build_synthesis_messages()`。`llm_provider.stream_chat(messages=...)` 的 `messages` 参数仅接收服务端已经组装的内部消息。
 
 ---
 
@@ -540,11 +546,13 @@ public/
     ├── db_keywords_cache.json  ← 产品关键词缓存
 ```
 
-### 后端 Python（12 个文件）
+### 后端 Python（14 个文件）
 
 ```
 llm_provider.py               ← LLM Provider 抽象（DeepSeek/Claude）
 chat_agent_http.py            ← Chat Mode Agent 规划端点、工具白名单和双语提示词
+agent_tool_registry.py        ← 七个 Agent 工具的唯一注册表、参数和结果白名单
+agent_contract.py             ← Agent v2 请求校验、计划证明和服务端消息组装
 llm_classify.py               ← 意图分类 + 分析文字生成编排层
 server.py                     ← 本地服务器（/api/chat/* 路由）
 auth.py                       ← 认证 + llmEnabled 状态
@@ -578,6 +586,10 @@ scripts/test_chatbot_intent_flow.mjs  ← 意图流测试
 scripts/test_zh_chatbot.mjs           ← 中文 chatbot 测试
 scripts/test_chat_agent.mjs           ← Agent 工具、规划、综合和降级测试
 scripts/test_agent_http.py            ← Agent 请求校验与规划端点测试
+scripts/test_agent_tool_registry.py    ← 服务端工具注册表、参数和结果白名单测试
+scripts/test_agent_contract.py         ← v2 协议、HMAC 证明和消息组装测试
+scripts/test_agent_planning_contract.py ← 本地/Vercel 规划入口同构测试
+scripts/test_agent_synthesis_contract.py ← 本地/Vercel 综合入口边界测试
 scripts/test_llm_agent.py              ← Provider 工具调用与消息透传测试
 ```
 
@@ -682,7 +694,19 @@ Provider usage 通过综合 SSE 的独立 `type=usage` 事件在 `[DONE]` 前发
 
 Trace 写入是异步、短超时和可丢弃的：网络或数据库写入失败只记录 `console.warn`，不阻断回答、问题日志或 fallback。Trace 白名单拒绝保存 `prompt`、`messages`、工具 `arguments`、`toolResult`、回答正文、原始 Provider JSON 和异常堆栈。用户中止记录为 `stopped/stopped_by_user`，Provider 超时和工具失败分别保留 `timeout` 或 `failed` 及受控错误码。
 
-本次实现只覆盖 Agent Trace 与运行指标路线（路线图 4.1）；服务端工具注册表、统一回合生命周期和主动式能力等后续路线不视为已完成。
+本次实现覆盖 Agent Trace 与运行指标路线（路线图 4.1）以及服务端工具注册表路线（路线图 4.2）；统一回合生命周期和主动式能力等后续路线不视为已完成。
+
+### Agent 服务端工具注册表与 v2 协议（2026-08-27）
+
+4.2 已完成。`agent_tool_registry.py` 是七个只读工具的唯一规范来源：`merchant_analysis`、`category_analysis`、`merchant_comparison`、`tier_analysis`、`category_comparison`、`payment_status` 和 `trend`。注册表同时维护双语描述、参数 Schema、参数范围、结果字段白名单、结果来源和大小限制；浏览器只能提交 `enabledTools` 名称集合，不能提交工具描述或 Schema。
+
+规划请求 `POST /api/chat/agent` 使用 `contractVersion: "v2"`，只接收问题、语言、启用工具集合和受控 Trace 元数据。服务端返回规范化的 `agentRunId`、`r{round}c{index}` 调用 ID、`registryVersion: "agent-tools-v1"` 和一次性使用的 `planProof`。工具失败时，最多进行一轮结构化重规划；重规划只提交前一轮证明、失败调用 ID 和固定错误码，不传递浏览器原始错误文本或自由消息。
+
+综合请求 `POST /api/chat/stream` 的 Agent 分支只接收 `question`、`language`、`context`、`toolResults`、`agentRunId`、`planProofs` 和受控 Trace。`context.history` 仅允许 `user`/`assistant`，服务端将其标记为不可信上下文；`toolResults` 必须通过调用 ID、工具名和参数哈希与 HMAC 计划证明绑定后，才由 `agent_contract.py` 组装 Provider 消息。本地 `server.py` 和 Vercel `api/chat/stream.py` 复用相同校验函数，普通 Chat Mode 的 `prompt/history` 请求仍走原路径。
+
+计划证明使用 `OI_SESSION_SECRET` 的独立 HMAC purpose，有效期 600 秒，绑定运行 ID、问题哈希、注册表版本、调用 ID、工具名和参数哈希。固定错误码包括 `agent_contract_version_required`、`unsupported_tool`、`invalid_arguments`、`invalid_tool_result`、`run_binding_failed`、`agent_planning_unavailable` 和 `agent_synthesis_unavailable`。客户端提交旧 `messages`、未知字段、篡改参数或过期证明时不会进入 Provider。
+
+边界必须明确：当前七个工具仍由浏览器执行，HMAC 只能证明运行和调用元数据未被替换，不能证明浏览器返回的数据值真实；数据值真实性需要未来的服务端工具执行方案。该实现不新增数据库表、字段或 Trace 持久化内容，也不把问题、完整消息、工具参数、工具结果、答案正文或异常堆栈写入 Trace。
 
 ### Agent 结构化对话记忆（2026-08-26）
 

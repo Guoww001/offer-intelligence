@@ -58,7 +58,7 @@ assertMatch(runAgent, /estimated/, "工具 Trace 应包含 estimated");
 assertMatch(app, /traceDataAsOf\s*=\s*catMetrics\s*&&\s*catMetrics\.checkedAt/, "品类数据库趋势应传递 checkedAt");
 assertMatch(app, /traceDataAsOf\s*=\s*monthlyMetrics\s*&&\s*monthlyMetrics\.checkedAt/, "聚合数据库趋势应传递 checkedAt");
 const directBypassStart = runAgent.indexOf("if (agentShouldBypassPlanning(prompt))");
-const directBypassEnd = runAgent.indexOf("\n    var messages = buildAgentPlanningMessages", directBypassStart);
+const directBypassEnd = runAgent.indexOf("\n    var planningRetry", directBypassStart);
 if (directBypassStart < 0 || directBypassEnd < 0) throw new Error("无法定位直接回答路径");
 assertMatch(
   runAgent.slice(directBypassStart, directBypassEnd),

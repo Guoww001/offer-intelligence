@@ -12,6 +12,7 @@ from agent_contract import (
     build_synthesis_messages,
     create_agent_run_id,
     issue_plan_proof,
+    normalize_planning_tool_calls,
     validate_planning_request,
     validate_synthesis_request,
     verify_plan_proof,
@@ -82,6 +83,18 @@ def test_planning_messages_do_not_include_client_history_or_retry_text():
     assert retry_messages[1]["role"] == "user"
     assert "invalid_filter" in retry_messages[1]["content"]
     assert "secret raw error" not in retry_messages[1]["content"]
+
+
+def test_server_planning_compatibility_keeps_requested_trend_metric():
+    calls = normalize_planning_tool_calls(
+        [{"name": "merchant_analysis", "arguments": {"merchant": "Shokz"}}],
+        "Show Shokz revenue trend",
+        1,
+    )
+    assert calls == [{
+        "name": "trend",
+        "arguments": {"entityType": "merchant", "target": "Shokz", "months": 12, "metric": "revenue"},
+    }]
 
 
 def test_plan_proof_binds_question_run_and_expiration():

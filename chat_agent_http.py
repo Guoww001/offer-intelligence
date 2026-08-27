@@ -7,7 +7,6 @@ the chatbot_question_log_http.py pattern.  Callers perform require_auth().
 from __future__ import annotations
 
 from agent_contract import (
-    AGENT_MAX_TOOL_CALLS,
     build_planning_messages,
     create_agent_run_id,
     normalize_planning_result,
@@ -17,7 +16,6 @@ from agent_contract import (
 )
 from agent_tool_registry import (
     AGENT_TOOL_NAMES,
-    AGENT_TOOL_REGISTRY_VERSION,
     get_agent_tool_definitions,
 )
 from auth import _read_json_body, send_json

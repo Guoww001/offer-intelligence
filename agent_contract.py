@@ -186,6 +186,23 @@ def _looks_like_trend(question: str) -> bool:
     return bool(re.search(r"趋势|走势|逐月|月度变化|trend|trajectory|month[- ]by[- ]month", question, re.I))
 
 
+def _requested_trend_metric(question: str) -> str | None:
+    matches = []
+    patterns = (
+        ("conversionRate", r"\b(?:cvr|conversion(?:\s+rate)?)\b|转化率|转换率"),
+        ("affiliatePayout", r"\b(?:affiliate|aff)\s+(?:payout|commission)\b|联盟佣金|佣金收入"),
+        ("revenue", r"\b(?:revenue|sales)\b|销售额|收入|营收"),
+        ("orders", r"\border(?:s)?\b|订单"),
+        ("clicks", r"\bclicks?\b|点击"),
+        ("epc", r"\bepc\b"),
+        ("aov", r"\baov\b|客单价|平均订单金额"),
+    )
+    for metric, pattern in patterns:
+        if re.search(pattern, question, re.I):
+            matches.append(metric)
+    return matches[0] if len(matches) == 1 else None
+
+
 def normalize_planning_tool_calls(tool_calls: object, question: str, round_number: int) -> list[dict]:
     calls = tool_calls if isinstance(tool_calls, list) else []
     comparison_requested = _looks_like_comparison(question)
@@ -201,14 +218,25 @@ def normalize_planning_tool_calls(tool_calls: object, question: str, round_numbe
             continue
         if trend_requested and name == "merchant_analysis" and isinstance(arguments.get("merchant"), str):
             trend_args = {"entityType": "merchant", "target": arguments["merchant"].strip(), "months": 12}
+            metric = _requested_trend_metric(question)
+            if metric:
+                trend_args["metric"] = metric
             normalized.append({"name": "trend", "arguments": trend_args})
             continue
         if trend_requested and name == "merchant_comparison" and isinstance(arguments.get("merchants"), list):
             for merchant in arguments["merchants"]:
                 if isinstance(merchant, str) and merchant.strip():
+                    trend_args = {
+                        "entityType": "merchant",
+                        "target": merchant.strip(),
+                        "months": 12,
+                    }
+                    metric = _requested_trend_metric(question)
+                    if metric:
+                        trend_args["metric"] = metric
                     normalized.append({
                         "name": "trend",
-                        "arguments": {"entityType": "merchant", "target": merchant.strip(), "months": 12},
+                        "arguments": trend_args,
                     })
             continue
         if not comparison_requested and name == "merchant_comparison" and isinstance(arguments.get("merchants"), list):
@@ -338,8 +366,6 @@ def normalize_planning_result(
     for index, call in enumerate(normalized_calls, start=1):
         name = call.get("name") if isinstance(call, dict) else None
         if name not in request["enabledTools"]:
-            if name in AGENT_TOOL_NAMES:
-                return None, _error("unsupported_tool", "toolCalls.name")
             return None, _error("unsupported_tool", "toolCalls.name")
         arguments, error = validate_tool_arguments(name, call.get("arguments"))
         if error:
@@ -355,6 +381,9 @@ def normalize_planning_result(
         return None, _error("invalid_agent_contract", "content")
     if isinstance(content, str):
         content = content.strip()[:8000]
+    finish_reason = result.get("finishReason")
+    if finish_reason not in {"tool_calls", "stop"}:
+        finish_reason = "tool_calls" if calls else "stop"
     response = {
         "ok": True,
         "contractVersion": AGENT_CONTRACT_VERSION,
@@ -362,7 +391,7 @@ def normalize_planning_result(
         "agentRunId": agent_run_id,
         "content": content or None,
         "toolCalls": calls,
-        "finishReason": result.get("finishReason") or ("tool_calls" if calls else "stop"),
+        "finishReason": finish_reason,
     }
     if calls:
         proof = issue_plan_proof(
