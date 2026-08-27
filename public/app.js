@@ -2294,7 +2294,13 @@
     } else if (state.page === "monthly-new-merchants") {
       renderMonthlyNewMerchantsPage();
     } else if (state.page === "offer-list-tracker") {
-      renderOfferListTrackerPage();
+      if (els.offerListTrackerPage && els.offerListTrackerPage.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        renderOfferListTrackerPage();
+      }
     } else if (state.page === "brand-media") {
       renderBrandMediaPage();
     } else if (state.page === "google-ads") {
@@ -31418,6 +31424,19 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function switchPage(page) {
+    const previousPage = state.page;
+    if (previousPage === "offer-list-tracker" && page !== "offer-list-tracker") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("offer-list-tracker");
+        }
+      } catch (error) {
+        console.warn("Modern Offer Tracker unmount failed; continuing with the legacy tracker.", error);
+      }
+      if (els.offerListTrackerPage) els.offerListTrackerPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("offerListTrackerModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.drawerOpen) {
       closeMonthlyNewMerchantDrawer({ restoreFocus: false });
     }
@@ -31501,7 +31520,62 @@ var _NUMERIC_COL_PATTERNS = [
       renderMonthlyNewMerchantsPage();
       loadMonthlyNewMerchants();
     }
-    if (isOfferListTracker) renderOfferListTrackerPage();
+    if (isOfferListTracker) {
+      const modernRoot = document.getElementById("offerListTrackerModernRoot");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "offer-list-tracker"
+        && els.offerListTrackerPage
+        && els.offerListTrackerPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("offer-list-tracker"));
+          if (modernPageAvailable) {
+            modernMounted = Boolean(modernApp.mountPage("offer-list-tracker", modernRoot));
+          }
+        }
+      } catch (error) {
+        console.warn("Modern Offer Tracker unavailable; continuing with the legacy tracker.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.offerListTrackerPage) els.offerListTrackerPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.offerListTrackerPage) els.offerListTrackerPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (
+            !modernPageAvailable
+            || !modernApp
+            || typeof modernApp.hasPage !== "function"
+            || typeof modernApp.mountPage !== "function"
+          )
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Offer Tracker unavailable; continuing with the legacy tracker.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderOfferListTrackerPage();
+      }
+    }
     updateMobileCurrentPage();
     closeMobileNavigation(true);
   }
@@ -32776,6 +32850,39 @@ var _NUMERIC_COL_PATTERNS = [
       window.ONBOARDING_TOUR.maybeAutoStart();
     }
   }
+
+  function downloadModernOfferTracker(payload) {
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.rows)) return false;
+    const rows = payload.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row));
+    if (!rows.length) return false;
+    const view = payload.view === "products" ? "products" : "offers";
+    const scope = payload.selectedOnly ? "selected" : "filtered";
+    const workbook = createRecommendationWorkbook(rows, {
+      referenceStyle: true,
+      sheets: [
+        { sheetName: "List of Offers", rows, columns: offerTrackerOfferExportColumns() },
+        { sheetName: "Brand Product List", rows, columns: offerTrackerProductExportColumns() }
+      ]
+    });
+    triggerWorkbookDownload(
+      workbook,
+      `YP_Amazon_Offer_List_Tracker_modern_${view}_${scope}_${rows.length}_${todayFileStamp()}.xlsx`
+    );
+    return true;
+  }
+
+  window.OI_LEGACY_BRIDGE = {
+    navigate: (page) => switchPage(page),
+    requestRender: (page) => {
+      if (page === "offer-list-tracker" && state.page === page) {
+        if (els.offerListTrackerPage && els.offerListTrackerPage.classList.contains("is-modern")) return;
+        renderOfferListTrackerPage();
+        return;
+      }
+      switchPage(page);
+    },
+    download: (type, payload) => type === "offer-tracker" && downloadModernOfferTracker(payload)
+  };
 
   cacheOriginalTierSheetRows();
   applyManualTierMoves();

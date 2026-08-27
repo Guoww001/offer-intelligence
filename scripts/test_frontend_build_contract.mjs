@@ -60,7 +60,7 @@ read("frontend/src/entry.ts");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260827-vue-m1'),
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260827-vue-m2'),
   "index.html 缺少本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
@@ -71,7 +71,7 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260827-vue-m1";'),
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260827-vue-m2";'),
   "auth.js 缺少本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
@@ -121,6 +121,6 @@ const sandbox = { console, window: {} };
 vm.runInNewContext(fs.readFileSync(bundlePath, "utf8"), sandbox, { filename: bundlePath });
 const modernApp = sandbox.window.OI_MODERN_APP;
 assert(modernApp && typeof modernApp.bootstrap === "function", "modern bundle 未注册 OI_MODERN_APP");
-assert(modernApp.hasPage("offer-list-tracker") === false, "M1 不得提前注册业务页面");
+assert(modernApp.hasPage("offer-list-tracker") === true, "M2 必须注册 Offer Tracker 页面");
 
 console.log("PASS: frontend build contract");

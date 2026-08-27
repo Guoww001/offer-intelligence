@@ -1,6 +1,13 @@
 import { readonly, shallowRef } from "vue";
 
-import type { LegacyBootstrapData, ModernAppApi, ModernPageName, UiLanguage } from "./contracts";
+import type {
+  LegacyBootstrapData,
+  ModernAppApi,
+  ModernPageController,
+  ModernPageFactory,
+  ModernPageName,
+  UiLanguage
+} from "./contracts";
 
 const EMPTY_BOOTSTRAP_DATA: LegacyBootstrapData = Object.freeze({
   chatbotData: {},
@@ -39,20 +46,36 @@ function assertLegacyBootstrapData(data: LegacyBootstrapData): void {
   }
 }
 
-export function createModernAppApi(): ModernAppApi {
+export function createModernAppApi(
+  definitions: Partial<Record<ModernPageName, ModernPageFactory>> = {}
+): ModernAppApi {
+  let activePage: { name: ModernPageName; controller: ModernPageController } | null = null;
+
+  function unmountActivePage(): void {
+    if (!activePage) return;
+    const current = activePage;
+    activePage = null;
+    current.controller.unmount();
+  }
+
   return {
     bootstrap(data) {
       assertLegacyBootstrapData(data);
       legacySnapshot.value = Object.freeze({ ...data });
     },
 
-    mountPage(_page, _element) {
-      // M1 只建立双运行时边界；未注册页面由 legacy app.js 继续渲染。
-      return false;
+    mountPage(page, element) {
+      const factory = definitions[page];
+      if (!factory) return false;
+      unmountActivePage();
+      const controller = factory(element);
+      activePage = { name: page, controller };
+      return true;
     },
 
-    unmountPage(_page) {
-      // M1 尚无现代页面实例需要卸载。
+    unmountPage(page) {
+      if (!activePage || activePage.name !== page) return;
+      unmountActivePage();
     },
 
     setLanguage(language: UiLanguage) {
@@ -61,10 +84,11 @@ export function createModernAppApi(): ModernAppApi {
         ...legacySnapshot.value,
         language
       });
+      activePage?.controller.setLanguage?.(language);
     },
 
-    hasPage(_page: ModernPageName) {
-      return false;
+    hasPage(page: ModernPageName) {
+      return Boolean(definitions[page]);
     }
   };
 }

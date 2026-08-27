@@ -142,17 +142,17 @@
     {
       "pageKey": "offer-list-tracker",
       "label": "Offer List Tracker",
-      "status": "legacy",
-      "roots": ["#offerListTrackerPage"],
+      "status": "dual",
+      "roots": ["#offerListTrackerPage", "#offerListTrackerModernRoot"],
       "legacyEntry": ["switchPage()", "renderOfferListTrackerPage()", "loadOfferTrackerRange()", "downloadOfferTrackerWorkbook()"],
       "state": ["state.offerListTracker"],
       "apis": ["/api/ui/db/offers"],
       "storage": ["offerListTrackerRulesV1", "offerListTrackerColumnsV1", "offerListTrackerSavedViewsV1"],
       "exports": ["downloadOfferTrackerWorkbook()", "triggerWorkbookDownload()"],
       "overlays": ["Offer Tracker export dialog", "column panel", "rules panel", "saved views menu"],
-      "tests": ["scripts/test_offer_list_tracker_frontend.mjs", "scripts/test_offer_tracker_date_range.py"],
-      "testGap": "缺少真实浏览器中的大数据筛选、选择性能和 XLSX 下载验收。",
-      "notes": "M2 首个试点；选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
+      "tests": ["scripts/test_offer_list_tracker_frontend.mjs", "scripts/test_offer_tracker_date_range.py", "frontend/src/features/offer-tracker/offerTrackerModel.test.ts", "frontend/src/features/offer-tracker/OfferTrackerPage.test.ts"],
+      "testGap": "核心路径已完成真实浏览器验收；尚缺旧/新页面同一 fixture 的逐字段自动差异报告，高级保存视图、列面板、规则面板和导出对话框仍只在 legacy 回退实现。",
+      "notes": "M2 首个试点已进入 dual：核心筛选、排序、选择、分页和导出入口由 Vue 接管；保存视图、列面板、规则面板和旧导出对话框仍保留在 legacy 回退实现。选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
     },
     {
       "pageKey": "sheets",
@@ -219,7 +219,7 @@
 ## 当前测试缺口优先级
 
 1. P0：Revenue Flow 没有独立回归，进入其迁移任务前必须建立 Sankey 数据、选择上限、缓存和图表生命周期测试。
-2. P0：Offer Tracker 缺少真实浏览器大数据性能和下载验收，M2 必须记录同 fixture 基线。
+2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 前仍需补旧/新页面逐字段差异报告并迁移高级面板。
 3. P1：Payments 缺少页面级筛选、排序、加载和导出交互测试。
 4. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
 5. P1：Brand Media、Google Ads 和 Tier 的现有源码回归仍需补真实浏览器交互证据。
@@ -229,4 +229,4 @@
 | 日期 | 页面 | 旧状态 | 新状态 | 证据 |
 | --- | --- | --- | --- | --- |
 | 2026-08-27 | 全部页面 | 无清单 | `legacy` | M0 首次盘点；尚未开始框架运行时代码 |
-
+| 2026-08-27 | Offer List Tracker | `legacy` | `dual` | Vue 核心筛选/排序/选择/分页/导出入口、legacy fallback、Vitest/构建契约和应用内浏览器验收通过；高级面板仍由 legacy 提供 |

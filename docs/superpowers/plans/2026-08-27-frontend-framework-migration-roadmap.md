@@ -168,7 +168,7 @@ interface ModernAppApi {
 interface LegacyBridgeApi {
   navigate(page: ModernPageName): void;
   requestRender(page: ModernPageName): void;
-  download(type: string, payload: unknown): void;
+  download(type: string, payload: unknown): boolean;
 }
 ```
 
@@ -415,8 +415,15 @@ Vue feature
 - 新增：`frontend/src/features/offer-tracker/offerTrackerModel.test.ts`
 - 新增：`frontend/src/features/offer-tracker/OfferTrackerPage.test.ts`
 - 修改：`frontend/src/entry.ts`
+- 修改：`frontend/src/legacy/bridge.ts`
+- 修改：`frontend/src/legacy/contracts.ts`
+- 修改：`frontend/vitest.config.ts`
 - 修改：`public/index.html`
 - 修改：`public/app.js`
+- 修改：`public/auth.js`
+- 修改：`public/styles.css`
+- 修改：`scripts/test_frontend_build_contract.mjs`
+- 修改：`scripts/test_frontend_migration_inventory.mjs`
 - 修改：`scripts/test_offer_list_tracker_frontend.mjs`
 - 修改：`docs/frontend-migration-inventory.md`
 
@@ -426,43 +433,43 @@ Vue feature
 - 产出：`mountPage("offer-list-tracker", root)`；筛选、排序、选择、分页和导出事件使用显式 TypeScript 类型。
 - 临时回调：下载继续通过 `window.OI_LEGACY_BRIDGE.download("offer-tracker", payload)` 复用旧 XLSX 生成器，直到导出模块独立迁移。
 
-- [ ] **步骤 1：从旧测试提取行为契约并建立失败的 model 测试**
+- [x] **步骤 1：从旧测试提取行为契约并建立失败的 model 测试**
 
   覆盖佣金字段优先级、Revenue、AOV 来源、BB policy、ASIN 去重、日期范围、筛选顺序、选择集合和导出字段；断言不得依赖旧函数名或源码字符串。
 
-- [ ] **步骤 2：运行 Vitest 确认 RED**
+- [x] **步骤 2：运行 Vitest 确认 RED**
 
   运行：`npm --prefix frontend run test -- --run offerTrackerModel`
 
   预期：失败并提示 `offerTrackerModel` 导出不存在。
 
-- [ ] **步骤 3：实现纯 TypeScript model**
+- [x] **步骤 3：实现纯 TypeScript model**
 
   只迁移 Offer Tracker 使用的业务函数；输入输出均为不可变数据。禁止从 model 访问 DOM、`window`、localStorage 或发起 fetch。
 
-- [ ] **步骤 4：运行 model 测试确认 GREEN**
+- [x] **步骤 4：运行 model 测试确认 GREEN**
 
   运行：`npm --prefix frontend run test -- --run offerTrackerModel`
 
   预期：全部通过，且旧 `scripts/test_offer_list_tracker_frontend.mjs` 继续通过。
 
-- [ ] **步骤 5：建立失败的组件交互测试**
+- [x] **步骤 5：建立失败的组件交互测试**
 
   覆盖初始渲染、筛选、排序、全选/取消、分页、空状态、错误数据降级、键盘焦点和导出事件。测试使用用户可见角色/文本，不查询 Vue 内部实例。
 
-- [ ] **步骤 6：实现 Offer Tracker Vue 页面**
+- [x] **步骤 6：实现 Offer Tracker Vue 页面**
 
   复用现有可见文案和布局语义；根节点使用 `.oi-modern-page[data-page="offer-list-tracker"]` 限定样式作用域。表格在选择变化时只更新相关行，不重新构建整页数据。
 
-- [ ] **步骤 7：接入 dual 模式**
+- [x] **步骤 7：接入 dual 模式**
 
   `entry.ts` 令 `hasPage("offer-list-tracker")` 返回 `true`。`switchPage()` 在该页面先尝试 modern mount；若 modern API 不存在或 mount 抛错，则回退旧 `renderOfferListTrackerPage()` 并显示受控 console warning。
 
-- [ ] **步骤 8：更新旧回归测试与迁移清单**
+- [x] **步骤 8：更新旧回归测试与迁移清单**
 
   保留旧业务纯函数断言；将依赖旧 DOM 字符串的断言替换为 modern 组件测试。清单状态从 `legacy` 改为 `dual`，不能直接标记 `modern`。
 
-- [ ] **步骤 9：运行完整目标验证**
+- [x] **步骤 9：运行完整目标验证**
 
   运行：
 
@@ -477,9 +484,20 @@ Vue feature
 
   预期：全部通过。
 
-- [ ] **步骤 10：浏览器验收并切换默认渲染**
+- [x] **步骤 10：浏览器验收并切换默认渲染**
 
-  使用 `browser-act` 对同一数据集比较旧/新页面的行数、筛选结果、排序、选择、导出按钮、桌面/移动布局和计算样式。证据一致后将清单状态改为 `modern`；旧渲染代码保留到 M3 结束，作为一个阶段的回滚窗口。
+  使用应用内浏览器对同一数据集检查现代页面的行数、筛选结果、排序、选择、导出按钮、桌面/移动布局和计算样式。核心路径验收通过后将清单状态保持为 `dual`；保存视图、列面板、规则面板和旧导出对话框仍由 legacy 回退提供，旧渲染代码保留到后续模块迁移完成，作为阶段回滚窗口。
+
+---
+
+**M2 执行记录（2026-08-27）：**
+
+- RED 证据：model 测试先因 `offerTrackerModel` 尚不存在失败；组件测试先因页面 SFC 尚不存在失败；bridge 生命周期测试先以 M1 的空注册实现失败；dual 静态回归先因现代 root、bridge 和 `dual` 状态尚未接入失败。
+- GREEN 证据：`npm ci`、`npm --prefix frontend run typecheck`、`npm --prefix frontend run test -- --run`、`npm --prefix frontend run build`、`node scripts/test_frontend_build_contract.mjs`、`node scripts/test_frontend_migration_inventory.mjs`、`node scripts/test_offer_list_tracker_frontend.mjs`、`python scripts/test_offer_tracker_date_range.py`、`node --check public/auth.js`、`node --check public/app.js` 和 `git diff --check` 均通过；Vitest 为 3 个测试文件、24 项测试；modern 产物为 `oi-modern.js` 91.86 kB（gzip 33.84 kB）与 `oi-modern.css` 7.54 kB（gzip 1.84 kB）。
+- 架构边界：`offerTrackerModel.ts` 不访问 DOM、`window`、localStorage 或 fetch；Vue composable 维护本地筛选/排序/选择/分页状态；导出通过窄 `OI_LEGACY_BRIDGE` 复用旧 XLSX 生成器；`switchPage()` 支持 modern mount、离开卸载和受控 legacy fallback。保存视图、列面板、规则面板和旧导出对话框没有迁移，清单状态因此保持 `dual`。
+- 浏览器证据：browser-act 当前无已配置浏览器，因此使用应用内 Edge 浏览器在隔离的 `OI_AUTH_ENABLED=0`、8766 端口完成验收。真实缓存显示 6,286 条 Offer，默认每页 25 行；已验证搜索、Tier 多选、Revenue 排序、跨页选择保留、选择全部匹配项、现代 XLSX 下载、中文/英文文案和 390px 移动布局。桌面端横向溢出已定位为 Grid 最小内容宽度问题并修复；修复后文档 `scrollWidth` 与视口一致，表格仍由内部滚动容器承载。
+- 浏览器边界：本地运行期间仍记录了既有的 `/api/tier_moves` 和 `/api/levanta/payments` 503 控制台错误；未发现 modern bundle 或 Offer Tracker 自身错误。认证关闭只用于隔离验收，不代表生产认证流程已重新验证。
+- 清理与范围：M2 测试服务器使用 8766，收尾后停止并确认无监听；未提交、未推送、未创建 PR；未修改后端、数据库或其他页面业务逻辑，构建产物仍由 `public/assets/modern/` 的忽略目录生成。
 
 ---
 
@@ -811,7 +829,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | --- | --- | --- |
 | M0 ADR 与盘点 | 已验证 | ADR、12 页面迁移清单和 `test_frontend_migration_inventory.mjs` 已落地并进入 CI；目标检查通过 |
 | M1 双运行骨架 | 已验证 | Vue/TS/Vite、只读 Legacy Bridge、认证启动链、Vercel/CI 构建均已接入；目标测试和真实浏览器双运行验收通过 |
-| M2 Offer Tracker 试点 | 未开始 | 当前仍由 `public/app.js` 渲染 |
+| M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页/导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；高级面板仍保留在 legacy |
 | M3 共享模块 | 未开始 | 当前共享逻辑仍在 legacy JS |
 | M4 Shell 与低风险页面 | 未开始 | 当前仍由 `switchPage()` 直接管理 |
 | M5 Targets/Category/Tier | 未开始 | 当前仍由 legacy 路径渲染 |
@@ -826,10 +844,10 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 范围边界：本轮只创建 Roadmap，不创建 `frontend/`、不安装依赖、不修改运行时代码、不启动服务器。
+- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M2 已按各自执行计划完成实现、测试和浏览器验收，后续阶段仍需单独授权和分批执行。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M2 已完成，M3 及后续阶段尚未开始。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。

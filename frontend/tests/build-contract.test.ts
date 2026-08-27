@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createModernAppApi, getLegacySnapshot } from "../src/legacy/bridge";
-import type { LegacyBootstrapData } from "../src/legacy/contracts";
+import type { LegacyBootstrapData, ModernPageFactory } from "../src/legacy/contracts";
 
 function bootstrapData(): LegacyBootstrapData {
   return {
@@ -60,5 +60,23 @@ describe("Legacy Bridge 构建契约", () => {
 
     expect(Object.isFrozen(getLegacySnapshot().value)).toBe(true);
     expect(getLegacySnapshot().value).not.toBe(data);
+  });
+
+  it("注册页面后支持挂载、重复挂载先卸载旧实例并安全卸载当前实例", () => {
+    const calls: string[] = [];
+    const factory: ModernPageFactory = () => ({
+      unmount: () => calls.push("unmount")
+    });
+    const modernApp = createModernAppApi({ "offer-list-tracker": factory });
+    const root = document.createElement("section");
+
+    expect(modernApp.hasPage("offer-list-tracker")).toBe(true);
+    expect(modernApp.mountPage("offer-list-tracker", root)).toBe(true);
+    expect(modernApp.mountPage("offer-list-tracker", root)).toBe(true);
+    expect(calls).toEqual(["unmount"]);
+    modernApp.unmountPage("offer-list-tracker");
+    expect(calls).toEqual(["unmount", "unmount"]);
+    modernApp.unmountPage("offer-list-tracker");
+    expect(calls).toEqual(["unmount", "unmount"]);
   });
 });

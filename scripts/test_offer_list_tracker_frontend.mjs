@@ -394,6 +394,7 @@ const productsSubnavMatch = html.match(/<div class="nav-subnav[^\"]*" id="produc
 assert(productsIndex >= 0 && trackerIndex > productsIndex, "Offer List Tracker should appear inside Products & offers");
 assert(productsSubnavMatch && productsSubnavMatch[0].includes('id="offerListTrackerNav"'), "Products & offers should expose Offer List Tracker as a child page");
 assert(html.includes('id="offerListTrackerPage"'), "Offer List Tracker page should exist");
+assert(html.includes('id="offerListTrackerModernRoot"'), "Offer Tracker should expose a modern mount root");
 assert(html.includes('id="offerTrackerExportSelected"'), "selected-row workbook export should exist");
 assert(html.includes('data-i18n="offerTracker.commissionRange">AFF Commission range</span>'), "commission filters should be labeled as AFF Commission");
 assert(html.includes('id="offerTrackerRevenueStatus"'), "revenue status filter should exist");
@@ -415,6 +416,8 @@ assert(appSource.includes('commission: "AFF Commission"'), "tracker table header
 assert(appSource.includes('class="offer-tracker-aov-badge ${type}"'), "tracker AOV cells should render provenance badges");
 assert(appSource.includes('bbPolicy: "BB Preference"'), "tracker table headers should include the BB preference column");
 assert(appSource.includes('DB_OFFERS_UI_API'), "tracker should request the selected date range from the offers API");
+assert(appSource.includes("OI_LEGACY_BRIDGE"), "legacy app should expose the modern bridge");
+assert(appSource.includes("Modern Offer Tracker unavailable; continuing with the legacy tracker."), "tracker should retain a controlled modern fallback warning");
 assert(appSource.includes('"Mammotion", "3W", "Gosovr"'), "tracker should preserve the confirmed prohibited-BB brand list");
 const selectionHandlerStart = appSource.indexOf("function handleOfferTrackerSelectionChange");
 const selectionHandlerEnd = appSource.indexOf("function toggleOfferTrackerFilteredSelection", selectionHandlerStart);

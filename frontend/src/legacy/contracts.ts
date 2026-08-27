@@ -33,8 +33,15 @@ export interface ModernAppApi {
   hasPage(page: ModernPageName): boolean;
 }
 
+export interface ModernPageController {
+  unmount(): void;
+  setLanguage?(language: UiLanguage): void;
+}
+
+export type ModernPageFactory = (element: HTMLElement) => ModernPageController;
+
 export interface LegacyBridgeApi {
   navigate(page: ModernPageName): void;
   requestRender(page: ModernPageName): void;
-  download(type: string, payload: unknown): void;
+  download(type: string, payload: unknown): boolean;
 }
