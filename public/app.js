@@ -1035,6 +1035,7 @@
       "nav.payments": "付款",
       "nav.publishers": "媒体",
       "nav.googleAds": "Google 广告",
+      "nav.googleAdsHint": "广告投放",
       "nav.brandMedia": "品牌媒体趋势",
       "nav.revenueFlow": "Revenue 流向",
       "nav.reports": "报表",
@@ -31064,7 +31065,8 @@ var _NUMERIC_COL_PATTERNS = [
     if (page === "dashboard" || page === "agent") return "workspace";
     if (["payments", "sheets", "monthly-new-merchants", "tier"].includes(page)) return "merchants";
     if (["publishers", "brand-media", "revenue-flow"].includes(page)) return "media";
-    if (["google-ads", "offer-list-tracker", "category"].includes(page)) return "products";
+    if (page === "google-ads") return "google-ads";
+    if (["offer-list-tracker", "category"].includes(page)) return "products";
     return "workspace";
   }
 
@@ -31096,16 +31098,33 @@ var _NUMERIC_COL_PATTERNS = [
       if (toggle) toggle.classList.toggle("active", isCurrent);
       setNavigationGroupOpen(group, isCurrent);
     });
+    if (els.googleAdsNav) {
+      els.googleAdsNav.classList.toggle("active", currentGroupName === "google-ads");
+    }
   }
 
   function toggleNavigationGroup(toggle) {
     const group = toggle && toggle.closest(".nav-group[data-nav-group]");
     if (!group) return;
-    const shouldOpen = toggle.getAttribute("aria-expanded") !== "true";
-    navigationGroups().forEach((candidate) => {
-      setNavigationGroupOpen(candidate, candidate === group && shouldOpen);
-    });
-    state.navigationOpenGroup = shouldOpen ? group.dataset.navGroup : "";
+
+    const currentGroupName = navigationGroupForPage(state.page);
+    const isCurrentPageGroup = group.dataset.navGroup === currentGroupName;
+    const isOpen = toggle.getAttribute("aria-expanded") === "true";
+
+    // Keep the current page's submenu available until the user selects another page.
+    if (isCurrentPageGroup && isOpen) {
+      setNavigationGroupOpen(group, true);
+      state.navigationOpenGroup = group.dataset.navGroup;
+      return;
+    }
+
+    const shouldOpen = !isOpen;
+    setNavigationGroupOpen(group, shouldOpen);
+    if (shouldOpen) {
+      state.navigationOpenGroup = group.dataset.navGroup;
+    } else if (state.navigationOpenGroup === group.dataset.navGroup) {
+      state.navigationOpenGroup = isCurrentPageGroup ? currentGroupName : "";
+    }
   }
 
   function pageBelongsToDashboard(page) {
