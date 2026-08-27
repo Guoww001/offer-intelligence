@@ -5,6 +5,7 @@
   const offers = mergeProductKeywordsIntoOffers(data.offers || [], productKeywordData);
   const chatbotI18n = window.CHATBOT_I18N || {};
   const tier2Rules = window.TIER2_RECOMMENDATION_RULES || {};
+  const agentMemoryApi = window.AGENT_MEMORY_STATE || null;
   const TIER_MOVE_OPTIONS = ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"];
   const TIER_VISUAL_STATUS_COLOR_KEYS = ["visualStatusColor", "visual_status_color", "Visual Status Color", "Visual Status", "Color"];
   const TIER_VISUAL_STATUS_CODE_KEYS = ["visualStatusCode", "visual_status_code", "Visual Status Code", "Reason Code"];
@@ -548,6 +549,7 @@
     chatHistory: [],
     agentPage: {
       history: [],
+      memory: agentMemoryApi ? agentMemoryApi.load(localStorage) : null,
       submitting: false,
       abortController: null
     },
@@ -2298,7 +2300,8 @@
     } else if (state.page === "google-ads") {
       renderGoogleAdsPage();
     } else if (state.page === "agent") {
-      // Agent 页面内容由独立会话状态维护，语言切换只需更新静态文案。
+      // Agent 页面内容由独立会话状态维护；空会话时同步恢复提示的语言。
+      renderAgentPageWelcomeIfIdle();
     } else {
       renderAll();
       if (state.currentContext.type !== "default") renderContextPanel(state.currentContext);
@@ -13537,6 +13540,191 @@ var _NUMERIC_COL_PATTERNS = [
     trend: ["entityType", "target", "estimated", "metric", "metrics", "months", "summary", "headline", "note"]
   };
 
+  // 结构化记忆只保存实体、范围、指标名和工具元数据，不保存工具结果明细。
+  function agentMemoryMetricKeys(prompt, data) {
+    var text = String(prompt || "");
+    var matches = [];
+    function add(key) {
+      if (matches.indexOf(key) === -1) matches.push(key);
+    }
+    if (/\bepc\b/i.test(text)) add("epc");
+    if (/\baov\b|客单价|平均订单金额/i.test(text)) add("aov");
+    if (/\b(?:cvr|conversion(?:\s+rate)?)\b|转化率|转换率/i.test(text)) add("conversionRate");
+    if (/\border(?:s)?\b|订单/i.test(text)) add("orders");
+    if (/\bclicks?\b|点击/i.test(text)) add("clicks");
+    if (/commission\s*rate|佣金率/i.test(text)) add("commissionRate");
+    else if (/\bcommission\b|佣金/i.test(text)) add("commission");
+    if (/\b(?:revenue|sales)\b|销售额|收入|营收/i.test(text)) add("revenue");
+    if (/\bpayment\b|付款|支付状态/i.test(text)) add("paymentStatus");
+    if (matches.length) return matches.slice(0, 12);
+    if (data && typeof data.metric === "string" && data.metric.trim()) return [data.metric.trim().slice(0, 40)];
+    return data && Array.isArray(data.metrics)
+      ? data.metrics.filter(function (item) { return typeof item === "string" && item.trim(); }).slice(0, 12).map(function (item) { return item.trim().slice(0, 40); })
+      : [];
+  }
+
+  function agentMemoryResolvedMerchant(name) {
+    var input = String(name || "").trim().slice(0, 80);
+    if (!input) return null;
+    var resolution = agentResolveMerchant(input);
+    if (!resolution || resolution.status !== "resolved" || !resolution.offer) return null;
+    var offer = resolution.offer;
+    return {
+      id: String(offer.merchantId || "").trim(),
+      name: String(offer.brand || offer.merchantName || input).trim(),
+      category: String(offer.mainCategory || offer.category || displayCategory(offer) || "").trim(),
+      tier: String(offer.tier || "").trim()
+    };
+  }
+
+  function agentMemoryAddUnique(values, value, limit) {
+    var text = String(value || "").trim();
+    if (!text || values.indexOf(text) !== -1 || values.length >= limit) return;
+    values.push(text);
+  }
+
+  function agentMemoryPeriod(data, args) {
+    data = data && typeof data === "object" ? data : {};
+    args = args && typeof args === "object" ? args : {};
+    var months = [];
+    function addMonth(value) {
+      var text = String(value || "").trim().slice(0, 7);
+      if (/^20\d{2}-(0[1-9]|1[0-2])$/.test(text) && months.indexOf(text) === -1) months.push(text);
+    }
+    function addRows(rows) {
+      if (!Array.isArray(rows)) return;
+      rows.forEach(function (row) { addMonth(row && row.month); });
+    }
+    addRows(data.months);
+    addRows(data.monthly);
+    if (data.filter && data.filter.month) addMonth(data.filter.month);
+    if (!months.length) addMonth(data.latestMonth);
+    months.sort();
+    var requestedMonths = Number(args.months);
+    return {
+      startMonth: months.length ? months[0] : null,
+      endMonth: months.length ? months[months.length - 1] : null,
+      months: months.length
+        ? months.length
+        : (Number.isInteger(requestedMonths) && requestedMonths >= 1 && requestedMonths <= 24 ? requestedMonths : null)
+    };
+  }
+
+  function agentMemoryFocusForTool(toolName, data) {
+    var merchants = [];
+    var categories = [];
+    var tiers = [];
+    var resolvedEntities = [];
+    function addMerchant(name) {
+      var resolved = agentMemoryResolvedMerchant(name);
+      if (!resolved) return;
+      var merchant = { id: resolved.id, name: resolved.name };
+      if (!merchants.some(function (item) { return item.id === merchant.id && item.name === merchant.name; })) merchants.push(merchant);
+      if (resolved.category) agentMemoryAddUnique(categories, resolved.category, 4);
+      if (resolved.tier) agentMemoryAddUnique(tiers, resolved.tier, 5);
+      if (!resolvedEntities.some(function (item) { return item.id === merchant.id && item.name === merchant.name; })) {
+        resolvedEntities.push({ type: "merchant", id: merchant.id, name: merchant.name });
+      }
+    }
+    function addCategory(value) {
+      agentMemoryAddUnique(categories, value, 4);
+      if (String(value || "").trim()) resolvedEntities.push({ type: "category", id: "", name: String(value).trim().slice(0, 120) });
+    }
+    function addTier(value) {
+      agentMemoryAddUnique(tiers, value, 5);
+      if (String(value || "").trim()) resolvedEntities.push({ type: "tier", id: "", name: String(value).trim().slice(0, 40) });
+    }
+
+    if (toolName === "merchant_analysis") {
+      addMerchant(data.merchant);
+    } else if (toolName === "merchant_comparison") {
+      (Array.isArray(data.entities) ? data.entities : []).forEach(function (item) { addMerchant(item && item.name); });
+    } else if (toolName === "category_analysis") {
+      addCategory(data.category);
+    } else if (toolName === "category_comparison") {
+      (Array.isArray(data.entities) ? data.entities : []).forEach(function (item) { addCategory(item && item.name); });
+      addTier(data.tierFilter);
+    } else if (toolName === "tier_analysis") {
+      addTier(data.tier);
+    } else if (toolName === "payment_status") {
+      var filter = data.filter && typeof data.filter === "object" ? data.filter : {};
+      addMerchant(filter.merchant);
+      addTier(filter.tier);
+    } else if (toolName === "trend") {
+      if (data.entityType === "merchant") addMerchant(data.target);
+      else if (data.entityType === "category") addCategory(data.target);
+      else if (data.entityType === "tier") addTier(data.target);
+    }
+    return { merchants: merchants, categories: categories, tiers: tiers, resolvedEntities: resolvedEntities };
+  }
+
+  function agentMemoryCandidatesFromResolution(resolution) {
+    var candidates = [];
+    function add(candidate) {
+      candidate = candidate && typeof candidate === "object" ? candidate : {};
+      var id = String(candidate.merchantId || candidate.id || "").trim().slice(0, 80);
+      var name = String(candidate.name || candidate.brand || candidate.merchantName || "").trim().slice(0, 120);
+      if (!id && !name) return;
+      var key = (id || name).toLowerCase();
+      if (candidates.some(function (item) { return (item.id || item.name).toLowerCase() === key; })) return;
+      candidates.push({ type: "merchant", id: id, name: name || id });
+    }
+    function visit(value) {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value.candidates)) value.candidates.forEach(add);
+      if (Array.isArray(value.merchants)) value.merchants.forEach(function (item) {
+        if (item && item.resolution) visit(item.resolution);
+        else if (item && Array.isArray(item.candidates)) item.candidates.forEach(add);
+      });
+    }
+    visit(resolution);
+    return candidates.slice(0, 10);
+  }
+
+  function agentMemoryEventFromToolItem(item, prompt, executionMeta) {
+    if (!item || typeof item !== "object") return null;
+    var result = item.result;
+    if (!result || typeof result !== "object") return null;
+    if (result.ok !== true) {
+      var candidates = agentMemoryCandidatesFromResolution(result.resolution);
+      return candidates.length ? { kind: "candidates", candidates: candidates } : null;
+    }
+    var toolName = String(item.name || "").trim().slice(0, 48);
+    var data = result.data && typeof result.data === "object" ? result.data : {};
+    var focus = agentMemoryFocusForTool(toolName, data);
+    var meta = agentTraceDataMeta(result);
+    var period = agentMemoryPeriod(data, item.arguments);
+    return {
+      kind: "tool_success",
+      focus: {
+        merchants: focus.merchants,
+        categories: focus.categories,
+        tiers: focus.tiers
+      },
+      query: {
+        startMonth: period.startMonth,
+        endMonth: period.endMonth,
+        months: period.months,
+        metrics: agentMemoryMetricKeys(prompt, data)
+      },
+      lastTool: {
+        toolName: toolName,
+        headline: String(data.headline || "").trim().slice(0, 240),
+        dataSource: meta.dataSource,
+        dataAsOf: meta.dataAsOf,
+        estimated: meta.estimated,
+        partial: !!(executionMeta && executionMeta.partial)
+      },
+      resolvedEntities: focus.resolvedEntities
+    };
+  }
+
+  function agentMemoryEventsFromToolResults(toolResults, prompt, executionMeta) {
+    return (Array.isArray(toolResults) ? toolResults : []).map(function (item) {
+      return agentMemoryEventFromToolItem(item, prompt, executionMeta);
+    }).filter(Boolean);
+  }
+
   var AGENT_METRIC_NOTE_ZH = "口径：EPC(Aff)=affCommission/clicks；AFF Comm%=affCommission/salesAmount*100；CVR=conversionRate*100。样本门槛：EPC/CVR 需 clicks≥100，AOV/AFF Comm% 需 orders≥10；样本不足不参与百分位与强弱项。百分位≥70 为亮点、≤30 为短板。以上数值为最终计算结果，请直接引用，不要重新计算或外推新排名。";
   var AGENT_METRIC_NOTE_EN = "Metrics: EPC(Aff)=affCommission/clicks; AFF Comm%=affCommission/salesAmount*100; CVR=conversionRate*100. Sample gates: EPC/CVR need clicks>=100, AOV/AFF Comm% need orders>=10; below-gate samples get no percentile. Percentile>=70 highlight, <=30 weakness. Values are final computed results; quote them, do not recompute or extrapolate.";
 
@@ -15647,6 +15835,12 @@ var _NUMERIC_COL_PATTERNS = [
     var omittedCalls = [];
     if (traceContext) startAgentTrace(traceContext);
 
+    function memoryEventsForOutcome() {
+      return agentMemoryEventsFromToolResults(toolResults, prompt, {
+        partial: omittedCalls.length > 0
+      });
+    }
+
     function appendTraceStep(step) {
       if (!traceContext) return;
       var safeStep = Object.assign({}, step || {});
@@ -15717,7 +15911,8 @@ var _NUMERIC_COL_PATTERNS = [
         handled: true,
         ok: true,
         dataUnavailable: true,
-        directContent: content
+        directContent: content,
+        memoryEvents: memoryEventsForOutcome()
       };
     }
 
@@ -15782,7 +15977,8 @@ var _NUMERIC_COL_PATTERNS = [
         handled: true,
         ok: true,
         fullResponse: directReply.fullResponse,
-        statusBar: directReply.statusBar
+        statusBar: directReply.statusBar,
+        memoryEvents: []
       };
     }
 
@@ -15961,7 +16157,12 @@ var _NUMERIC_COL_PATTERNS = [
             execution.finish("done", Date.now() - executionStartedAt);
           }
           finishTrace("success", null, { fallbackDelivered: false });
-          return { handled: true, ok: true, directContent: plan.content };
+          return {
+            handled: true,
+            ok: true,
+            directContent: plan.content,
+            memoryEvents: memoryEventsForOutcome()
+          };
         }
         if (execution) {
           execution.updateStep(planStep, {
@@ -16088,7 +16289,8 @@ var _NUMERIC_COL_PATTERNS = [
         partial: executionMeta.partial,
         omittedTargets: executionMeta.omittedTargets,
         executedToolCalls: executionMeta.executedToolCalls,
-        plannedToolCalls: executionMeta.plannedToolCalls
+        plannedToolCalls: executionMeta.plannedToolCalls,
+        memoryEvents: memoryEventsForOutcome()
       };
     }
     appendAgentTraceSynthesis(traceContext, reply, "success", null, synthesisTracePhase);
@@ -16119,13 +16321,42 @@ var _NUMERIC_COL_PATTERNS = [
       partial: executionMeta.partial,
       omittedTargets: executionMeta.omittedTargets,
       executedToolCalls: executionMeta.executedToolCalls,
-      plannedToolCalls: executionMeta.plannedToolCalls
+      plannedToolCalls: executionMeta.plannedToolCalls,
+      memoryEvents: memoryEventsForOutcome()
     };
+  }
+
+  function agentPageMemoryText(language) {
+    return agentMemoryApi
+      ? agentMemoryApi.toPromptText(state.agentPage.memory, language === "en" ? "en" : "zh")
+      : "";
+  }
+
+  function commitAgentPageMemory(events) {
+    if (!agentMemoryApi || !Array.isArray(events) || !events.length) return;
+    var next = agentMemoryApi.applyEvents(state.agentPage.memory, events, Date.now());
+    state.agentPage.memory = next;
+    agentMemoryApi.save(localStorage, next, Date.now());
+  }
+
+  function renderAgentPageWelcomeIfIdle() {
+    if (!els.agentChatLog) return;
+    var hasMessages = els.agentChatLog.classList
+      && typeof els.agentChatLog.classList.contains === "function"
+      && els.agentChatLog.classList.contains("agent-chat-log-has-messages");
+    if (hasMessages) return;
+    els.agentChatLog.innerHTML = agentPageWelcomeHtml();
   }
 
   function agentPageWelcomeHtml() {
     var examplePrompt = t("agent.example.prompt", "Look up EPC and conversion for Tapo (ID398679)");
     var examplePromptFallback = "Look up EPC and conversion for Tapo (ID398679)";
+    var restored = agentMemoryApi
+      ? agentMemoryApi.toDisplayText(state.agentPage.memory, state.language === "en" ? "en" : "zh")
+      : "";
+    var restoredHtml = restored
+      ? '<p class="agent-page-memory-status" role="status">' + escapeHtml(restored) + '</p>'
+      : "";
     return '<div class="agent-page-welcome">'
       + '<span class="agent-page-welcome-logo" role="img" aria-label="YeahPromos">'
       + '<span class="agent-page-welcome-logo-wordmark"><span class="agent-page-welcome-logo-base">YEAH</span><span class="agent-page-welcome-logo-accent">P</span><span class="agent-page-welcome-logo-tail">ROMOS</span></span>'
@@ -16134,6 +16365,7 @@ var _NUMERIC_COL_PATTERNS = [
       + '<span class="agent-page-welcome-kicker">' + escapeHtml(t("agent.welcome.kicker", "START WITH A DATA QUESTION")) + '</span>'
       + '<h3>' + escapeHtml(t("agent.welcome.title", "What would you like to query?")) + '</h3>'
       + '<p>' + escapeHtml(t("agent.welcome.body", "Ask for a merchant analysis, a category comparison, payment status, or a multi-month trend.")) + '</p>'
+      + restoredHtml
       + '<button class="agent-example-prompt" type="button" data-agent-example-prompt-key="agent.example.prompt" data-agent-example-prompt="' + escapeHtml(examplePrompt) + '" data-agent-example-prompt-fallback="' + escapeHtml(examplePromptFallback) + '">'
       + '<span class="agent-example-prompt-icon" aria-hidden="true">↗</span>'
       + '<span class="agent-example-prompt-content">'
@@ -16180,6 +16412,8 @@ var _NUMERIC_COL_PATTERNS = [
   function resetAgentPageConversation() {
     if (state.agentPage.submitting || !els.agentChatLog) return;
     state.agentPage.history = [];
+    state.agentPage.memory = agentMemoryApi ? agentMemoryApi.empty(Date.now()) : null;
+    if (agentMemoryApi) agentMemoryApi.clear(localStorage);
     els.agentChatLog.classList.remove("agent-chat-log-has-messages");
     els.agentChatLog.innerHTML = agentPageWelcomeHtml();
     els.agentChatLog.scrollTop = 0;
@@ -16260,13 +16494,16 @@ var _NUMERIC_COL_PATTERNS = [
       var outcome = await runChatAgent(prompt, {
         language: language,
         chatLogEl: els.agentChatLog,
-        memoryText: "",
+        memoryText: agentPageMemoryText(language),
         history: historyBeforePrompt,
         viewContext: null,
         executionTimeline: true,
         signal: state.agentPage.abortController ? state.agentPage.abortController.signal : null,
         traceContext: traceContext
       });
+      if (outcome && outcome.handled && outcome.ok === true) {
+        commitAgentPageMemory(outcome.memoryEvents);
+      }
       if (outcome && outcome.handled) {
         if (outcome.stopped) {
           appendAgentPageMessage("assistant", t("agent.stopped", "This Agent run was stopped."));
@@ -31051,6 +31288,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isGoogleAds = page === "google-ads";
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     if (els.dashboardAgentPage) els.dashboardAgentPage.classList.toggle("hidden", !isAgent);
+    if (isAgent) renderAgentPageWelcomeIfIdle();
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
     if (els.googleAdsPage) els.googleAdsPage.classList.toggle("hidden", !isGoogleAds);
@@ -32408,6 +32646,16 @@ var _NUMERIC_COL_PATTERNS = [
       completeAgentTrace,
       normalizeAgentTraceError,
       agentTraceDataMeta,
+      agentMemoryMetricKeys,
+      agentMemoryEventFromToolItem,
+      agentMemoryEventsFromToolResults,
+      agentPageMemoryText,
+      commitAgentPageMemory,
+      agentPageWelcomeHtml,
+      resetAgentPageConversation,
+      getAgentPageMemoryForTest: function () {
+        return state.agentPage.memory;
+      },
       createAgentExecutionTimeline,
       runChatAgent,
       firstOfferName: function () {

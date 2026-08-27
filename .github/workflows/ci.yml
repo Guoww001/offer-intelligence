@@ -78,5 +78,6 @@ jobs:
           python scripts/test_llm_usage.py
           python scripts/test_agent_config.py
           node scripts/test_chat_agent.mjs
+          node scripts/test_agent_memory_state.mjs
           node scripts/test_agent_trace.mjs
           python scripts/test_payment_placeholders.py

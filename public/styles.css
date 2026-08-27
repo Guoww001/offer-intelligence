@@ -4118,6 +4118,13 @@ body.auth-ready .auth-panel {
   line-height: 1.6;
 }
 
+.agent-page-memory-status {
+  margin-top: 10px !important;
+  color: var(--muted);
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
 @media (max-width: 1000px) {
   .agent-page-layout {
     grid-template-columns: 1fr;
@@ -21716,6 +21723,11 @@ body.dashboard-mode .dashboard-agent-page .agent-page-welcome p {
   color: var(--agent-muted);
   font-size: 13px;
   line-height: 1.75;
+}
+
+body.dashboard-mode .dashboard-agent-page .agent-page-memory-status {
+  max-width: 720px;
+  color: rgba(226, 232, 240, 0.72);
 }
 
 body.dashboard-mode .dashboard-agent-page .agent-example-prompt {

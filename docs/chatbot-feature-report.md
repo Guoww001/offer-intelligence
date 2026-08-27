@@ -1,6 +1,6 @@
 # Chatbot 完整档案
 
-> 更新日期：2026-08-25 · 分支：`main`
+> 更新日期：2026-08-26 · 分支：`main`
 
 ## 1. 概述
 
@@ -21,6 +21,8 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 > Dashboard 子页面拆分（2026-08-17）：Dashboard 下提供独立的 `Chatbot` 和 `Agent` 子页面。`Chatbot` 保留原有 Report/Chat Mode 与 Deep Window 流程；`Agent` 使用独立聊天记录，只复用 `runChatAgent()` 的只读工具链。
 
 > Agent 执行过程时间线（2026-08-17）：独立 Agent 页面以可折叠的执行摘要展示规划、工具查询、月度范围、结果整理和最终状态；不展示模型原始 Chain-of-Thought。执行中的请求支持通过 `AbortController` 停止，成功完成后时间线默认折叠，失败或停止时保持展开。
+
+> Agent 结构化对话记忆（2026-08-26）：独立 Agent 页面使用版本化 `localStorage` 状态保存商户、品类、Tier、月份、指标名、最近工具和数据来源等安全摘要；刷新可恢复，新对话和登出会清除。原始问题、回答正文、指标数值、月度/付款明细、工具 JSON 和异常堆栈不写入记忆，也不新增数据库表或字段。
 
 > Chat Mode 商户分析的当前相对比较口径单独记录在 [Chat Mode 商户分析相对比较规则](chatbot-analysis-comparison-rules.md)，包括比较范围、指标公式、百分位阈值和已知口径问题。
 >
@@ -510,6 +512,9 @@ node --check public/chatbot_i18n.js
 node --check public/app.js
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_zh_chatbot.mjs
+node scripts/test_chat_agent.mjs
+node scripts/test_agent_trace.mjs
+node scripts/test_agent_memory_state.mjs
 python -m py_compile llm_classify.py
 python -m py_compile api/chat/actions.py
 python -m py_compile api/chat/stream.py
@@ -519,7 +524,7 @@ python -m py_compile api/chat/stream.py
 
 ## 13. 完整文件清单
 
-### 前端（7 个文件）
+### 前端（8 个文件）
 
 ```
 public/
@@ -528,6 +533,7 @@ public/
 ├── auth.js                   ← Session 管理、LLM 开关 (window.__OI_LLM_ENABLED)
 ├── chatbot_i18n.js           ← 中英双语：翻译、别名、正则意图检测
 ├── tier2_recommendation_rules.js ← Tier 2 推荐规则
+├── agent_memory_state.js     ← Agent 结构化记忆状态、过期和安全文本投影
 ├── styles.css                ← 聊天样式 + 分析表格样式
 └── protected_data/
     ├── db_offers_cache.json   ← 主数据缓存 (offers + sheets + paymentRecords)
@@ -637,7 +643,7 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - **趋势依赖 DB 月度数据**: 趋势分析需要数据库中至少 2 个月的月度时间序列；无 DB 时自动降级为基于汇总历史的估算（结果标记为估算）
 - **LLM 依赖网络**: 文字分析需要 API 调用，超时 15s
 - **数据有缓存 TTL**: `db_offers_cache.json` 使用 24h TTL + stale-while-revalidate
-- **多轮记忆有限**: Report Mode 每次提问独立处理（支持对上一商户的基础追问，不跨会话持久）
+- **多轮记忆有限**: Report Mode 每次提问独立处理（支持对上一商户的基础追问，不跨会话持久）；独立 Agent 目前只持久化安全的结构化焦点，不恢复完整消息，也不支持会话列表、跨设备同步或分享
 
 ### 已实现（历史限制已落地）
 - **时间序列趋势分析** — 支持 merchant / category / tier 三类实体的月度趋势、环比变化、指定指标与时间范围（如"近 3 个月"、"这个季度"）。对应 `renderTrendLoadingPlaceholder` 的三条取数路径（商户走 `fetchMerchantMetrics`，品类/Tier 走 `fetchAggregatedMonthlyMetrics` 聚合，无 DB 时 `estimateAggregatedTrend` 估算降级）+ 左栏趋势图表。
@@ -677,6 +683,23 @@ Provider usage 通过综合 SSE 的独立 `type=usage` 事件在 `[DONE]` 前发
 Trace 写入是异步、短超时和可丢弃的：网络或数据库写入失败只记录 `console.warn`，不阻断回答、问题日志或 fallback。Trace 白名单拒绝保存 `prompt`、`messages`、工具 `arguments`、`toolResult`、回答正文、原始 Provider JSON 和异常堆栈。用户中止记录为 `stopped/stopped_by_user`，Provider 超时和工具失败分别保留 `timeout` 或 `failed` 及受控错误码。
 
 本次实现只覆盖 Agent Trace 与运行指标路线（路线图 4.1）；服务端工具注册表、统一回合生命周期和主动式能力等后续路线不视为已完成。
+
+### Agent 结构化对话记忆（2026-08-26）
+
+独立 Agent 页的 `state.agentPage.memory` 由 `public/agent_memory_state.js` 管理，存储键为 `oi_agent_memory_v1`。状态包括以下安全字段：
+
+- 当前焦点：商户 ID/标准名称、品类和 Tier；
+- 查询范围：起止月份、月份数量和指标名称；
+- 最近工具：工具名、受控摘要、数据来源、快照时间、是否估算和是否部分执行；
+- 候选实体：`pending`、`confirmed`、`rejected`。
+
+`runChatAgent()` 只从工具结果生成白名单事件。同一轮多个成功工具结果会合并到同一个状态；下一轮成功工具结果会替换上一轮的焦点，候选确认会转移到 `confirmed` 并将未选候选转为 `rejected`。工具结果中的数值、月度行、付款行、原始参数、原始问题、回答正文、Provider JSON 和异常堆栈不会进入事件或 `localStorage`。
+
+状态为版本 1，默认有效期 7 天，并有字段、实体和序列化长度上限。读取到版本不匹配、过期、未来时间戳、超长或损坏数据时会清除并回到空状态；浏览器存储异常只会降级，不阻断回答。恢复的状态被投影成中英双语的受控上下文文本，仅用于消解指代和延续查询范围，当前数值仍必须重新调用数据工具。
+
+Agent 欢迎区会提示“已恢复上下文”；点击“新对话”或退出登录时同时清除页面内存和 `localStorage`。这一阶段没有新增数据库字段、数据库表、后端 API 或 Trace 内容，Report Mode 的报告记忆快照也不受影响。
+
+对应回归测试为 `scripts/test_agent_memory_state.mjs` 和 `scripts/test_chat_agent.mjs`，并已加入 `.github/workflows/ci.yml`。
 
 ### 17.1 不满意反馈
 

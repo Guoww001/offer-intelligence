@@ -1,5 +1,5 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260826-revenue-flow-proportional-ribbons";
+  const APP_SCRIPT = "./app.js?v=20260826-agent-memory1";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -266,6 +266,7 @@
       } catch (_error) {
         // A failed logout call still gets a clean local reset through reload.
       }
+      if (window.AGENT_MEMORY_STATE) window.AGENT_MEMORY_STATE.clear(localStorage);
       window.location.reload();
     });
   }

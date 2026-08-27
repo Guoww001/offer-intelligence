@@ -6,6 +6,20 @@ the chatbot_question_log_http.py pattern.  Callers perform require_auth().
 
 from __future__ import annotations
 
+from agent_contract import (
+    AGENT_MAX_TOOL_CALLS,
+    build_planning_messages,
+    create_agent_run_id,
+    normalize_planning_result,
+    public_agent_error_payload,
+    validate_planning_request,
+    verify_plan_proof,
+)
+from agent_tool_registry import (
+    AGENT_TOOL_NAMES,
+    AGENT_TOOL_REGISTRY_VERSION,
+    get_agent_tool_definitions,
+)
 from auth import _read_json_body, send_json
 from llm_provider import call_llm_tools
 
@@ -13,17 +27,7 @@ AGENT_MAX_REQUEST_BYTES = 64 * 1024
 AGENT_SYNTHESIS_MAX_REQUEST_BYTES = 128 * 1024
 AGENT_PLAN_TIMEOUT_SECONDS = 30.0
 AGENT_SYNTHESIS_MAX_TOKENS = 4096
-AGENT_ALLOWED_TOOL_NAMES = frozenset(
-    {
-        "merchant_analysis",
-        "category_analysis",
-        "merchant_comparison",
-        "tier_analysis",
-        "category_comparison",
-        "payment_status",
-        "trend",
-    }
-)
+AGENT_ALLOWED_TOOL_NAMES = frozenset(AGENT_TOOL_NAMES)
 
 PLANNING_PROMPT_ZH = (
     "你是一个亚马逊联盟营销数据分析助手，可以调用工具获取数据报告。\n"
@@ -78,38 +82,6 @@ def agent_synthesis_system_prompt(language: str) -> str:
     return SYNTHESIS_PROMPT_EN if language == "en" else SYNTHESIS_PROMPT_ZH
 
 
-def _validated_agent_body(body) -> tuple[dict | None, str | None]:
-    messages = body.get("messages")
-    if not isinstance(messages, list) or not messages:
-        return None, "messages must be a non-empty array"
-    cleaned = []
-    for msg in messages:
-        if not isinstance(msg, dict) or not isinstance(msg.get("content"), str):
-            return None, "each message must have a string content"
-        role = str(msg.get("role") or "user").strip().lower()
-        if role not in {"user", "assistant"}:
-            return None, "message role must be user or assistant"
-        cleaned.append({"role": role, "content": msg["content"]})
-    tools = body.get("tools")
-    if not isinstance(tools, list):
-        return None, "tools must be an array"
-    cleaned_tools = []
-    for tool in tools:
-        if not isinstance(tool, dict) or not tool.get("name"):
-            return None, "each tool must have a name"
-        tool_name = str(tool["name"]).strip()
-        if tool_name not in AGENT_ALLOWED_TOOL_NAMES:
-            return None, f"unsupported tool: {tool_name}"
-        cleaned_tools.append(
-            {
-                "name": tool_name,
-                "description": str(tool.get("description") or ""),
-                "parameters": tool.get("parameters") if isinstance(tool.get("parameters"), dict) else {"type": "object", "properties": {}},
-            }
-        )
-    return {"messages": cleaned, "tools": cleaned_tools}, None
-
-
 def handle_agent_request(target) -> None:
     length = int(target.headers.get("Content-Length") or 0)
     if length <= 0 or length > AGENT_MAX_REQUEST_BYTES:
@@ -124,28 +96,58 @@ def handle_agent_request(target) -> None:
         send_json(target, 400, {"ok": False, "error": "JSON body must be an object"})
         return
 
-    language = str(body.get("language") or "zh").strip()
-    if language not in ("en", "zh"):
-        language = "zh"
-
-    validated, error = _validated_agent_body(body)
+    validated, error = validate_planning_request(body)
     if error:
-        send_json(target, 400, {"ok": False, "error": error})
+        send_json(target, int(error.get("status") or 400), public_agent_error_payload(error))
         return
 
+    language = validated["language"]
+    retry = validated.get("retry")
+    if retry:
+        agent_run_id = retry["agentRunId"]
+        previous_proof = verify_plan_proof(retry["previousPlanProof"], agent_run_id, validated["question"])
+        if previous_proof is None:
+            send_json(target, 409, public_agent_error_payload({
+                "errorCode": "run_binding_failed",
+                "field": "retry.previousPlanProof",
+            }))
+            return
+        round_number = int(previous_proof.get("round") or 1) + 1
+        if round_number > 2:
+            send_json(target, 409, public_agent_error_payload({
+                "errorCode": "run_binding_failed",
+                "field": "retry",
+            }))
+            return
+    else:
+        agent_run_id = create_agent_run_id()
+        round_number = 1
+
     request_messages = [{"role": "system", "content": agent_planning_system_prompt(language)}]
-    request_messages.extend(validated["messages"])
+    request_messages.extend(build_planning_messages(validated, retry))
+    try:
+        canonical_tools = get_agent_tool_definitions(language, validated["enabledTools"])
+    except ValueError:
+        send_json(target, 400, public_agent_error_payload({
+            "errorCode": "unsupported_tool",
+            "field": "enabledTools",
+        }))
+        return
 
     result = call_llm_tools(
         request_messages,
-        validated["tools"],
+        canonical_tools,
         max_tokens=400,
         timeout=AGENT_PLAN_TIMEOUT_SECONDS,
         temperature=0.1,
         return_metadata=True,
     )
     if result is None:
-        send_json(target, 200, {"ok": False, "error": "LLM unavailable"})
+        send_json(target, 200, {
+            "ok": False,
+            "errorCode": "agent_planning_unavailable",
+            "telemetry": {"inputBytes": length},
+        })
         return
     telemetry = {
         "provider": result.get("provider"),
@@ -163,20 +165,18 @@ def handle_agent_request(target) -> None:
             200,
             {
                 "ok": False,
-                "error": "LLM unavailable" if result.get("errorCode") == "llm_unavailable" else "LLM provider unavailable",
+                "errorCode": "agent_planning_unavailable",
                 "telemetry": telemetry,
             },
         )
         return
-    tool_calls = result.get("tool_calls") or result.get("toolCalls") or []
+    normalized, normalize_error = normalize_planning_result(result, validated, agent_run_id, round_number)
+    if normalize_error:
+        send_json(target, int(normalize_error.get("status") or 400), public_agent_error_payload(normalize_error))
+        return
+    normalized["telemetry"] = telemetry
     send_json(
         target,
         200,
-        {
-            "ok": True,
-            "content": result.get("content"),
-            "toolCalls": tool_calls,
-            "finishReason": result.get("finishReason") or ("tool_calls" if tool_calls else "stop"),
-            "telemetry": telemetry,
-        },
+        normalized,
     )
