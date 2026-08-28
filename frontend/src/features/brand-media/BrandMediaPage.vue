@@ -141,6 +141,20 @@ function onDocumentKeydown(event: KeyboardEvent): void {
   void nextTick(() => expandButton.value?.focus());
 }
 
+function syncRevenueFlowContext(): void {
+  const bridgeRoot = document.getElementById("brandMediaModernRoot");
+  if (!bridgeRoot) return;
+  if (media.merchantId.value) {
+    bridgeRoot.dataset.revenueFlowMerchantId = media.merchantId.value;
+    bridgeRoot.dataset.revenueFlowMerchantName = media.merchantName.value || media.merchantId.value;
+  } else {
+    delete bridgeRoot.dataset.revenueFlowMerchantId;
+    delete bridgeRoot.dataset.revenueFlowMerchantName;
+  }
+  bridgeRoot.dataset.revenueFlowStartDate = media.startDate.value;
+  bridgeRoot.dataset.revenueFlowEndDate = media.endDate.value;
+}
+
 function setChartExpanded(expanded: boolean): void {
   media.setChartExpanded(expanded);
 }
@@ -148,6 +162,7 @@ function setChartExpanded(expanded: boolean): void {
 onMounted(() => {
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onDocumentKeydown);
+  syncRevenueFlowContext();
   void media.loadCatalog();
 });
 
@@ -161,6 +176,13 @@ onUnmounted(() => {
 watch(() => media.chartExpanded.value, (expanded) => {
   document.body.classList.toggle("brand-media-chart-expanded", expanded);
 });
+
+watch([
+  () => media.merchantId.value,
+  () => media.merchantName.value,
+  () => media.startDate.value,
+  () => media.endDate.value
+], syncRevenueFlowContext);
 </script>
 
 <template>

@@ -31446,6 +31446,73 @@ var _NUMERIC_COL_PATTERNS = [
     return true;
   }
 
+  function ensureRevenueFlowModernRoot() {
+    const existingRoot = document.getElementById("revenueFlowModernRoot");
+    if (existingRoot) return existingRoot;
+    if (!els.revenueFlowPage) return null;
+    const root = document.createElement("div");
+    root.id = "revenueFlowModernRoot";
+    root.className = "hidden";
+    root.setAttribute("data-modern-root", "revenue-flow");
+    els.revenueFlowPage.appendChild(root);
+    return root;
+  }
+
+  function syncRevenueFlowModernRoot(root) {
+    if (!root) return;
+    const current = state.revenueFlow || {};
+    const brandMedia = state.brandMedia || {};
+    const modernBrandMediaRoot = document.getElementById("brandMediaModernRoot");
+    const modernBrandMediaContext = modernBrandMediaRoot ? modernBrandMediaRoot.dataset : {};
+    let selected = Array.isArray(current.merchants) ? current.merchants : [];
+    if (!selected.length && String(current.merchantId || "").trim()) {
+      selected = [{
+        merchantId: current.merchantId,
+        name: current.merchantName || current.merchantId
+      }];
+    }
+    if (!selected.length && String(brandMedia.merchantId || "").trim()) {
+      selected = [{
+        merchantId: brandMedia.merchantId,
+        name: brandMedia.merchantName || brandMedia.merchantId
+      }];
+    }
+    if (!selected.length && String(modernBrandMediaContext.revenueFlowMerchantId || "").trim()) {
+      selected = [{
+        merchantId: modernBrandMediaContext.revenueFlowMerchantId,
+        name: modernBrandMediaContext.revenueFlowMerchantName || modernBrandMediaContext.revenueFlowMerchantId
+      }];
+    }
+    const seen = new Set();
+    const normalized = selected.map((merchant) => ({
+      merchantId: String(merchant && (merchant.merchantId || merchant.id) || "").trim(),
+      name: String(merchant && (merchant.name || merchant.merchantName) || "").trim(),
+      count: Number(merchant && merchant.count || 0)
+    })).filter((merchant) => {
+      if (!merchant.merchantId || seen.has(merchant.merchantId)) return false;
+      seen.add(merchant.merchantId);
+      if (!merchant.name) merchant.name = merchant.merchantId;
+      return true;
+    }).slice(0, 12);
+    const hasRevenueFlowSelection = Array.isArray(current.merchants) && current.merchants.length > 0
+      || String(current.merchantId || "").trim();
+    root.dataset.initialMerchants = JSON.stringify(normalized);
+    root.dataset.initialStartDate = String(
+      current.startDate
+      || (!hasRevenueFlowSelection
+        ? brandMedia.startDate || modernBrandMediaContext.revenueFlowStartDate
+        : "")
+      || ""
+    ).trim();
+    root.dataset.initialEndDate = String(
+      current.endDate
+      || (!hasRevenueFlowSelection
+        ? brandMedia.endDate || modernBrandMediaContext.revenueFlowEndDate
+        : "")
+      || ""
+    ).trim();
+  }
+
   function switchPage(page) {
     const previousPage = state.page;
     if (previousPage === "offer-list-tracker" && page !== "offer-list-tracker") {
@@ -31494,6 +31561,18 @@ var _NUMERIC_COL_PATTERNS = [
       }
       if (els.brandMediaPage) els.brandMediaPage.classList.remove("is-modern");
       const modernRoot = document.getElementById("brandMediaModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
+    if (previousPage === "revenue-flow" && page !== "revenue-flow") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("revenue-flow");
+        }
+      } catch (error) {
+        console.warn("Modern Revenue Flow unmount failed; continuing with the legacy revenue flow page.", error);
+      }
+      if (els.revenueFlowPage) els.revenueFlowPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("revenueFlowModernRoot");
       if (modernRoot) modernRoot.classList.add("hidden");
     }
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.drawerOpen) {
@@ -31740,7 +31819,66 @@ var _NUMERIC_COL_PATTERNS = [
         renderBrandMediaPage();
       }
     }
-    if (isRevenueFlow) renderRevenueFlowPage();
+    if (isRevenueFlow) {
+      const modernRoot = ensureRevenueFlowModernRoot();
+      syncRevenueFlowModernRoot(modernRoot);
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "revenue-flow"
+        && els.revenueFlowPage
+        && els.revenueFlowPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("revenue-flow"));
+          if (modernPageAvailable) {
+            modernMounted = Boolean(modernApp.mountPage("revenue-flow", modernRoot));
+          }
+        }
+      } catch (error) {
+        console.warn("Modern Revenue Flow unavailable; continuing with the legacy revenue flow page.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.revenueFlowPage) els.revenueFlowPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.revenueFlowPage) els.revenueFlowPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (
+            !modernPageAvailable
+            || !modernApp
+            || typeof modernApp.hasPage !== "function"
+            || typeof modernApp.mountPage !== "function"
+          )
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Revenue Flow unavailable; continuing with the legacy revenue flow page.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderRevenueFlowPage();
+      }
+    }
     if (isGoogleAds) renderGoogleAdsPage();
     if (isSheets) renderSheetPage();
     if (isCategory) ensureDashboardCategoryReportData();

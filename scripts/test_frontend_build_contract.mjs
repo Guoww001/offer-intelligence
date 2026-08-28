@@ -61,10 +61,15 @@ read("frontend/src/features/brand-media/BrandMediaPage.vue");
 read("frontend/src/features/brand-media/brandMediaModel.ts");
 read("frontend/src/features/brand-media/useBrandMedia.ts");
 read("frontend/src/features/brand-media/brandMedia.css");
+read("frontend/src/features/revenue-flow/RevenueFlowPage.vue");
+read("frontend/src/features/revenue-flow/RevenueFlowSankey.vue");
+read("frontend/src/features/revenue-flow/revenueFlowModel.ts");
+read("frontend/src/features/revenue-flow/useRevenueFlow.ts");
+read("frontend/src/features/revenue-flow/revenueFlow.css");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260828-vue-m4-publishers-brand-media'),
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260828-vue-m4-revenue-flow'),
   "index.html 缺少 M4 本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
@@ -75,7 +80,7 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-publishers-brand-media";'),
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-revenue-flow";'),
   "auth.js 缺少 M4 本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
@@ -144,5 +149,6 @@ assert(modernApp.hasPage("offer-list-tracker") === true, "M2 必须注册 Offer 
 assert(modernApp.hasPage("payments") === true, "M4 必须注册 Payments 页面");
 
 assert(modernApp.hasPage("brand-media") === true, "Brand Media 必须注册 modern 页面");
+assert(modernApp.hasPage("revenue-flow") === true, "Revenue Flow 必须注册 modern 页面");
 
 console.log("PASS: frontend build contract");
