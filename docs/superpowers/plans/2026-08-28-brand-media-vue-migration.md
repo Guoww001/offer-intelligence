@@ -1,5 +1,7 @@
 # Brand Media Vue3 页面迁移计划
 
+> 最近更新：2026-08-28（与 Publishers Vue 迁移合并交付）
+
 ## 目标
 
 在不改动 Brand Media 后端接口和同伴负责的 Publishers 页面代码的前提下，将 `brand-media` 页面迁移到 Vue3，并保留 legacy fallback。页面迁移完成后，依据主 RoadMap 第 2.5 节，以旧项目 CSS、HTML、渲染结构和交互状态作为视觉基线完成新旧对齐。
@@ -58,3 +60,10 @@
 - 真实 API：`/api/ui/db/publishers` 返回 200；趋势接口在当前本地数据库权限/配置下返回 503，现代页面显示受控错误。未将真实接口失败宣称为 populated 成功。
 - 未完成门槛：BrowserAct 当前 CLI 没有 viewport emulation 选项，因此 390px 真实视口验收待后续具备可调视口的 BrowserAct 环境后补做；在此之前页面保持 `dual`，不升级为 `modern`。
 - 自动化结果：全量 Vitest 11 个文件/61 项通过；typecheck、build、Brand Media 前端与趋势契约、迁移清单/build 契约、既有 Payments 契约、Python 趋势聚合检查和 legacy JS 语法检查均通过。
+
+## 合并交付更新（2026-08-28）
+
+- Publishers 与 Brand Media 已在同一 modern entry 中注册，`public/app.js` 同时保留两个页面的 modern mount/unmount 边界和 legacy fallback；两页不会重复绑定 legacy 事件。
+- Publishers 的选中媒体 profile/portfolio 口径、零活动商家保留和 AOV 为 N/A 的边界已纳入同一分支回归；Brand Media 的趋势请求取消、媒体锁定、点击图和展开/Escape 行为保持不变。
+- 最新合并分支通过 `npm --prefix frontend run test -- --run`（14 个文件、75 项测试）、`npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、Publishers/Brand Media/Payments/迁移清单契约、Node/Python 回归和 `git diff --check`。
+- 代码已直接更新到 `FRONTEND-VUE-MIGRATION` 分支，远端提交为 `69d1968555680bd6ad51342a76953e81b3b88d59`，未创建 PR；浏览器会话 fixture、示例数据和截图均未写入仓库。
