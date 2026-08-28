@@ -585,6 +585,35 @@
   overflow: visible;
 }
 
+/* Brand Media modern migration */
+.brand-media-page.is-modern > :not(#brandMediaModernRoot) {
+  display: none !important;
+}
+
+.brand-media-page:not(.is-modern) > #brandMediaModernRoot {
+  display: none !important;
+}
+
+.brand-media-page.is-modern > #brandMediaModernRoot {
+  display: block;
+}
+
+.brand-media-page > #brandMediaModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.brand-media-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 .offer-tracker-page {
   --tracker-blue: #1769d2;
   --tracker-blue-dark: #0c4fa8;

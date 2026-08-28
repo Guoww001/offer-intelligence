@@ -2311,7 +2311,13 @@
         renderOfferListTrackerPage();
       }
     } else if (state.page === "brand-media") {
-      renderBrandMediaPage();
+      if (els.brandMediaPage && els.brandMediaPage.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        renderBrandMediaPage();
+      }
     } else if (state.page === "google-ads") {
       renderGoogleAdsPage();
     } else if (state.page === "agent") {
@@ -31458,6 +31464,18 @@ var _NUMERIC_COL_PATTERNS = [
       const modernRoot = document.getElementById("paymentsModernRoot");
       if (modernRoot) modernRoot.classList.add("hidden");
     }
+    if (previousPage === "brand-media" && page !== "brand-media") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("brand-media");
+        }
+      } catch (error) {
+        console.warn("Modern Brand Media unmount failed; continuing with the legacy brand media page.", error);
+      }
+      if (els.brandMediaPage) els.brandMediaPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("brandMediaModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.drawerOpen) {
       closeMonthlyNewMerchantDrawer({ restoreFocus: false });
     }
@@ -31588,7 +31606,65 @@ var _NUMERIC_COL_PATTERNS = [
     if (page === "publishers") {
       renderPublishersPage();
     }
-    if (isBrandMedia) renderBrandMediaPage();
+    if (isBrandMedia) {
+      const modernRoot = document.getElementById("brandMediaModernRoot");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "brand-media"
+        && els.brandMediaPage
+        && els.brandMediaPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("brand-media"));
+          if (modernPageAvailable) {
+            modernMounted = Boolean(modernApp.mountPage("brand-media", modernRoot));
+          }
+        }
+      } catch (error) {
+        console.warn("Modern Brand Media unavailable; continuing with the legacy brand media page.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.brandMediaPage) els.brandMediaPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.brandMediaPage) els.brandMediaPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (
+            !modernPageAvailable
+            || !modernApp
+            || typeof modernApp.hasPage !== "function"
+            || typeof modernApp.mountPage !== "function"
+          )
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Brand Media unavailable; continuing with the legacy brand media page.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderBrandMediaPage();
+      }
+    }
     if (isRevenueFlow) renderRevenueFlowPage();
     if (isGoogleAds) renderGoogleAdsPage();
     if (isSheets) renderSheetPage();

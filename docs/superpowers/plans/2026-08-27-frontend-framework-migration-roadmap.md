@@ -700,7 +700,7 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - Payments：状态计算、placeholder、零金额排除、月份/地区/Tier 筛选和 XLSX 一致。
 - Publishers：布局编辑、Tier 数据、筛选和页面离开时退出编辑状态一致。
 - Monthly New Merchants：抽屉、导入、提交、焦点恢复和 API 错误可见。
-- Brand Media：趋势图、Sankey、日期范围、请求取消、无权限/无数据状态可区分。
+- Brand Media：趋势图、日期范围、请求取消、无权限/无数据状态可区分；Revenue Flow 的 Sankey 另按独立页面迁移。
 - Revenue Flow：Canvas/SVG 生命周期、展开状态和页面离开清理一致。
 - Google Ads：筛选、工作台请求、加载/错误状态和导出一致。
 - Shell：活动导航、分组展开、移动端焦点陷阱、Escape、主题与当前页面标题一致。
@@ -719,6 +719,18 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - 浏览器证据：browser-act 当前无已配置浏览器，因此使用应用内 Edge，在 `OI_AUTH_ENABLED=0`、8766 隔离服务验证 Payments modern root、legacy 父级隐藏边界、桌面/390px 移动布局、4×2 摘要卡、固定高度结果区和表格独立滚动、语言切换后再进入 Payments、状态/搜索筛选、同步失败 alert 和 saved rows 保留；页面级横向溢出为 false，桌面表格保留横向滚动。`/api/levanta/payments` 因缺少 `LEVANTA_API_KEY` 返回受控 503，未将其误判为成功同步；导出按钮可用，浏览器下载事件监听未捕获 Blob 下载，字段级导出由组件测试与 bridge/build 契约覆盖。
 - 视觉基线状态：已依据 2.5 节流程完成旧项目 CSS/HTML/渲染结构盘点、同数据同视口几何对比、计算样式核对、移动响应式检查和受控错误状态检查；详细证据见上方“已迁移页面视觉基线对齐记录（2026-08-28）”。
 - 当前状态：Payments 的功能验收与视觉基线对齐均已完成，仍保留 legacy fallback；M4 继续进行，下一步仍需按同一流程迁移和对齐 Publishers。当前未提交、未推送、未创建 PR；本轮使用的 8770/8771 本地服务在收尾时停止并复查端口。
+
+**M4 Brand Media 执行记录（2026-08-28）：**
+
+- 计划与范围：本批次只迁移 Brand Media 趋势页面；`Publishers` 由同伴并行负责，`Revenue Flow` 的 Sankey 不纳入本批次；未修改 Brand Media 后端 SQL、API 字段、数据库权限、认证或全局 AppShell。
+- 旧版基线：只读盘点旧项目 `public/index.html` 的 `#brandMediaPage`、`public/styles.css` 的 Brand Media 选择器与响应式规则，以及 `public/app.js` 的品牌目录、趋势请求、Manager/媒体锁定、点击图和展开生命周期；Vue 样式保留旧页面宽度、页头、筛选卡、KPI 空间、图表面板、点击图和表格的布局与 token。
+- RED → GREEN：先运行缺失 `brandMediaModel`、`useBrandMedia` 和 `BrandMediaPage.vue` 时的目标测试，3 个套件因模块不存在而失败；随后新增 model、composable、Vue 页面/图表/表格组件及样式，目标套件和全量 Vitest 均通过。
+- 实现边界：`entry.ts` 注册 `brand-media` factory，并通过 shared API client 请求 `/api/ui/db/publishers` 与 `/api/ui/db/brand-media-trend`；趋势请求携带 `merchantId`、`startDate`、`endDate`，由 `AbortController` 取消旧请求并用序列号阻止过期响应覆盖新状态；异常、无权限、无数据和未选择品牌分别呈现；挂载失败或 modern bundle 不可用时回退 `renderBrandMediaPage()`。
+- 业务等价：订单为折线图主指标；缺失源日期形成断线，真实零订单保留为点；Revenue 继续进入 hover；无锁定媒体显示全部媒体和总订单线，锁定媒体后只显示当前视图；单个锁定媒体显示普通点击柱，多个锁定媒体显示累计点击柱；Manager 过滤不修改原始 payload。
+- 浏览器与视觉证据：通过 BrowserAct 在相同 1904×985 视口、中文空状态下对比旧版 `C:\Users\yg\AppData\Local\Temp\brand-media-legacy-desktop.png` 与 Vue 版 `C:\Users\yg\AppData\Local\Temp\brand-media-modern-aligned.png`；页面、页头、筛选卡、空 KPI 占位、图表面板、图表布局和表格关键几何值一致（页面 `1589×1477.5625`，图表 `1485×798.78125`，内部布局 `1423×624`）。使用 BrowserAct 注入仅存在于浏览器会话的 fixture 后，验证品牌选择、Manager、订单/Revenue hover、缺失日期断线、真实零值、媒体锁定、单媒体/累计点击图、图表展开、Escape 焦点恢复；populated 证据为 `C:\Users\yg\AppData\Local\Temp\brand-media-modern-populated.png`。
+- 真实请求边界：`/api/ui/db/publishers` 在本地返回 200；趋势接口在当前本地数据库权限/配置下返回 503，页面显示受控错误提示，没有把失败伪装成无数据；因此未宣称真实数据图表验收完成。BrowserAct 当前 CLI 没有 viewport emulation 选项，390px 真实视口验收仍是未完成门槛，旧版响应式 CSS 已保留并通过静态样式检查。
+- 验证结果：`npm --prefix frontend run test -- --run` 为 11 个文件、61 项测试通过；`npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、Brand Media 前端/趋势/迁移清单/build 契约、Payments 前端契约、`python scripts/test_brand_media_trend.py`、`node --check public/app.js`、`node --check public/auth.js` 均通过；收尾前还需执行 `git diff --check` 并停止/复查本批次本地服务。
+- 当前状态：Brand Media 已进入 `dual`，默认由 Vue modern root 渲染并保留 legacy fallback；桌面视觉和关键交互已验收，390px BrowserAct 真实视口与真实趋势数据 populated 验收待补。未提交、未推送、未创建 PR。
 
 ### 任务 6：M5——迁移 Targets、Category Report 与 Tier 管理
 
@@ -954,7 +966,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M1 双运行骨架 | 已验证 | Vue/TS/Vite、只读 Legacy Bridge、认证启动链、Vercel/CI 构建均已接入；目标测试和真实浏览器双运行验收通过 |
 | M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页、列设置、优先级规则和导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；旧导出设置对话框仍保留在 legacy |
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
-| M4 Shell 与低风险页面 | 进行中 | Payments 已由 Vue modern root 接管并完成旧项目 CSS/HTML 视觉基线对齐，legacy fallback 仍保留；Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 与 Shell 尚未迁移 |
+| M4 Shell 与低风险页面 | 进行中 | Payments 已由 Vue modern root 接管并完成旧项目 CSS/HTML 视觉基线对齐；Brand Media 已接入 Vue modern root 并完成桌面 CSS/HTML 几何与关键交互对齐，390px BrowserAct 真实视口仍待补验；Publishers、Monthly New Merchants、Revenue Flow、Google Ads 与 Shell 尚未完成 |
 | M5 Targets/Category/Tier | 未开始 | 当前仍由 legacy 路径渲染 |
 | M6 Chatbot/Agent | 未开始 | 当前仍由原生 JS 执行 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
@@ -967,11 +979,11 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；Offer Tracker 与 Payments 已按该流程完成首轮对齐并记录差异，后续页面必须复用同一流程。
+- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；Offer Tracker、Payments 与 Brand Media 已按该流程完成已验证范围内的对齐并记录差异，Brand Media 的 390px BrowserAct 真实视口仍待补验，后续页面必须复用同一流程。
 - 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M4 Payments 已完成本批次验收，M4 其余页面仍需分批执行，后续阶段仍需单独授权。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 已完成并完成视觉基线对齐，M4 其余页面及后续阶段尚未完成。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 已完成，Brand Media 已进入 dual 并完成桌面视觉/交互对齐，M4 仍需继续完成 Publishers、Monthly New Merchants、Revenue Flow、Google Ads 与 Shell，并补齐各页移动端门槛。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
