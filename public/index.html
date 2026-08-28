@@ -356,4 +356,1814 @@
                   <span class="report-mode-guide-kicker" data-i18n="report.modeGuideKicker">Report Mode</span>
                   <h3 id="reportModeGuideTitle" data-i18n="report.modeGuideTitle">Start with a data report</h3>
                   <p data-i18n="report.modeGuideBody">Use Report Mode to query merchants, ASINs, categories, and metrics, then generate a structured report.</p>
-                  <p class="report-mode-guide-reminde
+                  <p class="report-mode-guide-reminder">
+                    <span aria-hidden="true">→</span>
+                    <strong data-i18n="report.modeGuideReminder">For specific requirements, switch to Chat Mode</strong>
+                  </p>
+                </div>
+              </aside>
+            </div>
+            <div class="chat-log hidden" id="chatLogChat"></div>
+            <div class="chat-memory-bar hidden" id="chatMemoryBar">
+              <div class="chat-memory-chips" id="chatMemoryChips"></div>
+              <div class="chat-memory-dropzone" id="chatMemoryDropzone">
+                <span class="chat-memory-dropzone-icon">+</span>
+                <span data-i18n="memory.hint">将面板拖入此处作为上下文</span>
+              </div>
+            </div>
+            <div class="chat-mode-toggle" id="chatModeToggle">
+              <button class="mode-btn mode-deep active" data-mode="deep" type="button">
+                <span class="mode-indicator"></span>
+                <span data-i18n="deep.mode.deep">Report Mode</span>
+              </button>
+              <button class="mode-btn mode-fast" data-mode="fast" type="button">
+                <span class="mode-indicator"></span>
+                <span data-i18n="deep.mode.fast">Chat Mode</span>
+              </button>
+              <button class="mode-btn mode-help" id="reportHelpBtn" type="button" aria-expanded="false">
+                <span class="mode-help-icon">📖</span>
+                <span data-i18n="report.helpBtn">Help</span>
+              </button>
+              <button class="mode-btn mode-user-guide" id="userFlowGuideBtn" type="button" aria-expanded="false">
+                <span class="mode-help-icon" aria-hidden="true">i</span>
+                <span data-i18n="report.userFlowGuideBtn">User guide</span>
+              </button>
+              <div class="chat-logs-control">
+                <button class="mode-btn mode-logs" id="chatLogsButton" type="button" aria-haspopup="menu" aria-expanded="false" title="Download logs">
+                  <span class="mode-logs-icon" aria-hidden="true">↓</span>
+                  <span data-i18n="chat.logs">Logs</span>
+                </button>
+                <div class="chat-logs-menu hidden" id="chatLogsMenu" role="menu">
+                  <div class="chat-log-group" role="group" aria-label="提问记录">
+                    <span class="chat-log-group-title">提问记录</span>
+                    <div class="chat-log-group-actions">
+                      <button type="button" role="menuitem" data-chat-log-kind="questions" data-chat-log-format="csv">CSV</button>
+                      <button type="button" role="menuitem" data-chat-log-kind="questions" data-chat-log-format="jsonl">JSONL</button>
+                    </div>
+                  </div>
+                  <div class="chat-log-group" role="group" aria-label="不满意反馈">
+                    <span class="chat-log-group-title">不满意反馈</span>
+                    <div class="chat-log-group-actions">
+                      <button type="button" role="menuitem" data-chat-log-kind="feedback" data-chat-log-format="csv">CSV</button>
+                      <button type="button" role="menuitem" data-chat-log-kind="feedback" data-chat-log-format="jsonl">JSONL</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="report-help-panel hidden" id="reportHelpPanel">
+              <div class="report-help-toolbar">
+                <button class="report-help-lang-btn" id="reportHelpLangBtn" type="button" aria-label="Switch guide language">English</button>
+              </div>
+              <div class="chat-stream-text report-help-content" id="reportHelpContent"></div>
+            </div>
+            <div class="user-flow-guide-panel hidden" id="userFlowGuidePanel" aria-hidden="true">
+              <div class="user-flow-guide-toolbar">
+                <span class="user-flow-guide-label" data-i18n="report.userFlowGuideTitle">Chatbot User Guide</span>
+                <span class="user-flow-guide-status" id="userFlowGuideStatus" role="status" aria-live="polite"></span>
+              </div>
+              <div class="chat-stream-text user-flow-guide-content" id="userFlowGuideContent"></div>
+            </div>
+            <form class="chat-input" id="chatForm">
+              <div class="chat-input-field">
+                <input id="chatInput" autocomplete="off" placeholder="Ask about EPC, tiers, AOV, conversion, unpaid offers..." data-i18n-placeholder="chat.placeholder" aria-controls="chatIntentMenu" aria-expanded="false" />
+                <span class="chat-input-command-overlay" id="chatInputCommandOverlay" aria-hidden="true"></span>
+                <div class="chat-intent-menu hidden" id="chatIntentMenu" role="listbox" aria-label="Choose question type" aria-hidden="true">
+                  <div class="chat-intent-menu-track" id="chatIntentMenuTrack" aria-hidden="true"></div>
+                  <div class="chat-intent-menu-title" role="presentation">
+                    <span data-i18n="chat.intent.title">Question type</span>
+                    <kbd>/</kbd>
+                  </div>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="merchant">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.merchant">Merchant</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.merchantHint">Merchant lookup</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="category">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.category">Category</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.categoryHint">Category lookup</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="tier">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.tier">Tier</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.tierHint">Tier overview</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="categorytier">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.categoryTier">Category &amp; Tier</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.categoryTierHint">Category within a tier</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="trend">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.trend">Trend</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.trendHint">Trend analysis</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="payment">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.payment">Payment</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.paymentHint">Payment status</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="asin">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.asin">ASIN</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.asinHint">ASIN lookup</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="publisher">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.publisher">Publisher</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.publisherHint">Publisher records</span>
+                  </button>
+                  <button class="chat-intent-option" type="button" role="option" data-chat-intent="publisherprofile">
+                    <span class="chat-intent-option-prefix" aria-hidden="true">:</span>
+                    <span class="chat-intent-option-label" data-i18n="chat.intent.publisherProfile">Publisher Profile</span>
+                    <span class="chat-intent-option-hint" data-i18n="chat.intent.publisherProfileHint">Publisher profile</span>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" aria-label="Send">
+                <span data-i18n="action.send">Send</span>
+              </button>
+            </form>
+          </section>
+        </section>
+
+        <section class="dashboard-agent-page" id="dashboardAgentPage" aria-label="Chat Agent">
+          <header class="agent-page-header">
+            <div class="agent-page-heading">
+              <div class="agent-page-title-row">
+                <span class="agent-page-title-mark" aria-hidden="true"><span></span></span>
+                <div>
+                  <span class="agent-page-kicker">DASHBOARD / AGENT</span>
+                  <h2 data-i18n="agent.title">Chat Agent</h2>
+                </div>
+                <span class="agent-page-status-chip">
+                  <span class="agent-page-status-dot" aria-hidden="true"></span>
+                  <span data-i18n="agent.status">Read-only data</span>
+                </span>
+              </div>
+              <p data-i18n="agent.subtitle">Ask directly about merchants, categories, tiers, payments, and trends.</p>
+            </div>
+            <div class="agent-page-actions">
+              <button class="secondary-button agent-new-button" id="agentNewConversation" type="button" data-i18n="agent.new">New conversation</button>
+              <button class="secondary-button agent-stop-button hidden" id="agentStopConversation" type="button" data-i18n="agent.stop" disabled>Stop</button>
+            </div>
+          </header>
+
+          <div class="agent-page-layout">
+            <aside class="agent-page-rail panel" aria-label="Agent capabilities">
+              <span class="agent-page-rail-eyebrow" data-i18n="agent.rail.eyebrow">CAPABILITIES</span>
+              <div class="agent-page-rail-heading">
+                <span class="agent-page-rail-index">01</span>
+                <div>
+                  <strong data-i18n="agent.rail.title">Data Agent</strong>
+                  <p data-i18n="agent.rail.body">The Agent plans the lookup, runs read-only tools, and explains the returned data.</p>
+                </div>
+              </div>
+              <div class="agent-capability-list">
+                <div class="agent-capability-item"><span>01</span><strong data-i18n="agent.cap.merchant">Merchant analysis</strong></div>
+                <div class="agent-capability-item"><span>02</span><strong data-i18n="agent.cap.category">Category and tier</strong></div>
+                <div class="agent-capability-item"><span>03</span><strong data-i18n="agent.cap.compare">Comparisons</strong></div>
+                <div class="agent-capability-item"><span>04</span><strong data-i18n="agent.cap.payment">Payments and trends</strong></div>
+              </div>
+              <p class="agent-page-rail-note" data-i18n="agent.rail.note">Read-only analysis. Use Chatbot for the original Report Mode workflow and Deep Window reports.</p>
+            </aside>
+
+            <section class="chat-panel agent-page-chat-panel" data-agent-surface="workspace" aria-label="Chat Agent chat">
+              <div class="agent-chat-context" aria-label="Agent workspace context">
+                <span class="agent-chat-context-mark" aria-hidden="true"></span>
+                <span data-i18n="agent.context">Read-only data workspace</span>
+              </div>
+              <div class="chat-log agent-chat-log" id="agentChatLog" aria-live="polite">
+                <div class="agent-page-welcome">
+                  <span class="agent-page-welcome-logo" role="img" aria-label="YeahPromos">
+                    <span class="agent-page-welcome-logo-wordmark"><span class="agent-page-welcome-logo-base">YEAH</span><span class="agent-page-welcome-logo-accent">P</span><span class="agent-page-welcome-logo-tail">ROMOS</span></span>
+                  </span>
+                  <div>
+                    <span class="agent-page-welcome-kicker" data-i18n="agent.welcome.kicker">START WITH A DATA QUESTION</span>
+                    <h3 data-i18n="agent.welcome.title">What would you like to query?</h3>
+                    <p data-i18n="agent.welcome.body">Ask for a merchant analysis, a category comparison, payment status, or a multi-month trend.</p>
+                    <button class="agent-example-prompt" type="button" data-agent-example-prompt-key="agent.example.prompt" data-agent-example-prompt="Tapo，ID398679，epc和conversion帮我查询下" data-agent-example-prompt-fallback="Look up EPC and conversion for Tapo (ID398679)">
+                      <span class="agent-example-prompt-icon" aria-hidden="true">↗</span>
+                      <span class="agent-example-prompt-content">
+                        <span class="agent-example-prompt-label" data-i18n="agent.example.label" data-i18n-fallback="Example prompt">Example prompt</span>
+                        <span class="agent-example-prompt-text" data-i18n="agent.example.prompt" data-i18n-fallback="Look up EPC and conversion for Tapo (ID398679)">Tapo，ID398679，epc和conversion帮我查询下</span>
+                      </span>
+                      <span class="agent-example-prompt-arrow" aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <form class="chat-input agent-page-input" id="agentChatForm">
+                <div class="chat-input-field">
+                  <input id="agentChatInput" autocomplete="off" placeholder="Ask the Agent about merchants, tiers, payments, or trends..." data-i18n-placeholder="agent.placeholder" />
+                </div>
+                <button id="agentChatSubmit" type="submit" aria-label="Send">
+                  <span class="agent-send-label" data-i18n="action.send">Send</span>
+                  <span class="agent-send-icon" aria-hidden="true">↑</span>
+                </button>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section class="payments-page hidden" id="paymentsPage" aria-label="Payments">
+          <div id="paymentsModernRoot" class="payments-modern-root hidden" aria-live="polite"></div>
+          <div class="payments-header">
+            <div>
+              <h2 data-i18n="payments.title">Payments</h2>
+              <p id="paymentStamp">Monthly payment tracking by merchant and report month</p>
+            </div>
+            <button class="secondary-button" id="paymentSync" type="button" data-i18n="payments.sync">Sync Levanta</button>
+          </div>
+
+          <section class="payment-summary" id="paymentSummary"></section>
+
+          <section class="panel payment-filters" aria-label="Payment filters">
+            <label>
+              <span data-i18n="label.Month">Month</span>
+              <select id="paymentMonthFilter">
+                <option value="all">All months</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="label.Network">Network</span>
+              <select id="paymentNetworkFilter">
+                <option value="all">All networks</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="label.Region">Region</span>
+              <select id="paymentRegionFilter">
+                <option value="all">All regions</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="label.Tier">Tier</span>
+              <select id="paymentTierFilter">
+                <option value="all">All tiers</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="label.Status">Status</span>
+              <select id="paymentStatusFilter">
+                <option value="all">All status</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="label.Sort by">Sort by</span>
+              <select id="paymentSortFilter">
+                <option value="">Default priority</option>
+              </select>
+            </label>
+            <label class="payment-filter-search">
+              <span data-i18n="payments.search">Merchant search</span>
+              <input id="paymentSearch" type="search" placeholder="Merchant name or ID" data-i18n-placeholder="payments.searchPlaceholder" />
+            </label>
+          </section>
+
+          <section class="payment-layout">
+            <section class="table-panel payment-table-panel" aria-label="Payment table">
+              <div class="table-toolbar">
+                <div>
+                  <h3 data-i18n="payments.records">Payment Records</h3>
+                  <p id="paymentTableCount"></p>
+                </div>
+                <button class="icon-button table-download-button" id="downloadPaymentsXlsx" type="button" aria-label="Download payment records as Excel" data-i18n="action.download">Download</button>
+              </div>
+              <div class="table-wrap payment-table-wrap">
+                <table class="payment-table">
+                  <thead id="paymentTableHead">
+                    <tr>
+                      <th data-i18n="label.Merchant ID">Merchant ID</th>
+                      <th data-i18n="label.Merchant">Merchant</th>
+                      <th data-i18n="label.Network">Network</th>
+                      <th data-i18n="label.Region">Region</th>
+                      <th data-i18n="label.Tier">Tier</th>
+                      <th data-i18n="label.Month">Month</th>
+                      <th data-i18n="label.Status">Status</th>
+                      <th data-i18n="label.Revenue made">Revenue Made</th>
+                      <th data-i18n="label.Commission made">Commission Made</th>
+                      <th data-i18n="label.Cycle">Cycle</th>
+                      <th data-i18n="label.Expected Payment Date">Expected Payment Date</th>
+                      <th data-i18n="label.Payment Made">Payment Made</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paymentRows"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <section class="publishers-page hidden" id="publishersPage" aria-label="Publishers">
+          <div id="publishersModernRoot" class="publishers-modern-root hidden" aria-live="polite"></div>
+          <div class="publishers-header">
+            <div>
+              <span class="publishers-eyebrow">PARTNER INTELLIGENCE</span>
+              <h2 data-i18n="publishers.title">Publisher Affinity</h2>
+              <p data-i18n="publishers.subtitle">Understand which merchants, categories, order values and commissions each publisher prefers.</p>
+            </div>
+            <div class="publishers-header-actions">
+              <button class="layout-customize-btn" id="publisherLayoutBtn" type="button" title="自定义布局">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 8h16M4 16h16"/><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/></svg>
+                <span>自定义布局</span>
+              </button>
+            </div>
+          </div>
+          <!-- 布局编辑工具栏（仅在编辑模式显示） -->
+          <div class="layout-toolbar hidden" id="publisherLayoutToolbar">
+            <span class="layout-toolbar-hint">拖动区域左侧手柄 ↔ 调整顺序</span>
+            <div class="layout-toolbar-actions">
+              <button class="layout-reset-btn" id="publisherLayoutReset" type="button">重置布局</button>
+              <div class="layout-toolbar-divider"></div>
+              <button class="layout-cancel-btn" id="publisherLayoutCancel" type="button">取消</button>
+              <button class="layout-save-btn" id="publisherLayoutSave" type="button">确定</button>
+            </div>
+          </div>
+
+          <!-- 媒体优先的筛选工作区 -->
+          <section class="panel publishers-filters publisher-lens-controls" data-layout-id="filters" aria-label="Publisher filters">
+            <div class="publisher-focus-selector">
+              <div class="publisher-focus-copy">
+                <span class="publisher-focus-step">01 · SELECT MEDIA</span>
+                <strong data-i18n="publishers.selectPublisher">选择要分析的媒体</strong>
+                <p data-i18n="publishers.selectPublisherHint">输入媒体名称或 ID，查看其合作商家与偏好。</p>
+              </div>
+              <label class="publisher-selector-field">
+                <span data-i18n="publishers.publisher">Publisher</span>
+                <div class="publishers-combobox publisher-selector-combobox">
+                  <input
+                    id="publisherSelectorSearch"
+                    type="text"
+                    placeholder="媒体名称或 ID"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="publisherSelectorDropdown"
+                    aria-expanded="false"
+                  />
+                  <div
+                    class="publishers-combobox-dropdown publisher-selector-dropdown"
+                    id="publisherSelectorDropdown"
+                    role="listbox"
+                  ></div>
+                </div>
+              </label>
+            </div>
+
+            <div class="publisher-filter-workspace">
+              <div class="publishers-filter-row row-1">
+                <div class="publishers-filter-group">
+                  <div class="publisher-date-field">
+                    <span class="publisher-field-label" data-i18n="publishers.period">Period</span>
+                    <div class="publishers-filter-date-range">
+                      <input id="publisherStartDate" type="date" aria-label="Start date" />
+                      <span class="date-separator">—</span>
+                      <input id="publisherEndDate" type="date" aria-label="End date" />
+                    </div>
+                  </div>
+                  <label>
+                    <span data-i18n="label.Market">Market</span>
+                    <select id="publisherMarketFilter">
+                      <option value="all">All markets</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="publishers.network">Affiliate Network</span>
+                    <select id="publisherNetworkFilter">
+                      <option value="all">All networks</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="publishers.linkType">Link Type</span>
+                    <select id="publisherLinkTypeFilter">
+                      <option value="all">All link types</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="publishers-filter-row row-2">
+                <div class="publishers-filter-group">
+                  <div class="date-quick-btns" id="publisherDateQuickBtns" aria-label="Quick date ranges">
+                    <button type="button" data-quick="lastMonth">上月</button>
+                    <button type="button" data-quick="past30">过去30天</button>
+                    <button type="button" data-quick="past3m">过去3个月</button>
+                    <button type="button" data-quick="past6m">过去6个月</button>
+                  </div>
+                  <label>
+                    <span data-i18n="publishers.merchant">Merchant</span>
+                    <div class="publishers-combobox">
+                      <input
+                        id="publisherMerchantSearch"
+                        type="text"
+                        placeholder="商家名称或 ID"
+                        autocomplete="off"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-controls="publisherMerchantDropdown"
+                        aria-expanded="false"
+                      />
+                      <div
+                        class="publishers-combobox-dropdown"
+                        id="publisherMerchantDropdown"
+                        role="listbox"
+                      ></div>
+                    </div>
+                  </label>
+                  <label>
+                    <span data-i18n="publishers.manager">Manager</span>
+                    <div class="publishers-combobox">
+                      <input id="publisherManagerSearch" type="text" placeholder="经理名称" autocomplete="off" />
+                      <div class="publishers-combobox-dropdown" id="publisherManagerDropdown"></div>
+                    </div>
+                  </label>
+                </div>
+                <div class="publishers-filter-actions">
+                  <button class="btn-search" id="publisherSearchBtn" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                    <span data-i18n="action.search">应用</span>
+                  </button>
+                  <button class="btn-reset" id="publisherResetBtn" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                    <span data-i18n="action.reset">重置</span>
+                  </button>
+                  <div class="btn-group">
+                    <button class="btn-export" id="publisherExportBtn" type="button" title="Export all">
+                      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                      <span data-i18n="action.export">导出</span>
+                    </button>
+                    <div class="btn-group-dropdown hidden" id="publisherExportDropdown">
+                      <button type="button" id="publisherExportPageBtn" data-i18n="publishers.exportPage">导出当前页</button>
+                      <button type="button" id="publisherExportAllBtn" data-i18n="publishers.exportAll">导出全部</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- KPI 指标卡 -->
+          <section class="publishers-kpi" id="publishersKpi" data-layout-id="kpi" aria-label="Publisher KPI summary">
+            <div class="publishers-kpi-row" id="publishersKpiRow"></div>
+          </section>
+
+          <!-- 媒体画像：选择媒体后显示完整商家组合与倾向 -->
+          <section class="panel publisher-affinity-panel" id="publisherAffinityPanel" data-layout-id="affinity" aria-label="Publisher merchant affinity">
+            <div class="publisher-affinity-empty" id="publisherAffinityEmpty">
+              <span class="publisher-affinity-empty-index">02</span>
+              <div>
+                <strong data-i18n="publishers.affinityEmptyTitle">选择媒体后生成倾向画像</strong>
+                <p data-i18n="publishers.affinityEmptyBody">系统会按该媒体实际合作的商家，计算品类贡献、AOV 区间与佣金偏好。</p>
+              </div>
+            </div>
+            <div class="publisher-affinity-content hidden" id="publisherAffinityContent">
+              <header class="publisher-affinity-header">
+                <div class="publisher-identity">
+                  <span class="publisher-avatar" id="publisherAffinityAvatar">P</span>
+                  <div>
+                    <span class="publisher-affinity-kicker">MEDIA PROFILE</span>
+                    <h3 id="publisherAffinityName">Publisher</h3>
+                    <p id="publisherAffinityMeta"></p>
+                  </div>
+                </div>
+                <button class="publisher-clear-focus" id="publisherClearSelection" type="button">
+                  <span aria-hidden="true">←</span>
+                  <span data-i18n="publishers.backToAll">返回全部媒体</span>
+                </button>
+              </header>
+
+              <div class="publisher-affinity-status hidden" id="publisherAffinityStatus" role="status" aria-live="polite"></div>
+              <div class="publisher-affinity-metrics" id="publisherAffinityMetrics"></div>
+
+              <div class="publisher-affinity-grid">
+                <article class="publisher-affinity-card">
+                  <div class="publisher-affinity-card-title">
+                    <div>
+                      <span class="publisher-section-index">A</span>
+                      <h4 data-i18n="publishers.categoryAffinity">品类倾向</h4>
+                    </div>
+                    <small data-i18n="publishers.bySales">按销售额贡献</small>
+                  </div>
+                  <div class="publisher-category-bars" id="publisherCategoryAffinity"></div>
+                </article>
+                <article class="publisher-affinity-card">
+                  <div class="publisher-affinity-card-title">
+                    <div>
+                      <span class="publisher-section-index">B</span>
+                      <h4 data-i18n="publishers.affinitySignals">倾向信号</h4>
+                    </div>
+                    <small data-i18n="publishers.signalHint">用于判断合作偏好</small>
+                  </div>
+                  <div class="publisher-affinity-signals" id="publisherAffinitySignals"></div>
+                </article>
+              </div>
+
+              <section class="publisher-portfolio">
+                <div class="publisher-portfolio-toolbar">
+                  <div>
+                    <span class="publisher-section-index">C</span>
+                    <h4 data-i18n="publishers.merchantPortfolio">合作商家组合</h4>
+                    <p id="publisherPortfolioCount"></p>
+                  </div>
+                  <div class="publisher-portfolio-controls">
+                    <input id="publisherPortfolioSearch" type="search" placeholder="搜索商家或 ID" />
+                    <select id="publisherPortfolioCategory" aria-label="Filter portfolio by category">
+                      <option value="all">全部品类</option>
+                    </select>
+                    <select id="publisherPortfolioTier" aria-label="Filter portfolio by tier">
+                      <option value="all">全部 Tier</option>
+                    </select>
+                    <select id="publisherPortfolioSort" aria-label="Sort publisher portfolio">
+                      <option value="sales">销售额从高到低</option>
+                      <option value="orders">订单数从高到低</option>
+                      <option value="aov">AOV 从高到低</option>
+                      <option value="affCommissionRate">AFF 佣金率从高到低</option>
+                      <option value="affCommission">AFF 实际佣金从高到低</option>
+                      <option value="merchantName">商家名称</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="publisher-portfolio-table-wrap">
+                  <table class="publisher-portfolio-table">
+                    <thead>
+                      <tr>
+                        <th data-i18n="publishers.merchant">Merchant</th>
+                        <th data-i18n="publishers.networkMarket">Network / Market</th>
+                        <th data-i18n="label.Category">Category</th>
+                        <th>Tier</th>
+                        <th class="publisher-numeric">AOV</th>
+                        <th class="publisher-numeric">AFF EPC</th>
+                        <th class="publisher-numeric" data-i18n="publishers.conversion">Conversion</th>
+                        <th class="publisher-numeric" data-i18n="publishers.commissionRate">AFF commission rate</th>
+                        <th class="publisher-numeric" data-i18n="publishers.orders">Orders</th>
+                        <th class="publisher-numeric" data-i18n="publishers.sales">Sales</th>
+                        <th class="publisher-numeric" data-i18n="publishers.earnedCommission">AFF earned commission</th>
+                        <th class="publisher-numeric" data-i18n="publishers.portfolioShare">Sales share</th>
+                      </tr>
+                    </thead>
+                    <tbody id="publisherPortfolioRows"></tbody>
+                  </table>
+                </div>
+                <p class="publisher-portfolio-method" data-i18n="publishers.portfolioMethod">AOV = Sales ÷ Orders; AFF EPC = Sales × AFF commission rate ÷ Clicks; Conversion = Orders ÷ Clicks. AFF earned commission = ALL earned commission × 75%; AFF commission rate = AFF earned commission ÷ Sales.</p>
+              </section>
+            </div>
+          </section>
+
+          <!-- 市场聚合概览 -->
+          <section class="panel publishers-market-summary hidden" id="publishersMarketSummary" data-layout-id="overview" aria-label="Market aggregate summary">
+            <div class="panel-title">
+              <h3 data-i18n="publishers.marketSummary">Overview</h3>
+              <span class="overview-toggle">
+                <button class="overview-toggle-btn" data-overview-type="market" data-i18n="publishers.market">Market</button>
+                <button class="overview-toggle-btn" data-overview-type="network" data-i18n="publishers.network">Network</button>
+              </span>
+              <button class="overview-chevron" title="Collapse / Expand">▼</button>
+            </div>
+            <div class="publishers-market-summary-layout">
+              <button class="overview-back" data-overview-back hidden>← <span>All Markets</span></button>
+              <div class="publishers-market-pie" id="publishersMarketPie"></div>
+              <div class="publishers-market-cards" id="publishersMarketCards"></div>
+            </div>
+            <div class="publishers-market-detail">
+              <div class="publishers-market-detail-inner">
+              <table class="publishers-market-table" id="publishersMarketTable">
+                <thead><tr>
+                  <th data-i18n="publishers.market">Market</th>
+                  <th data-i18n="publishers.publisherCount">Publishers</th>
+                  <th data-i18n="publishers.clicks">Clicks</th>
+                  <th data-i18n="publishers.orders">Orders</th>
+                  <th data-i18n="publishers.commission">Commission</th>
+                </tr></thead>
+                <tbody id="publishersMarketBody"></tbody>
+              </table>
+            </div>
+            </div>
+          </section>
+
+          <!-- 横向柱状图 -->
+          <section class="panel publishers-chart-panel" id="publishersChartPanel" data-layout-id="chart" aria-label="Publisher clicks chart">
+            <div class="panel-title">
+              <h3 id="publishersChartTitle" data-i18n="publishers.chartTitle">Clicks by Publisher</h3>
+              <button class="chart-chevron" id="publishersChartChevron" type="button" title="折叠/展开">▼</button>
+            </div>
+            <div class="publishers-chart" id="publishersChart"></div>
+          </section>
+
+          <!-- 数据表格 -->
+          <section class="panel table-panel publishers-table-panel" id="publishersTablePanel" data-layout-id="table" aria-label="Publisher data table">
+            <div class="table-toolbar">
+              <div>
+                <h3 data-i18n="publishers.tableTitle">Publisher Records</h3>
+                <p id="publishersTableCount"></p>
+                <nav class="publishers-pagination hidden" id="publisherPagination" aria-label="Publisher pages">
+                  <button class="secondary-button" id="publisherPagePrev" type="button" aria-label="Previous page">Previous</button>
+                  <span id="publisherPageIndicator" aria-live="polite">Page 1 of 1</span>
+                  <button class="secondary-button" id="publisherPageNext" type="button" aria-label="Next page">Next</button>
+                </nav>
+              </div>
+              <div class="table-toolbar-actions">
+                <div class="column-picker">
+                  <button class="icon-button table-select-button" id="publisherColumnToggle" type="button" aria-expanded="false" data-i18n="publishers.columnsButton">Display</button>
+                  <div class="column-picker-panel hidden" id="publisherColumnPanel">
+                    <div class="column-picker-header">
+                      <strong data-i18n="publishers.columnsTitle">Display columns</strong>
+                      <span data-i18n="publishers.columnsHint">Choose fields to display</span>
+                    </div>
+                    <div class="column-picker-actions">
+                      <button type="button" id="publisherColumnCore" data-i18n="publishers.coreColumns">Default</button>
+                      <button type="button" id="publisherColumnAll" data-i18n="publishers.allColumns">All</button>
+                    </div>
+                    <div class="column-picker-list" id="publisherColumnList"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="table-wrap publishers-table-wrap">
+              <table class="publishers-table">
+                <thead id="publishersTableHead"></thead>
+                <tbody id="publishersTableRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="brand-media-page hidden" id="brandMediaPage" aria-label="Brand media performance">
+          <div id="brandMediaModernRoot" class="brand-media-modern-root hidden" aria-live="polite"></div>
+          <header class="brand-media-header">
+            <div>
+              <span class="brand-media-eyebrow">REVENUE INTELLIGENCE</span>
+              <h2 data-i18n="brandMedia.title">Brand media performance</h2>
+              <p data-i18n="brandMedia.subtitle">Compare every active publisher's daily revenue for one brand.</p>
+            </div>
+            <div class="brand-media-header-note">
+              <span aria-hidden="true">●</span>
+              <span data-i18n="brandMedia.liveSource">Daily order revenue</span>
+            </div>
+          </header>
+
+          <section class="panel brand-media-controls" aria-label="Brand media trend controls">
+            <div class="brand-media-controls-grid">
+              <label class="brand-media-field brand-media-merchant-field">
+                <span data-i18n="brandMedia.brand">Brand</span>
+                <div class="brand-media-combobox">
+                  <input
+                    id="brandMediaMerchantSearch"
+                    type="text"
+                    placeholder="Search brand or Merchant ID"
+                    data-i18n-placeholder="brandMedia.brandPlaceholder"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="brandMediaMerchantDropdown"
+                    aria-expanded="false"
+                  />
+                  <div class="brand-media-combobox-dropdown" id="brandMediaMerchantDropdown" role="listbox"></div>
+                </div>
+              </label>
+
+              <label class="brand-media-field brand-media-manager-field">
+                <span data-i18n="brandMedia.manager">Media manager</span>
+                <select id="brandMediaManagerFilter" class="brand-media-select" aria-label="Filter by media manager">
+                  <option value="" data-i18n="brandMedia.allManagers">All managers</option>
+                </select>
+              </label>
+
+              <div class="brand-media-field brand-media-range-field">
+                <span data-i18n="brandMedia.timeRange">Time range</span>
+                <div class="brand-media-range-buttons" id="brandMediaRangeButtons" aria-label="Quick date ranges">
+                  <button type="button" data-brand-media-range="30">30D</button>
+                  <button type="button" data-brand-media-range="90">90D</button>
+                  <button type="button" data-brand-media-range="180">180D</button>
+                  <button type="button" data-brand-media-range="365">1Y</button>
+                </div>
+              </div>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="brandMedia.startDate">Start date</span>
+                <input id="brandMediaStartDate" type="date" aria-label="Brand media trend start date" />
+              </label>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="brandMedia.endDate">End date</span>
+                <input id="brandMediaEndDate" type="date" aria-label="Brand media trend end date" />
+              </label>
+            </div>
+            <div class="brand-media-control-footer">
+              <p class="brand-media-status" id="brandMediaStatus" role="status" aria-live="polite"></p>
+              <p class="brand-media-source-note" data-i18n="brandMedia.sourceNote">The line shows daily order numbers. Missing media-date records are shown as chart gaps, not zeroes; Revenue remains available on hover.</p>
+            </div>
+          </section>
+
+          <section class="brand-media-kpis" id="brandMediaKpis" aria-label="Brand media performance summary"></section>
+
+          <section class="panel brand-media-chart-panel" id="brandMediaChartPanel" aria-labelledby="brandMediaChartTitle">
+            <div class="brand-media-panel-heading">
+              <div>
+                <span class="brand-media-section-index">01</span>
+                <h3 id="brandMediaChartTitle" data-i18n="brandMedia.chartTitle">Publisher orders by day</h3>
+                <p id="brandMediaChartSubtitle" data-i18n="brandMedia.chartSubtitle">Click a media partner on the right to lock it; select multiple partners, and click again to unlock. The black line shows all-media orders before locking. Revenue remains available on hover. Lines break when there is no daily source record.</p>
+              </div>
+              <div class="brand-media-chart-meta">
+                <span class="brand-media-total-key hidden" id="brandMediaTotalKey">
+                  <i aria-hidden="true"></i>
+                  <span data-i18n="brandMedia.allOrderLine">All media orders</span>
+                </span>
+                <span class="brand-media-line-count" id="brandMediaLineCount" aria-live="polite"></span>
+                <button type="button" class="brand-media-chart-expand" id="brandMediaChartExpand" aria-controls="brandMediaChartPanel" aria-expanded="false" aria-label="Expand chart" title="Expand chart">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6"></path>
+                  </svg>
+                  <span class="brand-media-chart-expand-label sr-only" data-i18n="brandMedia.expandChart">Expand chart</span>
+                </button>
+              </div>
+            </div>
+            <div class="brand-media-chart-layout">
+              <div class="brand-media-chart-wrap" id="brandMediaChart" role="img" aria-live="polite"></div>
+              <aside class="brand-media-legend" id="brandMediaLegend" aria-label="Publisher line legend"></aside>
+            </div>
+          </section>
+
+          <section class="panel brand-media-clicks-panel hidden" id="brandMediaClicksPanel" aria-labelledby="brandMediaClicksTitle">
+            <div class="brand-media-panel-heading">
+              <div>
+                <span class="brand-media-section-index">02</span>
+                <h3 id="brandMediaClicksTitle" data-i18n="brandMedia.clicksTitle">Clicks by locked media</h3>
+                <p data-i18n="brandMedia.clicksSubtitle">One locked media uses a regular bar chart; multiple locked media are stacked to show cumulative daily clicks.</p>
+              </div>
+              <span class="brand-media-line-count" id="brandMediaClickChartCount" aria-live="polite"></span>
+            </div>
+            <div class="brand-media-click-chart-wrap" id="brandMediaClickChart" role="img" aria-live="polite"></div>
+          </section>
+
+          <section class="panel brand-media-table-panel" aria-labelledby="brandMediaTableTitle">
+            <div class="brand-media-panel-heading brand-media-table-heading">
+              <div>
+                <span class="brand-media-section-index">03</span>
+                <h3 id="brandMediaTableTitle" data-i18n="brandMedia.tableTitle">Media summary</h3>
+                <p data-i18n="brandMedia.tableSubtitle">Range totals and source-record coverage for every line in the chart.</p>
+              </div>
+              <span class="brand-media-table-count" id="brandMediaTableCount"></span>
+            </div>
+            <div class="brand-media-table-wrap">
+              <table class="brand-media-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="brandMedia.media">Media</th>
+                    <th data-i18n="brandMedia.manager">Media manager</th>
+                    <th class="brand-media-numeric" data-i18n="brandMedia.revenue">Revenue</th>
+                    <th class="brand-media-numeric" data-i18n="brandMedia.orders">Orders</th>
+                    <th class="brand-media-numeric" data-i18n="brandMedia.activeDays">Active days</th>
+                    <th data-i18n="brandMedia.firstSeen">First record</th>
+                    <th data-i18n="brandMedia.lastSeen">Last record</th>
+                  </tr>
+                </thead>
+                <tbody id="brandMediaTableRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="brand-media-page revenue-flow-page hidden" id="revenueFlowPage" aria-label="Revenue flow">
+          <header class="brand-media-header">
+            <div>
+              <span class="brand-media-eyebrow">REVENUE ATTRIBUTION</span>
+              <h2 data-i18n="revenueFlow.title">Revenue flow</h2>
+              <p data-i18n="revenueFlow.subtitle">Trace one or more brands' revenue from products to the media that generated it.</p>
+            </div>
+            <div class="brand-media-header-note">
+              <span aria-hidden="true">●</span>
+              <span data-i18n="revenueFlow.liveSource">Order-level revenue</span>
+            </div>
+          </header>
+
+          <section class="panel brand-media-controls revenue-flow-controls" aria-label="Revenue flow controls">
+            <div class="brand-media-controls-grid">
+              <div class="brand-media-field brand-media-merchant-field">
+                <span data-i18n="revenueFlow.brand">Brands (multi-select)</span>
+                <div class="brand-media-combobox">
+                  <input
+                    id="revenueFlowMerchantSearch"
+                    type="text"
+                    placeholder="Search and select brands or Merchant IDs"
+                    data-i18n-placeholder="revenueFlow.brandPlaceholder"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="revenueFlowMerchantDropdown"
+                    aria-expanded="false"
+                  />
+                  <div class="brand-media-combobox-dropdown" id="revenueFlowMerchantDropdown" role="listbox" aria-multiselectable="true"></div>
+                </div>
+                <div class="revenue-flow-selected-brands" id="revenueFlowSelectedBrands" aria-live="polite"></div>
+              </div>
+
+              <div class="brand-media-field brand-media-range-field">
+                <span data-i18n="revenueFlow.timeRange">Time range</span>
+                <div class="brand-media-range-buttons" id="revenueFlowRangeButtons" aria-label="Quick date ranges">
+                  <button type="button" data-revenue-flow-range="30">30D</button>
+                  <button type="button" data-revenue-flow-range="90">90D</button>
+                  <button type="button" data-revenue-flow-range="180">180D</button>
+                  <button type="button" data-revenue-flow-range="365">1Y</button>
+                </div>
+              </div>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="revenueFlow.startDate">Start date</span>
+                <input id="revenueFlowStartDate" type="date" aria-label="Revenue flow start date" />
+              </label>
+
+              <label class="brand-media-field brand-media-date-field">
+                <span data-i18n="revenueFlow.endDate">End date</span>
+                <input id="revenueFlowEndDate" type="date" aria-label="Revenue flow end date" />
+              </label>
+            </div>
+            <div class="brand-media-control-footer">
+              <p class="brand-media-status" id="revenueFlowStatus" role="status" aria-live="polite"></p>
+              <p class="brand-media-source-note" data-i18n="revenueFlow.sourceNote">Only positive order Revenue is included. Each media is a terminating node in the flow.</p>
+            </div>
+          </section>
+
+          <section class="brand-media-kpis revenue-flow-kpis" id="revenueFlowKpis" aria-label="Revenue flow summary"></section>
+
+          <section class="panel brand-media-sankey-panel revenue-flow-panel" id="revenueFlowPanel" aria-labelledby="revenueFlowTitle">
+            <div class="brand-media-panel-heading">
+              <div>
+                <span class="brand-media-section-index">01</span>
+                <h3 id="revenueFlowTitle" data-i18n="revenueFlow.chartTitle">Revenue flow: brand → products → media</h3>
+                <p data-i18n="revenueFlow.chartSubtitle">Revenue-generating products and their corresponding media for the selected time range.</p>
+              </div>
+              <div class="brand-media-chart-meta">
+                <span class="brand-media-line-count" id="revenueFlowCount" aria-live="polite"></span>
+                <button type="button" class="brand-media-chart-expand" id="revenueFlowChartExpand" aria-controls="revenueFlowPanel" aria-expanded="false" aria-label="Expand chart" title="Expand chart">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6"></path>
+                  </svg>
+                  <span class="brand-media-chart-expand-label sr-only" data-i18n="revenueFlow.expandChart">Expand chart</span>
+                </button>
+              </div>
+            </div>
+            <div class="brand-media-sankey-chart-wrap" id="revenueFlowChart" role="region" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <section class="google-ads-page hidden" id="googleAdsPage" aria-label="Google Ads workbench">
+          <header class="google-ads-header">
+            <div>
+              <span class="google-ads-eyebrow">PAID MEDIA × BACKEND RETURN</span>
+              <h2 data-i18n="googleAds.title">Google Ads workbench</h2>
+              <p data-i18n="googleAds.subtitle">Connect Google campaign spend with Amazon merchant-level results for media ID 19.</p>
+            </div>
+            <div class="google-ads-identity" id="googleAdsIdentity">
+              <span class="google-ads-live-dot" aria-hidden="true"></span>
+              <strong>asdf260821</strong>
+              <small>MEDIA ID 19</small>
+            </div>
+          </header>
+
+          <section class="panel google-ads-controls" aria-label="Google Ads workbench controls">
+            <div class="google-ads-control-grid">
+              <div class="google-ads-account-card">
+                <span data-i18n="googleAds.account">Google Ads account</span>
+                <strong id="googleAdsAccountName">—</strong>
+                <small id="googleAdsAccountMeta" data-i18n="googleAds.accountPending">Waiting for account data</small>
+              </div>
+              <div class="brand-media-field google-ads-range-field">
+                <span data-i18n="googleAds.timeRange">Time range</span>
+                <div class="brand-media-range-buttons" id="googleAdsRangeButtons" aria-label="Quick date ranges">
+                  <button type="button" data-google-ads-range="30">30D</button>
+                  <button type="button" data-google-ads-range="60">60D</button>
+                  <button type="button" data-google-ads-range="90">90D</button>
+                  <button type="button" data-google-ads-range="180">180D</button>
+                </div>
+              </div>
+              <label class="brand-media-field google-ads-date-field">
+                <span data-i18n="googleAds.startDate">Start date</span>
+                <input id="googleAdsStartDate" type="date" aria-label="Google Ads workbench start date" />
+              </label>
+              <label class="brand-media-field google-ads-date-field">
+                <span data-i18n="googleAds.endDate">End date</span>
+                <input id="googleAdsEndDate" type="date" aria-label="Google Ads workbench end date" />
+              </label>
+              <button class="google-ads-refresh" id="googleAdsRefresh" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                <span data-i18n="googleAds.refresh">Refresh</span>
+              </button>
+            </div>
+            <div class="google-ads-control-footer">
+              <p id="googleAdsStatus" role="status" aria-live="polite"></p>
+              <p data-i18n="googleAds.joinNote">Joined conservatively at merchant × date; unmatched spend remains visible.</p>
+            </div>
+          </section>
+
+          <section class="google-ads-kpis" id="googleAdsKpis" aria-label="Google Ads workbench summary"></section>
+
+          <section class="panel google-ads-trend-panel" aria-labelledby="googleAdsTrendTitle">
+            <div class="google-ads-panel-heading">
+              <div>
+                <span class="google-ads-section-index">01</span>
+                <h3 id="googleAdsTrendTitle" data-i18n="googleAds.trendTitle">Spend and backend Revenue by day</h3>
+                <p data-i18n="googleAds.trendSubtitle">Google spend is shown as bars; YeahPromos Amazon Revenue is shown as a line.</p>
+              </div>
+              <div class="google-ads-legend" aria-label="Chart legend">
+                <span><i class="google-ads-legend-spend"></i><span data-i18n="googleAds.spend">Spend</span></span>
+                <span><i class="google-ads-legend-revenue"></i><span data-i18n="googleAds.backendRevenue">Backend Revenue</span></span>
+              </div>
+            </div>
+            <div class="google-ads-chart" id="googleAdsChart" role="img" aria-live="polite"></div>
+          </section>
+
+          <section class="panel google-ads-table-panel" aria-labelledby="googleAdsMerchantTitle">
+            <div class="google-ads-panel-heading">
+              <div>
+                <span class="google-ads-section-index">02</span>
+                <h3 id="googleAdsMerchantTitle" data-i18n="googleAds.merchantTitle">Merchant connection table</h3>
+                <p data-i18n="googleAds.merchantSubtitle">Backend outcomes are counted once per merchant; Google campaigns are grouped under the matched brand.</p>
+              </div>
+              <span class="google-ads-count" id="googleAdsMerchantCount"></span>
+            </div>
+            <div class="google-ads-table-wrap">
+              <table class="google-ads-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="googleAds.merchant">Merchant</th>
+                    <th data-i18n="googleAds.match">Connection</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.campaigns">Campaigns</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.spend">Spend</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.googleClicks">Google clicks</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.backendClicks">Backend clicks</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.orders">Orders</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.backendRevenue">Backend Revenue</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.roas">Merchant ROAS</th>
+                    <th class="google-ads-numeric" data-i18n="googleAds.cpa">Cost / order</th>
+                  </tr>
+                </thead>
+                <tbody id="googleAdsMerchantRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="google-ads-bottom-grid">
+            <section class="panel google-ads-unmatched-panel" aria-labelledby="googleAdsUnmatchedTitle">
+              <div class="google-ads-panel-heading compact">
+                <div>
+                  <span class="google-ads-section-index">03</span>
+                  <h3 id="googleAdsUnmatchedTitle" data-i18n="googleAds.unmatchedTitle">Unmatched Google campaigns</h3>
+                  <p data-i18n="googleAds.unmatchedSubtitle">Campaign spend is retained until a merchant alias or ASIN can be resolved.</p>
+                </div>
+              </div>
+              <div class="google-ads-unmatched-list" id="googleAdsUnmatchedList"></div>
+            </section>
+
+            <section class="panel google-ads-method-panel" aria-labelledby="googleAdsMethodTitle">
+              <div class="google-ads-panel-heading compact">
+                <div>
+                  <span class="google-ads-section-index">04</span>
+                  <h3 id="googleAdsMethodTitle" data-i18n="googleAds.methodTitle">Data contract</h3>
+                  <p data-i18n="googleAds.methodSubtitle">What is joined, and what is deliberately kept separate.</p>
+                </div>
+              </div>
+              <dl id="googleAdsMethod"></dl>
+            </section>
+          </div>
+        </section>
+
+        <section class="monthly-new-merchants-page hidden" id="monthlyNewMerchantsPage" aria-label="Monthly new merchants">
+          <header class="monthly-new-merchants-header">
+            <div>
+              <h2 data-i18n="monthlyNewMerchants.title">Monthly new merchants</h2>
+              <p data-i18n="monthlyNewMerchants.subtitle">Add this month's merchants manually and save every entry to the database</p>
+            </div>
+            <div class="monthly-new-merchants-header-actions">
+              <label class="monthly-new-merchants-month-control">
+                <span data-i18n="label.Month">Month</span>
+                <input id="monthlyNewMerchantsMonth" type="month" aria-label="Monthly new merchant report month" />
+              </label>
+              <button class="monthly-new-merchants-import" id="monthlyNewMerchantImport" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+                <span data-i18n="monthlyNewMerchants.import">Import table</span>
+              </button>
+              <button class="monthly-new-merchants-add" id="monthlyNewMerchantAdd" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                <span data-i18n="monthlyNewMerchants.add">Add merchant</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="monthly-new-merchants-notice hidden" id="monthlyNewMerchantsNotice" role="status" aria-live="polite"></div>
+
+          <section class="panel monthly-new-merchants-panel" aria-label="Monthly new merchant records">
+            <div class="monthly-new-merchants-toolbar">
+              <label class="monthly-new-merchants-search">
+                <span class="sr-only" data-i18n="monthlyNewMerchants.search">Search merchants</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
+                <input
+                  id="monthlyNewMerchantsSearch"
+                  type="search"
+                  placeholder="Search merchant, ID, or BD"
+                  data-i18n-placeholder="monthlyNewMerchants.searchPlaceholder"
+                />
+              </label>
+              <p class="monthly-new-merchants-count" id="monthlyNewMerchantsCount"></p>
+            </div>
+
+            <div class="monthly-new-merchants-table-wrap">
+              <table class="monthly-new-merchants-table">
+                <thead>
+                  <tr>
+                    <th class="monthly-new-merchant-priority-column" data-i18n="monthlyNewMerchants.priority">Priority</th>
+                    <th class="monthly-new-merchant-id-column" data-i18n="monthlyNewMerchants.merchantId">Merchant ID</th>
+                    <th data-i18n="monthlyNewMerchants.brand">Brand</th>
+                    <th data-i18n="monthlyNewMerchants.program">Program</th>
+                    <th data-i18n="monthlyNewMerchants.platform">Platform</th>
+                    <th data-i18n="monthlyNewMerchants.gmvRequirement">GMV need to be reached</th>
+                    <th data-i18n="monthlyNewMerchants.pastMonthPurchase">Past month purchase</th>
+                    <th data-i18n="monthlyNewMerchants.independentWebsites">Independent websites</th>
+                    <th data-i18n="monthlyNewMerchants.reviewSummary">Reviews numbers</th>
+                    <th class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.ourCommission">Our commission</th>
+                    <th class="monthly-new-merchant-number" data-i18n="monthlyNewMerchants.presetCommission">Preset commission</th>
+                    <th data-i18n="monthlyNewMerchants.bd">BD</th>
+                    <th data-i18n="monthlyNewMerchants.updated">Updated</th>
+                    <th data-i18n="monthlyNewMerchants.actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyNewMerchantsRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <div class="monthly-new-merchant-drawer-backdrop hidden" id="monthlyNewMerchantDrawerBackdrop" aria-hidden="true">
+          <aside
+            class="monthly-new-merchant-drawer"
+            id="monthlyNewMerchantDrawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="monthlyNewMerchantDrawerTitle"
+          >
+            <form id="monthlyNewMerchantForm">
+              <header class="monthly-new-merchant-drawer-header">
+                <div>
+                  <h2 id="monthlyNewMerchantDrawerTitle">Add merchant</h2>
+                  <p data-i18n="monthlyNewMerchants.drawerSubtitle">Merchant name is required; saving writes the complete record directly to the database</p>
+                </div>
+                <button class="monthly-new-merchant-drawer-close" id="monthlyNewMerchantDrawerClose" type="button" aria-label="Close merchant form">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+              </header>
+
+              <div class="monthly-new-merchant-form-body">
+                <input id="monthlyNewMerchantRecordId" type="hidden" />
+                <input id="monthlyNewMerchantReportMonth" name="reportMonth" type="hidden" />
+                <div class="monthly-new-merchant-form-grid">
+                  <label>
+                    <span data-i18n="label.Merchant ID">Merchant ID</span>
+                    <input id="monthlyNewMerchantId" name="merchantId" inputmode="numeric" maxlength="64" />
+                  </label>
+                  <label>
+                    <span><span data-i18n="monthlyNewMerchants.merchantName">Merchant</span> <b>*</b></span>
+                    <input id="monthlyNewMerchantName" name="merchantName" maxlength="180" required />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.bd">BD</span>
+                    <input id="monthlyNewMerchantManager" name="businessManager" maxlength="128" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.program">Program</span>
+                    <input id="monthlyNewMerchantProgram" name="program" maxlength="128" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.platform">Platform</span>
+                    <input id="monthlyNewMerchantPlatform" name="platform" maxlength="128" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.gmvRequirement">GMV need to be reached</span>
+                    <input id="monthlyNewMerchantGmvRequirement" name="gmvRequirement" maxlength="255" placeholder="$ 100,000.00 or Make Money" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.gmvTarget">Numeric GMV target</span>
+                    <input
+                      id="monthlyNewMerchantGmvTarget"
+                      name="gmvMonthlyTarget"
+                      type="number"
+                      inputmode="decimal"
+                      min="0"
+                      max="9999999999999999.99"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.pastMonthPurchase">Past month purchase</span>
+                    <input id="monthlyNewMerchantPastMonthPurchase" name="pastMonthPurchase" maxlength="255" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.independentWebsites">Independent websites</span>
+                    <input id="monthlyNewMerchantIndependentWebsites" name="independentWebsites" maxlength="255" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.reviewSummary">Reviews numbers</span>
+                    <input id="monthlyNewMerchantReviewSummary" name="reviewSummary" maxlength="255" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.ourCommission">Our commission (%)</span>
+                    <input id="monthlyNewMerchantOurCommission" name="ourCommission" type="number" inputmode="decimal" min="0" max="100" step="0.01" />
+                  </label>
+                  <label>
+                    <span data-i18n="monthlyNewMerchants.presetCommission">Preset commission (%)</span>
+                    <input id="monthlyNewMerchantPresetCommission" name="presetCommission" type="number" inputmode="decimal" min="0" max="100" step="0.01" />
+                  </label>
+                  <label class="monthly-new-merchant-priority-field">
+                    <input id="monthlyNewMerchantPriority" name="isPriority" type="checkbox" />
+                    <span>
+                      <strong data-i18n="monthlyNewMerchants.priorityAction">Priority recommendation</strong>
+                      <small data-i18n="monthlyNewMerchants.priorityHelp">Highlight this merchant in the monthly list</small>
+                    </span>
+                  </label>
+                  <label class="monthly-new-merchant-notes-field">
+                    <span data-i18n="monthlyNewMerchants.reward">Reward when achieved</span>
+                    <textarea
+                      id="monthlyNewMerchantReward"
+                      name="completionReward"
+                      rows="5"
+                      maxlength="1000"
+                      placeholder="Optional bonus, commission uplift, or other reward"
+                      data-i18n-placeholder="monthlyNewMerchants.rewardPlaceholder"
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="monthly-new-merchant-form-error hidden" id="monthlyNewMerchantFormError" role="alert"></div>
+              </div>
+
+              <footer class="monthly-new-merchant-drawer-footer">
+                <button class="monthly-new-merchant-cancel" id="monthlyNewMerchantCancel" type="button" data-i18n="action.cancel">Cancel</button>
+                <button class="monthly-new-merchant-save" id="monthlyNewMerchantSave" type="submit" data-i18n="monthlyNewMerchants.save">Save merchant</button>
+              </footer>
+            </form>
+          </aside>
+        </div>
+
+        <div class="monthly-new-merchant-import-backdrop hidden" id="monthlyNewMerchantImportBackdrop" aria-hidden="true">
+          <section
+            class="monthly-new-merchant-import-dialog"
+            id="monthlyNewMerchantImportDialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="monthlyNewMerchantImportTitle"
+          >
+            <header class="monthly-new-merchant-import-header">
+              <div>
+                <h2 id="monthlyNewMerchantImportTitle" data-i18n="monthlyNewMerchants.importTitle">Import merchant table</h2>
+                <p data-i18n="monthlyNewMerchants.importSubtitle">Paste rows from Excel or Google Sheets, or upload CSV, TSV, XLS, or XLSX. Review issues before saving.</p>
+              </div>
+              <button class="monthly-new-merchant-drawer-close" id="monthlyNewMerchantImportClose" type="button" aria-label="Close import dialog">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              </button>
+            </header>
+            <div class="monthly-new-merchant-import-body">
+              <div class="monthly-new-merchant-import-actions">
+                <input id="monthlyNewMerchantImportFile" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden />
+                <button id="monthlyNewMerchantImportChoose" type="button" data-i18n="monthlyNewMerchants.chooseFile">Choose file</button>
+                <span id="monthlyNewMerchantImportFileName" data-i18n="monthlyNewMerchants.noFile">No file selected</span>
+                <button id="monthlyNewMerchantImportTemplate" type="button" data-i18n="monthlyNewMerchants.downloadTemplate">Download CSV template</button>
+              </div>
+              <label class="monthly-new-merchant-import-paste">
+                <span data-i18n="monthlyNewMerchants.pasteLabel">Paste a table including its header row</span>
+                <textarea id="monthlyNewMerchantImportPaste" rows="7" placeholder="Brand&#9;Program&#9;Platform&#9;GMV need to be reach&#9;..."></textarea>
+              </label>
+              <div class="monthly-new-merchant-import-preview-actions">
+                <button id="monthlyNewMerchantImportPreview" type="button" data-i18n="monthlyNewMerchants.preview">Preview pasted rows</button>
+                <p id="monthlyNewMerchantImportSummary" aria-live="polite"></p>
+              </div>
+              <div class="monthly-new-merchant-import-error hidden" id="monthlyNewMerchantImportError" role="alert"></div>
+              <div class="monthly-new-merchant-import-preview" id="monthlyNewMerchantImportPreviewTable"></div>
+            </div>
+            <footer class="monthly-new-merchant-drawer-footer">
+              <button class="monthly-new-merchant-cancel" id="monthlyNewMerchantImportCancel" type="button" data-i18n="action.cancel">Cancel</button>
+              <button class="monthly-new-merchant-save" id="monthlyNewMerchantImportSave" type="button" disabled data-i18n="monthlyNewMerchants.importValid">Import valid rows</button>
+            </footer>
+          </section>
+        </div>
+
+        <section class="offer-tracker-page hidden" id="offerListTrackerPage" aria-label="Offer List Tracker">
+          <div id="offerListTrackerModernRoot" class="offer-tracker-modern-root hidden" aria-live="polite"></div>
+          <header class="offer-tracker-header">
+            <div>
+              <span class="offer-tracker-eyebrow" data-i18n="offerTracker.eyebrow">Offer planning workspace</span>
+              <h2 data-i18n="offerTracker.title">Offer List Tracker</h2>
+              <p data-i18n="offerTracker.subtitle">Build priority-based offer lists and export ready-to-share workbooks.</p>
+            </div>
+            <div class="offer-tracker-header-actions">
+              <div class="offer-tracker-menu-wrap">
+                <button class="offer-tracker-secondary-button" id="offerTrackerSavedViewsToggle" type="button" aria-expanded="false" aria-controls="offerTrackerSavedViewsPanel">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v15l-7-4-7 4z"/></svg>
+                  <span data-i18n="offerTracker.savedViews">Saved views</span>
+                </button>
+                <section class="offer-tracker-popover hidden" id="offerTrackerSavedViewsPanel" aria-label="Saved offer views">
+                  <div class="offer-tracker-popover-header">
+                    <strong data-i18n="offerTracker.savedViews">Saved views</strong>
+                    <button type="button" data-offer-tracker-close="saved" aria-label="Close saved views">×</button>
+                  </div>
+                  <div class="offer-tracker-saved-list" id="offerTrackerSavedViewsList"></div>
+                  <label class="offer-tracker-save-field">
+                    <span data-i18n="offerTracker.viewName">View name</span>
+                    <input id="offerTrackerSavedViewName" type="text" maxlength="48" placeholder="e.g. Tier 1 beauty" data-i18n-placeholder="offerTracker.viewNamePlaceholder" />
+                  </label>
+                  <button class="offer-tracker-popover-primary" id="offerTrackerSaveView" type="button" data-i18n="offerTracker.saveCurrentView">Save current view</button>
+                </section>
+              </div>
+              <button class="offer-tracker-export-button" id="offerTrackerExport" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
+                <span data-i18n="offerTracker.exportExcel">Export Excel</span>
+              </button>
+            </div>
+          </header>
+
+          <section class="offer-tracker-filter-card" aria-label="Offer range filters">
+            <div class="offer-tracker-section-heading">
+              <div>
+                <h3 data-i18n="offerTracker.defineRange">Define offer range</h3>
+                <p data-i18n="offerTracker.defineRangeSubtitle">Choose the commercial range first, then review and export the resulting priorities.</p>
+              </div>
+              <span class="offer-tracker-live-source" data-i18n="offerTracker.liveSource">Live offer cache</span>
+            </div>
+            <div class="offer-tracker-filter-grid">
+              <div class="offer-tracker-filter-field">
+                <span data-i18n="label.Tier">Tier</span>
+                <div class="offer-tracker-network-multiselect" id="offerTrackerTier">
+                  <button class="offer-tracker-network-toggle" id="offerTrackerTierToggle" type="button" aria-expanded="false" aria-controls="offerTrackerTierMenu">
+                    <span id="offerTrackerTierSummary">All tiers</span>
+                    <span class="offer-tracker-network-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="offer-tracker-network-menu hidden" id="offerTrackerTierMenu" role="group" aria-label="Tiers"></div>
+                </div>
+              </div>
+              <div class="offer-tracker-filter-field">
+                <span data-i18n="label.Category">Category</span>
+                <div class="offer-tracker-network-multiselect" id="offerTrackerCategory">
+                  <button class="offer-tracker-network-toggle" id="offerTrackerCategoryToggle" type="button" aria-expanded="false" aria-controls="offerTrackerCategoryMenu">
+                    <span id="offerTrackerCategorySummary">All categories</span>
+                    <span class="offer-tracker-network-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="offer-tracker-network-menu hidden" id="offerTrackerCategoryMenu" role="group" aria-label="Categories"></div>
+                </div>
+              </div>
+              <label class="offer-tracker-range-field offer-tracker-date-field">
+                <span data-i18n="offerTracker.timeRange">Time range</span>
+                <span class="offer-tracker-range-inputs">
+                  <input id="offerTrackerStartDate" type="date" aria-label="Offer tracker start date" />
+                  <i aria-hidden="true">–</i>
+                  <input id="offerTrackerEndDate" type="date" aria-label="Offer tracker end date" />
+                </span>
+                <small class="offer-tracker-date-status" id="offerTrackerDateStatus" role="status" aria-live="polite"></small>
+              </label>
+              <label class="offer-tracker-range-field">
+                <span data-i18n="offerTracker.aovRange">AOV range</span>
+                <span class="offer-tracker-range-inputs">
+                  <input id="offerTrackerMinAov" type="number" min="0" step="1" inputmode="decimal" placeholder="Min $" />
+                  <i aria-hidden="true">–</i>
+                  <input id="offerTrackerMaxAov" type="number" min="0" step="1" inputmode="decimal" placeholder="Max $" />
+                </span>
+              </label>
+              <label class="offer-tracker-range-field">
+                <span data-i18n="offerTracker.commissionRange">AFF Commission range</span>
+                <span class="offer-tracker-range-inputs">
+                  <input id="offerTrackerMinCommission" type="number" min="0" max="100" step="0.25" inputmode="decimal" placeholder="Min %" />
+                  <i aria-hidden="true">–</i>
+                  <input id="offerTrackerMaxCommission" type="number" min="0" max="100" step="0.25" inputmode="decimal" placeholder="Max %" />
+                </span>
+              </label>
+              <div class="offer-tracker-filter-field">
+                <span data-i18n="label.Network">Network</span>
+                <div class="offer-tracker-network-multiselect" id="offerTrackerNetwork">
+                  <button class="offer-tracker-network-toggle" id="offerTrackerNetworkToggle" type="button" aria-expanded="false" aria-controls="offerTrackerNetworkMenu">
+                    <span id="offerTrackerNetworkSummary">All networks</span>
+                    <span class="offer-tracker-network-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="offer-tracker-network-menu hidden" id="offerTrackerNetworkMenu" role="group" aria-label="Networks"></div>
+                </div>
+              </div>
+              <label>
+                <span data-i18n="offerTracker.bbPreference">BB preference</span>
+                <select id="offerTrackerBbPolicy">
+                  <option value="all" data-i18n="offerTracker.bbAll">All BB preferences</option>
+                  <option value="mind" data-i18n="offerTracker.bbMind">Mind BB</option>
+                  <option value="open" data-i18n="offerTracker.bbOpen">Doesn't mind BB</option>
+                  <option value="unknown" data-i18n="offerTracker.bbUnknown">Unknown</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="offerTracker.revenueStatus">Revenue status</span>
+                <select id="offerTrackerRevenueStatus">
+                  <option value="all" data-i18n="offerTracker.revenueAll">All revenue</option>
+                  <option value="positive" data-i18n="offerTracker.revenuePositive">Revenue generated</option>
+                  <option value="none" data-i18n="offerTracker.revenueNone">No revenue</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="offerTracker.revenueSort">Revenue order</span>
+                <select id="offerTrackerRevenueSort">
+                  <option value="priority" data-i18n="offerTracker.sortPriority">Priority order</option>
+                  <option value="revenue-desc" data-i18n="offerTracker.sortRevenueDesc">Revenue: high to low</option>
+                  <option value="revenue-asc" data-i18n="offerTracker.sortRevenueAsc">Revenue: low to high</option>
+                </select>
+              </label>
+            </div>
+            <div class="offer-tracker-filter-footer">
+              <div class="offer-tracker-filter-chips" id="offerTrackerFilterChips" aria-live="polite"></div>
+              <div class="offer-tracker-filter-actions">
+                <button id="offerTrackerResetFilters" type="button" data-i18n="action.reset">Reset</button>
+                <button id="offerTrackerApplyFilters" type="button" data-i18n="offerTracker.applyFilters">Apply filters</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="offer-tracker-kpis" id="offerTrackerKpis" aria-label="Offer list summary"></section>
+
+          <section class="offer-tracker-table-panel" aria-label="Offer list results">
+            <div class="offer-tracker-table-toolbar">
+              <div class="offer-tracker-view-tabs" role="tablist" aria-label="Offer export views">
+                <button class="active" id="offerTrackerOffersTab" type="button" role="tab" aria-selected="true" data-offer-tracker-view="offers" data-i18n="offerTracker.offerList">Offer List</button>
+                <button id="offerTrackerProductsTab" type="button" role="tab" aria-selected="false" data-offer-tracker-view="products" data-i18n="offerTracker.productList">Brand Product List</button>
+              </div>
+              <div class="offer-tracker-table-actions">
+                <label class="offer-tracker-search">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                  <span class="sr-only" data-i18n="offerTracker.search">Search offers</span>
+                  <input id="offerTrackerSearch" type="search" placeholder="Search merchant or ID" data-i18n-placeholder="offerTracker.searchPlaceholder" />
+                </label>
+                <button class="offer-tracker-tool-button offer-tracker-select-filtered" id="offerTrackerSelectAllFiltered" type="button" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 2.5 2.5L16 9"/></svg>
+                  <span id="offerTrackerSelectAllFilteredLabel">Select all matching</span>
+                  <b id="offerTrackerSelectAllFilteredCount">0</b>
+                </button>
+                <div class="offer-tracker-menu-wrap">
+                  <button class="offer-tracker-tool-button" id="offerTrackerColumnsToggle" type="button" aria-expanded="false" aria-controls="offerTrackerColumnsPanel">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM10 5v14M16 5v14"/></svg>
+                    <span data-i18n="offerTracker.columns">Columns</span>
+                  </button>
+                  <section class="offer-tracker-popover offer-tracker-columns-panel hidden" id="offerTrackerColumnsPanel" aria-label="Visible offer columns"></section>
+                </div>
+                <div class="offer-tracker-menu-wrap">
+                  <button class="offer-tracker-tool-button" id="offerTrackerRulesToggle" type="button" aria-expanded="false" aria-controls="offerTrackerRulesPanel">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+                    <span data-i18n="offerTracker.priorityRules">Priority rules</span>
+                  </button>
+                  <section class="offer-tracker-popover offer-tracker-rules-panel hidden" id="offerTrackerRulesPanel" aria-label="Priority rules">
+                    <div class="offer-tracker-popover-header">
+                      <div>
+                        <strong data-i18n="offerTracker.priorityRules">Priority rules</strong>
+                        <small data-i18n="offerTracker.rulesSubtitle">A transparent score groups the export.</small>
+                      </div>
+                      <button type="button" data-offer-tracker-close="rules" aria-label="Close priority rules">×</button>
+                    </div>
+                    <div class="offer-tracker-score-legend" id="offerTrackerScoreLegend"></div>
+                    <label class="offer-tracker-rule-field">
+                      <span data-i18n="offerTracker.highScore">High priority score</span>
+                      <input id="offerTrackerHighScore" type="number" min="4" max="11" step="1" />
+                    </label>
+                    <label class="offer-tracker-rule-field">
+                      <span data-i18n="offerTracker.lowAovCeiling">Low-AOV ceiling</span>
+                      <span class="offer-tracker-money-input"><b>$</b><input id="offerTrackerLowAovMax" type="number" min="1" step="1" /></span>
+                    </label>
+                    <div class="offer-tracker-rule-actions">
+                      <button id="offerTrackerResetRules" type="button" data-i18n="offerTracker.resetRules">Reset rules</button>
+                      <button id="offerTrackerSaveRules" type="button" data-i18n="offerTracker.saveRules">Save rules</button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+            <div class="offer-tracker-table-wrap">
+              <table class="offer-tracker-table">
+                <thead id="offerTrackerTableHead"></thead>
+                <tbody id="offerTrackerTableRows"></tbody>
+              </table>
+            </div>
+            <footer class="offer-tracker-table-footer">
+              <p id="offerTrackerTableCount"></p>
+              <div class="offer-tracker-pagination">
+                <button id="offerTrackerPagePrev" type="button" aria-label="Previous page">‹</button>
+                <span id="offerTrackerPageIndicator"></span>
+                <button id="offerTrackerPageNext" type="button" aria-label="Next page">›</button>
+              </div>
+              <button class="offer-tracker-selected-export" id="offerTrackerExportSelected" type="button" disabled>
+                <span data-i18n="offerTracker.exportSelected">Export selected</span>
+                <b id="offerTrackerSelectedCount">0</b>
+              </button>
+            </footer>
+            <div class="offer-tracker-notice hidden" id="offerTrackerNotice" role="status" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <div class="offer-tracker-export-overlay hidden" id="offerTrackerExportDialog" role="dialog" aria-modal="true" aria-labelledby="offerTrackerExportDialogTitle">
+          <section class="offer-tracker-export-dialog">
+            <header class="offer-tracker-export-dialog-header">
+              <div>
+                <span data-i18n="offerTracker.exportSetupEyebrow">Excel export setup</span>
+                <h3 id="offerTrackerExportDialogTitle" data-i18n="offerTracker.exportSetupTitle">Configure export</h3>
+                <p id="offerTrackerExportScope">Choose the quantity for each Tier, then add optional row highlights.</p>
+              </div>
+              <button id="offerTrackerExportDialogClose" type="button" aria-label="Close export setup">×</button>
+            </header>
+            <div class="offer-tracker-export-dialog-body">
+              <section class="offer-tracker-export-section" aria-labelledby="offerTrackerExportTierTitle">
+                <div class="offer-tracker-export-section-heading">
+                  <div>
+                    <h4 id="offerTrackerExportTierTitle" data-i18n="offerTracker.exportTierTitle">Tier output quantities</h4>
+                    <p data-i18n="offerTracker.exportTierHelp">Select which Tier groups to include and how many offers to take from each group.</p>
+                  </div>
+                  <strong id="offerTrackerExportRowsPreview">0 output rows</strong>
+                </div>
+                <div class="offer-tracker-export-tier-list" id="offerTrackerExportTiers"></div>
+              </section>
+              <section class="offer-tracker-export-section" aria-labelledby="offerTrackerBackgroundTitle">
+                <div class="offer-tracker-export-section-heading">
+                  <div>
+                    <h4 id="offerTrackerBackgroundTitle" data-i18n="offerTracker.exportHighlightTitle">Output row highlights</h4>
+                    <p data-i18n="offerTracker.exportHighlightHelp">Row numbers refer to exported data rows; the header is not counted. Colors apply to both worksheets.</p>
+                  </div>
+                  <button class="offer-tracker-add-range" id="offerTrackerAddBackgroundRange" type="button" data-i18n="offerTracker.exportAddRange">+ Add range</button>
+                </div>
+                <div class="offer-tracker-background-ranges" id="offerTrackerBackgroundRanges"></div>
+              </section>
+              <p class="offer-tracker-export-dialog-notice hidden" id="offerTrackerExportDialogNotice" role="status" aria-live="polite"></p>
+            </div>
+            <footer class="offer-tracker-export-dialog-footer">
+              <button id="offerTrackerExportDialogCancel" type="button" data-i18n="action.cancel">Cancel</button>
+              <button id="offerTrackerExportDialogSubmit" type="button" data-i18n="offerTracker.exportWorkbook">Export workbook</button>
+            </footer>
+          </section>
+        </div>
+
+        <section class="sheet-page hidden" id="sheetPage" aria-label="All sheet tabs">
+          <div class="tier-header sheet-page-header">
+            <div>
+              <h2 id="sheetPageTitle">Monthly Targets</h2>
+              <p id="sheetPageSubtitle">Target and performance summary from the report sheet</p>
+            </div>
+          </div>
+          <section class="panel sheet-target-filters" aria-label="Target filters">
+            <label>
+              <span data-i18n="label.Month">Month</span>
+              <select id="targetMonthSelect"></select>
+            </label>
+            <label>
+              <span>Compare with</span>
+              <select id="targetCompareMonthSelect"></select>
+            </label>
+            <label>
+              <span data-i18n="label.Tier">Tier</span>
+              <select id="targetTierFilter">
+                <option value="all">All tiers</option>
+              </select>
+            </label>
+          </section>
+          <section class="tier-summary" id="sheetPageSummary"></section>
+          <section class="sheet-target-notes" id="sheetPageNotes"></section>
+        </section>
+
+        <section class="category-page hidden" id="categoryPage" aria-label="Category reports">
+          <div class="tier-header">
+            <div>
+              <h2>Category</h2>
+              <p>Category-wise performance summary from tier sheets</p>
+            </div>
+          </div>
+          <section class="panel table-panel dashboard-category-report" id="dashboardCategoryReport" aria-label="Category-wise report">
+            <div class="tier-category-header dashboard-category-report-header">
+              <div>
+                <h3>Category-wise report</h3>
+                <p id="dashboardCategoryReportSubtitle"></p>
+              </div>
+              <div class="dashboard-category-tier-picker" id="dashboardCategoryTierPicker" aria-label="Category report tier selection"></div>
+            </div>
+            <div class="dashboard-category-controls" aria-label="Category report controls">
+              <label class="dashboard-category-search-field">
+                <span>Category / merchant</span>
+                <input id="dashboardCategorySearch" type="search" list="dashboardCategoryOptions" placeholder="Select category or merchant" autocomplete="off" />
+                <datalist id="dashboardCategoryOptions"></datalist>
+                <small class="dashboard-category-search-status" id="dashboardCategorySearchStatus" aria-live="polite">Choose a suggestion to update the report.</small>
+              </label>
+              <div class="tier-date-range-field dashboard-category-date-field">
+                <span>Date / range</span>
+                <div class="tier-date-range-controls">
+                  <input id="categoryStartDate" type="date" aria-label="Category report start date" />
+                  <span class="tier-date-range-separator" aria-hidden="true">–</span>
+                  <input id="categoryEndDate" type="date" aria-label="Category report end date" />
+                  <button class="secondary-button tier-date-apply" id="categoryDateApply" type="button">Apply</button>
+                </div>
+                <small class="tier-date-status" id="categoryDateStatus" aria-live="polite"></small>
+              </div>
+            </div>
+            <div id="dashboardCategoryReportBody"></div>
+          </section>
+        </section>
+
+        <section class="tier-page hidden" id="tierPage" aria-label="Tier sheet">
+          <div class="tier-header">
+            <div>
+              <h2 id="tierPageTitle">Tier</h2>
+              <p id="tierPageSubtitle">Google Sheet report view</p>
+            </div>
+            <div class="tier1-management-actions hidden" id="tier1ManagementActions">
+              <button
+                class="tier1-additions-toggle"
+                id="tier1AdditionsToggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="tier1AdditionsPanel"
+                aria-haspopup="dialog"
+              >
+                <span class="tier1-info-mark" aria-hidden="true">i</span>
+                <span>Added merchants</span>
+                <span class="tier1-additions-count" id="tier1AdditionsCount">0</span>
+              </button>
+              <button class="tier1-add-merchant-button" id="tier1AddMerchant" type="button">
+                <span aria-hidden="true">+</span>
+                Add merchant
+              </button>
+            </div>
+          </div>
+          <section class="tier-summary" id="tierPageSummary"></section>
+          <section class="panel sheet-notes" id="tierPageNotes"></section>
+          <section class="panel tier-category-summary" id="tierCategorySummary" aria-label="Category-wise tier report"></section>
+          <section class="panel tier-sheet-filters" aria-label="Tier filters">
+            <label>
+              <span data-i18n="label.Search">Search</span>
+              <input id="tierSheetSearch" type="search" placeholder="Merchant, ID, reason, recommendation" data-i18n-placeholder="tier.searchPlaceholder" />
+            </label>
+            <div class="tier-date-range-field">
+              <span>Date / range</span>
+              <small class="tier-date-status" id="tierDateStatus" aria-live="polite"></small>
+              <div class="tier-date-range-controls">
+                <input id="tierStartDate" type="date" aria-label="Tier report start date" />
+                <span class="tier-date-range-separator" aria-hidden="true">–</span>
+                <input id="tierEndDate" type="date" aria-label="Tier report end date" />
+                <button class="secondary-button tier-date-apply" id="tierDateApply" type="button">Apply</button>
+              </div>
+            </div>
+            <label>
+              <span data-i18n="tier.networkAgency">Network / Agency</span>
+              <select id="tierSheetNetwork">
+                <option value="all">All networks</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="label.Country">Country</span>
+              <select id="tierSheetCountry">
+                <option value="all">All countries</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="filter.minEpc">Min EPC</span>
+              <input id="tierSheetMinEpc" type="number" step="0.01" min="0" placeholder="0.00" />
+            </label>
+            <label>
+              <span data-i18n="filter.minRevenue">Min revenue</span>
+              <input id="tierSheetMinRevenue" type="number" step="1" min="0" placeholder="0" />
+            </label>
+          </section>
+          <section class="table-panel tier-table-panel" id="tierTablePanel" aria-label="Tier table">
+            <div class="table-toolbar">
+              <div>
+                <h3 id="tierTableTitle">Sheet Records</h3>
+                <p id="tierTableCount"></p>
+                <nav class="tier-pagination hidden" id="tierPagination" aria-label="Tier 4 pages">
+                  <button class="secondary-button" id="tierPagePrev" type="button" aria-label="Previous Tier 4 page">Previous</button>
+                  <span id="tierPageIndicator" aria-live="polite">Page 1 of 1</span>
+                  <button class="secondary-button" id="tierPageNext" type="button" aria-label="Next Tier 4 page">Next</button>
+                </nav>
+              </div>
+              <div class="table-toolbar-actions">
+                <div class="column-picker">
+                  <button class="icon-button table-select-button" id="tierColumnToggle" type="button" aria-expanded="false" data-i18n="tier.columnsButton">Display</button>
+                  <div class="column-picker-panel hidden" id="tierColumnPanel">
+                    <div class="column-picker-header">
+                      <strong data-i18n="tier.columnsTitle">Display columns</strong>
+                      <span data-i18n="tier.columnsHint">Choose fields to display</span>
+                    </div>
+                    <div class="column-picker-actions">
+                      <button type="button" id="tierColumnCore" data-i18n="tier.coreColumns">Default</button>
+                      <button type="button" id="tierColumnAll" data-i18n="tier.allColumns">All</button>
+                    </div>
+                    <div class="column-picker-list" id="tierColumnList"></div>
+                  </div>
+                </div>
+                <button class="icon-button table-move-button" id="moveTierRows" type="button" disabled data-i18n="action.move">Move</button>
+                <button class="icon-button table-reset-moves-button hidden" id="resetTierMoves" type="button" data-i18n="action.reset">Reset</button>
+                <button class="icon-button table-expand-button" id="expandTierSheet" type="button" aria-label="Expand tier records table" aria-expanded="false" data-i18n="action.expand">Expand</button>
+                <button class="icon-button table-close-button hidden" id="closeTierSheetOverlay" type="button" aria-label="Close expanded tier records table" data-i18n="action.close">Close</button>
+                <button class="icon-button table-download-button" id="downloadTierXlsx" type="button" aria-label="Download tier records as Excel" data-i18n="action.download">Download</button>
+                <span class="tier-move-inline-status" id="tierMoveInlineStatus" aria-live="polite"></span>
+              </div>
+            </div>
+            <div class="table-wrap sheet-table-wrap">
+              <table class="sheet-table">
+                <thead id="tierSheetHead"></thead>
+                <tbody id="tierSheetRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <div class="sheet-expanded-backdrop" id="sheetExpandedBackdrop" aria-hidden="true"></div>
+    <div
+      class="tier1-additions-overlay hidden"
+      id="tier1AdditionsPanel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tier1AdditionsTitle"
+      aria-describedby="tier1AdditionsDescription"
+    >
+      <section class="tier1-additions-panel" aria-label="Tier 1 migration history">
+        <div class="tier1-additions-header">
+          <div>
+            <span class="tier1-additions-eyebrow">Tier 1 / database history</span>
+            <h3 id="tier1AdditionsTitle">Merchant migration history</h3>
+            <p id="tier1AdditionsDescription">Every merchant added through this management tool, with its source tier, timestamp, and operator.</p>
+          </div>
+          <button class="tier1-additions-close" id="tier1AdditionsClose" type="button" aria-label="Close migration history">
+            Close
+          </button>
+        </div>
+        <p class="tier1-additions-status" id="tier1AdditionsStatus" aria-live="polite"></p>
+        <div class="tier1-additions-list" id="tier1AdditionsList"></div>
+      </section>
+    </div>
+    <div class="tier-move-dialog hidden" id="tierMoveDialog" role="dialog" aria-modal="true" aria-labelledby="tierMoveTitle">
+      <div class="tier-move-card">
+        <div class="tier-move-header">
+          <div>
+            <h3 id="tierMoveTitle">Move selected merchants</h3>
+            <p id="tierMoveSummary"></p>
+          </div>
+          <button class="icon-button tier-move-close" id="closeTierMoveDialog" type="button" aria-label="Close tier move dialog">Close</button>
+        </div>
+        <div class="tier-move-targets" id="tierMoveTargets" aria-label="Move target tier"></div>
+        <p class="tier-move-status" id="tierMoveStatus"></p>
+        <div class="tier-move-footer">
+          <button class="secondary-button" id="cancelTierMove" type="button">Cancel</button>
+          <button class="secondary-button tier-move-confirm" id="confirmTierMove" type="button">Move merchants</button>
+        </div>
+      </div>
+    </div>
+    <div
+      class="tier1-merchant-dialog hidden"
+      id="tier1MerchantDialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tier1MerchantDialogTitle"
+    >
+      <div class="tier1-merchant-card">
+        <div class="tier1-merchant-header">
+          <div>
+            <h3 id="tier1MerchantDialogTitle">Add merchant to Tier 1</h3>
+            <p>Find an active merchant in the YeahPromos database, review the match, then confirm the assignment.</p>
+          </div>
+          <button class="tier1-merchant-close" id="tier1MerchantClose" type="button" aria-label="Close add merchant dialog">
+            Close
+          </button>
+        </div>
+
+        <form class="tier1-merchant-search-form" id="tier1MerchantSearchForm">
+          <label for="tier1MerchantQuery">
+            <span>Merchant ID or merchant name</span>
+            <div class="tier1-merchant-search-row">
+              <input
+                id="tier1MerchantQuery"
+                type="search"
+                autocomplete="off"
+                placeholder="Enter a merchant ID or name"
+                required
+              />
+              <button id="tier1MerchantSearchButton" type="submit">Find merchant</button>
+            </div>
+            <small>Searches active merchants in the YeahPromos offer database.</small>
+          </label>
+        </form>
+
+        <p class="tier1-merchant-status" id="tier1MerchantStatus" aria-live="polite"></p>
+        <div class="tier1-merchant-results" id="tier1MerchantResults" role="listbox" aria-label="Merchant search results"></div>
+
+        <section class="tier1-merchant-confirmation hidden" id="tier1MerchantConfirmation" aria-label="Confirm Tier 1 assignment">
+          <div class="tier1-confirmation-heading">
+            <div>
+              <span>Confirm merchant</span>
+              <h4 id="tier1SelectedMerchantName"></h4>
+            </div>
+            <button id="tier1MerchantBack" type="button">Change selection</button>
+          </div>
+          <dl class="tier1-confirmation-details">
+            <div><dt>Merchant ID</dt><dd id="tier1SelectedMerchantId"></dd></div>
+            <div><dt>Network</dt><dd id="tier1SelectedMerchantNetwork"></dd></div>
+            <div><dt>Current tier</dt><dd id="tier1SelectedMerchantTier"></dd></div>
+            <div><dt>Category / country</dt><dd id="tier1SelectedMerchantContext"></dd></div>
+          </dl>
+          <p class="tier1-confirmation-notice" id="tier1MerchantConfirmationNotice"></p>
+        </section>
+
+        <div class="tier1-merchant-footer">
+          <button class="secondary-button" id="tier1MerchantCancel" type="button">Cancel</button>
+          <button class="tier1-merchant-confirm" id="tier1MerchantConfirm" type="button" disabled>Add to Tier 1</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="answer-feedback-dialog hidden"
+      id="answerFeedbackDialog"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="answerFeedbackTitle"
+    >
+      <div class="answer-feedback-card-shell">
+        <div class="answer-feedback-card">
+        <div class="answer-feedback-header">
+          <div class="answer-feedback-heading">
+            <span class="answer-feedback-mood" aria-hidden="true">😡</span>
+            <div>
+              <h3 id="answerFeedbackTitle">哪里不满意？</h3>
+              <p id="answerFeedbackSubtitle">请选择一个主要原因，也可以补充说明。</p>
+            </div>
+          </div>
+          <button id="answerFeedbackClose" type="button" aria-label="关闭反馈窗口">×</button>
+        </div>
+        <form id="answerFeedbackForm">
+          <fieldset class="answer-feedback-reasons">
+            <legend id="answerFeedbackReasonLegend">主要原因</legend>
+            <label><input type="radio" name="answerFeedbackReason" value="inaccurate" required /><span data-feedback-reason-label="inaccurate">回答不准确</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="not_answered" /><span data-feedback-reason-label="not_answered">没有回答问题</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="incomplete_data" /><span data-feedback-reason-label="incomplete_data">数据不完整</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="unclear" /><span data-feedback-reason-label="unclear">内容难以理解</span></label>
+            <label><input type="radio" name="answerFeedbackReason" value="other" /><span data-feedback-reason-label="other">其他</span></label>
+          </fieldset>
+          <label class="answer-feedback-detail" for="answerFeedbackDetail">
+            <span id="answerFeedbackDetailLabel">补充说明（可选）</span>
+            <textarea id="answerFeedbackDetail" rows="4" maxlength="4000" placeholder="请告诉我们哪里需要改进"></textarea>
+          </label>
+          <p class="answer-feedback-error hidden" id="answerFeedbackError" role="alert"></p>
+          <div class="answer-feedback-actions">
+            <button class="secondary-button" id="answerFeedbackCancel" type="button">取消</button>
+            <button id="answerFeedbackSubmit" type="submit">提交反馈</button>
+          </div>
+        </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="user-flow-image-lightbox hidden"
+      id="userFlowImageLightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="userFlowImageLightboxCaption"
+      tabindex="-1"
+    >
+      <div class="user-flow-image-lightbox-card">
+        <button class="user-flow-image-lightbox-close" id="userFlowImageLightboxClose" type="button" aria-label="关闭示例图">×</button>
+        <figure class="user-flow-image-lightbox-figure">
+          <img id="userFlowImageLightboxImage" alt="" />
+          <figcaption id="userFlowImageLightboxCaption"></figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <script src="./chatbot_i18n.js?v=20260626-zh1"></script>
+    <script src="./onboarding_tour.js?v=20260806-chat-mode-glow3"></script>
+    <script src="./chatbot_welcome.js?v=20260813-chat-reminder-copy1"></script>
+    <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
+    <script src="./agent_memory_state.js?v=20260826-agent-memory1"></script>
+    <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="./auth.js?v=20260826-agent-memory1"></script>
+    <script>
+      // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
+      // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。
+      (function () {
+        var THEME_KEY = "oi-dash-theme";
+        function applyDashTheme() {
+          if (localStorage.getItem(THEME_KEY) === "dark") {
+            document.body.removeAttribute("data-dash-theme");
+          } else {
+            document.body.setAttribute("data-dash-theme", "light");
+          }
+        }
+        applyDashTheme();
+        var toggle = document.getElementById("dashThemeToggle");
+        if (toggle) {
+          toggle.addEventListener("click", function () {
+            if (document.body.getAttribute("data-dash-theme") === "light") {
+              localStorage.setItem(THEME_KEY, "dark");
+            } else {
+              localStorage.removeItem(THEME_KEY);
+            }
+            applyDashTheme();
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
