@@ -3,6 +3,7 @@ import { createApp, h } from "vue";
 import "./shared/styles/modern-root.css";
 import "./features/offer-tracker/offerTracker.css";
 import "./features/payments/payments.css";
+import "./features/publishers/publishers.css";
 import "./features/brand-media/brandMedia.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
@@ -17,10 +18,12 @@ import type {
   OfferTrackerExportPayload
 } from "./shared/contracts/offer";
 import type { PaymentExportPayload, PaymentLivePayload } from "./shared/contracts/payment";
+import type { PublisherExportPayload } from "./features/publishers/publisherModel";
 import { apiRequest } from "./shared/api/client";
 import { createI18nStore } from "./shared/i18n";
 import OfferTrackerPage from "./features/offer-tracker/OfferTrackerPage.vue";
 import PaymentsPage from "./features/payments/PaymentsPage.vue";
+import PublishersPage from "./features/publishers/PublishersPage.vue";
 import BrandMediaPage from "./features/brand-media/BrandMediaPage.vue";
 import type { BrandMediaTrendRequest } from "./features/brand-media/useBrandMedia";
 
@@ -109,6 +112,17 @@ async function loadPayments(): Promise<PaymentLivePayload> {
   };
 }
 
+async function loadPublishers(): Promise<unknown> {
+  return apiRequest<unknown>("/api/ui/db/publishers");
+}
+
+async function loadPublisherPortfolio(userId: string, startDate: string, endDate: string): Promise<unknown> {
+  const query = new URLSearchParams({ userId });
+  if (startDate) query.set("startDate", startDate);
+  if (endDate) query.set("endDate", endDate);
+  return apiRequest<unknown>(`/api/ui/db/publishers?${query.toString()}`);
+}
+
 async function loadBrandMediaCatalog(): Promise<unknown> {
   return apiRequest<unknown>("/api/ui/db/publishers");
 }
@@ -128,6 +142,12 @@ function downloadPayments(payload: PaymentExportPayload): boolean {
   const bridge = window.OI_LEGACY_BRIDGE;
   if (!bridge) return false;
   return bridge.download("payments", payload);
+}
+
+function downloadPublishers(payload: PublisherExportPayload): boolean {
+  const bridge = window.OI_LEGACY_BRIDGE;
+  if (!bridge) return false;
+  return bridge.download("publishers", payload);
 }
 
 const offerTrackerFactory: ModernPageFactory = (element): ModernPageController => {
@@ -187,6 +207,32 @@ const paymentsFactory: ModernPageFactory = (element): ModernPageController => {
   };
 };
 
+const publishersFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernPublishersMount",
+    setup() {
+      return () => h(PublishersPage, {
+        language: i18n.language.value,
+        loadData: loadPublishers,
+        loadPortfolio: loadPublisherPortfolio,
+        download: downloadPublishers
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 const brandMediaFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
@@ -215,5 +261,6 @@ const brandMediaFactory: ModernPageFactory = (element): ModernPageController => 
 window.OI_MODERN_APP = createModernAppApi({
   "offer-list-tracker": offerTrackerFactory,
   payments: paymentsFactory,
+  publishers: publishersFactory,
   "brand-media": brandMediaFactory
 });

@@ -67,17 +67,18 @@
     {
       "pageKey": "publishers",
       "label": "Publishers",
-      "status": "legacy",
-      "roots": ["#publishersPage"],
+      "status": "modern",
+      "roots": ["#publishersPage", "#publishersModernRoot"],
       "legacyEntry": ["switchPage()", "renderPublishersPage()", "loadPublishersData()", "downloadPublishersXlsx()"],
+      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/publishers/PublishersPage.vue", "frontend/src/features/publishers/publisherModel.ts", "frontend/src/features/publishers/usePublishers.ts"],
       "state": ["state.publisherMarket", "state.publisherNetwork", "state.publisherLinkType", "state.publisherManagerSearch", "state.publisherPortfolioSearch", "state.publisherSort", "state.publisherTablePage", "state.publisherLayoutEditing", "state.publisherLayout"],
       "apis": ["/api/ui/db/publishers"],
       "storage": ["publisherLayoutOrder"],
       "exports": ["downloadPublishersXlsx()"],
       "overlays": ["publisher layout editing mode"],
-      "tests": ["scripts/test_publisher_manager_tier_frontend.mjs", "scripts/test_publishers_portfolio.py", "scripts/test_chatbot_publisher_records.mjs", "scripts/test_chatbot_publisher_profile.mjs"],
+      "tests": ["scripts/test_publisher_manager_tier_frontend.mjs", "scripts/test_publishers_portfolio.py", "scripts/test_chatbot_publisher_records.mjs", "scripts/test_chatbot_publisher_profile.mjs", "frontend/src/features/publishers/publisherModel.test.ts", "frontend/src/features/publishers/usePublishers.test.ts", "frontend/src/features/publishers/PublishersPage.test.ts"],
       "testGap": "",
-      "notes": "页面包含 Overview、Manager、Site、Tracking、Portfolio、布局编辑和当前页/组合导出；离开页面必须退出布局编辑。"
+      "notes": "Publishers 默认由 Vue modern root 渲染；保留 legacy fallback。页面包含 Overview、Manager、Site、Tracking、Portfolio、筛选、排序、分页、列设置、布局编辑和当前页/全部导出；离开页面必须退出布局编辑。已在持久化 Sites 视觉 QA 站点完成 modern/legacy 同视口对比。"
     },
     {
       "pageKey": "brand-media",

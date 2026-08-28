@@ -64,7 +64,7 @@ read("frontend/src/features/brand-media/brandMedia.css");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260828-vue-m4-brand-media'),
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260828-vue-m4-publishers-brand-media'),
   "index.html 缺少 M4 本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
@@ -75,7 +75,7 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-brand-media";'),
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-publishers-brand-media";'),
   "auth.js 缺少 M4 本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
@@ -90,7 +90,7 @@ assert(auth.indexOf("await loadModernApp();") < auth.indexOf("await loadScript(A
 
 const legacyApp = read("public/app.js");
 const paymentsSwitchStart = legacyApp.indexOf("if (isPayments) {");
-const paymentsSwitchEnd = legacyApp.indexOf('if (page === "publishers")', paymentsSwitchStart);
+const paymentsSwitchEnd = legacyApp.indexOf("if (isPublishers) {", paymentsSwitchStart);
 assert(paymentsSwitchStart >= 0 && paymentsSwitchEnd > paymentsSwitchStart, "Payments 页面切换边界不存在");
 const paymentsSwitchSource = legacyApp.slice(paymentsSwitchStart, paymentsSwitchEnd);
 const brandMediaSwitchStart = legacyApp.indexOf('if (previousPage === "brand-media"');

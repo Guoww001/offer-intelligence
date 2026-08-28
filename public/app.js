@@ -2296,6 +2296,14 @@
       } else {
         renderPaymentsPage();
       }
+    } else if (state.page === "publishers") {
+      if (els.publishersPage && els.publishersPage.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        renderPublishersPage();
+      }
     } else if (state.page === "sheets") {
       renderSheetPage();
     } else if (state.page === "tier") {
@@ -31464,6 +31472,18 @@ var _NUMERIC_COL_PATTERNS = [
       const modernRoot = document.getElementById("paymentsModernRoot");
       if (modernRoot) modernRoot.classList.add("hidden");
     }
+    if (previousPage === "publishers" && page !== "publishers") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("publishers");
+        }
+      } catch (error) {
+        console.warn("Modern Publishers unmount failed; continuing with the legacy publishers page.", error);
+      }
+      if (els.publishersPage) els.publishersPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("publishersModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
     if (previousPage === "brand-media" && page !== "brand-media") {
       try {
         if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
@@ -31502,6 +31522,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isOfferListTracker = page === "offer-list-tracker";
     const isPayments = page === "payments";
+    const isPublishers = page === "publishers";
     const isBrandMedia = page === "brand-media";
     const isRevenueFlow = page === "revenue-flow";
     const isGoogleAds = page === "google-ads";
@@ -31603,8 +31624,62 @@ var _NUMERIC_COL_PATTERNS = [
         if (!state.livePaymentsLoaded) refreshLevantaPayments({ silent: true });
       }
     }
-    if (page === "publishers") {
-      renderPublishersPage();
+    if (isPublishers) {
+      const modernRoot = document.getElementById("publishersModernRoot");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "publishers"
+        && els.publishersPage
+        && els.publishersPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("publishers"));
+          if (modernPageAvailable) {
+            modernMounted = Boolean(modernApp.mountPage("publishers", modernRoot));
+          }
+        }
+      } catch (error) {
+        console.warn("Modern Publishers unavailable; continuing with the legacy publishers page.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.publishersPage) els.publishersPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.publishersPage) els.publishersPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (!modernPageAvailable
+            || !modernApp
+            || typeof modernApp.hasPage !== "function"
+            || typeof modernApp.mountPage !== "function")
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Publishers unavailable; continuing with the legacy publishers page.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderPublishersPage();
+      }
     }
     if (isBrandMedia) {
       const modernRoot = document.getElementById("brandMediaModernRoot");
@@ -33039,12 +33114,70 @@ var _NUMERIC_COL_PATTERNS = [
     return true;
   }
 
+  function downloadModernPublishers(payload) {
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.rows)) return false;
+    const rows = payload.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row));
+    if (!rows.length) return false;
+    const filters = payload.filters && typeof payload.filters === "object" ? payload.filters : {};
+    const scope = payload.scope === "portfolio" ? "portfolio" : payload.scope === "page" ? "page" : "all";
+    if (scope === "portfolio") {
+      const publisherId = String(payload.publisherId || "unknown");
+      downloadRowsAsXlsx(rows, {
+        downloadType: "sheet",
+        filePrefix: "publisher-portfolio-" + publisherId,
+        exportScope: String(filters.market || "all"),
+        sheetName: "Publisher Portfolio",
+        downloadColumns: [
+          ["Merchant ID", (row) => row["Merchant ID"]],
+          ["Merchant Name", (row) => row.Merchant],
+          ["Network", (row) => row.Network],
+          ["Markets", (row) => row.Market],
+          ["Category", (row) => row.Category],
+          ["Tier", (row) => row.Tier],
+          ["AOV", (row) => row.AOV],
+          ["AFF EPC", (row) => row["AFF EPC"]],
+          ["Conversion", (row) => row.Conversion],
+          ["AFF Commission Rate", (row) => row["AFF Commission Rate"]],
+          ["Orders", (row) => row.Orders],
+          ["Sales", (row) => row.Sales],
+          ["AFF Earned Commission", (row) => row["AFF Earned Commission"]],
+          ["Sales Share", (row) => row["Sales Share"]]
+        ]
+      });
+      return true;
+    }
+    downloadRowsAsXlsx(rows, {
+      downloadType: "sheet",
+      filePrefix: "publishers",
+      exportScope: String(filters.market || scope),
+      sheetName: "Publishers",
+      downloadColumns: [
+        ["Rank", (row) => row.Rank],
+        ["Publisher ID", (row) => row["Publisher ID"]],
+        ["Publisher Name", (row) => row["Publisher Name"]],
+        ["Manager", (row) => row.Manager],
+        ["Clicks", (row) => row.Clicks],
+        ["CVR", (row) => row.CVR],
+        ["DPV", (row) => row.DPV],
+        ["ATC", (row) => row.ATC],
+        ["Orders", (row) => row.Orders],
+        ["Sales", (row) => row.Sales],
+        ["All Commission", (row) => row["All Commission"]],
+        ["Aff Commission", (row) => row["Aff Commission"]],
+        ["Gross Profit", (row) => row["Gross Profit"]]
+      ]
+    });
+    return true;
+  }
+
   window.OI_LEGACY_BRIDGE = {
     navigate: (page) => switchPage(page),
     download: (type, payload) => (
       type === "offer-tracker"
         ? downloadModernOfferTracker(payload)
-        : type === "payments" && downloadModernPayments(payload)
+        : type === "payments"
+          ? downloadModernPayments(payload)
+          : type === "publishers" && downloadModernPublishers(payload)
     )
   };
 
