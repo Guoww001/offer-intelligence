@@ -28,6 +28,17 @@ export const DEFAULT_OFFER_TRACKER_RULES: OfferTrackerRules = Object.freeze({
   lowAovMax: 100
 });
 
+export function normalizeOfferTrackerRules(
+  input: Partial<OfferTrackerRules> = {}
+): OfferTrackerRules {
+  const requestedHighScore = toFiniteNumber(input.highScore, DEFAULT_OFFER_TRACKER_RULES.highScore);
+  const requestedLowAovMax = toFiniteNumber(input.lowAovMax, DEFAULT_OFFER_TRACKER_RULES.lowAovMax);
+  return Object.freeze({
+    highScore: Math.min(11, Math.max(4, Math.round(requestedHighScore || DEFAULT_OFFER_TRACKER_RULES.highScore))),
+    lowAovMax: Math.max(1, requestedLowAovMax || DEFAULT_OFFER_TRACKER_RULES.lowAovMax)
+  });
+}
+
 const DEFAULT_DATE_RANGE: OfferTrackerDateRange = Object.freeze({
   startDate: "1970-01-01",
   endDate: "1970-01-01"
@@ -147,12 +158,7 @@ function validDateRange(startDate: unknown, endDate: unknown): boolean {
 }
 
 function normalizedRules(rules: OfferTrackerRules = DEFAULT_OFFER_TRACKER_RULES): OfferTrackerRules {
-  const highScore = toFiniteNumber(rules.highScore, DEFAULT_OFFER_TRACKER_RULES.highScore);
-  const lowAovMax = toFiniteNumber(rules.lowAovMax, DEFAULT_OFFER_TRACKER_RULES.lowAovMax);
-  return {
-    highScore: highScore > 0 ? highScore : DEFAULT_OFFER_TRACKER_RULES.highScore,
-    lowAovMax: lowAovMax > 0 ? lowAovMax : DEFAULT_OFFER_TRACKER_RULES.lowAovMax
-  };
+  return normalizeOfferTrackerRules(rules);
 }
 
 function offerTrackerCommissionRate(record: OfferRecord): number {

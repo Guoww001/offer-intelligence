@@ -1,6 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import type {
   OfferRecord,
@@ -29,6 +29,11 @@ const offers: readonly OfferRecord[] = Array.from({ length: 30 }, (_, index) => 
   topAsins: [`B0${String(index + 1).padStart(8, "0")}`]
 }));
 
+beforeEach(() => {
+  window.localStorage.removeItem("offerListTrackerColumnsV1");
+  window.localStorage.removeItem("offerListTrackerRulesV1");
+});
+
 function mountTracker(
   props: Partial<{
     offers: readonly OfferRecord[];
@@ -50,6 +55,18 @@ function mountTracker(
 }
 
 describe("OfferTrackerPage", () => {
+  it("保留旧页面的头部、筛选卡和表格工具栏结构", () => {
+    const wrapper = mountTracker();
+
+    expect(wrapper.find(".offer-tracker-modern-header .offer-tracker-export-button").exists()).toBe(true);
+    expect(wrapper.find(".offer-tracker-filter-card").exists()).toBe(true);
+    expect(wrapper.find(".offer-tracker-network-toggle").exists()).toBe(true);
+    expect(wrapper.find(".offer-tracker-view-tabs").exists()).toBe(true);
+    expect(wrapper.find(".offer-tracker-table-actions .offer-tracker-search").exists()).toBe(true);
+    expect(wrapper.find(".offer-tracker-table-footer").exists()).toBe(true);
+    expect(wrapper.findAll(".offer-tracker-table-scroll th")).toHaveLength(10);
+  });
+
   it("renders the modern page root and the default 25-row page", () => {
     const wrapper = mountTracker();
 
@@ -182,5 +199,38 @@ describe("OfferTrackerPage", () => {
     expect(wrapper.get('input[data-row-select]').attributes("aria-label")).toBe("Select Merchant 01");
     expect(wrapper.find('section[aria-label="Offer Tracker results"]').exists()).toBe(true);
     expect(wrapper.find('nav[aria-label="Offer Tracker pagination"]').exists()).toBe(true);
+  });
+
+  it("opens column settings and hides an optional column", async () => {
+    const wrapper = mountTracker();
+
+    expect(wrapper.findAll("#offerTrackerColumnsPanel")).toHaveLength(0);
+    await wrapper.get('button[aria-label="列设置"]').trigger("click");
+
+    expect(wrapper.findAll("#offerTrackerColumnsPanel")).toHaveLength(1);
+    expect(wrapper.get('button[aria-controls="offerTrackerColumnsPanel"]').attributes("aria-expanded")).toBe("true");
+    expect(wrapper.findAll(".offer-tracker-table th")).toHaveLength(10);
+
+    await wrapper.get('input[data-offer-tracker-column="revenue"]').setValue(false);
+
+    expect(wrapper.findAll(".offer-tracker-table th")).toHaveLength(9);
+    expect(wrapper.find('th[data-column="revenue"]').exists()).toBe(false);
+    expect(wrapper.find('td[data-column="revenue"]').exists()).toBe(false);
+  });
+
+  it("saves priority rules and recalculates row priority", async () => {
+    const wrapper = mountTracker();
+
+    await wrapper.get('button[aria-label="优先级规则"]').trigger("click");
+    expect(wrapper.findAll("#offerTrackerRulesPanel")).toHaveLength(1);
+    expect((wrapper.get("#offerTrackerHighScore").element as HTMLInputElement).value).toBe("8");
+    expect((wrapper.get("#offerTrackerLowAovMax").element as HTMLInputElement).value).toBe("100");
+
+    await wrapper.get("#offerTrackerHighScore").setValue(11);
+    await wrapper.get("#offerTrackerLowAovMax").setValue(90);
+    await wrapper.get('button[aria-label="保存规则"]').trigger("click");
+
+    expect(wrapper.findAll("#offerTrackerRulesPanel")).toHaveLength(0);
+    expect(wrapper.get('[data-row-key="offer-01"] .offer-tracker-priority-badge').classes()).toContain("recommended");
   });
 });

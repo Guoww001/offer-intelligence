@@ -81,7 +81,7 @@ function sortLabel(key: PaymentSortKey): string {
 </script>
 
 <template>
-  <section class="payments-modern-filters" :aria-label="message('payments.filters', 'Payment filters')">
+  <section class="payments-modern-filters panel payment-filters" :aria-label="message('payments.filters', 'Payment filters')">
     <label>
       <span>{{ message("payments.month", "Month") }}</span>
       <select :aria-label="message('payments.month', 'Month')" :value="props.modelValue.month" :disabled="props.loading" @change="emitFilter('month', selectValue($event))">

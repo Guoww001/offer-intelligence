@@ -88,7 +88,7 @@ onMounted(() => {
 
 <template>
   <main class="oi-modern-page payments-modern-page" data-page="payments" :aria-busy="payments.loading.value ? 'true' : 'false'">
-    <header class="payments-modern-header">
+    <header class="payments-modern-header payments-header">
       <div>
         <h1>{{ copy.title }}</h1>
         <p class="payments-modern-stamp" data-payment-stamp>{{ stamp }}</p>
@@ -120,8 +120,9 @@ onMounted(() => {
       @sort-change="changeSort"
     />
 
-    <section class="payments-modern-results" :class="{ 'has-notice': Boolean(errorMessage) }">
-      <p v-if="errorMessage" class="payments-modern-notice error" role="alert">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="payments-modern-notice error" role="alert">{{ errorMessage }}</p>
+
+    <section class="payments-modern-results payment-layout">
 
       <PaymentsTable
         :rows="payments.filteredRows.value"

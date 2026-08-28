@@ -88,8 +88,8 @@ function toggleSort(key: Exclude<PaymentSortKey, "">): void {
 </script>
 
 <template>
-  <section class="payments-modern-table-panel" :aria-label="message('payments.records', 'Payment records')">
-    <div class="payments-modern-table-heading">
+  <section class="payments-modern-table-panel table-panel payment-table-panel" :aria-label="message('payments.records', 'Payment records')">
+    <div class="payments-modern-table-heading table-toolbar">
       <div>
         <h2>{{ message("payments.records", "Payment records") }}</h2>
         <p>{{ rows.length.toLocaleString("en-US") }} {{ message("payments.tableCount", "matching payment records") }}</p>
@@ -98,8 +98,8 @@ function toggleSort(key: Exclude<PaymentSortKey, "">): void {
         <slot name="actions" />
       </div>
     </div>
-    <div class="payments-modern-table-wrap">
-      <table class="payments-modern-table">
+    <div class="payments-modern-table-wrap table-wrap payment-table-wrap">
+      <table class="payments-modern-table payment-table">
         <thead>
           <tr>
             <th v-for="column in columns" :key="column.key" :aria-sort="ariaSort(column.key)">

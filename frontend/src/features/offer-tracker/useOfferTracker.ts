@@ -6,14 +6,15 @@ import type {
   OfferTrackerDateRange,
   OfferTrackerFilters,
   OfferTrackerFilterInput,
+  OfferTrackerRules,
   OfferTrackerRevenueSort,
   OfferTrackerRow,
   OfferTrackerView
 } from "../../shared/contracts/offer";
 import {
-  DEFAULT_OFFER_TRACKER_RULES,
   filterOfferTrackerRows,
   normalizeOfferRecord,
+  normalizeOfferTrackerRules,
   normalizeOfferTrackerFilters,
   offerTrackerCategoryValues,
   offerTrackerExportRows,
@@ -50,18 +51,19 @@ export function useOfferTracker(options: UseOfferTrackerOptions) {
   const page = ref(1);
   const pageSize = 25;
   const selectedKeys = ref<ReadonlySet<string>>(new Set<string>());
+  const rules = ref<OfferTrackerRules>(normalizeOfferTrackerRules());
   const loading = ref(false);
   const error = ref("");
   let requestSequence = 0;
 
   const allRows = computed<readonly OfferTrackerRow[]>(() => sourceRows.value.map((row) => (
-    normalizeOfferRecord(row, DEFAULT_OFFER_TRACKER_RULES)
+    normalizeOfferRecord(row, rules.value)
   )));
   const filteredRows = computed<readonly OfferTrackerRow[]>(() => filterOfferTrackerRows(
     sourceRows.value,
     filters.value,
     search.value,
-    DEFAULT_OFFER_TRACKER_RULES
+    rules.value
   ));
   const pageData = computed(() => paginateOfferTrackerRows(filteredRows.value, page.value, pageSize));
   const pageRows = computed(() => pageData.value.rows);
@@ -89,6 +91,11 @@ export function useOfferTracker(options: UseOfferTrackerOptions) {
       : "priority";
     filters.value = Object.freeze({ ...filters.value, revenueSort });
     draftFilters.value = Object.freeze({ ...draftFilters.value, revenueSort });
+    page.value = 1;
+  }
+
+  function setRules(input: Partial<OfferTrackerRules>): void {
+    rules.value = normalizeOfferTrackerRules(input);
     page.value = 1;
   }
 
@@ -192,6 +199,7 @@ export function useOfferTracker(options: UseOfferTrackerOptions) {
     page,
     pageSize,
     selectedKeys,
+    rules,
     loading,
     error,
     allRows,
@@ -205,6 +213,7 @@ export function useOfferTracker(options: UseOfferTrackerOptions) {
     setDraftFilters,
     setSearch,
     setSort,
+    setRules,
     applyFilters,
     resetFilters,
     setPage,

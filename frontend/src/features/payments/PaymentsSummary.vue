@@ -49,7 +49,7 @@ const statuses = computed(() => [
 
 <template>
   <section
-    class="payments-modern-summary"
+    class="payments-modern-summary payment-summary"
     data-layout="four-by-two"
     :aria-label="message('payments.summary', 'Payment summary')"
   >
@@ -57,16 +57,18 @@ const statuses = computed(() => [
       <span>{{ card.label }}</span>
       <strong>{{ card.value }}</strong>
     </article>
-    <article
-      v-for="status in statuses"
-      :key="status.key"
-      class="payments-modern-summary-card payments-modern-summary-card--status"
-      :data-summary-key="status.key"
-      :data-status="status.key"
-      :aria-label="`${status.label}: ${status.value.toLocaleString('en-US')}`"
-    >
+    <div class="payments-modern-status-row payment-status-row">
+      <article
+        v-for="status in statuses"
+        :key="status.key"
+        class="payments-modern-summary-card payments-modern-summary-card--status payment-status-pill"
+        :data-summary-key="status.key"
+        :data-status="status.key"
+        :aria-label="`${status.label}: ${status.value.toLocaleString('en-US')}`"
+      >
         <span>{{ status.label }}</span>
         <strong>{{ status.value.toLocaleString("en-US") }}</strong>
-    </article>
+      </article>
+    </div>
   </section>
 </template>

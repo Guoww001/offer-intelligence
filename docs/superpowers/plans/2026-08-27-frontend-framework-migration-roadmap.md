@@ -22,6 +22,8 @@
 - Chatbot/Agent 相关改动必须先阅读 `docs/chatbot-feature-report.md`；迁移不得改变 LLM 分类、Agent 工具协议、Trace 隐私边界、SSE 行为或 Report/Chat Mode 分流。
 - 每个实现任务遵循 RED → GREEN → REFACTOR：先写失败测试并确认失败，再做最小实现，再运行目标测试和相关回归。
 - 现有源码字符串测试在对应页面迁移完成前继续保留；只有新增了行为等价的 Vitest 或浏览器验收覆盖后才能删除或改写。
+- 原项目 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 是新前端的只读视觉基线；页面迁移完成后必须依据其中的 CSS、HTML、页面渲染结构和静态资源执行新旧页面对齐，不得只凭截图近似或自行重新设计。
+- 每个页面只有同时通过功能等价验收和视觉基线对齐验收后，才能将迁移状态标记为 `modern`；静态测试、构建通过或页面能够显示，均不能替代新旧页面对齐。
 - 所有新依赖使用 `npm install --save-exact` 固定版本并提交 `frontend/package-lock.json`；执行安装前核对官方维护状态和 Node 22 兼容性。
 - 迁移期间禁止把框架运行时从 CDN 注入页面；所有新运行时依赖必须进入 Vite 构建产物并受 lockfile 管理。
 - 用户可见文案、代码注释和项目文档使用简体中文；变量名、函数名、类型名、协议字段和命令保持英文。
@@ -204,6 +206,77 @@ Vue feature
 - CI 必须执行 TypeScript 检查、Vitest、Vite build、现有 Python 测试和仍保留的旧 Node 回归。
 - 认证、API、Tier、支付、导出、Chatbot、Agent、双语切换和移动端关键流程完成真实浏览器验收。
 - Vercel 预览环境和本地 Python 服务都能加载同一构建产物，且不依赖开发机全局 npm 包。
+- 所有已迁移页面均完成旧项目视觉基线对齐；至少保留同一数据、视口和关键状态下的新旧截图或等价浏览器证据，并记录无法完全复原的差异及原因。
+
+---
+
+### 2.5 原项目视觉基线与新旧页面对齐流程
+
+**基线项目（只读，不允许向该目录写入迁移产物）：**
+
+```text
+D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main
+```
+
+优先参考以下旧项目文件和资产：
+
+- `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main\public\styles.css`：全站视觉变量、布局、组件状态和响应式规则。
+- `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main\public\index.html`：页面 Shell、旧 DOM 层级、class 名称和静态节点。
+- `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main\public\app.js`：目标页面的渲染函数、事件状态、动态 class 和显示/隐藏边界；按现有函数索引读取，禁止一次性读取整个文件。
+- `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main\public\auth.js`：认证后的启动顺序、数据注入和语言状态。
+- `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main\m2-offer-tracker-desktop.png`、`D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main\payments-m4-visual-desktop.png`：Offer Tracker 与 Payments 的已知桌面基线截图；其他页面以旧项目真实渲染结果为准。
+- 旧项目 `public/` 下被目标页面引用的图标、图片、字体和其他静态资源。
+
+该流程在每个页面的 Vue 实现完成后、迁移清单从 `dual` 改为 `modern` 前执行；M7 清理 legacy 前再执行一次全站复核。流程顺序固定如下：
+
+1. **冻结旧页面基线。**
+
+   在只读旧项目目录中盘点目标页面使用的 CSS 变量、选择器、媒体查询、HTML 层级、动态 class、图标/字体和关键状态。使用以下命令确认来源文件和目标页面入口：
+
+   ```powershell
+   $oldProject = 'D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main'
+   rg --files $oldProject\public -g '*.css' -g '*.html' -g '*.js' -g '*.svg' -g '*.woff*' -g '*.png' -g '*.jpg'
+   rg -n 'renderPaymentsPage|renderOfferListTrackerPage|switchPage|styles\.css' $oldProject\public\app.js $oldProject\public\index.html
+   ```
+
+   记录目标页面的桌面视口、移动视口、语言、数据快照、筛选条件、滚动位置和加载/空数据/错误状态；旧项目目录只读，任何临时截图和探针必须写入新迁移工作树的专用验证目录或系统临时目录。
+
+2. **建立旧页面可复现截图。**
+
+   在旧项目目录启动独立服务，在新项目目录启动另一独立服务；两者使用相同的缓存数据、认证开关、语言、视口和页面状态。默认使用隔离端口 `8770`（旧项目）和 `8771`（Vue 迁移项目），避免占用 `8765`。至少采集以下状态：
+
+   - 桌面端完整页面：侧边栏、页头、筛选/统计区域、表格或主内容区。
+   - `390px` 移动端：折叠导航、布局换行、横向滚动和底部内容。
+   - 默认状态、已选筛选、hover/focus/active、加载、空数据和受控错误状态。
+
+   旧项目若因认证、数据库或外部 API 不可用而无法复现，必须记录实际阻断原因；不得用另一种数据或状态假装完成视觉对齐。
+
+3. **建立旧样式到 Vue 组件的映射。**
+
+   先将旧页面的 Shell、页面容器、卡片、控件、表头、表格行、弹层和状态 class 映射到 `frontend/src/shell/` 与对应 `frontend/src/features/<feature>/` 组件。优先复用旧项目已确认的设计 token 和 class 语义；若 Vue DOM 结构不同，则在组件边界内适配选择器，不直接把整份全局 `styles.css` 无差别复制到 modern 页面。
+
+   映射表至少记录：旧选择器、旧计算样式或来源行、新 Vue 组件/选择器、是否保留 class、对应状态和验证截图名称。涉及全局 Shell 的样式只能在 Shell 迁移任务中统一调整，页面专项不能自行改变侧边栏和全局导航。
+
+4. **在功能完成后执行视觉对齐。**
+
+   按“整体几何 → 视觉 token → 内容密度 → 交互状态 → 响应式”的顺序调整：
+
+   - 先对齐 viewport 下的页面宽高、侧边栏宽度、主内容起点、网格列数、面板位置、表格滚动边界和断点。
+   - 再对齐字体族、字号、字重、行高、颜色、背景、边框、圆角、阴影、图标尺寸和间距。
+   - 再对齐真实文案、数字格式、行高、列宽、空白和滚动条等内容密度。
+   - 最后对齐 hover、focus-visible、active、disabled、展开/收起、错误提示和加载状态；不能只对齐默认静态截图。
+
+   视觉修改必须保持 API、业务口径、筛选、排序、导出和权限行为不变；如果需要改变 DOM 才能复原样式，先增加组件回归断言，再做最小结构调整。
+
+5. **执行新旧差异验收。**
+
+   在相同视口和相同数据状态下逐项比较旧页面与 Vue 页面，至少检查 DOM 结构、关键元素的 `getBoundingClientRect()`、计算样式、页面级横向溢出、表格内部滚动、焦点可见性和截图差异。截图只作为证据，不能替代交互验证；登录门禁或 API 错误导致页面不可见时，必须标记为未完成。
+
+   视觉差异达到以下任一情况时不得通过：页面主结构错位、主色/字体体系明显不同、表格密度明显不同、关键控件状态缺失、移动端出现意外页面级横向滚动，或错误/空数据状态与旧页面语义不一致。因浏览器、字体、外部资源或数据不可复现而无法完全一致时，在阶段记录中明确差异、证据和接受理由。
+
+6. **记录和放行。**
+
+   将基线来源、视口/数据状态、旧新截图路径、计算样式探针结果、行为测试命令、已知差异和回滚方式写入对应阶段实施记录。只有功能测试、视觉对齐和浏览器验收全部通过，才能更新 `docs/frontend-migration-inventory.md` 的状态并进入下一页面；M7 前必须重新检查旧 CSS 和旧 DOM 是否仍有未迁移的视觉责任。
 
 ---
 
@@ -485,7 +558,7 @@ Vue feature
 
 - [x] **步骤 10：浏览器验收并切换默认渲染**
 
-  使用应用内浏览器对同一数据集检查现代页面的行数、筛选结果、排序、选择、导出按钮、桌面/移动布局和计算样式。核心路径验收通过后将清单状态保持为 `dual`；保存视图、列面板、规则面板和旧导出对话框仍由 legacy 回退提供，旧渲染代码保留到后续模块迁移完成，作为阶段回滚窗口。
+  使用应用内浏览器对同一数据集检查现代页面的行数、筛选结果、排序、选择、导出按钮、桌面/移动布局和计算样式。核心路径验收通过后将清单状态保持为 `dual`；现代页面已接入保存视图基础流程、列设置和优先级规则，旧导出设置对话框及 legacy 页面仍保留为阶段回滚窗口。
 
 ---
 
@@ -493,10 +566,30 @@ Vue feature
 
 - RED 证据：model 测试先因 `offerTrackerModel` 尚不存在失败；组件测试先因页面 SFC 尚不存在失败；bridge 生命周期测试先以 M1 的空注册实现失败；dual 静态回归先因现代 root、bridge 和 `dual` 状态尚未接入失败。
 - GREEN 证据：`npm ci`、`npm --prefix frontend run typecheck`、`npm --prefix frontend run test -- --run`、`npm --prefix frontend run build`、`node scripts/test_frontend_build_contract.mjs`、`node scripts/test_frontend_migration_inventory.mjs`、`node scripts/test_offer_list_tracker_frontend.mjs`、`python scripts/test_offer_tracker_date_range.py`、`node --check public/auth.js`、`node --check public/app.js` 和 `git diff --check` 均通过；Vitest 为 3 个测试文件、24 项测试；modern 产物为 `oi-modern.js` 91.86 kB（gzip 33.84 kB）与 `oi-modern.css` 7.54 kB（gzip 1.84 kB）。
-- 架构边界：`offerTrackerModel.ts` 不访问 DOM、`window`、localStorage 或 fetch；Vue composable 维护本地筛选/排序/选择/分页状态；导出通过窄 `OI_LEGACY_BRIDGE` 复用旧 XLSX 生成器；`switchPage()` 支持 modern mount、离开卸载和受控 legacy fallback。保存视图、列面板、规则面板和旧导出对话框没有迁移，清单状态因此保持 `dual`。
+- 架构边界：`offerTrackerModel.ts` 不访问 DOM、`window`、localStorage 或 fetch；Vue composable 维护本地筛选/排序/选择/分页和评分规则状态；列设置与优先级规则面板由 Vue 管理并复用原版 localStorage 键；导出仍通过窄 `OI_LEGACY_BRIDGE` 复用旧 XLSX 生成器；`switchPage()` 支持 modern mount、离开卸载和受控 legacy fallback。旧导出设置对话框仍未迁移，清单状态因此保持 `dual`。
 - 浏览器证据：browser-act 当前无已配置浏览器，因此使用应用内 Edge 浏览器在隔离的 `OI_AUTH_ENABLED=0`、8766 端口完成验收。真实缓存显示 6,286 条 Offer，默认每页 25 行；已验证搜索、Tier 多选、Revenue 排序、跨页选择保留、选择全部匹配项、现代 XLSX 下载、中文/英文文案和 390px 移动布局。桌面端横向溢出已定位为 Grid 最小内容宽度问题并修复；修复后文档 `scrollWidth` 与视口一致，表格仍由内部滚动容器承载。
 - 浏览器边界：本地运行期间仍记录了既有的 `/api/tier_moves` 和 `/api/levanta/payments` 503 控制台错误；未发现 modern bundle 或 Offer Tracker 自身错误。认证关闭只用于隔离验收，不代表生产认证流程已重新验证。
 - 清理与范围：M2 测试服务器使用 8766，收尾后停止并确认无监听；未提交、未推送、未创建 PR；未修改后端、数据库或其他页面业务逻辑，构建产物仍由 `public/assets/modern/` 的忽略目录生成。
+
+**已迁移页面视觉基线对齐记录（2026-08-28）：**
+
+- 基线来源：只读检查 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 的 `public/styles.css`、`public/index.html`、`public/app.js` 对应渲染区间和已有页面截图；对比范围限定为当前已由 Vue 接管的 Offer Tracker 与 Payments，不改动旧项目。
+- RED 证据：先在 `OfferTrackerPage.test.ts` 与 `PaymentsPage.test.ts` 增加旧页面结构断言；实现前分别因旧式页面层级、筛选卡、工具栏、表格容器和状态摘要结构缺失而失败，随后以 Vue 组件补齐。
+- Offer Tracker 映射：保留旧页面的 `.offer-tracker-page` 外层回退边界，并在 Vue 内复原 `.offer-tracker-header`、`.offer-tracker-filter-card`、四列/三行筛选网格、KPI 卡、`.offer-tracker-table-panel`、视图标签、搜索/批量操作、10 列 Offer 表格、内部滚动容器和页脚；恢复旧项目的蓝色 token、字体层级、边框、圆角、间距及桌面最小表格宽度。
+- Payments 映射：复原 `.payments-page` 的四行页面网格、`.payment-summary` 的 4×2 摘要/状态卡、`.payment-filters` 的四列筛选布局、`.payment-layout`、`.payment-table-panel`、`.table-toolbar`、`.payment-table-wrap` 和 1500px 表格最小宽度；保留 saved rows、空数据和受控同步错误状态。
+- 桌面证据：在 1909×947、相同本地缓存和中文状态下，Offer Tracker 的旧/新关键几何均为 header 83px、筛选卡 342px、筛选网格 197px、KPI 75px、表格面板 546px、工具栏 59px、表格滚动区 427px；Payments 的关键几何均为页头 41px、摘要区 149px、筛选区 160px、结果区 519px、表格工具栏 61px、表格滚动区 456px。页面级 `scrollWidth` 均与视口一致，宽表格仍由内部滚动承载。
+- 移动证据：在 390×844 下，两页均无页面级横向溢出；Offer Tracker 保留长筛选/表格内容的纵向流，Payments 摘要与筛选器改为单列，表格保留独立横向滚动。
+- 错误状态证据：当前环境缺少 `LEVANTA_API_KEY`，`/api/levanta/payments` 返回既有 503；Payments 仍显示中文受控提示，但提示使用固定层，不改变桌面四行网格或移动页面宽度。未发现 modern bundle 或页面组件自身的未捕获错误。
+- 当前结论：Offer Tracker 与 Payments 的 CSS/HTML 视觉基线对齐项已完成；列设置和优先级规则面板已在 Vue 中接入并完成事件验证，页面仍保留 legacy fallback，旧导出设置对话框等尚未迁移的能力不能据此宣称旧逻辑已全部删除。
+- 验收工具边界：`browser-act` 当前无可配置浏览器/API key，本轮使用应用内 Edge/Playwright 完成同视口 DOM、计算样式、响应式和错误状态复核；因此不把本轮结果表述为 BrowserAct 验收。
+
+**Offer Tracker 工具按钮事件补齐记录（2026-08-28）：**
+
+- 根因：现代 `OfferTrackerTable.vue` 只渲染“列设置”和“优先级规则”按钮，没有对应面板、状态或事件；旧版 `public/app.js` 则通过 `toggleOfferTrackerPanel()`、列 change handler 和规则 save handler 完成这三条链路。
+- RED → GREEN：新增组件回归测试，先验证面板缺失导致 2 项测试失败；实现后覆盖列面板开合、列隐藏、规则输入、保存关闭、优先级重算和 localStorage 持久化。
+- Vue 实现：列设置使用 `offerListTrackerColumnsV1`，支持隐藏可选列并同步表头、数据单元格和空状态跨度；规则使用 `offerListTrackerRulesV1`，复原高优先级最低分 4–11、低 AOV 上限至少为 1 的边界，并接入 `useOfferTracker` 的评分计算。
+- 浏览器证据：桌面端点击列设置后面板可见，取消 Revenue 后表格由 10 列变为 9 列；点击优先级规则会关闭列面板并打开规则面板，保存 `11 / 90` 后面板关闭、KPI 文案更新；390px 下两个面板均无页面级横向溢出，关闭按钮 25×25，规则按钮保持 88×33。
+- 验证结果：8 个 Vitest 文件、50 项测试通过；typecheck、build、Offer/Payments 页面契约、build 契约、迁移清单契约和 `git diff --check` 通过；本地 8771 服务已停止并确认无 LISTENING 监听。
 
 ---
 
@@ -559,7 +652,7 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - bridge 收口：删除 `LegacyBridgeApi.requestRender` 及 `public/app.js` 对应暴露；`OI_LEGACY_BRIDGE` 当前只保留 `navigate` 和 `download`。`chatbot_i18n.js` 增加受控语言归一化，旧应用仍由 `state.language` 管理并通过 `OI_MODERN_APP.setLanguage()` 同步现代页面。
 - 验证证据：`npm --prefix frontend run typecheck`、`npm --prefix frontend run test -- --run`、`npm --prefix frontend run build`、`node scripts/test_frontend_build_contract.mjs`、`node scripts/test_frontend_migration_inventory.mjs`、`node scripts/test_zh_chatbot.mjs`、`node scripts/test_offer_list_tracker_frontend.mjs`、`python scripts/test_offer_tracker_date_range.py`、`python scripts/test_vercel_function_budget.py`、`node --check public/app.js`、`node --check public/chatbot_i18n.js` 和 `git diff --check` 均退出码为 0；Vitest 为 5 个测试文件、32 项测试；modern 产物为 `oi-modern.js` 100.61 kB（gzip 35.73 kB）与 `oi-modern.css` 7.54 kB（gzip 1.84 kB）。
 - 浏览器证据：在隔离的 `OI_AUTH_ENABLED=0`、8766 端口验证 modern root、Offer Tracker 默认数据渲染、日期范围提交和中文/英文语言同步。日期接口在当前本地数据库环境返回既有 503，页面显示受控英文/中文错误提示且无未捕获 console error；API client 的非 2xx 状态保留由 4 项单测覆盖。服务已停止并复查 8766 无监听。
-- 交付边界：M3 未提交、未推送、未部署；Offer Tracker 高级保存视图、列面板、规则面板和旧导出对话框仍保留在 dual fallback。
+- 交付边界：M3 未提交、未推送、未部署；Offer Tracker 的旧导出设置对话框仍保留在 dual fallback，现代保存视图、列设置和优先级规则已在后续对齐批次补齐。
 
 ---
 
@@ -597,7 +690,9 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - [ ] 通过 `hasPage(pageKey)` 开启 dual 模式，保留旧页面回退。
 - [ ] 运行该页面旧 Node 回归、Vitest、typecheck、build 和 `git diff --check`。
 - [ ] 使用 `browser-act` 验证桌面、移动端、键盘、API 请求和关键计算样式。
-- [ ] 将迁移清单从 `legacy` 改为 `dual`，验收通过后改为 `modern`。
+- [ ] 从只读旧项目 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 读取 CSS、HTML、渲染结构和静态资源，建立旧选择器到 Vue 组件的视觉映射。
+- [ ] 在相同数据、语言、视口和关键交互状态下采集旧页面与 Vue 页面证据，逐项对齐几何、设计 token、内容密度、交互状态和响应式布局。
+- [ ] 将迁移清单从 `legacy` 改为 `dual`；功能测试和新旧视觉对齐均通过后，才改为 `modern`。
 - [ ] 在下一个页面完成并验证后，删除上一个页面对应的旧渲染与事件代码。
 
 **页面专项门槛：**
@@ -618,11 +713,12 @@ node scripts/test_offer_list_tracker_frontend.mjs
 
 - 计划与范围：根据 M4 低风险数据页面顺序，先独立迁移 Payments；未修改 `/api/levanta/payments`、认证、数据库或其他页面，Payments legacy markup、渲染和事件代码仍作为受控 fallback 保留。
 - RED 证据：`paymentModel.test.ts`、`usePayments.test.ts`、`PaymentsPage.test.ts` 和 `scripts/test_payments_frontend.mjs` 均先在目标模块、组件或入口尚不存在时失败；月份筛选回归也先捕获了重复暴露 `reportMonthKey` 的问题。
-- 实现边界：新增 PaymentRecord/筛选/排序/摘要契约、纯 model、`usePayments`、Payments modern 页面组件和 scoped 样式；live sync 失败不替换 saved rows；placeholder 生成后仍经过零金额过滤；导出通过 `OI_LEGACY_BRIDGE.download("payments", payload)` 复用现有 XLSX 生成器；页面视觉对齐参考图的紧凑页头、4×2 摘要卡、两行筛选、品类副标题和面板内下载入口。
+- 实现边界：新增 PaymentRecord/筛选/排序/摘要契约、纯 model、`usePayments`、Payments modern 页面组件和 scoped 样式；live sync 失败不替换 saved rows；placeholder 生成后仍经过零金额过滤；导出通过 `OI_LEGACY_BRIDGE.download("payments", payload)` 复用现有 XLSX 生成器；首轮页面结构参考图的紧凑页头、4×2 摘要卡、两行筛选、品类副标题和面板内下载入口。
 - 入口与回退：`entry.ts` 注册 `payments` factory；`switchPage()` 挂载前同步 `state.language`，成功 mount 后跳过 legacy Payments 内部渲染和自动同步，离开页面先卸载；modern bundle 不可用时恢复 `renderPaymentsPage()` 和原有静默同步。
-- 验证证据：8 个 Vitest 文件、46 项测试通过；`npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、Payments/build/inventory 契约、`node scripts/test_zh_chatbot.mjs`、`node --check public/auth.js`、`node --check public/app.js`、Python 编译检查和 `git diff --check` 通过；`python -m scripts.test_payment_placeholders` 已运行并返回 0，但当前环境缺少 `output/payment_records.json`，其集成部分按脚本逻辑跳过。
+- 验证证据：8 个 Vitest 文件、48 项测试通过；`npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、Payments/build/inventory 契约、`node scripts/test_zh_chatbot.mjs`、`node --check public/auth.js`、`node --check public/app.js`、Python 编译检查和 `git diff --check` 通过；`python -m scripts.test_payment_placeholders` 已运行并返回 0，但当前环境缺少 `output/payment_records.json`，其集成部分按脚本逻辑跳过。
 - 浏览器证据：browser-act 当前无已配置浏览器，因此使用应用内 Edge，在 `OI_AUTH_ENABLED=0`、8766 隔离服务验证 Payments modern root、legacy 父级隐藏边界、桌面/390px 移动布局、4×2 摘要卡、固定高度结果区和表格独立滚动、语言切换后再进入 Payments、状态/搜索筛选、同步失败 alert 和 saved rows 保留；页面级横向溢出为 false，桌面表格保留横向滚动。`/api/levanta/payments` 因缺少 `LEVANTA_API_KEY` 返回受控 503，未将其误判为成功同步；导出按钮可用，浏览器下载事件监听未捕获 Blob 下载，字段级导出由组件测试与 bridge/build 契约覆盖。
-- 当前状态：Payments 已进入迁移清单 `modern`；M4 仍为进行中，下一步需等待 review checkpoint 后再开始 Publishers。当前未提交、未推送、未创建 PR；8766 本地服务已停止并确认端口空闲。
+- 视觉基线状态：已依据 2.5 节流程完成旧项目 CSS/HTML/渲染结构盘点、同数据同视口几何对比、计算样式核对、移动响应式检查和受控错误状态检查；详细证据见上方“已迁移页面视觉基线对齐记录（2026-08-28）”。
+- 当前状态：Payments 的功能验收与视觉基线对齐均已完成，仍保留 legacy fallback；M4 继续进行，下一步仍需按同一流程迁移和对齐 Publishers。当前未提交、未推送、未创建 PR；本轮使用的 8770/8771 本地服务在收尾时停止并复查端口。
 
 ### 任务 6：M5——迁移 Targets、Category Report 与 Tier 管理
 
@@ -794,9 +890,10 @@ node scripts/test_offer_list_tracker_frontend.mjs
 | 构建 | 输出目录、bundle、无 CDN 依赖 | `npm --prefix frontend run build` |
 | 浏览器 | DOM、交互、焦点、响应式、真实请求 | `browser-act` |
 | 双运行 | 本地 Python 与 Vercel 预览 | 本地服务 + 预览环境 |
+| 视觉对齐 | 旧 CSS/HTML 基线、计算样式、几何、状态、截图和移动端布局 | 只读旧项目 + 浏览器探针 + 同视口截图对比 |
 | 差异 | 只包含当前任务文件、无缓存误改 | `git diff --check`、`git status --short` |
 
-每个阶段至少执行与该阶段相关的目标测试；M7/M8 必须执行 CI 中的完整命令集合。静态测试通过不能替代浏览器验证，登录门禁导致页面不可见时必须明确标记浏览器验收未完成。
+每个阶段至少执行与该阶段相关的目标测试和 2.5 节视觉对齐流程；M7/M8 必须执行 CI 中的完整命令集合。静态测试通过不能替代浏览器和新旧视觉验证，登录门禁导致页面不可见时必须明确标记浏览器验收未完成。
 
 ---
 
@@ -855,9 +952,9 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | --- | --- | --- |
 | M0 ADR 与盘点 | 已验证 | ADR、12 页面迁移清单和 `test_frontend_migration_inventory.mjs` 已落地并进入 CI；目标检查通过 |
 | M1 双运行骨架 | 已验证 | Vue/TS/Vite、只读 Legacy Bridge、认证启动链、Vercel/CI 构建均已接入；目标测试和真实浏览器双运行验收通过 |
-| M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页/导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；高级面板仍保留在 legacy |
+| M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页、列设置、优先级规则和导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；旧导出设置对话框仍保留在 legacy |
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
-| M4 Shell 与低风险页面 | 进行中 | Payments 已由 Vue modern root 接管并保留 fallback；Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 与 Shell 尚未迁移 |
+| M4 Shell 与低风险页面 | 进行中 | Payments 已由 Vue modern root 接管并完成旧项目 CSS/HTML 视觉基线对齐，legacy fallback 仍保留；Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 与 Shell 尚未迁移 |
 | M5 Targets/Category/Tier | 未开始 | 当前仍由 legacy 路径渲染 |
 | M6 Chatbot/Agent | 未开始 | 当前仍由原生 JS 执行 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
@@ -870,10 +967,11 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
+- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；Offer Tracker 与 Payments 已按该流程完成首轮对齐并记录差异，后续页面必须复用同一流程。
 - 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M4 Payments 已完成本批次验收，M4 其余页面仍需分批执行，后续阶段仍需单独授权。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 已完成，M4 其余页面及后续阶段尚未完成。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 已完成并完成视觉基线对齐，M4 其余页面及后续阶段尚未完成。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。

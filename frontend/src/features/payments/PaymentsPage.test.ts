@@ -76,6 +76,19 @@ function mountPayments(
 }
 
 describe("PaymentsPage", () => {
+  it("保留旧页面的付款摘要、筛选和结果面板层级", () => {
+    const wrapper = mountPayments();
+
+    expect(wrapper.find(".payment-summary").exists()).toBe(true);
+    expect(wrapper.find(".payment-status-row").exists()).toBe(true);
+    expect(wrapper.find(".panel.payment-filters").exists()).toBe(true);
+    expect(wrapper.find(".payment-layout").exists()).toBe(true);
+    expect(wrapper.find(".table-panel.payment-table-panel").exists()).toBe(true);
+    expect(wrapper.find(".table-toolbar").exists()).toBe(true);
+    expect(wrapper.find(".table-wrap.payment-table-wrap").exists()).toBe(true);
+    expect(wrapper.find("table.payment-table").exists()).toBe(true);
+  });
+
   it("保留截图中的紧凑四列两行付款摘要结构", () => {
     const wrapper = mountPayments();
 
