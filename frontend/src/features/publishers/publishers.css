@@ -1,0 +1,46 @@
+/* Publishers keeps the legacy geometry classes so the Vue migration can be
+ * compared against the established page at the same viewport. */
+.publishers-modern-page {
+  /* #publishersPage remains the outer legacy shell and owns the page inset.
+   * Reset the reused page geometry here so the Vue island does not add a
+   * second 24px padding layer while retaining the legacy descendant rules. */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.publishers-modern-page [data-layout-id] {
+  box-sizing: border-box;
+  transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.publishers-modern-page.layout-editing [data-layout-id] {
+  cursor: grab;
+}
+
+.publishers-modern-page.layout-editing [data-layout-id]:active {
+  cursor: grabbing;
+}
+
+.publishers-modern-page .publisher-affinity-status.error {
+  border-color: #f1b9b9;
+  background: #fff5f5;
+  color: #b42318;
+}
+
+.publishers-modern-page .publisher-affinity-status.loading {
+  border-color: #c9d9e3;
+  background: #f6fafc;
+  color: #416273;
+}
+
+.publishers-modern-page .publisher-merchant-match-result {
+  min-width: 0;
+}
