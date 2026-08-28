@@ -82,7 +82,7 @@
     {
       "pageKey": "brand-media",
       "label": "Brand Media",
-      "status": "dual",
+      "status": "modern",
       "roots": ["#brandMediaPage", "#brandMediaModernRoot"],
       "legacyEntry": ["switchPage()", "brandMediaFactory", "renderBrandMediaPage()", "_brandMediaLoadTrend()", "_bindBrandMediaPageInteractions()"],
       "state": ["state.brandMedia", "useBrandMedia() 的 merchant/date/manager/lockedKeys 状态"],
@@ -91,8 +91,8 @@
       "exports": [],
       "overlays": ["expanded brand media chart", "merchant combobox dropdown"],
       "tests": ["scripts/test_brand_media_trend.py", "scripts/test_brand_media_trend_frontend.mjs", "scripts/test_brand_media_frontend.mjs", "frontend/src/features/brand-media/brandMediaModel.test.ts", "frontend/src/features/brand-media/useBrandMedia.test.ts", "frontend/src/features/brand-media/BrandMediaPage.test.ts"],
-      "testGap": "缺少 BrowserAct 390px 真实视口验收；真实趋势接口在当前本地环境返回 503，已验证受控错误，但未能以真实数据完成图表对比。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端已完成旧 CSS/HTML 几何对齐及 BrowserAct hover、Manager、锁定、展开/Escape 验收。"
+      "testGap": "真实趋势接口在当前本地隔离工作树因缺少 .env 仍无法复现；用户已完成 390px 真实视口验收，暂无已知页面级验收缺口。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端已完成旧 CSS/HTML 几何对齐及 BrowserAct hover、Manager、锁定、展开/Escape 验收；用户已完成 390px 真实视口验收并确认无问题，本页状态已由 dual 升级为 modern。"
     },
     {
       "pageKey": "revenue-flow",
@@ -222,7 +222,7 @@
 1. P0：Revenue Flow 没有独立回归，进入其迁移任务前必须建立 Sankey 数据、选择上限、缓存和图表生命周期测试。
 2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
 3. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
-4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，但仍缺少 390px 真实视口验收；Google Ads 和 Tier 仍需补完整真实浏览器交互证据。
+4. P1：Brand Media 已完成桌面与 390px 移动端用户验收；Google Ads 和 Tier 仍需补完整真实浏览器交互证据。
 
 ## 状态更新记录
 
@@ -232,4 +232,4 @@
 | 2026-08-27 | Offer List Tracker | `legacy` | `dual` | Vue 核心筛选/排序/选择/分页/导出入口、legacy fallback、Vitest/构建契约和应用内浏览器验收通过；高级面板仍由 legacy 提供 |
 | 2026-08-27 | 共享前端模块 | 未建立 | 已建立 | M3 新增 shared API/error、Tier/Payment 契约和 i18n；Offer Tracker 已接入，Vitest、类型检查、构建和旧回归通过；其他页面仍待后续迁移 |
 | 2026-08-27 | Payments | `legacy` | `modern` | Vue model/composable/组件、live API 错误保留 saved rows、月份/状态/搜索/排序、零金额排除、窄 XLSX bridge、legacy fallback、全量 Vitest/类型检查/构建和应用内 Edge 浏览器验收通过；browser-act 无已配置浏览器，8766 隔离服务的 API 仍因缺少 `LEVANTA_API_KEY` 返回 503，受控错误路径已验证 |
-| 2026-08-28 | Brand Media | `legacy` | `dual` | Vue model/composable/组件、趋势请求取消与过期响应保护、订单/点击图、Manager/媒体锁定、展开/Escape、错误/空状态、legacy fallback、全量 Vitest/类型检查/构建和 Brand Media 契约通过；BrowserAct 已验证桌面新旧几何对齐及 populated fixture 的 hover/锁定/Manager/展开交互，真实趋势接口在本地返回 503，390px 真实视口仍待补验 |
+| 2026-08-28 | Brand Media | `legacy` | `modern` | Vue model/composable/组件、趋势请求取消与过期响应保护、订单/点击图、Manager/媒体锁定、展开/Escape、错误/空状态、legacy fallback、全量 Vitest/类型检查/构建和 Brand Media 契约通过；BrowserAct 已验证桌面新旧几何对齐及 populated fixture 的 hover/锁定/Manager/展开交互，用户已完成 390px 真实视口验收并确认无问题；真实趋势接口在当前迁移工作树因缺少 `.env` 返回 503，作为运行环境边界保留记录 |

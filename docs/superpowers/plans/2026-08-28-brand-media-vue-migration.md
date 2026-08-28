@@ -30,7 +30,7 @@
 3. [x] 新增 `frontend/src/features/brand-media/` 下的类型、model、composable、组件、样式和测试。
 4. [x] 在 `entry.ts` 注册 `brand-media`，使用 shared API client；在 legacy 入口增加 modern root 挂载和卸载边界。
 5. [x] 保持旧 DOM 和旧事件作为 fallback，避免新旧事件同时绑定。
-6. [ ] 按旧版相同数据、语言和视口对齐桌面端、移动端、加载/错误/空状态、hover、锁定和展开状态（桌面及交互状态已完成，390px BrowserAct 真实视口仍待补验）。
+6. [x] 按旧版相同数据、语言和视口对齐桌面端、移动端、加载/错误/空状态、hover、锁定和展开状态（桌面、390px 移动端及关键交互均已验收）。
 7. [x] 运行本页测试、旧版回归、typecheck、build、迁移清单契约和浏览器验收；证据完整后更新主 RoadMap 与迁移清单。
 
 ## 验收门槛
@@ -56,5 +56,5 @@
 - 视觉对齐：读取旧项目 CSS/HTML/渲染结构，在 BrowserAct 相同桌面视口完成空状态几何对齐；旧版与 Vue 版页面、页头、筛选卡、空 KPI 占位、图表和表格的关键几何一致。旧版截图为 `C:\Users\yg\AppData\Local\Temp\brand-media-legacy-desktop.png`，对齐截图为 `C:\Users\yg\AppData\Local\Temp\brand-media-modern-aligned.png`。
 - 交互验收：使用 BrowserAct 的会话 fixture 验证品牌选择、Manager 过滤、订单/Revenue hover、缺失日期断线、零订单点、媒体锁定、单媒体/累计点击图、展开、Escape 焦点恢复；验证截图为 `C:\Users\yg\AppData\Local\Temp\brand-media-modern-populated.png`。fixture 只存在于浏览器会话中，没有修改后端或仓库数据。
 - 真实 API：`/api/ui/db/publishers` 返回 200；趋势接口在当前本地数据库权限/配置下返回 503，现代页面显示受控错误。未将真实接口失败宣称为 populated 成功。
-- 未完成门槛：BrowserAct 当前 CLI 没有 viewport emulation 选项，因此 390px 真实视口验收待后续具备可调视口的 BrowserAct 环境后补做；在此之前页面保持 `dual`，不升级为 `modern`。
+- 用户验收补充（2026-08-28）：用户已完成 390px 真实视口验收并确认无问题；结合桌面与关键交互证据，本页视觉对齐门槛已完成，状态由 `dual` 升级为 `modern`。当前迁移工作树的 BrowserAct CLI 仍没有 viewport emulation 选项，因此该移动端结果以用户验收为记录依据。
 - 自动化结果：全量 Vitest 11 个文件/61 项通过；typecheck、build、Brand Media 前端与趋势契约、迁移清单/build 契约、既有 Payments 契约、Python 趋势聚合检查和 legacy JS 语法检查均通过。
