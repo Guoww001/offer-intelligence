@@ -3,6 +3,7 @@ import { createApp, h } from "vue";
 import "./shared/styles/modern-root.css";
 import "./features/offer-tracker/offerTracker.css";
 import "./features/payments/payments.css";
+import "./features/brand-media/brandMedia.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
 import type {
@@ -20,6 +21,8 @@ import { apiRequest } from "./shared/api/client";
 import { createI18nStore } from "./shared/i18n";
 import OfferTrackerPage from "./features/offer-tracker/OfferTrackerPage.vue";
 import PaymentsPage from "./features/payments/PaymentsPage.vue";
+import BrandMediaPage from "./features/brand-media/BrandMediaPage.vue";
+import type { BrandMediaTrendRequest } from "./features/brand-media/useBrandMedia";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -106,6 +109,21 @@ async function loadPayments(): Promise<PaymentLivePayload> {
   };
 }
 
+async function loadBrandMediaCatalog(): Promise<unknown> {
+  return apiRequest<unknown>("/api/ui/db/publishers");
+}
+
+async function loadBrandMediaTrend(request: BrandMediaTrendRequest): Promise<unknown> {
+  const query = new URLSearchParams({
+    merchantId: request.merchantId,
+    startDate: request.startDate,
+    endDate: request.endDate
+  });
+  return apiRequest<unknown>(`/api/ui/db/brand-media-trend?${query.toString()}`, {
+    signal: request.signal
+  });
+}
+
 function downloadPayments(payload: PaymentExportPayload): boolean {
   const bridge = window.OI_LEGACY_BRIDGE;
   if (!bridge) return false;
@@ -169,7 +187,33 @@ const paymentsFactory: ModernPageFactory = (element): ModernPageController => {
   };
 };
 
+const brandMediaFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernBrandMediaMount",
+    setup() {
+      return () => h(BrandMediaPage, {
+        language: i18n.language.value,
+        loadCatalog: loadBrandMediaCatalog,
+        loadTrend: loadBrandMediaTrend
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 window.OI_MODERN_APP = createModernAppApi({
   "offer-list-tracker": offerTrackerFactory,
-  payments: paymentsFactory
+  payments: paymentsFactory,
+  "brand-media": brandMediaFactory
 });

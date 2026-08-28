@@ -57,10 +57,14 @@ read("frontend/src/legacy/contracts.ts");
 read("frontend/src/legacy/bridge.ts");
 read("frontend/src/shared/styles/modern-root.css");
 read("frontend/src/entry.ts");
+read("frontend/src/features/brand-media/BrandMediaPage.vue");
+read("frontend/src/features/brand-media/brandMediaModel.ts");
+read("frontend/src/features/brand-media/useBrandMedia.ts");
+read("frontend/src/features/brand-media/brandMedia.css");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260827-vue-m4-payments'),
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260828-vue-m4-brand-media'),
   "index.html 缺少 M4 本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
@@ -71,7 +75,7 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260827-vue-m4-payments";'),
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-brand-media";'),
   "auth.js 缺少 M4 本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
@@ -89,6 +93,14 @@ const paymentsSwitchStart = legacyApp.indexOf("if (isPayments) {");
 const paymentsSwitchEnd = legacyApp.indexOf('if (page === "publishers")', paymentsSwitchStart);
 assert(paymentsSwitchStart >= 0 && paymentsSwitchEnd > paymentsSwitchStart, "Payments 页面切换边界不存在");
 const paymentsSwitchSource = legacyApp.slice(paymentsSwitchStart, paymentsSwitchEnd);
+const brandMediaSwitchStart = legacyApp.indexOf('if (previousPage === "brand-media"');
+const brandMediaSwitchEnd = legacyApp.indexOf("if (isRevenueFlow)", brandMediaSwitchStart);
+assert(brandMediaSwitchStart >= 0 && brandMediaSwitchEnd > brandMediaSwitchStart, "Brand Media 页面切换边界不存在");
+const brandMediaSwitchSource = legacyApp.slice(brandMediaSwitchStart, brandMediaSwitchEnd);
+assert(brandMediaSwitchSource.includes("brandMediaModernRoot"), "Brand Media 未接入 modern root");
+assert(brandMediaSwitchSource.includes('mountPage("brand-media"'), "switchPage() 未挂载 modern Brand Media");
+assert(brandMediaSwitchSource.includes('unmountPage("brand-media"'), "switchPage() 未卸载 modern Brand Media");
+assert(brandMediaSwitchSource.includes("renderBrandMediaPage()"), "Brand Media 缺少 legacy fallback");
 assert(paymentsSwitchSource.includes("modernApp.setLanguage(state.language)"), "Payments 挂载前必须同步现代页面语言");
 
 const vercel = JSON.parse(read("vercel.json"));
@@ -130,5 +142,7 @@ const modernApp = sandbox.window.OI_MODERN_APP;
 assert(modernApp && typeof modernApp.bootstrap === "function", "modern bundle 未注册 OI_MODERN_APP");
 assert(modernApp.hasPage("offer-list-tracker") === true, "M2 必须注册 Offer Tracker 页面");
 assert(modernApp.hasPage("payments") === true, "M4 必须注册 Payments 页面");
+
+assert(modernApp.hasPage("brand-media") === true, "Brand Media 必须注册 modern 页面");
 
 console.log("PASS: frontend build contract");
