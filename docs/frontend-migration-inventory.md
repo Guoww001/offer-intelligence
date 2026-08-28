@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-08-28（Publishers 与 Brand Media Vue 迁移交付）
+> 最近更新：2026-08-28（Revenue Flow Vue 迁移实现交付）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -93,23 +93,23 @@
       "exports": [],
       "overlays": ["expanded brand media chart", "merchant combobox dropdown"],
       "tests": ["scripts/test_brand_media_trend.py", "scripts/test_brand_media_trend_frontend.mjs", "scripts/test_brand_media_frontend.mjs", "frontend/src/features/brand-media/brandMediaModel.test.ts", "frontend/src/features/brand-media/useBrandMedia.test.ts", "frontend/src/features/brand-media/BrandMediaPage.test.ts"],
-      "testGap": "缺少 BrowserAct 390px 真实视口验收；真实趋势接口在当前本地环境返回 503，已验证受控错误，但未能以真实数据完成图表对比。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端已完成旧 CSS/HTML 几何对齐及 BrowserAct hover、Manager、锁定、展开/Escape 验收；390px BrowserAct 真实视口和真实趋势 populated 验收仍是未完成门槛。"
+      "testGap": "真实趋势接口在当前本地环境返回 503，已验证受控错误，但未能以真实数据完成图表对比；390px 视口已由用户验收通过。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端已完成旧 CSS/HTML 几何对齐及 BrowserAct hover、Manager、锁定、展开/Escape 验收；390px 已由用户验收通过，真实趋势 populated 验收仍待数据环境补验。"
     },
     {
       "pageKey": "revenue-flow",
       "label": "Revenue Flow",
-      "status": "legacy",
-      "roots": ["#revenueFlowPage"],
-      "legacyEntry": ["switchPage()", "renderRevenueFlowPage()", "_revenueFlowLoad()", "_bindRevenueFlowPageInteractions()"],
-      "state": ["state.revenueFlow"],
+      "status": "dual",
+      "roots": ["#revenueFlowPage", "#revenueFlowModernRoot"],
+      "legacyEntry": ["switchPage()", "renderRevenueFlowPage()", "_revenueFlowLoad()", "_bindRevenueFlowPageInteractions()", "modernApp.mountPage(\"revenue-flow\")"],
+      "state": ["state.revenueFlow", "useRevenueFlow() 的品牌选择/日期/请求/展开状态"],
       "apis": ["/api/ui/db/publishers", "/api/ui/db/brand-media-sankey"],
       "storage": [],
       "exports": [],
       "overlays": ["expanded revenue flow chart", "merchant multi-select dropdown"],
-      "tests": [],
-      "testGap": "当前没有 Revenue Flow 页面或 Sankey Canvas 的独立回归；进入 M4 前必须先补行为测试。",
-      "notes": "最多选择 12 个品牌，页面维护请求去重、payload 缓存、延迟加载和图表展开生命周期。"
+      "tests": ["frontend/src/features/revenue-flow/revenueFlowModel.test.ts", "frontend/src/features/revenue-flow/useRevenueFlow.test.ts", "frontend/src/features/revenue-flow/RevenueFlowPage.test.ts", "scripts/test_revenue_flow_frontend.mjs"],
+      "testGap": "现代 Revenue Flow feature、请求契约和 Canvas 交互已有聚焦回归；当前真实数据与 390px BrowserAct 验收仍待补验，页面已具备完整公共壳层和构建产物。",
+      "notes": "最多选择 12 个品牌，useRevenueFlow 维护模块级请求去重、进行中请求复用、AbortController、payload 缓存、日期快捷范围和展开生命周期；Revenue FlowSankey 使用 Canvas、可聚焦节点 overlay 与连线 Flow tooltip，entry 使用 /api/ui/db/publishers 和 /api/ui/db/brand-media-sankey，挂载失败保留 legacy fallback。"
     },
     {
       "pageKey": "google-ads",
@@ -221,10 +221,10 @@
 
 ## 当前测试缺口优先级
 
-1. P0：Revenue Flow 没有独立回归，进入其迁移任务前必须建立 Sankey 数据、选择上限、缓存和图表生命周期测试。
+1. P1：Revenue Flow 已建立 Sankey 数据、选择上限、缓存和图表生命周期回归；待补真实数据与 390px BrowserAct 验收。
 2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
 3. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
-4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，但仍缺少 390px 真实视口验收；Google Ads 和 Tier 仍需补完整真实浏览器交互证据。
+4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，390px 已由用户验收通过；Google Ads 和 Tier 仍需补完整真实浏览器交互证据。
 
 ## 状态更新记录
 
@@ -235,4 +235,5 @@
 | 2026-08-27 | 共享前端模块 | 未建立 | 已建立 | M3 新增 shared API/error、Tier/Payment 契约和 i18n；Offer Tracker 已接入，Vitest、类型检查、构建和旧回归通过；其他页面仍待后续迁移 |
 | 2026-08-27 | Payments | `legacy` | `modern` | Vue model/composable/组件、live API 错误保留 saved rows、月份/状态/搜索/排序、零金额排除、窄 XLSX bridge、legacy fallback、全量 Vitest/类型检查/构建和应用内 Edge 浏览器验收通过；browser-act 无已配置浏览器，8766 隔离服务的 API 仍因缺少 `LEVANTA_API_KEY` 返回 503，受控错误路径已验证 |
 | 2026-08-28 | Publishers | `legacy` | `modern` | Vue model/composable/组件覆盖筛选、排序、分页、列设置、布局编辑、Publisher profile/portfolio 和导出；选中媒体后的 profile KPI、零活动商家保留与 AOV N/A 边界已补回归；14 个 Vitest 文件/75 项测试、typecheck、build、页面契约和持久化 Sites 视觉对比通过；legacy fallback 仍保留 |
-| 2026-08-28 | Brand Media | `legacy` | `dual` | Vue model/composable/组件、趋势请求取消与过期响应保护、订单/点击图、Manager/媒体锁定、展开/Escape、错误/空状态、legacy fallback、全量 Vitest/类型检查/构建和 Brand Media 契约通过；BrowserAct 已验证桌面新旧几何对齐及 populated fixture 的 hover/锁定/Manager/展开交互，真实趋势接口在本地返回 503，390px 真实视口仍待补验 |
+| 2026-08-28 | Brand Media | `legacy` | `dual` | Vue model/composable/组件、趋势请求取消与过期响应保护、订单/点击图、Manager/媒体锁定、展开/Escape、错误/空状态、legacy fallback、全量 Vitest/类型检查/构建和 Brand Media 契约通过；BrowserAct 已验证桌面新旧几何对齐及 populated fixture 的 hover/锁定/Manager/展开交互，390px 已由用户验收通过，真实趋势接口在本地返回 503，populated 数据验收仍待补 |
+| 2026-08-28 | Revenue Flow | `legacy` | `dual` | 新增 Vue model/composable、Canvas Sankey、品牌多选/日期范围/展开与卸载清理、模块级缓存/进行中请求复用、Brand Media 初始状态继承和连线 Flow tooltip；stash 冲突已保留当前分支完整公共壳层并补入 Revenue Flow modern root；15 项 Revenue Flow Vitest、排除 Publishers 后前端 Vitest 14 个文件/77 项、全量 typecheck、build、build contract、Revenue Flow 前端契约、node --check public/app.js、Brand Media 后端回归和 git diff --check 通过；真实数据与 BrowserAct 验收待补 |

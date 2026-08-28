@@ -83,4 +83,21 @@ describe("BrandMediaPage", () => {
     expect(document.activeElement).toBe(expand.element);
     expect(wrapper.text()).toContain("Brand media performance");
   });
+
+  it("向 Revenue Flow bridge 发布当前品牌和日期范围", async () => {
+    const bridgeRoot = document.createElement("div");
+    bridgeRoot.id = "brandMediaModernRoot";
+    document.body.appendChild(bridgeRoot);
+    const wrapper = mountBrandMedia();
+
+    await wrapper.get('input[role="combobox"]').trigger("focus");
+    await wrapper.get('[role="option"][data-brand-media-merchant-id="101"]').trigger("click");
+    expect(bridgeRoot.dataset.revenueFlowMerchantId).toBe("101");
+    expect(bridgeRoot.dataset.revenueFlowMerchantName).toBe("Alpha");
+    expect(bridgeRoot.dataset.revenueFlowStartDate).toBe("2026-05-30");
+    expect(bridgeRoot.dataset.revenueFlowEndDate).toBe("2026-08-27");
+
+    wrapper.unmount();
+    bridgeRoot.remove();
+  });
 });

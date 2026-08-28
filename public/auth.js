@@ -1,6 +1,6 @@
 (function () {
   const APP_SCRIPT = "./app.js?v=20260826-agent-memory1";
-  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-publishers-brand-media";
+  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-revenue-flow";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 

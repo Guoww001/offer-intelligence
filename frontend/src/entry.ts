@@ -5,6 +5,7 @@ import "./features/offer-tracker/offerTracker.css";
 import "./features/payments/payments.css";
 import "./features/publishers/publishers.css";
 import "./features/brand-media/brandMedia.css";
+import "./features/revenue-flow/revenueFlow.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
 import type {
@@ -26,6 +27,9 @@ import PaymentsPage from "./features/payments/PaymentsPage.vue";
 import PublishersPage from "./features/publishers/PublishersPage.vue";
 import BrandMediaPage from "./features/brand-media/BrandMediaPage.vue";
 import type { BrandMediaTrendRequest } from "./features/brand-media/useBrandMedia";
+import RevenueFlowPage from "./features/revenue-flow/RevenueFlowPage.vue";
+import type { RevenueFlowCatalogOption } from "./features/revenue-flow/revenueFlowModel";
+import type { RevenueFlowTrendRequest } from "./features/revenue-flow/useRevenueFlow";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -136,6 +140,50 @@ async function loadBrandMediaTrend(request: BrandMediaTrendRequest): Promise<unk
   return apiRequest<unknown>(`/api/ui/db/brand-media-trend?${query.toString()}`, {
     signal: request.signal
   });
+}
+
+async function loadRevenueFlowCatalog(): Promise<unknown> {
+  return apiRequest<unknown>("/api/ui/db/publishers");
+}
+
+async function loadRevenueFlowTrend(request: RevenueFlowTrendRequest): Promise<unknown> {
+  const query = new URLSearchParams({
+    merchantIds: request.merchantIds.join(","),
+    startDate: request.startDate,
+    endDate: request.endDate
+  });
+  return apiRequest<unknown>("/api/ui/db/brand-media-sankey?" + query.toString(), {
+    signal: request.signal,
+    timeoutMs: 30_000
+  });
+}
+
+function revenueFlowInitialState(element: HTMLElement): {
+  readonly merchants: readonly RevenueFlowCatalogOption[];
+  readonly startDate: string;
+  readonly endDate: string;
+} {
+  let merchants: RevenueFlowCatalogOption[] = [];
+  try {
+    const parsed = JSON.parse(element.dataset.initialMerchants || "[]") as unknown;
+    if (Array.isArray(parsed)) {
+      merchants = parsed.filter((item): item is Record<string, unknown> => isRecord(item))
+        .map((item) => ({
+          merchantId: stringValue(item.merchantId || item.id),
+          name: stringValue(item.name || item.merchantName || item.merchantId || item.id),
+          count: Number.isFinite(Number(item.count)) ? Math.max(0, Number(item.count)) : 0
+        }))
+        .filter((item) => item.merchantId)
+        .slice(0, 12);
+    }
+  } catch {
+    merchants = [];
+  }
+  return {
+    merchants,
+    startDate: stringValue(element.dataset.initialStartDate),
+    endDate: stringValue(element.dataset.initialEndDate)
+  };
 }
 
 function downloadPayments(payload: PaymentExportPayload): boolean {
@@ -258,9 +306,39 @@ const brandMediaFactory: ModernPageFactory = (element): ModernPageController => 
   };
 };
 
+const revenueFlowFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const initialState = revenueFlowInitialState(element);
+  const app = createApp({
+    name: "ModernRevenueFlowMount",
+    setup() {
+      return () => h(RevenueFlowPage, {
+        language: i18n.language.value,
+        initialMerchants: initialState.merchants,
+        initialStartDate: initialState.startDate,
+        initialEndDate: initialState.endDate,
+        loadCatalog: loadRevenueFlowCatalog,
+        loadTrend: loadRevenueFlowTrend
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 window.OI_MODERN_APP = createModernAppApi({
   "offer-list-tracker": offerTrackerFactory,
   payments: paymentsFactory,
   publishers: publishersFactory,
-  "brand-media": brandMediaFactory
+  "brand-media": brandMediaFactory,
+  "revenue-flow": revenueFlowFactory
 });
