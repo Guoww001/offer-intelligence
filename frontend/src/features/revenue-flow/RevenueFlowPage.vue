@@ -309,9 +309,15 @@ watch(() => flow.chartExpanded.value, (expanded) => {
             type="button"
             class="brand-media-chart-expand revenue-flow-expand"
             data-testid="revenue-flow-expand"
+            aria-controls="revenueFlowPanel"
             :aria-expanded="flow.chartExpanded.value"
             @click="setChartExpanded(!flow.chartExpanded.value)"
-          >{{ flow.chartExpanded.value ? copy.collapseChart : copy.expandChart }}</button>
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6" />
+            </svg>
+            <span class="brand-media-chart-expand-label sr-only">{{ flow.chartExpanded.value ? copy.collapseChart : copy.expandChart }}</span>
+          </button>
         </div>
       </header>
       <RevenueFlowSankey

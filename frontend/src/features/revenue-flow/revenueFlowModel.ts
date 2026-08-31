@@ -88,6 +88,7 @@ export interface RevenueFlowLayoutNode extends RevenueFlowNode {
   readonly width: number;
   readonly height: number;
   readonly column: RevenueFlowNodeType;
+  readonly color: string;
 }
 
 export interface RevenueFlowLayoutLink {
@@ -101,6 +102,7 @@ export interface RevenueFlowLayoutLink {
   readonly sourceBottom: number;
   readonly targetTop: number;
   readonly targetBottom: number;
+  readonly curve: number;
   readonly color: string;
 }
 
@@ -110,6 +112,13 @@ export interface RevenueFlowLayout {
   readonly height: number;
   readonly graphTop: number;
   readonly graphHeight: number;
+  readonly top: number;
+  readonly bottom: number;
+  readonly headerY: number;
+  readonly panPaddingX: number;
+  readonly panPaddingY: number;
+  readonly initialScrollLeft: number;
+  readonly initialScrollTop: number;
   readonly nodeWidth: number;
   readonly nodeGap: number;
   readonly columnX: Readonly<Record<RevenueFlowNodeType, number>>;
@@ -479,104 +488,271 @@ function totalForLinks(links: readonly RevenueFlowLink[], nodeId: string, side: 
   ), 0);
 }
 
+function constrainedNodeHeights(
+  columnNodes: readonly RevenueFlowNode[],
+  available: number,
+  minimumHeight: number
+): number[] {
+  const space = Math.max(0, Number(available || 0));
+  const minimum = Math.max(0, Number(minimumHeight || 0));
+  if (!columnNodes.length) return [];
+
+  const heights = columnNodes.map(() => 0);
+  const values = columnNodes.map((node) => Math.max(0, Number(node.value || 0)));
+  let active = values
+    .map((value, index) => value > 0 ? index : -1)
+    .filter((index) => index >= 0);
+  let remainingSpace = space;
+
+  values.forEach((value, index) => {
+    if (value <= 0) {
+      heights[index] = minimum;
+      remainingSpace -= minimum;
+    }
+  });
+  remainingSpace = Math.max(0, remainingSpace);
+
+  while (active.length) {
+    const remainingValue = active.reduce((total, index) => total + values[index]!, 0);
+    const scale = remainingValue > 0 ? remainingSpace / remainingValue : 0;
+    const constrained = active.filter((index) => values[index]! * scale < minimum);
+    if (!constrained.length) {
+      let allocated = 0;
+      active.forEach((index, activeIndex) => {
+        const height = activeIndex === active.length - 1
+          ? Math.max(0, remainingSpace - allocated)
+          : values[index]! * scale;
+        heights[index] = height;
+        allocated += height;
+      });
+      remainingSpace = 0;
+      break;
+    }
+
+    const constrainedIndexes = new Set(constrained);
+    constrained.forEach((index) => {
+      heights[index] = minimum;
+      remainingSpace = Math.max(0, remainingSpace - minimum);
+    });
+    active = active.filter((index) => !constrainedIndexes.has(index));
+  }
+
+  return heights;
+}
+
 export function buildRevenueFlowLayout(model: RevenueFlowModel, width = 1160): RevenueFlowLayout {
-  const surfaceWidth = Math.max(1160, Number.isFinite(width) ? width : 1160);
-  const nodeWidth = 14;
-  const nodeGap = 14;
-  const graphTop = 64;
-  const graphBottom = 30;
-  const requiredGraphHeight = Math.max(
-    390,
-    ...REVENUE_FLOW_NODE_TYPES.map((type) => {
-      const count = model[type === "brand" ? "brands" : type === "product" ? "products" : "media"].length;
-      return count ? count * 14 + Math.max(0, count - 1) * nodeGap : 390;
-    })
-  );
-  const graphHeight = requiredGraphHeight;
-  const height = graphTop + graphHeight + graphBottom;
-  const columnX: Record<RevenueFlowNodeType, number> = {
-    brand: 44,
-    product: Math.round(surfaceWidth / 2 - nodeWidth / 2),
-    media: Math.max(0, surfaceWidth - 58)
+  const graphWidth = Math.max(1160, Number.isFinite(width) ? width : 1160);
+  const itemCount = Math.max(model.brands.length, model.products.length, model.media.length, 1);
+  const nodeWidth = 12;
+  const minimumNodeHeight = 14;
+  const nodeGap = Math.min(14, Math.max(5, 10 - itemCount / 40));
+  const graphTop = 70;
+  const graphBottom = 26;
+  const minimumGraphHeight = graphTop + graphBottom + minimumNodeHeight * itemCount
+    + nodeGap * Math.max(0, itemCount - 1);
+  const graphHeight = Math.max(390, 128 + itemCount * 31, Math.ceil(minimumGraphHeight));
+  const panPaddingX = Math.max(220, Math.min(360, Math.round(graphWidth * 0.18)));
+  const panPaddingY = 96;
+  const height = graphHeight + panPaddingY * 2;
+  const top = panPaddingY + graphTop;
+  const bottom = panPaddingY + graphBottom;
+  const innerHeight = graphHeight - graphTop - graphBottom;
+  const responsiveExtra = Math.max(0, graphWidth - 1160);
+  const graphColumnX: Record<RevenueFlowNodeType, number> = {
+    brand: 36,
+    product: Math.round(400 + responsiveExtra * 0.45),
+    media: Math.round(820 + responsiveExtra * 0.65)
   };
+  const columnX: Record<RevenueFlowNodeType, number> = {
+    brand: graphColumnX.brand + panPaddingX,
+    product: graphColumnX.product + panPaddingX,
+    media: graphColumnX.media + panPaddingX
+  };
+  const graphSurfaceWidth = Math.max(
+    graphWidth,
+    graphColumnX.media + nodeWidth + 26 + 360 + 28
+  );
+  const surfaceWidth = graphSurfaceWidth + panPaddingX * 2;
   const columns = {
     brand: model.brands,
     product: model.products,
     media: model.media
   } as const;
+  const colors: Record<RevenueFlowNodeType, (index: number) => string> = {
+    brand: (index) => model.brands.length === 1 ? "#17233d" : revenueFlowColor(index * 2),
+    product: () => "#246bfe",
+    media: (index) => revenueFlowColor(index)
+  };
   const layoutNodes: RevenueFlowLayoutNode[] = [];
   const layoutById: Record<string, RevenueFlowLayoutNode> = {};
 
-  for (const type of REVENUE_FLOW_NODE_TYPES) {
-    const sourceNodes = columns[type];
-    const totalValue = sourceNodes.reduce((total, node) => total + node.value, 0);
-    const usableHeight = Math.max(0, graphHeight - Math.max(0, sourceNodes.length - 1) * nodeGap);
-    const rawHeights = sourceNodes.map((node) => Math.max(
-      14,
-      usableHeight * (totalValue > 0 ? node.value / totalValue : 1 / Math.max(1, sourceNodes.length))
-    ));
-    const rawTotal = rawHeights.reduce((total, item) => total + item, 0);
-    const scale = rawTotal > usableHeight && rawTotal > 0 ? usableHeight / rawTotal : 1;
-    const heights = rawHeights.map((item) => Math.max(14, item * scale));
-    const occupiedHeight = heights.reduce((total, item) => total + item, 0)
-      + Math.max(0, heights.length - 1) * nodeGap;
-    let y = graphTop + Math.max(0, (graphHeight - occupiedHeight) / 2);
-    for (let index = 0; index < sourceNodes.length; index += 1) {
-      const node = sourceNodes[index];
-      if (!node) continue;
+  function layoutColumn(
+    columnNodes: readonly RevenueFlowNode[],
+    type: RevenueFlowNodeType
+  ): RevenueFlowLayoutNode[] {
+    const available = innerHeight - nodeGap * Math.max(0, columnNodes.length - 1);
+    const heights = constrainedNodeHeights(columnNodes, available, minimumNodeHeight);
+    const totalHeight = heights.reduce((total, item) => total + item, 0)
+      + nodeGap * Math.max(0, heights.length - 1);
+    let y = top + Math.max(0, (innerHeight - totalHeight) / 2);
+    return columnNodes.map((node, index) => {
       const layoutNode: RevenueFlowLayoutNode = {
         ...node,
         x: columnX[type],
         y,
         width: nodeWidth,
-        height: heights[index] || 14,
-        column: type
+        height: heights[index] || minimumNodeHeight,
+        column: type,
+        color: colors[type](index + 1)
       };
+      y += layoutNode.height + nodeGap;
       layoutNodes.push(layoutNode);
       layoutById[node.id] = layoutNode;
-      y += layoutNode.height + nodeGap;
+      return layoutNode;
+    });
+  }
+
+  layoutColumn(columns.brand, "brand");
+  layoutColumn(columns.product, "product");
+  layoutColumn(columns.media, "media");
+
+  const brandIdByProductId = { ...model.brandIdByProductId };
+  for (const link of model.links) {
+    const source = layoutById[link.source];
+    const target = layoutById[link.target];
+    if (source?.column === "brand" && target?.column === "product") {
+      brandIdByProductId[target.id] = source.id;
     }
   }
 
-  const sourceCursors = new Map<string, number>();
-  const targetCursors = new Map<string, number>();
-  const layoutLinks: RevenueFlowLayoutLink[] = [];
-  const linkByIndex: Record<number, RevenueFlowLayoutLink> = {};
-  model.links.forEach((link, index) => {
+  type WorkingLink = {
+    index: number;
+    source: RevenueFlowLayoutNode;
+    target: RevenueFlowLayoutNode;
+    sourceId: string;
+    targetId: string;
+    value: number;
+    brandId: string;
+    curve: number;
+    color: string;
+    sourceTop?: number;
+    sourceBottom?: number;
+    targetTop?: number;
+    targetBottom?: number;
+    sourceShare?: number;
+    targetShare?: number;
+    sourceTotal?: number;
+    targetTotal?: number;
+  };
+
+  const workingLinks: WorkingLink[] = model.links.map((link, index) => {
     const source = layoutById[link.source];
     const target = layoutById[link.target];
-    if (!source || !target) return;
-    const sourceTotal = totalForLinks(model.links, source.id, "source") || source.value;
-    const targetTotal = totalForLinks(model.links, target.id, "target") || target.value;
-    const sourceHeight = Math.max(1, source.height * link.value / Math.max(1, sourceTotal));
-    const targetHeight = Math.max(1, target.height * link.value / Math.max(1, targetTotal));
-    const sourceTop = source.y + (sourceCursors.get(source.id) || 0);
-    const targetTop = target.y + (targetCursors.get(target.id) || 0);
-    sourceCursors.set(source.id, (sourceCursors.get(source.id) || 0) + sourceHeight);
-    targetCursors.set(target.id, (targetCursors.get(target.id) || 0) + targetHeight);
-    const layoutLink: RevenueFlowLayoutLink = {
+    if (!source || !target) return null;
+    const brandId = source.column === "brand"
+      ? source.id
+      : brandIdByProductId[source.id] || "";
+    const brandLayoutEntry = brandId ? layoutById[brandId] : undefined;
+    const color = source.column === "brand"
+      ? source.color
+      : model.brands.length > 1 && brandLayoutEntry
+        ? brandLayoutEntry.color
+        : "#246bfe";
+    return {
       index,
       source,
       target,
       sourceId: source.id,
       targetId: target.id,
-      value: link.value,
-      sourceTop,
-      sourceBottom: sourceTop + sourceHeight,
-      targetTop,
-      targetBottom: targetTop + targetHeight,
-      color: revenueFlowColor(brandIndex(model, linkBrandId(model, link)))
+      value: Math.max(0, Number(link.value || 0)),
+      brandId,
+      curve: Math.max(60, (target.x - (source.x + source.width)) * 0.46),
+      color
     };
-    layoutLinks.push(layoutLink);
-    linkByIndex[index] = layoutLink;
+  }).filter((link): link is WorkingLink => link !== null);
+
+  const outgoingByNodeId: Record<string, WorkingLink[]> = {};
+  const incomingByNodeId: Record<string, WorkingLink[]> = {};
+  for (const link of workingLinks) {
+    (outgoingByNodeId[link.sourceId] ||= []).push(link);
+    (incomingByNodeId[link.targetId] ||= []).push(link);
+  }
+  Object.values(outgoingByNodeId).forEach((links) => {
+    links.sort((left, right) => left.target.y - right.target.y || left.index - right.index);
+  });
+  Object.entries(incomingByNodeId).forEach(([nodeId, links]) => {
+    const target = layoutById[nodeId];
+    links.sort((left, right) => {
+      if (target?.column === "media") {
+        const leftBrand = layoutById[left.brandId];
+        const rightBrand = layoutById[right.brandId];
+        const brandOrder = (leftBrand?.y || 0) - (rightBrand?.y || 0);
+        if (brandOrder) return brandOrder;
+      }
+      return left.source.y - right.source.y || left.index - right.index;
+    });
   });
 
+  function allocateLinkSegments(
+    groups: Record<string, WorkingLink[]>,
+    topKey: "sourceTop" | "targetTop",
+    bottomKey: "sourceBottom" | "targetBottom",
+    shareKey: "sourceShare" | "targetShare",
+    totalKey: "sourceTotal" | "targetTotal"
+  ): void {
+    Object.entries(groups).forEach(([nodeId, links]) => {
+      const nodeLayout = layoutById[nodeId];
+      if (!nodeLayout || !links.length) return;
+      const total = links.reduce((sum, link) => sum + link.value, 0);
+      let cursor = nodeLayout.y;
+      const nodeBottom = nodeLayout.y + nodeLayout.height;
+      links.forEach((link, index) => {
+        const share = total > 0 ? link.value / total : 1 / links.length;
+        const segmentBottom = index === links.length - 1
+          ? nodeBottom
+          : Math.min(nodeBottom, cursor + nodeLayout.height * share);
+        link[topKey] = cursor;
+        link[bottomKey] = segmentBottom;
+        link[shareKey] = share;
+        link[totalKey] = total;
+        cursor = segmentBottom;
+      });
+    });
+  }
+
+  allocateLinkSegments(outgoingByNodeId, "sourceTop", "sourceBottom", "sourceShare", "sourceTotal");
+  allocateLinkSegments(incomingByNodeId, "targetTop", "targetBottom", "targetShare", "targetTotal");
+
+  const layoutLinks: RevenueFlowLayoutLink[] = workingLinks.map((link) => ({
+    index: link.index,
+    source: link.source,
+    target: link.target,
+    sourceId: link.sourceId,
+    targetId: link.targetId,
+    value: link.value,
+    sourceTop: link.sourceTop ?? link.source.y,
+    sourceBottom: link.sourceBottom ?? link.source.y,
+    targetTop: link.targetTop ?? link.target.y,
+    targetBottom: link.targetBottom ?? link.target.y,
+    curve: link.curve,
+    color: link.color
+  }));
+  const linkByIndex: Record<number, RevenueFlowLayoutLink> = {};
+  layoutLinks.forEach((link) => { linkByIndex[link.index] = link; });
+
   return {
-    width: Math.max(0, Number.isFinite(width) ? width : surfaceWidth),
+    width: graphWidth,
     surfaceWidth,
     height,
     graphTop,
     graphHeight,
+    top,
+    bottom,
+    headerY: panPaddingY + 25,
+    panPaddingX,
+    panPaddingY,
+    initialScrollLeft: panPaddingX,
+    initialScrollTop: panPaddingY,
     nodeWidth,
     nodeGap,
     columnX,
@@ -606,7 +782,7 @@ function ribbonRatio(link: RevenueFlowLayoutLink, x: number): number {
   const endX = link.target.x;
   const span = endX - startX;
   if (span <= 0) return 0;
-  const curve = Math.max(45, span * 0.42);
+  const curve = Math.max(60, span * 0.46);
   let ratio = Math.min(1, Math.max(0, (x - startX) / span));
   for (let iteration = 0; iteration < 4; iteration += 1) {
     const currentX = cubicAt(startX, startX + curve, endX - curve, endX, ratio);
@@ -655,6 +831,11 @@ export function revenueFlowHoverState(model: RevenueFlowModel, nodeId: string): 
     relatedNodeIds: nodeId ? [nodeId] : [],
     relatedLinkIndexes: []
   };
+}
+
+export function revenueFlowLinkOpacity(hasFocus: boolean, isRelated: boolean): number {
+  if (!hasFocus) return 0.34;
+  return isRelated ? 0.82 : 0.06;
 }
 
 export function toggleRevenueFlowNode(

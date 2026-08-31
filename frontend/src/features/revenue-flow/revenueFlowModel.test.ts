@@ -7,6 +7,7 @@ import {
   revenueFlowCatalogOptions,
   revenueFlowFlowDetail,
   revenueFlowFlowHitTest,
+  revenueFlowLinkOpacity,
   revenueFlowHoverState,
   toggleRevenueFlowNode,
   type RevenueFlowPayload
@@ -121,6 +122,39 @@ describe("revenueFlowModel", () => {
       new Set([targetLink.index])
     );
     expect(hit?.index).toBe(targetLink.index);
+  });
+
+  it("沿用 legacy Sankey 的留白、列位置、节点配色和流带曲率", () => {
+    const model = buildRevenueFlowModel(payload);
+    expect(model).not.toBeNull();
+    if (!model) return;
+
+    const layout = buildRevenueFlowLayout(model, 920);
+    const firstBrand = layout.nodes.find((node) => node.id === "brand:101");
+    const firstProduct = layout.nodes.find((node) => node.id === "product:101:ASIN-A");
+    const firstMedia = layout.nodes.find((node) => node.id === "media:7");
+    const firstLink = layout.links.find((link) => link.index === 0);
+    const firstProductMediaLink = layout.links.find((link) => link.index === 3);
+
+    expect(layout.nodeWidth).toBe(12);
+    expect(layout.nodeGap).toBeCloseTo(9.925, 3);
+    expect(layout.surfaceWidth).toBe(1686);
+    expect(layout.height).toBe(582);
+    expect(layout.columnX).toEqual({ brand: 256, product: 620, media: 1040 });
+    expect(firstBrand).toMatchObject({ x: 256, color: "hsl(275 72% 48%)" });
+    expect(firstProduct).toMatchObject({ x: 620, color: "#246bfe" });
+    expect(firstMedia).toMatchObject({ x: 1040, color: "hsl(138 72% 48%)" });
+    expect(firstLink).toMatchObject({ color: "hsl(275 72% 48%)" });
+    expect(firstProductMediaLink).toMatchObject({
+      color: "hsl(275 72% 48%)",
+      curve: 187.68
+    });
+  });
+
+  it("锁定节点时将相关流带提升到 legacy 高亮透明度", () => {
+    expect(revenueFlowLinkOpacity(false, false)).toBe(0.34);
+    expect(revenueFlowLinkOpacity(true, true)).toBe(0.82);
+    expect(revenueFlowLinkOpacity(true, false)).toBe(0.06);
   });
 
   it("只为产品和媒体节点建立同一收入流路径的 hover 关系", () => {

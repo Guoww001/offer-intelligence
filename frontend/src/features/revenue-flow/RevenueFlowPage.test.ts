@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
 import RevenueFlowPage from "./RevenueFlowPage.vue";
+import { buildRevenueFlowLayout, buildRevenueFlowModel } from "./revenueFlowModel";
 
 const catalog = {
   merchantNameMap: { "101": "Alpha", "202": "Beta" },
@@ -88,6 +89,113 @@ describe("RevenueFlowPage", () => {
     }
     expect(wrapper.findAll(".revenue-flow-selected-brand")).toHaveLength(12);
     expect(wrapper.text()).toContain("12");
+    wrapper.unmount();
+  });
+
+  it("使用 legacy Sankey 的节点颜色、标签和值展示", async () => {
+    const wrapper = mount(RevenueFlowPage, {
+      props: {
+        language: "zh",
+        catalogData: catalog,
+        today: () => new Date("2026-08-28T12:00:00"),
+        loadTrend: async () => trendPayload
+      }
+    });
+
+    await wrapper.find('[role="combobox"]').trigger("click");
+    await wrapper.find('[role="option"]').trigger("click");
+    await flushPromises();
+
+    const nodes = wrapper.findAll(".revenue-flow-sankey-node");
+    expect(nodes).toHaveLength(3);
+    const brand = nodes.find((node) => node.classes().includes("is-brand"));
+    const product = nodes.find((node) => node.classes().includes("is-product"));
+    const media = nodes.find((node) => node.classes().includes("is-media"));
+    const nodeLayer = wrapper.find(".brand-media-sankey-node-layer");
+    expect(nodeLayer.attributes("style")).toContain("width:");
+    expect(nodeLayer.attributes("style")).toContain("height:");
+    expect(brand?.classes()).toContain("brand-media-sankey-node-brand");
+    expect(brand?.find(".brand-media-sankey-node-bar").exists()).toBe(true);
+    expect(brand?.find(".brand-media-sankey-node-label").text()).toBe("Alpha");
+    expect(brand?.find(".brand-media-sankey-node-value").text()).toBe("$10");
+    expect(product?.find(".brand-media-sankey-node-label").text()).toBe("A");
+    expect(media?.find(".brand-media-sankey-node-label").text()).toBe("Media Seven");
+    expect(brand?.attributes("style")).toContain("--brand-media-node-color: #17233d");
+    expect(product?.attributes("style")).toContain("--brand-media-node-color: #246bfe");
+    expect(media?.attributes("style")).toContain("--brand-media-node-color: hsl(138 72% 48%)");
+    expect(wrapper.find(".revenue-flow-sankey-toolbar .brand-media-sankey-canvas-pan").exists()).toBe(true);
+    expect(wrapper.find('[data-testid="revenue-flow-expand"] svg').exists()).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it("点击商品节点后还原 legacy 锁定聚焦视觉状态", async () => {
+    const wrapper = mount(RevenueFlowPage, {
+      props: {
+        language: "zh",
+        initialMerchants: [{ merchantId: "101", name: "Alpha", count: 1 }],
+        initialStartDate: "2026-08-01",
+        initialEndDate: "2026-08-27",
+        today: () => new Date("2026-08-28T12:00:00"),
+        loadTrend: async () => trendPayload
+      }
+    });
+
+    await flushPromises();
+    await flushPromises();
+
+    const productNode = wrapper.find(".revenue-flow-sankey-node.is-product");
+    await productNode.find(".brand-media-sankey-node-bar").trigger("click");
+    await productNode.trigger("mouseleave");
+    await flushPromises();
+
+    const chart = wrapper.find(".revenue-flow-sankey-chart-wrap");
+    expect(chart.classes()).toContain("brand-media-sankey-chart-has-focus");
+    expect(chart.classes()).toContain("brand-media-sankey-chart-has-lock");
+    expect(productNode.classes()).toContain("is-focused");
+    expect(productNode.classes()).toContain("is-selection-anchor");
+    expect(productNode.find("button").attributes("aria-pressed")).toBe("true");
+
+    wrapper.unmount();
+  });
+
+  it("锁定单品后可在关联 flow 上显示详情", async () => {
+    const wrapper = mount(RevenueFlowPage, {
+      props: {
+        language: "en",
+        initialMerchants: [{ merchantId: "101", name: "Alpha", count: 1 }],
+        initialStartDate: "2026-08-01",
+        initialEndDate: "2026-08-27",
+        loadTrend: async () => trendPayload
+      }
+    });
+
+    await flushPromises();
+    await flushPromises();
+
+    const product = wrapper.find(".revenue-flow-sankey-node.is-product button");
+    await product.trigger("click");
+    const viewport = wrapper.find(".revenue-flow-sankey-viewport");
+    const model = buildRevenueFlowModel(trendPayload);
+    expect(model).not.toBeNull();
+    const layout = buildRevenueFlowLayout(model!, 1160);
+    const link = layout.links.find((item) => item.source.column === "product");
+    expect(link).toBeDefined();
+
+    Object.defineProperty(viewport.element, "scrollLeft", { configurable: true, value: 0, writable: true });
+    Object.defineProperty(viewport.element, "scrollTop", { configurable: true, value: 0, writable: true });
+    Object.defineProperty(viewport.element, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, width: 1160, height: 600, right: 1160, bottom: 600 })
+    });
+    await viewport.trigger("pointermove", {
+      clientX: link!.target.x - 1,
+      clientY: (link!.targetTop + link!.targetBottom) / 2,
+      pointerId: 1
+    });
+
+    expect(wrapper.find(".revenue-flow-sankey-flow-tooltip").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Flow details");
     wrapper.unmount();
   });
 

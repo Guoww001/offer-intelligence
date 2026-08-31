@@ -217,7 +217,8 @@ async function loadBrandMediaTrend(request: BrandMediaTrendRequest): Promise<unk
     endDate: request.endDate
   });
   return apiRequest<unknown>(`/api/ui/db/brand-media-trend?${query.toString()}`, {
-    signal: request.signal
+    signal: request.signal,
+    timeoutMs: 30_000
   });
 }
 
