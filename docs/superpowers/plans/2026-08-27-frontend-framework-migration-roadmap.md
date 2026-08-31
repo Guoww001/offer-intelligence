@@ -750,6 +750,14 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - 验证结果：Revenue Flow Vitest 15 项、排除 Publishers 后的前端 Vitest 14 个文件/77 项、全量 `npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、`node scripts/test_frontend_build_contract.mjs`、Revenue Flow 前端契约、`node --check public/app.js`、`python scripts/test_brand_media_trend.py` 和 `git diff --check` 通过；stash 冲突已按当前分支完整公共壳层解决，未修改 Publishers 文件。
 - 当前状态：Revenue Flow 进入 dual；现代 feature 源码、跨实例请求行为、公共壳层接线、构建产物和自动化回归已完成，真实数据与 BrowserAct 390px 视觉验收尚待补验；下一步按旧 CSS 基线进行桌面/390px 新旧对齐。
 
+**M4 Revenue Flow 节点交互修复记录（2026-08-31）：**
+
+- 问题根因：节点层尺寸没有跟随 Sankey 实际布局，导致右侧媒体节点和标签被裁切；视口的左键平移监听会先拦截节点点击，节点锁定不能稳定触发；旧版 `.brand-media-page.is-modern > :not(#brandMediaModernRoot)` 选择器还会误隐藏 Revenue Flow modern root。
+- 实现修复：节点层改为使用布局计算出的 `surfaceWidth/height`；产品和媒体节点的彩色 bar 及外层统一绑定节点点击，非平移模式下平移入口跳过整个节点区域；锁定后保留 `brand-media-sankey-chart-has-focus`、`brand-media-sankey-chart-has-lock`、`is-locked` 和 `is-selection-anchor` 状态，鼠标移出后不清除锁定；Canvas 根据锁定节点只提高关联 flow 的不透明度，并继续允许在高亮 flow 上显示详情 Tooltip。Brand Media 的 modern 显隐边界改为只匹配 `#brandMediaPage`。
+- 浏览器证据：在真实数据 BrowserAct 桌面视口中选择 `Shokz Official`，页面加载 61 个单品、128 个媒体和 1,508 条 flow；直接点击单品彩色节点 bar 后，图表保持 focus/lock，节点保持 `is-locked is-selection-anchor`、按钮 `aria-pressed="true"`，移开鼠标后状态仍保留；关联 flow 继续显示 Revenue、来源占比和去向占比 Tooltip。截图仅保留在临时目录，未写入仓库。
+- 自动化证据：Revenue Flow 3 个 Vitest 文件共 20 项通过，`npm --prefix frontend run typecheck`、`npm --prefix frontend run build` 和 `git diff --check` 通过；合并最新上游 `f6b9a6f` 后，`public/app.js` 的既有损坏内容使 `node --check public/app.js` 及依赖 legacy `switchPage()` 的静态契约失败，这属于本次节点交互修复之外的基线问题，不能据此宣称全量 CI 通过。
+- 当前边界：Revenue Flow 仍保持 `dual`；桌面真实数据、节点锁定/高亮/Tooltip 已有证据，390px 真实 viewport 验收仍因当前 BrowserAct 缺少 resize 能力待补，Publishers 未纳入本次修复范围。
+
 ### 任务 6：M5——迁移 Targets、Category Report 与 Tier 管理
 
 **迁移顺序：** `sheets` → `category` → `tier`
