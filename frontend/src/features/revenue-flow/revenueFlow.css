@@ -127,6 +127,7 @@
 }
 
 .revenue-flow-merchant-dropdown {
+  display: block;
   max-height: 360px;
 }
 
@@ -239,29 +240,49 @@
 }
 
 .revenue-flow-expand {
-  min-height: 36px;
-  padding: 0 12px;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
   border: 1px solid rgba(52, 77, 117, 0.18);
   border-radius: 9px;
   background: #fff;
-  color: #1f3554;
+  color: #193d73;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 800;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
 
-.revenue-flow-expand:hover {
-  border-color: rgba(36, 107, 254, 0.45);
-  color: #1d59da;
+.revenue-flow-expand:hover,
+.revenue-flow-expand:focus-visible {
+  border-color: rgba(36, 107, 254, 0.55);
+  background: rgba(36, 107, 254, 0.07);
+  box-shadow: 0 0 0 3px rgba(36, 107, 254, 0.11);
+  color: #145be8;
+  outline: none;
+}
+
+.revenue-flow-expand svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .brand-media-sankey-chart-wrap.revenue-flow-sankey-chart-wrap {
   position: relative;
   min-height: 390px;
-  height: clamp(390px, calc(100vh - 300px), 720px);
+  height: clamp(390px, calc(100vh - 280px), 720px);
   overflow: hidden;
-  border: 1px solid rgba(52, 77, 117, 0.12);
-  border-radius: 12px;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(52, 77, 117, 0.1);
+  border-radius: 15px;
   background: #f5f7fb;
 }
 
@@ -348,20 +369,25 @@
 .brand-media-sankey-canvas-grid {
   position: absolute;
   inset: 0;
+  z-index: 0;
+  background-color: #f5f7fb;
   pointer-events: none;
-  background-image: radial-gradient(rgba(58, 84, 125, 0.13) 0.8px, transparent 0.8px);
-  background-size: 18px 18px;
-  opacity: 0.42;
+  background-image: radial-gradient(rgba(93, 116, 155, 0.24) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 .brand-media-sankey-canvas-stage-shell {
   position: relative;
   z-index: 1;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .brand-media-sankey-canvas-stage {
   position: relative;
+  z-index: 1;
+  min-width: 1px;
+  min-height: 1px;
+  overflow: visible;
   transform-origin: 0 0;
 }
 
@@ -369,6 +395,8 @@
   position: absolute;
   inset: 0;
   display: block;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
@@ -381,7 +409,7 @@
 
 .revenue-flow-sankey-column-labels span {
   position: absolute;
-  top: 26px;
+  top: var(--brand-media-sankey-header-y, 121px);
   width: 190px;
   color: #6f86a5;
   font-size: 10px;
@@ -407,131 +435,198 @@
   pointer-events: none;
 }
 
+.revenue-flow-sankey-chart-wrap .brand-media-sankey-node-layer {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  contain: none;
+}
+
 .revenue-flow-sankey-node {
   position: absolute;
   z-index: 2;
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1f3b68;
+  font: inherit;
+  line-height: 1;
   pointer-events: auto;
-  transition: opacity 150ms ease;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.revenue-flow-sankey-node.is-product,
+.revenue-flow-sankey-node.is-media {
+  cursor: pointer;
 }
 
 .revenue-flow-sankey-node.is-muted {
-  opacity: 0.35;
+  opacity: 0.16;
+}
+
+.revenue-flow-sankey-chart-wrap.brand-media-sankey-chart-has-focus .revenue-flow-sankey-node {
+  opacity: 0.16;
+}
+
+.revenue-flow-sankey-chart-wrap.brand-media-sankey-chart-has-focus .revenue-flow-sankey-node.is-focused {
+  opacity: 1;
 }
 
 .revenue-flow-sankey-node-button {
   position: absolute;
-  top: 50%;
-  min-height: 26px;
-  padding: 5px 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.84);
-  color: #203a5a;
+  top: 0;
+  left: 26px;
+  width: 340px;
+  height: 34px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1f3b68;
   cursor: pointer;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-  transform: translateY(-50%);
-  box-shadow: 0 3px 10px rgba(34, 60, 104, 0.06);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: left;
+  box-shadow: none;
 }
 
 .revenue-flow-sankey-node-button:hover,
 .revenue-flow-sankey-node-button[aria-pressed="true"] {
-  border-color: rgba(36, 107, 254, 0.45);
-  background: #fff;
-  color: #145be8;
+  border: 0;
+  background: transparent;
+  color: #1f3b68;
 }
 
 .revenue-flow-sankey-node-button:focus-visible {
   outline: none;
-  border-color: #246bfe;
-  box-shadow: 0 0 0 3px rgba(36, 107, 254, 0.14);
+  border: 0;
+  box-shadow: none;
 }
 
-.revenue-flow-sankey-node-label {
+.brand-media-sankey-node-label,
+.brand-media-sankey-node-value {
+  position: absolute;
+  left: 26px;
   display: block;
-  max-width: 170px;
+  max-width: 330px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.revenue-flow-sankey-node-button small {
-  display: block;
-  margin-top: 2px;
-  color: #7187a7;
+.brand-media-sankey-node-label {
+  top: 1px;
+  color: #1f3b68;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.brand-media-sankey-node-value {
+  top: 17px;
+  color: #7890ba;
   font-size: 10px;
   font-weight: 600;
 }
 
-.revenue-flow-sankey-node.is-product .revenue-flow-sankey-node-button {
-  right: 22px;
-  width: 180px;
-  text-align: right;
+.revenue-flow-sankey-node-button .brand-media-sankey-node-label,
+.revenue-flow-sankey-node-button .brand-media-sankey-node-value {
+  left: 0;
 }
 
+.revenue-flow-sankey-node.is-product .revenue-flow-sankey-node-button,
 .revenue-flow-sankey-node.is-media .revenue-flow-sankey-node-button {
-  left: 22px;
-  width: 180px;
+  top: 0;
+  right: auto;
+  left: 26px;
+  width: 340px;
   text-align: left;
 }
 
-.revenue-flow-sankey-brand-label {
+.revenue-flow-sankey-node.is-media .revenue-flow-sankey-node-button {
+  text-align: left;
+}
+
+.brand-media-sankey-node-bar {
   position: absolute;
-  top: 50%;
-  left: 22px;
-  width: 180px;
-  overflow: hidden;
-  color: #203a5a;
-  font-size: 11px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  transform: translateY(-50%);
-  white-space: nowrap;
+  inset: 0 auto 0 0;
+  display: block;
+  width: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  background: var(--brand-media-node-color, #246bfe);
+  box-sizing: border-box;
+}
+
+.revenue-flow-sankey-node.is-locked .brand-media-sankey-node-bar,
+.revenue-flow-sankey-node.is-selection-anchor .brand-media-sankey-node-bar {
+  border-color: #0b4ecb;
+  box-shadow: 0 0 0 2px rgba(11, 78, 203, 0.2), 0 0 7px rgba(36, 107, 254, 0.38);
 }
 
 .revenue-flow-sankey-toolbar {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 5;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 4px;
+  gap: 4px;
+  padding: 5px;
   border: 1px solid rgba(52, 77, 117, 0.14);
-  border-radius: 9px;
+  border-radius: 11px;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 24px rgba(24, 45, 84, 0.1);
+  box-shadow: 0 8px 24px rgba(22, 44, 86, 0.12);
+  backdrop-filter: blur(12px);
 }
 
 .revenue-flow-sankey-toolbar button {
-  width: 27px;
-  height: 27px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
-  color: #315174;
+  color: #1c3e78;
   cursor: pointer;
   font-size: 18px;
+  font-weight: 700;
   line-height: 1;
 }
 
-.revenue-flow-sankey-toolbar button:hover {
-  background: rgba(36, 107, 254, 0.09);
+.revenue-flow-sankey-toolbar button:hover,
+.revenue-flow-sankey-toolbar button:focus-visible {
+  background: #edf3ff;
+  outline: none;
+}
+
+.revenue-flow-sankey-toolbar button.is-active {
+  background: #e5efff;
   color: #145be8;
+  box-shadow: inset 0 0 0 1px rgba(36, 107, 254, 0.2);
 }
 
 .revenue-flow-sankey-toolbar button.is-reset {
-  margin-left: 2px;
-  font-size: 15px;
+  margin-left: 3px;
+  border-left: 1px solid rgba(52, 77, 117, 0.12);
+  border-radius: 0 7px 7px 0;
 }
 
 .revenue-flow-sankey-toolbar span {
-  min-width: 42px;
-  color: #7187a7;
-  font-size: 10px;
+  min-width: 44px;
+  color: #607cae;
+  font-size: 11px;
   font-weight: 800;
   text-align: center;
 }

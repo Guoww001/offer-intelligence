@@ -4,9 +4,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { translateMessage, type UiLanguage } from "../../shared/i18n";
 import {
   buildRevenueFlowLayout,
-  revenueFlowColor,
   revenueFlowFlowDetail,
   revenueFlowFlowHitTest,
+  revenueFlowLinkOpacity,
   revenueFlowHoverState,
   revenueFlowNodeDisplayLabel,
   type RevenueFlowFlowDetail,
@@ -36,6 +36,7 @@ const canvas = ref<HTMLCanvasElement | null>(null);
 const rootWidth = ref(1160);
 const focusedNodeId = ref("");
 const isPanning = ref(false);
+const panMode = ref(false);
 const flowTooltip = ref<RevenueFlowFlowDetail | null>(null);
 const flowTooltipStyle = ref<Record<string, string>>({});
 let resizeObserver: ResizeObserver | null = null;
@@ -54,9 +55,6 @@ const activeHover = computed(() => props.model && activeNodeId.value
   : null);
 const activeNodeSet = computed(() => new Set(activeHover.value?.relatedNodeIds || []));
 const activeLinkSet = computed(() => new Set(activeHover.value?.relatedLinkIndexes || []));
-const activeNode = computed(() => props.model && activeNodeId.value
-  ? props.model.nodeById[activeNodeId.value]
-  : undefined);
 const stageStyle = computed(() => {
   if (!layout.value) return {};
   return {
@@ -120,7 +118,7 @@ function drawCanvas(): void {
   for (const link of currentLayout.links) {
     const startX = link.source.x + link.source.width;
     const endX = link.target.x;
-    const curve = Math.max(45, (endX - startX) * 0.42);
+    const curve = link.curve;
     context.beginPath();
     context.moveTo(startX, link.sourceTop);
     context.bezierCurveTo(
@@ -141,27 +139,31 @@ function drawCanvas(): void {
       link.sourceBottom
     );
     context.closePath();
-    context.globalAlpha = linkIsMuted(link.index) ? 0.08 : 0.34;
+    context.globalAlpha = revenueFlowLinkOpacity(
+      Boolean(activeNodeId.value),
+      activeLinkSet.value.has(link.index)
+    );
     context.fillStyle = link.color;
     context.fill();
-  }
-  context.globalAlpha = 1;
-  for (const node of currentLayout.nodes) {
-    context.fillStyle = revenueFlowColor(node.type === "brand"
-      ? 0
-      : node.type === "product" ? 1 : 2);
-    context.globalAlpha = nodeIsMuted(node) ? 0.22 : 0.95;
-    context.fillRect(node.x, node.y, node.width, node.height);
   }
   context.globalAlpha = 1;
 }
 
 function updateRootWidth(): void {
   const width = chartRoot.value?.clientWidth || 0;
-  rootWidth.value = Math.max(1160, width);
+  rootWidth.value = Math.max(1160, Math.floor(width - 18));
+}
+
+function resetViewportPosition(): void {
+  const target = viewport.value;
+  const currentLayout = layout.value;
+  if (!target || !currentLayout) return;
+  target.scrollLeft = currentLayout.initialScrollLeft;
+  target.scrollTop = currentLayout.initialScrollTop;
 }
 
 function focusNode(node: RevenueFlowLayoutNode): void {
+  if (panMode.value) return;
   focusedNodeId.value = node.id;
 }
 
@@ -170,7 +172,7 @@ function clearNodeFocus(): void {
 }
 
 function toggleNode(node: RevenueFlowLayoutNode): void {
-  if (node.type === "brand") return;
+  if (panMode.value || node.type === "brand") return;
   emit("toggleNode", node.id);
 }
 
@@ -179,7 +181,9 @@ function nodeLabel(node: RevenueFlowLayoutNode): string {
 }
 
 function startPan(event: PointerEvent): void {
-  if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button"))) return;
+  const isNodeTarget = event.target instanceof Element
+    && event.target.closest(".revenue-flow-sankey-node");
+  if (event.button !== 0 || (!panMode.value && isNodeTarget)) return;
   const target = viewport.value;
   if (!target) return;
   clearFlowTooltip();
@@ -274,8 +278,19 @@ function zoomIn(): void {
   emit("setZoom", props.zoom + 0.1);
 }
 
+function togglePanMode(): void {
+  panMode.value = !panMode.value;
+}
+
 function refreshCanvas(): void {
   void nextTick(drawCanvas);
+}
+
+function refreshLayout(): void {
+  void nextTick(() => {
+    resetViewportPosition();
+    drawCanvas();
+  });
 }
 
 onMounted(() => {
@@ -284,7 +299,7 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(updateRootWidth);
     resizeObserver.observe(chartRoot.value);
   }
-  refreshCanvas();
+  refreshLayout();
 });
 
 onBeforeUnmount(() => {
@@ -294,7 +309,8 @@ onBeforeUnmount(() => {
   clearFlowTooltip();
 });
 
-watch([layout, activeNodeId], refreshCanvas, { deep: true });
+watch(layout, refreshLayout, { deep: true });
+watch(activeNodeId, refreshCanvas);
 watch(() => props.zoom, refreshCanvas);
 </script>
 
@@ -302,7 +318,12 @@ watch(() => props.zoom, refreshCanvas);
   <div
     ref="chartRoot"
     class="brand-media-sankey-chart-wrap revenue-flow-sankey-chart-wrap"
-    :class="{ 'is-panning': isPanning }"
+    :class="{
+      'is-panning': isPanning,
+      'is-pan-mode': panMode,
+      'brand-media-sankey-chart-has-focus': Boolean(activeNodeId),
+      'brand-media-sankey-chart-has-lock': Boolean(lockedNodeId)
+    }"
     role="group"
     :aria-busy="loading"
     :aria-label="model && layout ? copy.canvasHint : emptyMessage"
@@ -312,9 +333,9 @@ watch(() => props.zoom, refreshCanvas);
       <div class="brand-media-sankey-canvas-stage-shell" :style="stageStyle">
         <div class="brand-media-sankey-canvas-stage" :style="contentStyle">
           <div class="brand-media-sankey-column-labels revenue-flow-sankey-column-labels" aria-hidden="true">
-            <span :style="{ left: layout.columnX.brand + 'px' }">{{ copy.brandColumn }}</span>
-            <span :style="{ left: layout.columnX.product + 'px' }">{{ copy.products }}</span>
-            <span :style="{ left: layout.columnX.media + 'px' }">{{ copy.media }}</span>
+            <span :style="{ left: layout.columnX.brand + 'px', top: layout.headerY + 'px' }">{{ copy.brandColumn }}</span>
+            <span :style="{ left: layout.columnX.product + 'px', top: layout.headerY + 'px' }">{{ copy.products }}</span>
+            <span :style="{ left: layout.columnX.media + 'px', top: layout.headerY + 'px' }">{{ copy.media }}</span>
           </div>
           <canvas
             ref="canvas"
@@ -323,19 +344,31 @@ watch(() => props.zoom, refreshCanvas);
             :height="Math.ceil(layout.height)"
             aria-hidden="true"
           />
-          <div class="brand-media-sankey-node-layer">
+          <div
+            class="brand-media-sankey-node-layer"
+            :style="{ width: layout.surfaceWidth + 'px', height: layout.height + 'px' }"
+          >
             <div
               v-for="node in layout.nodes"
               :key="node.id"
               class="brand-media-sankey-node revenue-flow-sankey-node"
               :class="[
+                'brand-media-sankey-node-' + node.type,
                 'is-' + node.type,
-                { 'is-muted': nodeIsMuted(node), 'is-active': activeNodeSet.has(node.id), 'is-locked': lockedNodeId === node.id }
+                {
+                  'is-muted': nodeIsMuted(node),
+                  'is-active': activeNodeSet.has(node.id),
+                  'is-focused': activeNodeSet.has(node.id),
+                  'is-locked': lockedNodeId === node.id,
+                  'is-selection-anchor': lockedNodeId === node.id
+                }
               ]"
-              :style="{ left: node.x + 'px', top: node.y + 'px', width: node.width + 'px', height: node.height + 'px', '--revenue-flow-node-color': node.type === 'brand' ? revenueFlowColor(0) : node.type === 'product' ? revenueFlowColor(1) : revenueFlowColor(2) }"
+              :style="{ left: node.x + 'px', top: node.y + 'px', width: node.width + 'px', height: node.height + 'px', '--brand-media-node-color': node.color }"
               @mouseenter="focusNode(node)"
               @mouseleave="clearNodeFocus"
+              @click="toggleNode(node)"
             >
+              <span class="brand-media-sankey-node-bar" aria-hidden="true" />
               <button
                 v-if="node.type !== 'brand'"
                 type="button"
@@ -345,12 +378,15 @@ watch(() => props.zoom, refreshCanvas);
                 :title="nodeLabel(node)"
                 @focus="focusNode(node)"
                 @blur="clearNodeFocus"
-                @click="toggleNode(node)"
+                @click.stop="toggleNode(node)"
               >
-                <span class="revenue-flow-sankey-node-label">{{ revenueFlowNodeDisplayLabel(node) }}</span>
-                <small v-if="node.type === 'product' && node.label !== revenueFlowNodeDisplayLabel(node)">{{ node.label }}</small>
+                <span class="brand-media-sankey-node-label">{{ revenueFlowNodeDisplayLabel(node) }}</span>
+                <span class="brand-media-sankey-node-value">{{ formatMoney(node.value) }}</span>
               </button>
-              <span v-else class="revenue-flow-sankey-brand-label">{{ node.label }}</span>
+              <template v-else>
+                <span class="brand-media-sankey-node-label">{{ node.label }}</span>
+                <span class="brand-media-sankey-node-value">{{ formatMoney(node.value) }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -384,12 +420,16 @@ watch(() => props.zoom, refreshCanvas);
     </div>
     <div v-else class="brand-media-sankey-empty revenue-flow-sankey-empty" role="status" aria-live="polite">{{ emptyMessage }}</div>
 
-    <div v-if="activeNode" class="revenue-flow-sankey-focus-card" aria-live="polite">
-      <span>{{ activeNode.label }}</span>
-      <strong>{{ formatMoney(activeNode.value) }}</strong>
-    </div>
-
     <div v-if="model && layout" class="brand-media-sankey-canvas-toolbar revenue-flow-sankey-toolbar" role="toolbar" :aria-label="copy.canvasHint">
+      <button
+        type="button"
+        class="brand-media-sankey-canvas-pan"
+        :class="{ 'is-active': panMode }"
+        :aria-pressed="panMode"
+        :aria-label="copy.pan"
+        :title="copy.pan"
+        @click="togglePanMode"
+      ><span aria-hidden="true">✋</span></button>
       <button type="button" :aria-label="copy.zoomOut" :title="copy.zoomOut" @click="zoomOut">−</button>
       <span aria-live="polite">{{ Math.round(zoom * 100) }}%</span>
       <button type="button" :aria-label="copy.zoomIn" :title="copy.zoomIn" @click="zoomIn">+</button>

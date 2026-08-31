@@ -86,6 +86,14 @@ for (const token of [
 ]) {
   assert(legacyStyles.includes(token), "Revenue Flow legacy/modern 壳层缺少 " + token);
 }
+assert(
+  !legacyStyles.includes(".brand-media-page.is-modern > :not(#brandMediaModernRoot)"),
+  "Brand Media modern boundary must not hide the Revenue Flow modern root"
+);
+assert(
+  /\.revenue-flow-merchant-dropdown\s*\{[^}]*display:\s*block/.test(css),
+  "Revenue Flow merchant dropdown must override the legacy hidden state"
+);
 
 assert(entry.includes('import RevenueFlowPage from "./features/revenue-flow/RevenueFlowPage.vue";'), "entry.ts 未导入 RevenueFlowPage");
 assert(entry.includes('"/api/ui/db/publishers"'), "Revenue Flow 未接入品牌目录 API");
