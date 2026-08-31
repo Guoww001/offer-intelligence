@@ -8,7 +8,7 @@
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="./styles.css?v=20260826-agent-memory1" />
-    <link rel="stylesheet" href="./assets/modern/oi-modern.css?v=20260828-vue-m4-revenue-flow" />
+    <link rel="stylesheet" href="./assets/modern/oi-modern.css?v=20260831-vue-m5-tier" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -1330,6 +1330,7 @@
         </section>
 
         <section class="monthly-new-merchants-page hidden" id="monthlyNewMerchantsPage" aria-label="Monthly new merchants">
+          <div id="monthlyNewMerchantsModernRoot" class="monthly-new-merchants-modern-root hidden" data-modern-root="monthly-new-merchants" aria-live="polite"></div>
           <header class="monthly-new-merchants-header">
             <div>
               <h2 data-i18n="monthlyNewMerchants.title">Monthly new merchants</h2>
@@ -1798,6 +1799,7 @@
         </div>
 
         <section class="sheet-page hidden" id="sheetPage" aria-label="All sheet tabs">
+          <div id="sheetModernRoot" class="sheet-modern-root hidden" data-modern-root="sheets" aria-live="polite"></div>
           <div class="tier-header sheet-page-header">
             <div>
               <h2 id="sheetPageTitle">Monthly Targets</h2>
@@ -1825,6 +1827,7 @@
         </section>
 
         <section class="category-page hidden" id="categoryPage" aria-label="Category reports">
+          <div id="categoryModernRoot" class="category-modern-root hidden" data-modern-root="category" aria-live="polite"></div>
           <div class="tier-header">
             <div>
               <h2>Category</h2>
@@ -1862,6 +1865,7 @@
         </section>
 
         <section class="tier-page hidden" id="tierPage" aria-label="Tier sheet">
+          <div id="tierModernRoot" class="tier-modern-root hidden" data-modern-root="tier" aria-live="polite"></div>
           <div class="tier-header">
             <div>
               <h2 id="tierPageTitle">Tier</h2>

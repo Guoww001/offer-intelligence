@@ -1,0 +1,134 @@
+/* Tier Sheet 复用旧版表格、筛选器、Overlay 和管理面板的 class；此处只补现代挂载边界与新标签。 */
+.tier-page-modern {
+  display: grid;
+  gap: 14px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.tier-page-modern *,
+.tier-page-modern *::before,
+.tier-page-modern *::after {
+  box-sizing: border-box;
+}
+
+.tier-page-modern button,
+.tier-page-modern input,
+.tier-page-modern select {
+  font: inherit;
+}
+
+.tier-modern-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tier-report-source {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(80, 101, 116, 0.16);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.tier-report-source.is-database {
+  border-color: rgba(23, 185, 120, 0.24);
+  background: #eafaf4;
+  color: #11734f;
+}
+
+.tier-report-source.is-mixed {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: #fff7e6;
+  color: #9a5f00;
+}
+
+.tier-modern-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tier-modern-tabs button {
+  min-height: 32px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tier-modern-tabs button:hover,
+.tier-modern-tabs button:focus-visible,
+.tier-modern-tabs button.active {
+  border-color: var(--teal);
+  background: rgba(23, 123, 115, 0.08);
+  color: var(--teal);
+  outline: 0;
+}
+
+.tier-page-modern .sheet-expanded-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tier-page-modern .tier-table-panel.sheet-expanded-panel {
+  display: grid;
+}
+
+.tier-page-modern .tier-table-panel.sheet-expanded-panel .sheet-table {
+  min-width: 2100px;
+}
+
+.tier-page-modern .tier-move-dialog {
+  z-index: 45;
+}
+
+.tier-page-modern .tier1-additions-overlay {
+  z-index: 44;
+}
+
+.tier-page-modern .tier1-merchant-dialog {
+  z-index: 46;
+}
+
+@media (max-width: 822px) {
+  .tier-modern-header-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .tier-report-source {
+    align-self: flex-start;
+  }
+
+  .tier-page-modern .tier1-management-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .tier-modern-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .tier-modern-tabs button {
+    flex: 0 0 auto;
+  }
+}

@@ -1,0 +1,41 @@
+/* Keep the Vue island on the same geometry and palette as the established
+ * monthly-new-merchants page. The legacy stylesheet owns the detailed table,
+ * drawer, and import-dialog rules; this file only resets the modern mount
+ * boundary so those rules do not receive a second page inset. */
+.oi-modern-page.monthly-new-merchants-modern-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: #2f4856;
+  font-family: inherit;
+}
+
+.monthly-new-merchants-modern-page *,
+.monthly-new-merchants-modern-page *::before,
+.monthly-new-merchants-modern-page *::after {
+  box-sizing: border-box;
+}
+
+.monthly-new-merchants-modern-page button,
+.monthly-new-merchants-modern-page input,
+.monthly-new-merchants-modern-page textarea {
+  font: inherit;
+}
+
+.monthly-new-merchants-modern-page button:focus-visible,
+.monthly-new-merchants-modern-page input:focus-visible,
+.monthly-new-merchants-modern-page textarea:focus-visible {
+  outline: 0;
+  border-color: #1768d5;
+  box-shadow: 0 0 0 3px rgba(23, 104, 213, 0.12);
+}
+
+.monthly-new-merchants-modern-page .monthly-new-merchant-import-backdrop,
+.monthly-new-merchants-modern-page .monthly-new-merchant-drawer-backdrop {
+  box-sizing: border-box;
+}

@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-08-28（Revenue Flow Vue 迁移实现交付）
+> 最近更新：2026-08-31（Targets、Category 与 Tier Vue 双轨接入；共享 XLSX 契约抽取；旧版/Vue 代码级样式对照）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -129,17 +129,18 @@
     {
       "pageKey": "monthly-new-merchants",
       "label": "Monthly New Merchants",
-      "status": "legacy",
-      "roots": ["#monthlyNewMerchantsPage"],
+      "status": "dual",
+      "roots": ["#monthlyNewMerchantsPage", "#monthlyNewMerchantsModernRoot"],
       "legacyEntry": ["switchPage()", "renderMonthlyNewMerchantsPage()", "loadMonthlyNewMerchants()", "openMonthlyNewMerchantDrawer()", "openMonthlyNewMerchantImport()"],
+      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.vue", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.ts"],
       "state": ["state.monthlyNewMerchants"],
       "apis": ["/api/ui/db/monthly-new-merchants"],
       "storage": [],
       "exports": ["downloadMonthlyNewMerchantTemplate()"],
       "overlays": ["monthly merchant edit drawer", "monthly merchant import dialog", "month picker"],
-      "tests": ["scripts/test_monthly_new_merchants.py", "scripts/test_monthly_new_merchants_frontend.mjs"],
-      "testGap": "",
-      "notes": "包含新增/编辑抽屉、文件或粘贴导入、模板下载、焦点恢复和批量保存。"
+      "tests": ["scripts/test_monthly_new_merchants.py", "scripts/test_monthly_new_merchants_frontend.mjs", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.test.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.test.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.test.ts"],
+      "testGap": "当前 Cloud Browser 的 URL policy 拦截了本地预览地址，未能采集实际 modern/legacy 同视口截图；待提供可访问预览 URL 后补做桌面和 390px 视觉验收。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月度查询、14 列列表、重点标记、搜索、增改删抽屉、CSV/TSV/Excel 粘贴或文件导入、逐行错误预览、模板下载、批量保存和焦点恢复。XLS/XLSX 读取器由 entry 注入，API 与数据库 payload 沿用既有契约。"
     },
     {
       "pageKey": "offer-list-tracker",
@@ -159,47 +160,50 @@
     {
       "pageKey": "sheets",
       "label": "Targets",
-      "status": "legacy",
-      "roots": ["#sheetPage"],
+      "status": "dual",
+      "roots": ["#sheetPage", "#sheetModernRoot"],
       "legacyEntry": ["switchPage()", "renderSheetPage()", "refreshTargetMetricViews()", "downloadSheetTargetsXlsx()"],
+      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/targets/TargetsPage.vue", "frontend/src/features/targets/targetModel.ts", "frontend/src/features/targets/useTargets.ts"],
       "state": ["state.targetFilters", "state.targetMetric", "state.targetTrendView", "state.targetOverrides", "state.targetSort", "state.dbStatus", "state.dbTierSummary"],
       "apis": ["/api/ui/db/status", "/api/ui/db/tier-summary"],
       "storage": ["offerTargetTextOverrides.v1"],
-      "exports": ["downloadSheetTargetsXlsx()"],
+      "exports": ["downloadSheetTargetsXlsx()", "downloadTargets()", "downloadWorkbook()"],
       "overlays": ["inline target edit form"],
-      "tests": ["scripts/test_target_month_selection.mjs", "scripts/test_db_status_view_model.mjs", "scripts/test_tier_report_frontend.mjs"],
-      "testGap": "缺少完整 Targets 页面趋势、矩阵、编辑和导出浏览器回归。",
-      "notes": "页面包含月份对比、目标文案编辑、趋势图和矩阵；Total 与各 Tier 的业务口径必须保持一致。"
+      "tests": ["scripts/test_target_month_selection.mjs", "scripts/test_db_status_view_model.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_targets_frontend.mjs", "frontend/src/features/targets/targetModel.test.ts", "frontend/src/features/targets/useTargets.test.ts", "frontend/src/features/targets/TargetsPage.test.ts"],
+      "testGap": "当前 Cloud Browser 的 URL policy 拦截了本地预览地址，未能采集实际 modern/legacy 同视口截图；目标导出已切换到共享 XLSX builder，待可访问预览 URL 后补做桌面、390px 和导出视觉验收。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月份/对比月份/Tier 筛选、5 个 KPI、月度/日度趋势、Tier 目标进度与 localStorage 编辑、Tier 对比矩阵和当前筛选结果导出。Sheet 快照与 2026-06 已核验目标模板作为回退，/api/ui/db/status 与 /api/ui/db/tier-summary 成功时覆盖数据库实际数据；目标 XLSX 保持 Month/Tier/Brand Count/Total Clicks/Order Count/Revenue/Avg Conversion/New Tier Entries/Tier Exits/Target 字段顺序。"
     },
     {
       "pageKey": "category",
       "label": "Category Report",
-      "status": "legacy",
-      "roots": ["#categoryPage"],
+      "status": "dual",
+      "roots": ["#categoryPage", "#categoryModernRoot"],
       "legacyEntry": ["switchPage()", "ensureDashboardCategoryReportData()", "renderDashboardCategoryReport()", "downloadFocusedCategoryRows()"],
+      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/category-report/CategoryReportPage.vue", "frontend/src/features/category-report/categoryReportModel.ts", "frontend/src/features/category-report/useCategoryReport.ts", "frontend/src/shared/export/xlsx.ts"],
       "state": ["state.categoryReportTiers", "state.categoryReportSearch", "state.categoryReportSelection", "state.categoryReportSort", "state.categoryReportDirection", "state.categoryReportFocusKey", "state.expandedCategoryKey", "state.tierReport"],
       "apis": ["/api/ui/db/tier_sheet"],
       "storage": [],
-      "exports": ["downloadFocusedCategoryRows()", "downloadRowsAsXlsx()"],
+      "exports": ["downloadFocusedCategoryRows()", "downloadCategory()", "downloadWorkbook()"],
       "overlays": ["category pie spotlight", "category focused detail"],
-      "tests": ["scripts/test_sheet_categories.mjs", "scripts/test_category_drilldown.mjs", "scripts/test_category_trend.mjs", "scripts/test_tier_report_frontend.mjs"],
-      "testGap": "",
-      "notes": "主分类解析、Tier 选择、排序、饼图、趋势和导出必须使用现有数据库与 Sheet 分类优先级。"
+      "tests": ["scripts/test_sheet_categories.mjs", "scripts/test_category_drilldown.mjs", "scripts/test_category_trend.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_category_frontend.mjs", "frontend/src/features/category-report/categoryReportModel.test.ts", "frontend/src/features/category-report/useCategoryReport.test.ts", "frontend/src/features/category-report/CategoryReportPage.test.ts"],
+      "testGap": "当前 Cloud Browser 的 URL policy 拦截了本地预览地址，未能采集实际 modern/legacy 同视口截图；focused export 已切换到共享 XLSX builder，待可访问预览 URL 后补做桌面、390px、焦点/展开状态和导出字段视觉验收。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖 DB sheetCategory → mainCategory → Feishu → 其他来源 → levantaCategory → Uncategorized 优先级、Tier 选择、分类/商家精确搜索、排序、饼图 Top 7 与 Other 下钻、趋势聚合、展开商家明细和 focused export。compact tier_sheet 响应按 Merchant ID 与 Sheet 快照合并，日期切换使用 AbortController/请求序号丢弃过期响应；页面复用旧版 dashboard-category class 和响应式规则，导出由 shared/export/xlsx.ts 生成。"
     },
     {
       "pageKey": "tier",
       "label": "Tier Sheet",
-      "status": "legacy",
-      "roots": ["#tierPage"],
+      "status": "dual",
+      "roots": ["#tierPage", "#tierModernRoot"],
       "legacyEntry": ["switchPage()", "renderTierPage()", "renderTierSheetTable()", "openTierSheetOverlay()", "openTierMoveDialog()"],
+      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/tier-sheet/TierSheetPage.vue", "frontend/src/features/tier-sheet/tierSheetModel.ts", "frontend/src/features/tier-sheet/useTierSheet.ts", "frontend/src/shared/export/xlsx.ts"],
       "state": ["state.selectedTierPage", "state.expandedTierSheet", "state.selectedTierRowKeys", "state.visibleTierRowKeys", "state.tierTablePages", "state.manualTierMoves", "state.tier1Management", "state.tierSheetFilters", "state.tierReport", "state.tierVisibleColumns", "state.trendVisibleColumns"],
       "apis": ["/api/ui/db/tier_sheet", "/api/ui/db/tier-summary", "/api/ui/db/tier1-merchants", "/api/tier_moves"],
       "storage": ["offerTierOverrides", "offerTierVisibleColumns.v4", "offerTrendVisibleColumns.v1", "offerTierSheetManualMoves.v1", "offerTierMoveAdminToken"],
-      "exports": ["downloadTierSheetXlsx()", "downloadRowsAsXlsx()"],
+      "exports": ["downloadTierSheetXlsx()", "downloadTier()", "downloadWorkbook()"],
       "overlays": ["Tier Sheet overlay", "Tier Move dialog", "Tier 1 additions overlay", "Tier 1 merchant dialog", "Tier column panel"],
-      "tests": ["scripts/test_tier_report_frontend.mjs", "scripts/test_tier_visual_status.mjs", "scripts/test_tier_visual_status_rules.py", "scripts/test_tier1_merchant_frontend.mjs", "scripts/test_tier2_recommendation_rules.mjs", "scripts/test_manual_tier_automation.py"],
-      "testGap": "缺少完整 Tier Move 共享 webhook 的真实浏览器端到端验收。",
-      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。"
+      "tests": ["scripts/test_tier_report_frontend.mjs", "scripts/test_tier_visual_status.mjs", "scripts/test_tier_visual_status_rules.py", "scripts/test_tier1_merchant_frontend.mjs", "scripts/test_tier2_recommendation_rules.mjs", "scripts/test_manual_tier_automation.py", "scripts/test_tier_frontend.mjs", "scripts/test_shared_xlsx_frontend.mjs", "frontend/src/features/tier-sheet/tierSheetModel.test.ts", "frontend/src/features/tier-sheet/useTierSheet.test.ts", "frontend/src/features/tier-sheet/TierSheetPage.test.ts", "frontend/src/shared/export/xlsx.test.ts"],
+      "testGap": "共享 Move API、管理员 token 和 Tier 1 merchant API 已有注入式/静态契约覆盖，但缺少完整真实浏览器端到端验收；当前 Cloud Browser 的 URL policy 也拦截本地预览地址，桌面、390px 和实际下载文件仍待可访问预览 URL。",
+      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index，真实截图和 computed styles 仍待可访问预览。"
     }
   ]
 }
@@ -214,7 +218,7 @@
 | 全局导航 | `switchPage()`、`syncNavigationGroupState()` | Shell 迁移前保持唯一权威入口，禁止新旧两侧各维护一套路由状态 |
 | 语言 | `state.language`、`offerLanguage`、`chatbot_i18n.js`、`frontend/src/shared/i18n/` | legacy 仍由 `state.language` 管理，通过 `OI_MODERN_APP.setLanguage()` 同步 modern；迁移文案必须中文/英文成对维护 |
 | 共享 API、错误与契约 | `frontend/src/shared/api/`、`frontend/src/shared/contracts/` | M3 的 modern 页面使用统一 JSON/错误/超时边界；契约只保留跨页面稳定字段，不复制完整数据库响应 |
-| 导出 | `downloadRowsAsXlsx()`、`triggerWorkbookDownload()` | M2–M5 通过窄 bridge 复用，字段级等价后迁移为共享模块 |
+| 导出 | `frontend/src/shared/export/xlsx.ts`、`downloadWorkbook()`；legacy `downloadRowsAsXlsx()` | M2–M5 逐步复用；Targets/Category/Tier 已以同一 fixture 比较列格式、worksheet XML、styles XML 和 workbook package parts，legacy bridge 继续保留回滚窗口 |
 | Deep Window | `_deepPanels` 与相关渲染函数 | 页面切换、最小化、恢复和请求中止在 Chatbot 阶段统一迁移 |
 | 数据启动对象 | `window.CHATBOT_DATA`、`window.SHEET_REPORT_DATA`、`window.PRODUCT_KEYWORDS` | 只在 `LegacyBootstrapData` 边界读取，Vue feature 不得直接读取任意全局对象 |
 | 主题与移动导航 | `public/index.html` 内联主题脚本、`public/app.js` 事件绑定 | M4 Shell 阶段迁移，之前不能改变现有主题默认值和焦点陷阱 |
@@ -223,7 +227,7 @@
 
 1. P1：Revenue Flow 已建立 Sankey 数据、选择上限、缓存和图表生命周期回归；待补真实数据与 390px BrowserAct 验收。
 2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
-3. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程。
+3. P1：Targets 缺少趋势、矩阵、编辑和导出的完整浏览器流程；Category/Tier 缺少同数据同视口截图与实际下载验收。
 4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，390px 已由用户验收通过；Google Ads 和 Tier 仍需补完整真实浏览器交互证据。
 
 ## 状态更新记录
@@ -237,3 +241,4 @@
 | 2026-08-28 | Publishers | `legacy` | `modern` | Vue model/composable/组件覆盖筛选、排序、分页、列设置、布局编辑、Publisher profile/portfolio 和导出；选中媒体后的 profile KPI、零活动商家保留与 AOV N/A 边界已补回归；14 个 Vitest 文件/75 项测试、typecheck、build、页面契约和持久化 Sites 视觉对比通过；legacy fallback 仍保留 |
 | 2026-08-28 | Brand Media | `legacy` | `dual` | Vue model/composable/组件、趋势请求取消与过期响应保护、订单/点击图、Manager/媒体锁定、展开/Escape、错误/空状态、legacy fallback、全量 Vitest/类型检查/构建和 Brand Media 契约通过；BrowserAct 已验证桌面新旧几何对齐及 populated fixture 的 hover/锁定/Manager/展开交互，390px 已由用户验收通过，真实趋势接口在本地返回 503，populated 数据验收仍待补 |
 | 2026-08-28 | Revenue Flow | `legacy` | `dual` | 新增 Vue model/composable、Canvas Sankey、品牌多选/日期范围/展开与卸载清理、模块级缓存/进行中请求复用、Brand Media 初始状态继承和连线 Flow tooltip；stash 冲突已保留当前分支完整公共壳层并补入 Revenue Flow modern root；15 项 Revenue Flow Vitest、排除 Publishers 后前端 Vitest 14 个文件/77 项、全量 typecheck、build、build contract、Revenue Flow 前端契约、node --check public/app.js、Brand Media 后端回归和 git diff --check 通过；真实数据与 BrowserAct 验收待补 |
+| 2026-08-31 | Targets/Category/Tier 与共享导出 | `Targets/Category dual，Tier legacy` | `Targets/Category/Tier dual` | Tier Vue model/composable/page 已接入 `#tierModernRoot`，保留 legacy fallback；Targets/Category/Tier 导出接入 shared `xlsx.ts`；shared fixture 对比 legacy/new 的列格式、worksheet XML、styles XML 和 ZIP package parts；旧版 CSS/HTML 与 Vue class/层级代码级对照完成，并修正 Tier/Category root 内边距与 Tier 弹层 z-index；30 个 Vitest 文件/137 项、typecheck/build、页面契约、旧版/Python 回归和 diff check 通过；真实浏览器截图和实际下载验收待可访问预览 URL |

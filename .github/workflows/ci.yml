@@ -63,6 +63,11 @@ jobs:
            node scripts/test_publisher_manager_tier_frontend.mjs
           python scripts/test_monthly_new_merchants.py
           node scripts/test_monthly_new_merchants_frontend.mjs
+          node scripts/test_targets_frontend.mjs
+          node scripts/test_category_frontend.mjs
+          node scripts/test_tier_frontend.mjs
+          node scripts/test_shared_xlsx_frontend.mjs
+          node scripts/test_target_month_selection.mjs
           python scripts/test_tier1_agency_sync.py
           node scripts/test_tier_report_frontend.mjs
           python scripts/test_manual_tier_automation.py

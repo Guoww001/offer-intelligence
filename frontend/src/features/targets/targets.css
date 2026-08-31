@@ -1,0 +1,51 @@
+/* Targets keeps the established report-overview geometry and palette. The
+ * legacy stylesheet still owns the detailed target cards, trend, and matrix
+ * rules while this file isolates the Vue mount boundary. */
+.sheet-page-modern {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.95fr);
+  align-items: start;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--target-ink, #17233c);
+  font-family: inherit;
+}
+
+.sheet-page-modern *,
+.sheet-page-modern *::before,
+.sheet-page-modern *::after {
+  box-sizing: border-box;
+}
+
+.sheet-page-modern button,
+.sheet-page-modern input,
+.sheet-page-modern select {
+  font: inherit;
+}
+
+.sheet-page-modern button:focus-visible,
+.sheet-page-modern input:focus-visible,
+.sheet-page-modern select:focus-visible {
+  outline: 0;
+  border-color: var(--target-blue, #2468f2);
+  box-shadow: 0 0 0 3px rgba(36, 104, 242, 0.13);
+}
+
+@media (max-width: 980px) {
+  .sheet-page-modern {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+  }
+
+  .sheet-page-modern > .sheet-page-header,
+  .sheet-page-modern > .sheet-target-filters,
+  .sheet-page-modern > .tier-summary,
+  .sheet-page-modern > .sheet-target-notes {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}

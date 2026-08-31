@@ -89,8 +89,23 @@ const months = Array.from(new Set(records.map((row) => row.Month).filter(Boolean
 assertTruthy(months.includes("May 2026"), "May database reporting month should be selectable");
 assertTruthy(months.includes("June 2026"), "June database reporting month should be selectable");
 assertTruthy(months.includes("July 2026"), "July target template should remain available");
-assertEqual(hooks.reportOverviewMonthKeys().join(","), "2026-05,2026-06,2026-07", "report overview should expose the current month and the two prior months");
-assertEqual(hooks.preferredTargetMonth(records), "July 2026", "target matrix should default to the latest month with real summary metrics");
+const referenceMonthKey = hooks.currentReportingMonthKey();
+const recentMonthKeys = [-2, -1, 0].map((offset) => {
+  const [year, month] = referenceMonthKey.split("-").map(Number);
+  const date = new Date(year, month - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+});
+const overviewMonthKeys = hooks.reportOverviewMonthKeys();
+for (const monthKey of ["2026-05", "2026-06", ...recentMonthKeys]) {
+  assertTruthy(overviewMonthKeys.includes(monthKey), `report overview should expose ${monthKey}`);
+}
+const expectedPreferredMonth = months
+  .slice()
+  .sort((left, right) => new Date(left).getTime() - new Date(right).getTime())
+  .filter((month) => hooks.targetMonthHasMetrics(month))
+  .at(-1);
+assertTruthy(expectedPreferredMonth, "at least one report month should contain real summary metrics");
+assertEqual(hooks.preferredTargetMonth(records), expectedPreferredMonth, "target matrix should default to the latest month with real summary metrics");
 
 hooks.setTargetFilters({ month: "July 2026", tier: "all" });
 const julyRows = hooks.targetMonthlyTrendRows(records);
@@ -99,12 +114,13 @@ assertEqual(julyRows[julyRows.length - 1].label, "July 2026", "monthly trend sho
 assertEqual(julyRows[julyRows.length - 1].selected, true, "monthly trend should highlight the selected July month");
 assertTruthy(Number.isFinite(julyRows[julyRows.length - 1].value), "July monthly trend should render a numeric value");
 
-const augustRecords = hooks.ensureReportingMonthRecord(records, "2026-08");
-const augustRecord = augustRecords.find((row) => row.__monthKey === "2026-08");
-assertTruthy(augustRecord, "the active calendar month should be available without a static sheet row");
-assertEqual(augustRecord.Month, "August 2026", "future reporting month should use the visible month label");
-assertEqual(augustRecord.__databaseOnly, true, "auto-created reporting months should be marked as database-only");
-hooks.setTargetFilters({ month: "August 2026", tier: "all" });
-assertEqual(hooks.targetDbStatusMonthKey(), "2026-08", "selecting August should request the August database window");
-const augustRows = hooks.targetMonthlyTrendRows(augustRecords);
-assertEqual(augustRows[augustRows.length - 1].label, "August 2026", "monthly trend should end at the auto-created August month");
+const futureMonthKey = "2099-01";
+const futureRecords = hooks.ensureReportingMonthRecord(records, futureMonthKey);
+const futureRecord = futureRecords.find((row) => row.__monthKey === futureMonthKey);
+assertTruthy(futureRecord, "a future reporting month should be available without a static sheet row");
+assertEqual(futureRecord.Month, "January 2099", "future reporting month should use the visible month label");
+assertEqual(futureRecord.__databaseOnly, true, "auto-created reporting months should be marked as database-only");
+hooks.setTargetFilters({ month: "January 2099", tier: "all" });
+assertEqual(hooks.targetDbStatusMonthKey(), futureMonthKey, "selecting a future month should request the matching database window");
+const futureRows = hooks.targetMonthlyTrendRows(futureRecords);
+assertEqual(futureRows[futureRows.length - 1].label, "January 2099", "monthly trend should end at the auto-created future month");

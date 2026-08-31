@@ -66,11 +66,29 @@ read("frontend/src/features/revenue-flow/RevenueFlowSankey.vue");
 read("frontend/src/features/revenue-flow/revenueFlowModel.ts");
 read("frontend/src/features/revenue-flow/useRevenueFlow.ts");
 read("frontend/src/features/revenue-flow/revenueFlow.css");
+read("frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.vue");
+read("frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.ts");
+read("frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.ts");
+read("frontend/src/features/monthly-new-merchants/monthlyNewMerchants.css");
+read("frontend/src/features/targets/TargetsPage.vue");
+read("frontend/src/features/targets/targetModel.ts");
+read("frontend/src/features/targets/useTargets.ts");
+read("frontend/src/features/targets/targets.css");
+read("frontend/src/features/category-report/CategoryReportPage.vue");
+read("frontend/src/features/category-report/categoryReportModel.ts");
+read("frontend/src/features/category-report/useCategoryReport.ts");
+read("frontend/src/features/category-report/categoryReport.css");
+read("frontend/src/features/tier-sheet/TierSheetPage.vue");
+read("frontend/src/features/tier-sheet/tierSheetModel.ts");
+read("frontend/src/features/tier-sheet/useTierSheet.ts");
+read("frontend/src/features/tier-sheet/tierSheet.css");
+read("frontend/src/shared/export/xlsx.ts");
+read("frontend/src/shared/export/xlsx.test.ts");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260828-vue-m4-revenue-flow'),
-  "index.html 缺少 M4 本地 modern CSS"
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260831-vue-m5-tier'),
+  "index.html 缺少 M5 本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
 assert(
@@ -80,8 +98,8 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260828-vue-m4-revenue-flow";'),
-  "auth.js 缺少 M4 本地 modern bundle 常量"
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260831-vue-m5-tier";'),
+  "auth.js 缺少 M5 本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
 assert(auth.includes("window.OI_MODERN_APP.bootstrap("), "auth.js 未调用 modern bootstrap");
@@ -125,6 +143,12 @@ for (const command of [
 ]) {
   assert(ci.includes(command), `CI 缺少命令: ${command}`);
 }
+for (const command of [
+  "node scripts/test_tier_frontend.mjs",
+  "node scripts/test_shared_xlsx_frontend.mjs"
+]) {
+  assert(ci.includes(command), `CI 缺少命令: ${command}`);
+}
 
 const agents = read("AGENTS.md");
 for (const command of [
@@ -150,5 +174,9 @@ assert(modernApp.hasPage("payments") === true, "M4 必须注册 Payments 页面"
 
 assert(modernApp.hasPage("brand-media") === true, "Brand Media 必须注册 modern 页面");
 assert(modernApp.hasPage("revenue-flow") === true, "Revenue Flow 必须注册 modern 页面");
+assert(modernApp.hasPage("monthly-new-merchants") === true, "Monthly New Merchants 必须注册 modern 页面");
+assert(modernApp.hasPage("sheets") === true, "Targets 必须注册 modern 页面");
+assert(modernApp.hasPage("category") === true, "Category 必须注册 modern 页面");
+assert(modernApp.hasPage("tier") === true, "Tier 必须注册 modern 页面");
 
 console.log("PASS: frontend build contract");

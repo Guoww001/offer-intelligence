@@ -6,6 +6,10 @@ import "./features/payments/payments.css";
 import "./features/publishers/publishers.css";
 import "./features/brand-media/brandMedia.css";
 import "./features/revenue-flow/revenueFlow.css";
+import "./features/monthly-new-merchants/monthlyNewMerchants.css";
+import "./features/targets/targets.css";
+import "./features/category-report/categoryReport.css";
+import "./features/tier-sheet/tierSheet.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
 import type {
@@ -21,6 +25,13 @@ import type {
 import type { PaymentExportPayload, PaymentLivePayload } from "./shared/contracts/payment";
 import type { PublisherExportPayload } from "./features/publishers/publisherModel";
 import { apiRequest } from "./shared/api/client";
+import { ApiError } from "./shared/api/errors";
+import {
+  downloadWorkbook,
+  objectExportColumns,
+  safeSheetName,
+  tierSheetExportColumns
+} from "./shared/export/xlsx";
 import { createI18nStore } from "./shared/i18n";
 import OfferTrackerPage from "./features/offer-tracker/OfferTrackerPage.vue";
 import PaymentsPage from "./features/payments/PaymentsPage.vue";
@@ -30,6 +41,30 @@ import type { BrandMediaTrendRequest } from "./features/brand-media/useBrandMedi
 import RevenueFlowPage from "./features/revenue-flow/RevenueFlowPage.vue";
 import type { RevenueFlowCatalogOption } from "./features/revenue-flow/revenueFlowModel";
 import type { RevenueFlowTrendRequest } from "./features/revenue-flow/useRevenueFlow";
+import MonthlyNewMerchantsPage, {
+  type MonthlyNewMerchantFileReader
+} from "./features/monthly-new-merchants/MonthlyNewMerchantsPage.vue";
+import { parseMonthlyNewMerchantTable } from "./features/monthly-new-merchants/monthlyNewMerchantsModel";
+import type { MonthlyNewMerchantPayload } from "./features/monthly-new-merchants/monthlyNewMerchantsModel";
+import type { MonthlyNewMerchantLoadRequest } from "./features/monthly-new-merchants/useMonthlyNewMerchants";
+import TargetsPage from "./features/targets/TargetsPage.vue";
+import type { TargetReportData } from "./features/targets/targetModel";
+import type { TargetStatusRequest } from "./features/targets/useTargets";
+import CategoryReportPage, {
+  type CategoryExportPayload
+} from "./features/category-report/CategoryReportPage.vue";
+import type { CategoryReportData } from "./features/category-report/categoryReportModel";
+import type { CategoryTierRequest } from "./features/category-report/useCategoryReport";
+import TierSheetPage, {
+  type TierExportPayload
+} from "./features/tier-sheet/TierSheetPage.vue";
+import type {
+  SharedTierMoveSaveRequest,
+  Tier1MerchantAddRequest,
+  Tier1MerchantSearchRequest,
+  TierReportLoadRequest
+} from "./features/tier-sheet/useTierSheet";
+import type { TierSheetReportData } from "./features/tier-sheet/tierSheetModel";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -46,6 +81,50 @@ interface OfferTrackerOffersPayload {
 interface PaymentsApiPayload {
   readonly records?: unknown;
   readonly checkedAt?: unknown;
+}
+
+interface MonthlyNewMerchantsApiPayload {
+  readonly records?: unknown;
+}
+
+function targetReportData(data: LegacyBootstrapData): TargetReportData {
+  return isRecord(data.sheetReportData) ? data.sheetReportData as TargetReportData : { sheets: [] };
+}
+
+function categoryReportData(data: LegacyBootstrapData): CategoryReportData {
+  const sheetReportData = isRecord(data.sheetReportData) ? data.sheetReportData : {};
+  return {
+    ...sheetReportData,
+    offers: offerRecords(data)
+  } as CategoryReportData;
+}
+
+function tierReportData(data: LegacyBootstrapData): TierSheetReportData {
+  const sheetReportData = isRecord(data.sheetReportData) ? data.sheetReportData : {};
+  return {
+    ...sheetReportData,
+    offers: offerRecords(data)
+  } as TierSheetReportData;
+}
+
+interface SpreadsheetReader {
+  readonly read: (data: ArrayBuffer, options: { readonly type: "array" }) => SpreadsheetWorkbook;
+  readonly utils: {
+    readonly sheet_to_json: (sheet: unknown, options: {
+      readonly header: 1;
+      readonly raw: false;
+      readonly defval: string;
+    }) => unknown;
+  };
+}
+
+interface SpreadsheetWorkbook {
+  readonly SheetNames: readonly string[];
+  readonly Sheets: Readonly<Record<string, unknown>>;
+}
+
+interface WindowWithSpreadsheetReader extends Window {
+  readonly XLSX?: SpreadsheetReader;
 }
 
 function chatbotRecord(data: LegacyBootstrapData): Record<string, unknown> {
@@ -158,6 +237,179 @@ async function loadRevenueFlowTrend(request: RevenueFlowTrendRequest): Promise<u
   });
 }
 
+async function loadMonthlyNewMerchants(request: MonthlyNewMerchantLoadRequest): Promise<unknown> {
+  const query = new URLSearchParams({ month: request.month });
+  return apiRequest<MonthlyNewMerchantsApiPayload>(
+    `/api/ui/db/monthly-new-merchants?${query.toString()}`,
+    { signal: request.signal }
+  );
+}
+
+async function saveMonthlyNewMerchant(payload: MonthlyNewMerchantPayload): Promise<unknown> {
+  return apiRequest<unknown>("/api/ui/db/monthly-new-merchants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function deleteMonthlyNewMerchant(recordId: number): Promise<unknown> {
+  return apiRequest<unknown>("/api/ui/db/monthly-new-merchants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ action: "delete", recordId })
+  });
+}
+
+async function loadTargetStatus(request: TargetStatusRequest): Promise<unknown> {
+  const query = new URLSearchParams({ month: request.monthKey });
+  return apiRequest<unknown>(`/api/ui/db/status?${query.toString()}`, { signal: request.signal });
+}
+
+async function loadTargetTierSummary(request: TargetStatusRequest): Promise<unknown> {
+  const query = new URLSearchParams({ month: request.monthKey });
+  return apiRequest<unknown>(`/api/ui/db/tier-summary?${query.toString()}`, { signal: request.signal });
+}
+
+async function loadCategoryTier(request: CategoryTierRequest): Promise<unknown> {
+  const query = new URLSearchParams({
+    tier: request.tier,
+    start_date: request.startDate,
+    end_date: request.endDate,
+    compact: "1"
+  });
+  return apiRequest<unknown>("/api/ui/db/tier_sheet?" + query.toString(), { signal: request.signal });
+}
+
+async function loadTierReport(request: TierReportLoadRequest): Promise<unknown> {
+  const query = new URLSearchParams({
+    tier: request.tier,
+    start_date: request.startDate,
+    end_date: request.endDate,
+    compact: "1"
+  });
+  return apiRequest<unknown>("/api/ui/db/tier_sheet?" + query.toString(), {
+    signal: request.signal,
+    timeoutMs: 30_000
+  });
+}
+
+interface TierMovesApiPayload {
+  readonly configured?: unknown;
+  readonly moves?: readonly unknown[];
+  readonly [key: string]: unknown;
+}
+
+function browserStorage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function storedTierMoveAdminToken(): string {
+  try {
+    return browserStorage()?.getItem("offerTierMoveAdminToken")?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+function requestTierMoveAdminToken(): string {
+  if (typeof window.prompt !== "function") return "";
+  const token = String(window.prompt("Enter the tier move admin token") || "").trim();
+  if (token) browserStorage()?.setItem("offerTierMoveAdminToken", token);
+  return token;
+}
+
+async function loadSharedTierMoves(): Promise<unknown> {
+  return apiRequest<TierMovesApiPayload>("/api/tier_moves");
+}
+
+async function saveSharedTierMoves(request: SharedTierMoveSaveRequest): Promise<unknown> {
+  const body = JSON.stringify({
+    action: request.action,
+    updatedBy: "offer-intelligence-ui",
+    moves: request.moves
+  });
+  const send = (token: string) => apiRequest<TierMovesApiPayload>("/api/tier_moves", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...(token ? { "X-Tier-Move-Token": token } : {})
+    },
+    body
+  });
+  try {
+    return await send(storedTierMoveAdminToken());
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    const token = requestTierMoveAdminToken();
+    if (!token) throw error;
+    return send(token);
+  }
+}
+
+async function loadTier1Additions(): Promise<unknown> {
+  const query = new URLSearchParams({ action: "additions", limit: "250" });
+  return apiRequest<unknown>(`/api/ui/db/tier1-merchants?${query.toString()}`);
+}
+
+async function searchTier1Merchants(request: Tier1MerchantSearchRequest): Promise<unknown> {
+  const query = new URLSearchParams({ action: "search", q: request.query, limit: "10" });
+  return apiRequest<unknown>(`/api/ui/db/tier1-merchants?${query.toString()}`, { signal: request.signal });
+}
+
+async function addTier1Merchant(request: Tier1MerchantAddRequest): Promise<unknown> {
+  return apiRequest<unknown>("/api/ui/db/tier1-merchants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ merchantId: request.merchantId, expectedTier: request.expectedTier })
+  });
+}
+
+let monthlySpreadsheetReaderPromise: Promise<SpreadsheetReader> | null = null;
+
+function loadMonthlySpreadsheetReader(): Promise<SpreadsheetReader> {
+  const existing = (window as WindowWithSpreadsheetReader).XLSX;
+  if (existing) return Promise.resolve(existing);
+  if (monthlySpreadsheetReaderPromise) return monthlySpreadsheetReaderPromise;
+  monthlySpreadsheetReaderPromise = new Promise<SpreadsheetReader>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    script.async = true;
+    script.onload = () => {
+      const reader = (window as WindowWithSpreadsheetReader).XLSX;
+      if (reader) resolve(reader);
+      else reject(new Error("Spreadsheet reader did not load."));
+    };
+    script.onerror = () => reject(new Error("Could not load the XLS/XLSX reader. Try CSV or paste the table instead."));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    monthlySpreadsheetReaderPromise = null;
+    throw error;
+  });
+  return monthlySpreadsheetReaderPromise;
+}
+
+const readMonthlyMerchantFile: MonthlyNewMerchantFileReader = async (file) => {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (extension === "xlsx" || extension === "xls") {
+    const reader = await loadMonthlySpreadsheetReader();
+    const workbook = reader.read(await file.arrayBuffer(), { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+    const firstSheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
+    if (!firstSheet) return [];
+    const table = reader.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: "" });
+    return Array.isArray(table) ? table.filter((row): row is unknown[] => Array.isArray(row)) : [];
+  }
+  return parseMonthlyNewMerchantTable(
+    await file.text(),
+    extension === "tsv" ? "\t" : ""
+  );
+};
+
 function revenueFlowInitialState(element: HTMLElement): {
   readonly merchants: readonly RevenueFlowCatalogOption[];
   readonly startDate: string;
@@ -196,6 +448,66 @@ function downloadPublishers(payload: PublisherExportPayload): boolean {
   const bridge = window.OI_LEGACY_BRIDGE;
   if (!bridge) return false;
   return bridge.download("publishers", payload);
+}
+
+function exportDateStamp(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function safeExportPart(value: unknown, fallback = "export"): string {
+  const part = String(value || fallback).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return part || fallback;
+}
+
+function downloadCategory(payload: CategoryExportPayload): boolean {
+  if (!payload.rows.length) return false;
+  const scope = String(payload.label || "category").trim() || "category";
+  return downloadWorkbook(
+    `category_focus_${safeExportPart(scope)}_${payload.rows.length}_rows_${exportDateStamp()}.xlsx`,
+    {
+      rows: payload.rows,
+      columns: objectExportColumns(payload.rows),
+      sheetName: safeSheetName(scope)
+    }
+  );
+}
+
+function downloadTargets(payload: {
+  readonly rows: readonly Readonly<Record<string, unknown>>[];
+  readonly scope: string;
+}): boolean {
+  if (!payload.rows.length) return false;
+  const headers = [
+    "Month", "Tier", "Brand Count", "Total Clicks", "Order Count", "Revenue",
+    "Avg Conversion", "New Tier Entries", "Tier Exits", "Target"
+  ];
+  return downloadWorkbook(
+    `monthly_targets_${safeExportPart(payload.scope, "all_months")}_${payload.rows.length}_rows_${exportDateStamp()}.xlsx`,
+    {
+      rows: payload.rows,
+      columns: objectExportColumns(payload.rows, headers),
+      sheetName: "Monthly Targets"
+    }
+  );
+}
+
+function downloadTier(payload: TierExportPayload): boolean {
+  if (!payload.rows.length) return false;
+  const sheets = payload.sheets?.length
+    ? payload.sheets.map((sheet) => ({
+        sheetName: sheet.sheetName,
+        rows: sheet.rows,
+        columns: tierSheetExportColumns(sheet.rows, sheet.headers)
+      }))
+    : [{
+        sheetName: payload.tier,
+        rows: payload.rows,
+        columns: tierSheetExportColumns(payload.rows, payload.headers)
+      }];
+  return downloadWorkbook(
+    `tier_records_${safeExportPart(payload.tier)}_${payload.rows.length}_rows_${exportDateStamp()}.xlsx`,
+    { sheets }
+  );
 }
 
 const offerTrackerFactory: ModernPageFactory = (element): ModernPageController => {
@@ -335,10 +647,128 @@ const revenueFlowFactory: ModernPageFactory = (element): ModernPageController =>
   };
 };
 
+const monthlyNewMerchantsFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernMonthlyNewMerchantsMount",
+    setup() {
+      return () => h(MonthlyNewMerchantsPage, {
+        language: i18n.language.value,
+        offers: offerRecords(snapshot),
+        loadData: loadMonthlyNewMerchants,
+        saveData: saveMonthlyNewMerchant,
+        deleteData: deleteMonthlyNewMerchant,
+        readFile: readMonthlyMerchantFile
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
+const targetsFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernTargetsMount",
+    setup() {
+      return () => h(TargetsPage, {
+        language: i18n.language.value,
+        reportData: targetReportData(snapshot),
+        loadStatus: loadTargetStatus,
+        loadTierSummary: loadTargetTierSummary,
+        download: downloadTargets
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
+const tierFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernTierSheetMount",
+    setup() {
+      return () => h(TierSheetPage, {
+        language: i18n.language.value,
+        reportData: tierReportData(snapshot),
+        initialTier: element.dataset.initialTier || "Tier 1",
+        storage: browserStorage(),
+        loadTier: loadTierReport,
+        loadSharedMoves: loadSharedTierMoves,
+        saveSharedMoves: saveSharedTierMoves,
+        loadTier1Additions,
+        searchTier1Merchants,
+        addTier1Merchant,
+        download: downloadTier
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
+const categoryReportFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernCategoryReportMount",
+    setup() {
+      return () => h(CategoryReportPage, {
+        language: i18n.language.value,
+        reportData: categoryReportData(snapshot),
+        loadTier: loadCategoryTier,
+        download: downloadCategory
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 window.OI_MODERN_APP = createModernAppApi({
   "offer-list-tracker": offerTrackerFactory,
   payments: paymentsFactory,
   publishers: publishersFactory,
+  "monthly-new-merchants": monthlyNewMerchantsFactory,
+  sheets: targetsFactory,
   "brand-media": brandMediaFactory,
-  "revenue-flow": revenueFlowFactory
+  "revenue-flow": revenueFlowFactory,
+  category: categoryReportFactory,
+  tier: tierFactory
 });

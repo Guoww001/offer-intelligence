@@ -669,6 +669,122 @@
   overflow: visible;
 }
 
+/* Monthly New Merchants modern migration */
+.monthly-new-merchants-page.is-modern > :not(#monthlyNewMerchantsModernRoot) {
+  display: none !important;
+}
+
+.monthly-new-merchants-page:not(.is-modern) > #monthlyNewMerchantsModernRoot {
+  display: none !important;
+}
+
+.monthly-new-merchants-page.is-modern > #monthlyNewMerchantsModernRoot {
+  display: block;
+}
+
+.monthly-new-merchants-page > #monthlyNewMerchantsModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.monthly-new-merchants-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* Targets modern migration */
+.sheet-page.is-modern > :not(#sheetModernRoot) {
+  display: none !important;
+}
+
+.sheet-page:not(.is-modern) > #sheetModernRoot {
+  display: none !important;
+}
+
+.sheet-page.is-modern > #sheetModernRoot {
+  display: block;
+}
+
+.sheet-page > #sheetModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.sheet-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* Category Report modern migration */
+.category-page.is-modern > :not(#categoryModernRoot) {
+  display: none !important;
+}
+
+.category-page:not(.is-modern) > #categoryModernRoot {
+  display: none !important;
+}
+
+.category-page.is-modern > #categoryModernRoot {
+  display: block;
+}
+
+.category-page > #categoryModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.category-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* Tier Sheet modern migration */
+.tier-page.is-modern > :not(#tierModernRoot) {
+  display: none !important;
+}
+
+.tier-page:not(.is-modern) > #tierModernRoot {
+  display: none !important;
+}
+
+.tier-page.is-modern > #tierModernRoot {
+  display: block;
+}
+
+.tier-page > #tierModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.tier-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 .offer-tracker-page {
   --tracker-blue: #1769d2;
   --tracker-blue-dark: #0c4fa8;

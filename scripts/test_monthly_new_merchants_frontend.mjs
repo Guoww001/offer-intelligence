@@ -279,6 +279,7 @@ assert(imported.rows[1].errors.some((error) => error.includes("Duplicate")),
 const indexHtml = fs.readFileSync("public/index.html", "utf8");
 assert(indexHtml.includes('id="monthlyNewMerchantsNav"'), "primary navigation should expose the new page");
 assert(indexHtml.includes('id="monthlyNewMerchantsPage"'), "the monthly new merchants page should exist");
+assert(indexHtml.includes('id="monthlyNewMerchantsModernRoot"'), "the monthly new merchants page should expose a Vue modern root");
 assert(indexHtml.includes('id="monthlyNewMerchantAdd"'), "the page should expose a manual add action");
 assert(indexHtml.includes('id="monthlyNewMerchantImport"'), "the page should expose a table import action");
 assert(indexHtml.includes('id="monthlyNewMerchantImportDialog"'), "the import preview dialog should exist");
@@ -382,6 +383,10 @@ assert(appSource.includes('data-monthly-new-merchant-action="edit"'),
   "each manual merchant should be editable");
 assert(appSource.includes('data-monthly-new-merchant-action="delete"'),
   "each manual merchant should be removable");
+assert(appSource.includes('mountPage("monthly-new-merchants"'),
+  "monthly new merchants should mount through the modern page bridge");
+assert(appSource.includes('unmountPage("monthly-new-merchants"'),
+  "monthly new merchants should unmount through the modern page bridge");
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
 assert(styles.includes(".monthly-new-merchant-id-column"),
@@ -392,5 +397,7 @@ assert(styles.includes(".monthly-new-merchant-drawer-backdrop"),
   "manual add and edit drawer styles should be restored");
 assert(styles.includes(".monthly-new-merchant-import-backdrop"),
   "spreadsheet import should have a dedicated preview dialog");
+assert(styles.includes(".monthly-new-merchants-page.is-modern"),
+  "the legacy page should expose a modern visibility boundary");
 
 console.log("Monthly new merchants manual frontend checks passed");

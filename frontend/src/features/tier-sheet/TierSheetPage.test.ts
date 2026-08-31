@@ -1,0 +1,82 @@
+import { mount } from "@vue/test-utils";
+import { describe, expect, it } from "vitest";
+
+import TierSheetPage from "./TierSheetPage.vue";
+
+const report = {
+  offers: [
+    { merchantId: "101", category: "Audio", commissionRate: 0.2 },
+    { merchantId: "101", category: "Audio", commissionRate: 0.201 }
+  ],
+  sheets: [
+    {
+      name: "Tier 1",
+      title: "Tier 1",
+      headers: ["Merchant ID", "Merchant Name", "Network", "Revenue", "Clicks", "AOV", "Color"],
+      rows: [
+        { "Merchant ID": "101", "Merchant Name": "Alpha", Network: "Levanta", Revenue: "1000", Clicks: "100", AOV: "100", COUNTRY: "US", Color: "yellow" },
+        { "Merchant ID": "102", "Merchant Name": "Beta", Network: "Archer", Revenue: "500", Clicks: "50", AOV: "50", COUNTRY: "US", Color: "green" }
+      ],
+      introRows: [["Tier 1"], ["Keep high-potential merchants moving."], ["Revenue target"]]
+    },
+    { name: "Tier 2", headers: [], rows: [] },
+    { name: "Tier 3", headers: [], rows: [] },
+    { name: "Tier 4", headers: [], rows: [] },
+    { name: "BLACK TIER", headers: [], rows: [] }
+  ]
+};
+
+describe("TierSheetPage", () => {
+  it("renders the legacy Tier hierarchy and operational controls", () => {
+    const wrapper = mount(TierSheetPage, { props: { language: "en", reportData: report, autoLoad: false } });
+    expect(wrapper.find('[data-page="tier"]').exists()).toBe(true);
+    expect(wrapper.find(".tier-summary").exists()).toBe(true);
+    expect(wrapper.find(".tier-sheet-filters").exists()).toBe(true);
+    expect(wrapper.find(".tier-table-panel").exists()).toBe(true);
+    expect(wrapper.findAll(".tier-row-checkbox")).toHaveLength(3);
+    expect(wrapper.text()).toContain("$1,000.00");
+  });
+
+  it("supports selection, column panel, expanded overlay, move dialog, and export", async () => {
+    const downloads: unknown[] = [];
+    const wrapper = mount(TierSheetPage, {
+      props: { language: "zh", reportData: report, autoLoad: false, download: (payload) => downloads.push(payload) }
+    });
+    await wrapper.get('[data-tier-select-row="merchant:101:Tier 1"]').setValue(true);
+    await wrapper.get('[data-tier-action="move"]').trigger("click");
+    expect(wrapper.find(".tier-move-dialog").exists()).toBe(true);
+    await wrapper.get('[data-tier-move-target="Tier 2"]').trigger("click");
+    await wrapper.get('[data-tier-action="confirm-move"]').trigger("click");
+    expect(wrapper.text()).toContain("Tier 2");
+
+    await wrapper.get('[data-tier-action="columns"]').trigger("click");
+    expect(wrapper.find(".column-picker-panel").exists()).toBe(true);
+    await wrapper.get('[data-tier-action="expand"]').trigger("click");
+    expect(wrapper.find(".sheet-expanded-panel").exists()).toBe(true);
+    await wrapper.get('[data-tier-action="close-overlay"]').trigger("click");
+    expect(wrapper.find(".sheet-expanded-panel").exists()).toBe(false);
+    await wrapper.get(".table-download-button").trigger("click");
+    expect(downloads).toHaveLength(1);
+    const payload = downloads[0] as { sheets: Array<{ sheetName: string; headers: string[] }> };
+    expect(payload.sheets.map((sheet) => sheet.sheetName)).toEqual(["Tier 1", "Category Summary", "Offer List"]);
+    expect(payload.sheets[2]?.headers).toEqual(["Merchant ID", "Merchant Name", "Category", "Avg Commission Rate"]);
+  });
+
+  it("loads the selected tier through the injected API boundary", async () => {
+    const calls: string[] = [];
+    const wrapper = mount(TierSheetPage, {
+      props: {
+        language: "en",
+        reportData: report,
+        autoLoad: true,
+        loadTier: async ({ tier }) => {
+          calls.push(tier);
+          return { rows: [] };
+        }
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toEqual(["Tier 1"]);
+    expect(wrapper.attributes("aria-busy")).toBe("false");
+  });
+});
