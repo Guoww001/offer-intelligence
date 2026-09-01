@@ -98,6 +98,11 @@ describe("categoryReportModel", () => {
     expect(resolveCategory({})).toMatchObject({ category: "Uncategorized", source: "uncategorized" });
   });
 
+  it("does not use category paths as the main category fallback", () => {
+    expect(resolveCategory({ categoryPath: "Uncategorized > Robotic Vacuums" }))
+      .toMatchObject({ category: "Uncategorized", source: "uncategorized" });
+  });
+
   it("normalizes rows, joins offer metadata, and aggregates unique merchants", () => {
     const rows = buildCategoryRows(report, ["Tier 1", "Tier 2"]);
     expect(rows).toHaveLength(3);

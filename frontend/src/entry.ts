@@ -88,7 +88,13 @@ interface MonthlyNewMerchantsApiPayload {
 }
 
 function targetReportData(data: LegacyBootstrapData): TargetReportData {
-  return isRecord(data.sheetReportData) ? data.sheetReportData as TargetReportData : { sheets: [] };
+  const sheetReportData = isRecord(data.sheetReportData) ? data.sheetReportData : {};
+  const chatbotData = isRecord(data.chatbotData) ? data.chatbotData : {};
+  const summary = isRecord(chatbotData.summary) ? chatbotData.summary : {};
+  return {
+    ...sheetReportData,
+    referenceMonthKey: sheetReportData.referenceMonthKey || summary.month || summary.generatedAt || ""
+  } as TargetReportData;
 }
 
 function categoryReportData(data: LegacyBootstrapData): CategoryReportData {

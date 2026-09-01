@@ -192,9 +192,7 @@ export function resolveCategory(row: Readonly<Record<string, unknown>>, offer?: 
   const otherCategory = firstValue(records, [
     "otherCategory",
     "category",
-    "Category",
-    "categoryPath",
-    "Category Path"
+    "Category"
   ]);
   if (otherCategory) return { category: otherCategory, source: "other" };
 

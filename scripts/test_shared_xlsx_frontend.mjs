@@ -6,7 +6,7 @@ function assert(condition, message) {
 
 function read(path) {
   assert(fs.existsSync(path), `${path} 不存在`);
-  return fs.readFileSync(path, "utf8");
+  return fs.readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 }
 
 const source = read("frontend/src/shared/export/xlsx.ts");
