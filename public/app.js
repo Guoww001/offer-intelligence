@@ -1034,6 +1034,7 @@
       "nav.agent": "Agent",
       "nav.payments": "付款",
       "nav.publishers": "媒体",
+      "nav.tier": "Tier",
       "nav.googleAds": "Google 广告",
       "nav.googleAdsHint": "广告投放",
       "nav.brandMedia": "品牌媒体趋势",
@@ -31723,7 +31724,7 @@ var _NUMERIC_COL_PATTERNS = [
     els.categoryNav.classList.toggle("active", isCategory);
     els.monthlyNewMerchantsNav.classList.toggle("active", isMonthlyNewMerchants);
     els.tierNavButtons.forEach((button) => {
-      button.classList.toggle("active", isTier && button.dataset.tierPage === state.selectedTierPage);
+      button.classList.toggle("active", isTier);
     });
     syncNavigationGroupState(page);
     // 切换页面时自动最小化所有非推理中的深度分析浮窗
@@ -32153,18 +32154,6 @@ var _NUMERIC_COL_PATTERNS = [
       let modernPageAvailable = false;
       let fallbackWarningShown = false;
       if (modernRoot) modernRoot.dataset.initialTier = requestedTier;
-      if (
-        previousPage === "tier"
-        && els.tierPage
-        && els.tierPage.classList.contains("is-modern")
-        && modernRoot
-        && !modernRoot.classList.contains("hidden")
-        && modernRoot.dataset.mountedTier === requestedTier
-      ) {
-        updateMobileCurrentPage();
-        closeMobileNavigation(true);
-        return;
-      }
       if (
         previousPage === "tier"
         && els.tierPage
@@ -32807,7 +32796,7 @@ var _NUMERIC_COL_PATTERNS = [
     });
     els.tierNavButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        state.selectedTierPage = button.dataset.tierPage;
+        state.selectedTierPage = "Tier 1";
         state.selectedTierRowKeys.clear();
         setTierMoveStatus("");
         switchPage("tier");

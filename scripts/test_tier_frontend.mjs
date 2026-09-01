@@ -77,7 +77,7 @@ assert(switchSource.includes('mountPage("tier"'), "switchPage() 未挂载 Tier m
 assert(switchSource.includes('unmountPage("tier"'), "switchPage() 未卸载 Tier modern 页面");
 assert(switchSource.includes("renderTierPage(state.selectedTierPage)"), "Tier 缺少 legacy fallback");
 assert(
-  !switchSource.includes('previousPage === "tier"\n        && els.tierPage'),
+  !switchSource.includes("modernRoot.dataset.mountedTier === requestedTier"),
   "点击单一 Tier 入口时不能跳过 Tier 页面重新挂载"
 );
 assert(
