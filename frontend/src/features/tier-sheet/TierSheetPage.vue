@@ -390,8 +390,8 @@ onUnmounted(() => tier.dispose());
           <span class="tier-move-inline-status" aria-live="polite">{{ tier.moveStatus.value }}</span>
         </div>
       </div>
-      <div class="table-wrap sheet-table-wrap" :style="{ minWidth: tableMinWidth }">
-        <table class="sheet-table">
+      <div class="table-wrap sheet-table-wrap">
+        <table class="sheet-table" :style="{ minWidth: tableMinWidth }">
           <thead><tr><th class="tier-select-cell"><input class="tier-row-checkbox" type="checkbox" data-tier-select-all :checked="allVisibleSelected" :indeterminate.prop="tier.visibleSelectedCount.value > 0 && !allVisibleSelected" :disabled="!tier.visibleRows.value.length" aria-label="Select all visible merchants" @change="tier.selectAllVisible(($event.target as HTMLInputElement).checked)" /></th><th v-for="header in tier.displayHeaders.value" :key="header"><button class="table-sort-button" :class="{ active: tier.sortKey.value === header }" type="button" :data-tier-sort="header" @click="tier.setSort(header)"><span>{{ header }}</span><span class="sort-indicator" aria-hidden="true">{{ tier.sortKey.value === header ? (tier.sortDirection.value === 'asc' ? '▲' : '▼') : '↕' }}</span></button></th></tr></thead>
           <tbody>
             <tr v-for="row in tier.visibleRows.value" :key="row.key" :class="rowClass(row)" :data-tier-row-key="row.key">

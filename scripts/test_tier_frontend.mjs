@@ -41,6 +41,17 @@ for (const selector of [
 const tierFeatureStyles = read("frontend/src/features/tier-sheet/tierSheet.css");
 assert(tierFeatureStyles.includes(".tier-page-modern {\n  display: grid;"), "Tier Vue root 未保留旧版 grid 页面边界");
 assert(tierFeatureStyles.includes("  padding: 0;"), "Tier Vue root 不应引入额外页面内边距");
+assert(
+  tierFeatureStyles.includes(".tier-page-modern > .tier-summary") &&
+    tierFeatureStyles.includes("grid-template-columns: repeat(5, minmax(0, 1fr));"),
+  "Tier 现代指标区必须按 5 张卡片铺满首屏"
+);
+assert(
+  tierFeatureStyles.includes(
+    ".tier-page-modern > .tier-table-panel .sheet-table-wrap {\n  max-width: 100%;\n  min-width: 0;\n  overflow-x: auto;\n  overflow-y: auto;"
+  ),
+  "Tier 明细表滚动容器必须保留水平与垂直滚动"
+);
 assert(tierFeatureStyles.includes(".tier-page-modern .tier-move-dialog {\n  z-index: 45;"), "Tier Move 弹层层级未与旧版对齐");
 assert(tierFeatureStyles.includes(".tier-page-modern .tier1-merchant-dialog {\n  z-index: 46;"), "Tier 新增商家弹层层级未与旧版对齐");
 

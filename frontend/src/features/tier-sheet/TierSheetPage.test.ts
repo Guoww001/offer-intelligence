@@ -37,6 +37,12 @@ describe("TierSheetPage", () => {
     expect(wrapper.text()).toContain("$1,000.00");
   });
 
+  it("保持宽表格位于可横向滚动的容器内", () => {
+    const wrapper = mount(TierSheetPage, { props: { language: "en", reportData: report, autoLoad: false } });
+    expect(wrapper.get(".sheet-table-wrap").attributes("style") || "").not.toContain("min-width");
+    expect(wrapper.get(".sheet-table-wrap .sheet-table").attributes("style") || "").toContain("min-width");
+  });
+
   it("supports selection, column panel, expanded overlay, move dialog, and export", async () => {
     const downloads: unknown[] = [];
     const wrapper = mount(TierSheetPage, {
