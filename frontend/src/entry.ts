@@ -7,6 +7,7 @@ import "./features/publishers/publishers.css";
 import "./features/brand-media/brandMedia.css";
 import "./features/revenue-flow/revenueFlow.css";
 import "./features/monthly-new-merchants/monthlyNewMerchants.css";
+import "./features/google-ads/googleAds.css";
 import "./features/targets/targets.css";
 import "./features/category-report/categoryReport.css";
 import "./features/tier-sheet/tierSheet.css";

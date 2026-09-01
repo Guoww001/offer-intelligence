@@ -175,7 +175,7 @@ onUnmounted(() => {
     <header class="google-ads-header">
       <div>
         <span class="google-ads-eyebrow">{{ copy.eyebrow }}</span>
-        <h1>{{ copy.title }}</h1>
+        <h2>{{ copy.title }}</h2>
         <p>{{ copy.subtitle }}</p>
       </div>
       <div class="google-ads-identity">
@@ -208,7 +208,7 @@ onUnmounted(() => {
           <span>{{ copy.endDate }}</span>
           <input type="date" :value="ads.endDate.value" aria-label="Google Ads workbench end date" @change="onEndDateChange" />
         </label>
-        <button class="google-ads-refresh" type="button" :disabled="ads.loading.value" :class="{ 'is-loading': ads.loading.value }" @click="ads.load(true)">
+        <button class="google-ads-refresh" data-google-ads-action="refresh" type="button" :disabled="ads.loading.value" :class="{ 'is-loading': ads.loading.value }" @click="ads.load(true)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></svg>
           <span>{{ copy.refresh }}</span>
         </button>

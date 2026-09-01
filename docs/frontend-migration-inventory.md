@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-01（M5 固定 fixture 交互验收；公开 Sites version 8）
+> 最近更新：2026-09-01（M4 Google Ads 390px 修复；公开 Sites version 9）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -123,9 +123,9 @@
       "storage": [],
       "exports": [],
       "overlays": [],
-      "tests": ["scripts/test_google_ads_workbench.py", "scripts/test_google_ads_workbench_frontend.mjs", "frontend/src/features/google-ads/googleAdsModel.test.ts", "frontend/src/features/google-ads/useGoogleAds.test.ts", "frontend/src/features/google-ads/GoogleAdsPage.test.ts"],
-      "testGap": "固定 fixture 的云端桌面对比、日期范围/刷新/图表浏览器验收已完成；真实 Google Ads API/auth、390px 与生产账号数据仍待验收。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS、未匹配花费和归因边界说明。请求沿用 /api/ui/db/google-ads-workbench，快捷范围、显式日期和 force refresh 均由 composable 维护。"
+      "tests": ["scripts/test_google_ads_workbench.py", "scripts/test_google_ads_workbench_frontend.mjs", "scripts/test_google_ads_mobile_frontend.mjs", "frontend/src/features/google-ads/googleAdsModel.test.ts", "frontend/src/features/google-ads/useGoogleAds.test.ts", "frontend/src/features/google-ads/GoogleAdsPage.test.ts"],
+      "testGap": "Sites version 9 fixed fixture 已完成 1363×936 legacy/Vue 桌面对比、390×844 legacy/Vue 截图、日期范围/刷新交互和标题 computed-style 对齐；真实 Google Ads API/auth、生产账号数据与共享 Shell 仍待验收。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS、未匹配花费和归因边界说明。请求沿用 /api/ui/db/google-ads-workbench，快捷范围、显式日期和 force refresh 均由 composable 维护；Google Ads feature CSS 负责 modern mount 的窄屏最小宽度、局部横向滚动和长文案换行，页面标题复用 legacy h2 视觉契约。"
     },
     {
       "pageKey": "monthly-new-merchants",
@@ -229,7 +229,7 @@
 1. P1：Revenue Flow 已建立 Sankey 数据、选择上限、缓存和图表生命周期回归；待补真实数据与 390px BrowserAct 验收。
 2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
 3. P1：Targets/Category/Tier 已补齐固定 fixture 的 1363×936 对比、390×844 focused 截图和公开 Browser 核心交互 smoke；仍需真实生产 API/auth、Tier Move webhook/持久化、确认提交和完整移动端交互验收。
-4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，390px 已由用户验收通过；Google Ads 仍需补 390px、真实 API/auth 和生产账号回归。
+4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，390px 已由用户验收通过；Google Ads 的 fixed fixture 390px 已补齐，仍需真实 API/auth、生产账号回归和共享 Shell。
 
 ## 状态更新记录
 
@@ -245,3 +245,4 @@
 | 2026-08-31 | Targets/Category/Tier 与共享导出 | `Targets/Category dual，Tier legacy` | `Targets/Category/Tier dual` | Tier Vue model/composable/page 已接入 `#tierModernRoot`，保留 legacy fallback；Targets/Category/Tier 导出接入 shared `xlsx.ts`；shared fixture 对比 legacy/new 的列格式、worksheet XML、styles XML 和 ZIP package parts；旧版 CSS/HTML 与 Vue class/层级代码级对照完成，并修正 Tier/Category root 内边距与 Tier 弹层 z-index；30 个 Vitest 文件/137 项、typecheck/build、页面契约、旧版/Python 回归和 diff check 通过；真实浏览器截图和实际下载验收待可访问预览 URL |
 | 2026-09-01 | M5 Targets/Category/Tier 移动端续验 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 新增移动端 CSS 契约并按 TDD 完成 RED → GREEN；Targets 窄屏筛选/KPI 单列、Tier 390px tabs 采用 4+1 布局；同步 Tier 侧栏简化并修复本地重复/未闭合 nav button；Sites version 7 公开部署成功，完成 1363×936 compare、390×844 focused 截图和 Category/Targets/Tier 页面加载验收；真实生产 API/auth、Move webhook/持久化和完整移动交互仍待补 |
 | 2026-09-01 | M5 Targets/Category/Tier 交互入口续验 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 为三页补齐稳定 data-* hooks；公开 Sites version 8（source `f99c2a48b6b419063d7e0449f73c8effb0dbd59b`）完成 1363×936 compare、390×844 legacy/Vue screenshots，并在公开 Browser 验证 Targets metric/day、Category focus/reset/expand、Tier tab/select/Move dialog/Display/Expand-Close；真实生产 API/auth、Move 确认持久化和完整移动交互仍待补 |
+| 2026-09-01 | Google Ads 390px 与视觉边界 | `dual` | `dual` | 修复 Vue 标题与 legacy `h2` 样式不一致；新增 `googleAds.css` 和 `test_google_ads_mobile_frontend.mjs`，补齐 modern mount 的窄屏宽度、局部 chart/table 横向滚动、长文案换行和稳定 Refresh hook；Google Ads feature 8 项 Vitest、typecheck/build、旧版/Python 回归与公开 Sites version 9 通过；Firecrawl 390×844 legacy/Vue 截图及 Browser 1363×936 compare、标题 computed-style（两侧 35.438px）和 30D/Refresh smoke 已验证；真实 API/auth、生产账号和共享 Shell 仍待 |

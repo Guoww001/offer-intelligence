@@ -1,0 +1,87 @@
+/* Google Ads modern boundary：复用旧版视觉 token，同时把窄屏溢出限制在图表/表格容器内。 */
+.oi-modern-page.google-ads-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.oi-modern-page.google-ads-page *,
+.oi-modern-page.google-ads-page *::before,
+.oi-modern-page.google-ads-page *::after {
+  box-sizing: border-box;
+}
+
+.oi-modern-page.google-ads-page .google-ads-header,
+.oi-modern-page.google-ads-page .google-ads-header > div,
+.oi-modern-page.google-ads-page .google-ads-controls,
+.oi-modern-page.google-ads-page .google-ads-control-grid,
+.oi-modern-page.google-ads-page .google-ads-control-footer,
+.oi-modern-page.google-ads-page .google-ads-panel-heading,
+.oi-modern-page.google-ads-page .google-ads-panel-heading > div,
+.oi-modern-page.google-ads-page .google-ads-kpi,
+.oi-modern-page.google-ads-page .google-ads-bottom-grid,
+.oi-modern-page.google-ads-page .google-ads-unmatched-row {
+  min-width: 0;
+}
+
+.oi-modern-page.google-ads-page .google-ads-header h2,
+.oi-modern-page.google-ads-page .google-ads-panel-heading h2,
+.oi-modern-page.google-ads-page .google-ads-header p,
+.oi-modern-page.google-ads-page .google-ads-panel-heading p,
+.oi-modern-page.google-ads-page .google-ads-control-footer p,
+.oi-modern-page.google-ads-page .google-ads-unmatched-row strong {
+  overflow-wrap: anywhere;
+}
+
+.oi-modern-page.google-ads-page .google-ads-header p,
+.oi-modern-page.google-ads-page .google-ads-panel-heading p,
+.oi-modern-page.google-ads-page .google-ads-control-footer p {
+  max-width: 100%;
+}
+
+.oi-modern-page.google-ads-page .google-ads-identity,
+.oi-modern-page.google-ads-page .google-ads-controls,
+.oi-modern-page.google-ads-page .google-ads-chart,
+.oi-modern-page.google-ads-page .google-ads-table-wrap {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.oi-modern-page.google-ads-page .brand-media-range-buttons {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.oi-modern-page.google-ads-page .google-ads-chart,
+.oi-modern-page.google-ads-page .google-ads-table-wrap {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+@media (max-width: 560px) {
+  .oi-modern-page.google-ads-page {
+    gap: 12px;
+    padding: 0;
+  }
+
+  .oi-modern-page.google-ads-page .google-ads-controls {
+    padding: 12px;
+  }
+
+  .oi-modern-page.google-ads-page .google-ads-control-grid {
+    gap: 10px;
+  }
+
+  .oi-modern-page.google-ads-page .google-ads-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oi-modern-page.google-ads-page .google-ads-kpi {
+    padding-inline: 10px;
+  }
+
+  .oi-modern-page.google-ads-page .google-ads-legend {
+    white-space: normal;
+  }
+}
