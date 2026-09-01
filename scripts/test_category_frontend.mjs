@@ -68,7 +68,7 @@ const inventoryMatch = inventory.match(/<!-- FRONTEND_MIGRATION_INVENTORY_START 
 assert(inventoryMatch, "迁移清单缺少受控 JSON 区块");
 const parsedInventory = JSON.parse(inventoryMatch[1]);
 const category = parsedInventory.pages.find((page) => page.pageKey === "category");
-assert(category?.status === "dual", "Category 完成后必须保持 dual 状态");
+assert(category?.status === "modern", "Category 放行后必须进入 modern 状态");
 assert(category.roots?.includes("#categoryModernRoot"), "迁移清单未记录 Category modern root");
 assert(category.tests?.includes("scripts/test_category_frontend.mjs"), "迁移清单未记录 Category 静态契约测试");
 

@@ -70,13 +70,14 @@ const pages = JSON.parse(jsonBlock[1]).pages;
 const expectedStatuses = {
   payments: "modern",
   publishers: "modern",
-  "brand-media": "dual",
-  "revenue-flow": "dual",
-  "google-ads": "dual",
+  "brand-media": "modern",
+  "revenue-flow": "modern",
+  "google-ads": "modern",
   "monthly-new-merchants": "modern",
-  sheets: "dual",
-  category: "dual",
-  tier: "dual"
+  "offer-list-tracker": "modern",
+  sheets: "modern",
+  category: "modern",
+  tier: "modern"
 };
 for (const [pageKey, expectedStatus] of Object.entries(expectedStatuses)) {
   assert(pages.find((page) => page.pageKey === pageKey)?.status === expectedStatus, `${pageKey} 状态不符合当前迁移边界`);

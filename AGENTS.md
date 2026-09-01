@@ -58,6 +58,7 @@ node scripts/test_google_ads_workbench_frontend.mjs
 python scripts/test_google_ads_workbench.py
 node scripts/test_monthly_new_merchants_modern_cutover.mjs
 node scripts/test_m4_shell_frontend.mjs
+node scripts/test_modern_page_cutover.mjs
 python scripts/test_auth_helpers.py
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_tier2_recommendation_rules.mjs

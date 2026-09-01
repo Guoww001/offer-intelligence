@@ -78,6 +78,7 @@ jobs:
           node scripts/test_frontend_migration_inventory.mjs
           node scripts/test_frontend_build_contract.mjs
           node scripts/test_m4_shell_frontend.mjs
+          node scripts/test_modern_page_cutover.mjs
           node scripts/test_payments_frontend.mjs
           node scripts/test_google_ads_workbench_frontend.mjs
           python scripts/test_google_ads_workbench.py

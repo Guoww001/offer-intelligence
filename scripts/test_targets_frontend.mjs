@@ -57,7 +57,7 @@ const inventoryMatch = inventory.match(/<!-- FRONTEND_MIGRATION_INVENTORY_START 
 assert(inventoryMatch, "迁移清单缺少受控 JSON 区块");
 const parsedInventory = JSON.parse(inventoryMatch[1]);
 const targets = parsedInventory.pages.find((page) => page.pageKey === "sheets");
-assert(targets?.status === "dual", "Targets 完成后必须保持 dual 状态");
+assert(targets?.status === "modern", "Targets 放行后必须进入 modern 状态");
 assert(targets.roots?.includes("#sheetModernRoot"), "迁移清单未记录 Targets modern root");
 assert(targets.tests?.includes("scripts/test_targets_frontend.mjs"), "迁移清单未记录 Targets 静态契约测试");
 

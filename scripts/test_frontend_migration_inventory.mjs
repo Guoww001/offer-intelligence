@@ -77,12 +77,18 @@ const missingPages = [...routedPages].filter((pageKey) => !inventoryByPage.has(p
 const unknownPages = [...inventoryByPage.keys()].filter((pageKey) => !routedPages.has(pageKey));
 assert(missingPages.length === 0, `迁移清单缺少 switchPage() 页面: ${missingPages.join(", ")}`);
 assert(unknownPages.length === 0, `迁移清单包含 switchPage() 未识别页面: ${unknownPages.join(", ")}`);
-assert(inventoryByPage.get("offer-list-tracker")?.status === "dual", "Offer Tracker M2 完成后必须保持 dual 状态");
+assert(inventoryByPage.get("offer-list-tracker")?.status === "modern", "Offer Tracker 放行后必须进入 modern 状态");
 assert(inventoryByPage.get("payments")?.status === "modern", "Payments M4 完成后必须进入 modern 状态");
 assert(
   inventoryByPage.get("monthly-new-merchants")?.status === "modern",
   "Monthly New Merchants M4 放行后必须进入 modern 状态"
 );
+for (const pageKey of ["brand-media", "revenue-flow", "google-ads"]) {
+  assert(inventoryByPage.get(pageKey)?.status === "modern", `${pageKey} 放行后必须进入 modern 状态`);
+}
+for (const pageKey of ["sheets", "category", "tier"]) {
+  assert(inventoryByPage.get(pageKey)?.status === "modern", `${pageKey} 放行后必须进入 modern 状态`);
+}
 
 const ci = fs.readFileSync(ciPath, "utf8");
 assert(

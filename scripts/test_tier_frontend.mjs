@@ -125,7 +125,7 @@ const inventoryMatch = inventory.match(/<!-- FRONTEND_MIGRATION_INVENTORY_START 
 assert(inventoryMatch, "迁移清单缺少受控 JSON 区块");
 const parsedInventory = JSON.parse(inventoryMatch[1]);
 const tier = parsedInventory.pages.find((page) => page.pageKey === "tier");
-assert(tier?.status === "dual", "Tier 完成后必须保持 dual 状态");
+assert(tier?.status === "modern", "Tier 放行后必须进入 modern 状态");
 assert(tier.roots?.includes("#tierModernRoot"), "迁移清单未记录 Tier modern root");
 assert(tier.tests?.includes("scripts/test_tier_frontend.mjs"), "迁移清单未记录 Tier 静态契约测试");
 
