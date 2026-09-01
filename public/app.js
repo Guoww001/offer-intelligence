@@ -1034,7 +1034,6 @@
       "nav.agent": "Agent",
       "nav.payments": "付款",
       "nav.publishers": "媒体",
-      "nav.tier": "Tier",
       "nav.googleAds": "Google 广告",
       "nav.googleAdsHint": "广告投放",
       "nav.brandMedia": "品牌媒体趋势",
@@ -2322,13 +2321,7 @@
         ensureDashboardCategoryReportData();
       }
     } else if (state.page === "tier") {
-      if (els.tierPage && els.tierPage.classList.contains("is-modern")) {
-        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
-          window.OI_MODERN_APP.setLanguage(state.language);
-        }
-      } else {
-        renderTierPage(state.selectedTierPage);
-      }
+      renderTierPage(state.selectedTierPage);
     } else if (state.page === "monthly-new-merchants") {
       if (els.monthlyNewMerchantsPage && els.monthlyNewMerchantsPage.classList.contains("is-modern")) {
         if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
@@ -2354,7 +2347,13 @@
         renderBrandMediaPage();
       }
     } else if (state.page === "google-ads") {
-      renderGoogleAdsPage();
+      if (els.googleAdsPage && els.googleAdsPage.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        renderGoogleAdsPage();
+      }
     } else if (state.page === "agent") {
       // Agent 页面内容由独立会话状态维护；空会话时同步恢复提示的语言。
       renderAgentPageWelcomeIfIdle();
@@ -28369,8 +28368,8 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function targetProgressHtml(records) {
+    const metricRows = targetMetricRows(records);
     const selectedTier = state.targetFilters.tier;
-    const metricRows = targetMetricRows(targetRowsForMonth(records, state.targetFilters.month, selectedTier));
     const definitions = TARGET_PROGRESS_DEFINITIONS.filter((definition) => (
       selectedTier === "all" || definition.tier.toLowerCase() === String(selectedTier).toLowerCase()
     ));
@@ -31602,6 +31601,30 @@ var _NUMERIC_COL_PATTERNS = [
       const modernRoot = document.getElementById("revenueFlowModernRoot");
       if (modernRoot) modernRoot.classList.add("hidden");
     }
+    if (previousPage === "google-ads" && page !== "google-ads") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("google-ads");
+        }
+      } catch (error) {
+        console.warn("Modern Google Ads unmount failed; continuing with the legacy Google Ads page.", error);
+      }
+      if (els.googleAdsPage) els.googleAdsPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("googleAdsModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
+    if (previousPage === "monthly-new-merchants" && page !== "monthly-new-merchants") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("monthly-new-merchants");
+        }
+      } catch (error) {
+        console.warn("Modern Monthly New Merchants unmount failed; continuing with the legacy page.", error);
+      }
+      if (els.monthlyNewMerchantsPage) els.monthlyNewMerchantsPage.classList.remove("is-modern");
+      const modernRoot = document.getElementById("monthlyNewMerchantsModernRoot");
+      if (modernRoot) modernRoot.classList.add("hidden");
+    }
     if (previousPage === "sheets" && page !== "sheets") {
       try {
         if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
@@ -31620,7 +31643,7 @@ var _NUMERIC_COL_PATTERNS = [
           window.OI_MODERN_APP.unmountPage("category");
         }
       } catch (error) {
-        console.warn("Modern Category unmount failed; continuing with the legacy category page.", error);
+        console.warn("Modern Category Report unmount failed; continuing with the legacy category page.", error);
       }
       if (els.categoryPage) els.categoryPage.classList.remove("is-modern");
       const modernRoot = document.getElementById("categoryModernRoot");
@@ -31632,23 +31655,14 @@ var _NUMERIC_COL_PATTERNS = [
           window.OI_MODERN_APP.unmountPage("tier");
         }
       } catch (error) {
-        console.warn("Modern Tier unmount failed; continuing with the legacy tier page.", error);
+        console.warn("Modern Tier Sheet unmount failed; continuing with the legacy tier page.", error);
       }
       if (els.tierPage) els.tierPage.classList.remove("is-modern");
       const modernRoot = document.getElementById("tierModernRoot");
-      if (modernRoot) modernRoot.classList.add("hidden");
-    }
-    if (previousPage === "monthly-new-merchants" && page !== "monthly-new-merchants") {
-      try {
-        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
-          window.OI_MODERN_APP.unmountPage("monthly-new-merchants");
-        }
-      } catch (error) {
-        console.warn("Modern Monthly New Merchants unmount failed; continuing with the legacy page.", error);
+      if (modernRoot) {
+        delete modernRoot.dataset.mountedTier;
+        modernRoot.classList.add("hidden");
       }
-      if (els.monthlyNewMerchantsPage) els.monthlyNewMerchantsPage.classList.remove("is-modern");
-      const modernRoot = document.getElementById("monthlyNewMerchantsModernRoot");
-      if (modernRoot) modernRoot.classList.add("hidden");
     }
     if (page !== "monthly-new-merchants" && state.monthlyNewMerchants.drawerOpen) {
       closeMonthlyNewMerchantDrawer({ restoreFocus: false });
@@ -31709,7 +31723,7 @@ var _NUMERIC_COL_PATTERNS = [
     els.categoryNav.classList.toggle("active", isCategory);
     els.monthlyNewMerchantsNav.classList.toggle("active", isMonthlyNewMerchants);
     els.tierNavButtons.forEach((button) => {
-      button.classList.toggle("active", isTier);
+      button.classList.toggle("active", isTier && button.dataset.tierPage === state.selectedTierPage);
     });
     syncNavigationGroupState(page);
     // 切换页面时自动最小化所有非推理中的深度分析浮窗
@@ -31954,7 +31968,65 @@ var _NUMERIC_COL_PATTERNS = [
         renderRevenueFlowPage();
       }
     }
-    if (isGoogleAds) renderGoogleAdsPage();
+    if (isGoogleAds) {
+      const modernRoot = document.getElementById("googleAdsModernRoot");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "google-ads"
+        && els.googleAdsPage
+        && els.googleAdsPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("google-ads"));
+          if (modernPageAvailable) {
+            modernMounted = Boolean(modernApp.mountPage("google-ads", modernRoot));
+          }
+        }
+      } catch (error) {
+        console.warn("Modern Google Ads unavailable; continuing with the legacy Google Ads page.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.googleAdsPage) els.googleAdsPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.googleAdsPage) els.googleAdsPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (
+            !modernPageAvailable
+            || !modernApp
+            || typeof modernApp.hasPage !== "function"
+            || typeof modernApp.mountPage !== "function"
+          )
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Google Ads unavailable; continuing with the legacy Google Ads page.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderGoogleAdsPage();
+      }
+    }
     if (isSheets) {
       const modernRoot = document.getElementById("sheetModernRoot");
       const modernApp = window.OI_MODERN_APP;
@@ -31998,10 +32070,12 @@ var _NUMERIC_COL_PATTERNS = [
         if (els.sheetPage) els.sheetPage.classList.remove("is-modern");
         if (modernRoot) modernRoot.classList.add("hidden");
         if (
-          (!modernPageAvailable
+          (
+            !modernPageAvailable
             || !modernApp
             || typeof modernApp.hasPage !== "function"
-            || typeof modernApp.mountPage !== "function")
+            || typeof modernApp.mountPage !== "function"
+          )
           && !fallbackWarningShown
         ) {
           console.warn(
@@ -32045,7 +32119,7 @@ var _NUMERIC_COL_PATTERNS = [
           }
         }
       } catch (error) {
-        console.warn("Modern Category unavailable; continuing with the legacy category page.", error);
+        console.warn("Modern Category Report unavailable; continuing with the legacy category page.", error);
         fallbackWarningShown = true;
       }
       if (modernMounted) {
@@ -32055,14 +32129,16 @@ var _NUMERIC_COL_PATTERNS = [
         if (els.categoryPage) els.categoryPage.classList.remove("is-modern");
         if (modernRoot) modernRoot.classList.add("hidden");
         if (
-          (!modernPageAvailable
+          (
+            !modernPageAvailable
             || !modernApp
             || typeof modernApp.hasPage !== "function"
-            || typeof modernApp.mountPage !== "function")
+            || typeof modernApp.mountPage !== "function"
+          )
           && !fallbackWarningShown
         ) {
           console.warn(
-            "Modern Category unavailable; continuing with the legacy category page.",
+            "Modern Category Report unavailable; continuing with the legacy category page.",
             new Error("Modern frontend page API is unavailable")
           );
         }
@@ -32072,10 +32148,36 @@ var _NUMERIC_COL_PATTERNS = [
     if (isTier) {
       const modernRoot = document.getElementById("tierModernRoot");
       const modernApp = window.OI_MODERN_APP;
+      const requestedTier = state.selectedTierPage || "Tier 1";
       let modernMounted = false;
       let modernPageAvailable = false;
       let fallbackWarningShown = false;
-      if (modernRoot) modernRoot.dataset.initialTier = state.selectedTierPage;
+      if (modernRoot) modernRoot.dataset.initialTier = requestedTier;
+      if (
+        previousPage === "tier"
+        && els.tierPage
+        && els.tierPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+        && modernRoot.dataset.mountedTier === requestedTier
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      if (
+        previousPage === "tier"
+        && els.tierPage
+        && els.tierPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+        && modernApp
+        && typeof modernApp.unmountPage === "function"
+      ) {
+        modernApp.unmountPage("tier");
+        els.tierPage.classList.remove("is-modern");
+        modernRoot.classList.add("hidden");
+      }
       try {
         if (modernApp && typeof modernApp.setLanguage === "function") {
           modernApp.setLanguage(state.language);
@@ -32092,24 +32194,32 @@ var _NUMERIC_COL_PATTERNS = [
           }
         }
       } catch (error) {
-        console.warn("Modern Tier unavailable; continuing with the legacy tier page.", error);
+        console.warn("Modern Tier Sheet unavailable; continuing with the legacy tier page.", error);
         fallbackWarningShown = true;
       }
       if (modernMounted) {
         if (els.tierPage) els.tierPage.classList.add("is-modern");
-        if (modernRoot) modernRoot.classList.remove("hidden");
+        if (modernRoot) {
+          modernRoot.dataset.mountedTier = requestedTier;
+          modernRoot.classList.remove("hidden");
+        }
       } else {
         if (els.tierPage) els.tierPage.classList.remove("is-modern");
-        if (modernRoot) modernRoot.classList.add("hidden");
+        if (modernRoot) {
+          delete modernRoot.dataset.mountedTier;
+          modernRoot.classList.add("hidden");
+        }
         if (
-          (!modernPageAvailable
+          (
+            !modernPageAvailable
             || !modernApp
             || typeof modernApp.hasPage !== "function"
-            || typeof modernApp.mountPage !== "function")
+            || typeof modernApp.mountPage !== "function"
+          )
           && !fallbackWarningShown
         ) {
           console.warn(
-            "Modern Tier unavailable; continuing with the legacy tier page.",
+            "Modern Tier Sheet unavailable; continuing with the legacy tier page.",
             new Error("Modern frontend page API is unavailable")
           );
         }
@@ -32159,10 +32269,12 @@ var _NUMERIC_COL_PATTERNS = [
         if (els.monthlyNewMerchantsPage) els.monthlyNewMerchantsPage.classList.remove("is-modern");
         if (modernRoot) modernRoot.classList.add("hidden");
         if (
-          (!modernPageAvailable
+          (
+            !modernPageAvailable
             || !modernApp
             || typeof modernApp.hasPage !== "function"
-            || typeof modernApp.mountPage !== "function")
+            || typeof modernApp.mountPage !== "function"
+          )
           && !fallbackWarningShown
         ) {
           console.warn(
@@ -32695,7 +32807,7 @@ var _NUMERIC_COL_PATTERNS = [
     });
     els.tierNavButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        state.selectedTierPage = "Tier 1";
+        state.selectedTierPage = button.dataset.tierPage;
         state.selectedTierRowKeys.clear();
         setTierMoveStatus("");
         switchPage("tier");
@@ -33596,71 +33708,15 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function downloadModernCategory(payload) {
-    if (!payload || typeof payload !== "object" || !Array.isArray(payload.rows)) return false;
-    const rows = payload.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row));
-    if (!rows.length) return false;
+    if (!payload || !Array.isArray(payload.rows) || !payload.rows.length) return false;
     const label = String(payload.label || "category").trim() || "category";
-    downloadRowsAsXlsx(rows, {
+    downloadRowsAsXlsx(payload.rows, {
       downloadType: "sheet",
       filePrefix: "category_focus",
       exportScope: label,
-      sheetName: label,
-      downloadColumns: objectExportColumns(rows)
+      sheetName: label.slice(0, 31),
+      downloadColumns: objectExportColumns(payload.rows)
     });
-    return true;
-  }
-
-  function downloadModernTargets(payload) {
-    if (!payload || typeof payload !== "object" || !Array.isArray(payload.rows)) return false;
-    const rows = payload.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row));
-    if (!rows.length) return false;
-    downloadRowsAsXlsx(rows, {
-      downloadType: "sheet",
-      filePrefix: "monthly_targets",
-      exportScope: String(payload.scope || "all_months"),
-      sheetName: "Monthly Targets",
-      downloadColumns: objectExportColumns(rows, [
-        "Month", "Tier", "Brand Count", "Total Clicks", "Order Count", "Revenue",
-        "Avg Conversion", "New Tier Entries", "Tier Exits", "Target"
-      ])
-    });
-    return true;
-  }
-
-  function downloadModernTier(payload) {
-    if (!payload || typeof payload !== "object") return false;
-    const rows = Array.isArray(payload.rows)
-      ? payload.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row))
-      : [];
-    const sheets = Array.isArray(payload.sheets) && payload.sheets.length
-      ? payload.sheets
-        .filter((sheet) => sheet && typeof sheet === "object" && Array.isArray(sheet.rows))
-        .map((sheet) => {
-          const sheetRows = sheet.rows.filter((row) => row && typeof row === "object" && !Array.isArray(row));
-          const headers = Array.isArray(sheet.headers) ? sheet.headers : [];
-          return {
-            sheetName: String(sheet.sheetName || "Tier"),
-            rows: sheetRows,
-            columns: tierSheetExportColumns(sheetRows, headers)
-          };
-        })
-        .filter((sheet) => sheet.rows.length)
-      : rows.length
-        ? [{
-            sheetName: String(payload.tier || "Tier"),
-            rows,
-            columns: tierSheetExportColumns(rows, Array.isArray(payload.headers) ? payload.headers : [])
-          }]
-        : [];
-    if (!sheets.length) return false;
-    const workbook = createRecommendationWorkbook(rows, {
-      referenceStyle: true,
-      sheets
-    });
-    triggerWorkbookDownload(
-      workbook,
-      `tier_records_${String(payload.tier || "all").replace(/[^a-z0-9_-]+/gi, "-")}_${rows.length || sheets.length}_${todayFileStamp()}.xlsx`
-    );
     return true;
   }
 
@@ -33673,11 +33729,7 @@ var _NUMERIC_COL_PATTERNS = [
           ? downloadModernPayments(payload)
           : type === "publishers"
             ? downloadModernPublishers(payload)
-            : type === "category"
-              ? downloadModernCategory(payload)
-              : type === "targets"
-                ? downloadModernTargets(payload)
-                : type === "tier" && downloadModernTier(payload)
+            : type === "category" && downloadModernCategory(payload)
     )
   };
 
@@ -33843,9 +33895,14 @@ var _NUMERIC_COL_PATTERNS = [
       reportHelpMarkdown: (en) => (en ? REPORT_MODE_HELP_MD_EN : REPORT_MODE_HELP_MD),
       formatSheetCell,
       aovCellHtml,
+      objectExportColumns,
       tierSheetExportColumns,
       worksheetXml,
       stylesXml,
+      workbookXml,
+      workbookRelsXml,
+      rootRelsXml,
+      contentTypesXml,
       createWorkbookSheets,
       formatTierSheetCell: (sheetName, row, header) => formatTierSheetCell(
         sheetByName(sheetName) || { name: sheetName },

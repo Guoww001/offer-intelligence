@@ -82,13 +82,16 @@ read("frontend/src/features/tier-sheet/TierSheetPage.vue");
 read("frontend/src/features/tier-sheet/tierSheetModel.ts");
 read("frontend/src/features/tier-sheet/useTierSheet.ts");
 read("frontend/src/features/tier-sheet/tierSheet.css");
+read("frontend/src/features/google-ads/GoogleAdsPage.vue");
+read("frontend/src/features/google-ads/googleAdsModel.ts");
+read("frontend/src/features/google-ads/useGoogleAds.ts");
 read("frontend/src/shared/export/xlsx.ts");
 read("frontend/src/shared/export/xlsx.test.ts");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260831-vue-m5-tier'),
-  "index.html 缺少 M5 本地 modern CSS"
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260901-vue-m4-google-ads'),
+  "index.html 缺少当前本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
 assert(
@@ -98,8 +101,8 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260831-vue-m5-tier";'),
-  "auth.js 缺少 M5 本地 modern bundle 常量"
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-vue-m4-google-ads";'),
+  "auth.js 缺少当前本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
 assert(auth.includes("window.OI_MODERN_APP.bootstrap("), "auth.js 未调用 modern bootstrap");
@@ -178,5 +181,6 @@ assert(modernApp.hasPage("monthly-new-merchants") === true, "Monthly New Merchan
 assert(modernApp.hasPage("sheets") === true, "Targets 必须注册 modern 页面");
 assert(modernApp.hasPage("category") === true, "Category 必须注册 modern 页面");
 assert(modernApp.hasPage("tier") === true, "Tier 必须注册 modern 页面");
+assert(modernApp.hasPage("google-ads") === true, "Google Ads 必须注册 modern 页面");
 
 console.log("PASS: frontend build contract");

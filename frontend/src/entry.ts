@@ -65,6 +65,8 @@ import type {
   TierReportLoadRequest
 } from "./features/tier-sheet/useTierSheet";
 import type { TierSheetReportData } from "./features/tier-sheet/tierSheetModel";
+import GoogleAdsPage from "./features/google-ads/GoogleAdsPage.vue";
+import type { GoogleAdsLoadRequest } from "./features/google-ads/useGoogleAds";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -88,13 +90,7 @@ interface MonthlyNewMerchantsApiPayload {
 }
 
 function targetReportData(data: LegacyBootstrapData): TargetReportData {
-  const sheetReportData = isRecord(data.sheetReportData) ? data.sheetReportData : {};
-  const chatbotData = isRecord(data.chatbotData) ? data.chatbotData : {};
-  const summary = isRecord(chatbotData.summary) ? chatbotData.summary : {};
-  return {
-    ...sheetReportData,
-    referenceMonthKey: sheetReportData.referenceMonthKey || summary.month || summary.generatedAt || ""
-  } as TargetReportData;
+  return isRecord(data.sheetReportData) ? data.sheetReportData as TargetReportData : { sheets: [] };
 }
 
 function categoryReportData(data: LegacyBootstrapData): CategoryReportData {
@@ -223,8 +219,7 @@ async function loadBrandMediaTrend(request: BrandMediaTrendRequest): Promise<unk
     endDate: request.endDate
   });
   return apiRequest<unknown>(`/api/ui/db/brand-media-trend?${query.toString()}`, {
-    signal: request.signal,
-    timeoutMs: 30_000
+    signal: request.signal
   });
 }
 
@@ -250,6 +245,19 @@ async function loadMonthlyNewMerchants(request: MonthlyNewMerchantLoadRequest): 
     `/api/ui/db/monthly-new-merchants?${query.toString()}`,
     { signal: request.signal }
   );
+}
+
+async function loadGoogleAds(request: GoogleAdsLoadRequest): Promise<unknown> {
+  const query = new URLSearchParams({
+    userId: request.userId,
+    startDate: request.startDate,
+    endDate: request.endDate
+  });
+  if (request.forceRefresh) query.set("refresh", "1");
+  return apiRequest<unknown>(`/api/ui/db/google-ads-workbench?${query.toString()}`, {
+    signal: request.signal,
+    timeoutMs: 45_000
+  });
 }
 
 async function saveMonthlyNewMerchant(payload: MonthlyNewMerchantPayload): Promise<unknown> {
@@ -682,6 +690,31 @@ const monthlyNewMerchantsFactory: ModernPageFactory = (element): ModernPageContr
   };
 };
 
+const googleAdsFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernGoogleAdsMount",
+    setup() {
+      return () => h(GoogleAdsPage, {
+        language: i18n.language.value,
+        userId: "19",
+        loadData: loadGoogleAds
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 const targetsFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
@@ -773,6 +806,7 @@ window.OI_MODERN_APP = createModernAppApi({
   payments: paymentsFactory,
   publishers: publishersFactory,
   "monthly-new-merchants": monthlyNewMerchantsFactory,
+  "google-ads": googleAdsFactory,
   sheets: targetsFactory,
   "brand-media": brandMediaFactory,
   "revenue-flow": revenueFlowFactory,

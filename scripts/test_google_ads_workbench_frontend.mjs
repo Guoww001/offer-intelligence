@@ -37,6 +37,11 @@ if (!productsSubnavMatch || productsSubnavMatch[0].includes('id="googleAdsNav"')
 ].forEach((value) => assertIncludes(html, value, "Google Ads workbench markup"));
 
 [
+  'id="googleAdsModernRoot"',
+  'data-modern-root="google-ads"'
+].forEach((value) => assertIncludes(html, value, "Google Ads modern root markup"));
+
+[
   'switchPage("google-ads")',
   'if (page === "google-ads") return "google-ads";',
   'currentGroupName === "google-ads"',
@@ -49,12 +54,40 @@ if (!productsSubnavMatch || productsSubnavMatch[0].includes('id="googleAdsNav"')
 ].forEach((value) => assertIncludes(app, value, "Google Ads workbench behavior"));
 
 [
+  'unmountPage("google-ads")',
+  'hasPage("google-ads")',
+  'mountPage("google-ads", modernRoot)',
+  'Modern Google Ads unavailable; continuing with the legacy Google Ads page.'
+].forEach((value) => assertIncludes(app, value, "Google Ads modern fallback wiring"));
+
+[
   ".google-ads-page",
   ".google-ads-kpis",
   ".google-ads-chart",
   ".google-ads-table-wrap",
+  ".google-ads-page.is-modern > :not(#googleAdsModernRoot)",
+  ".google-ads-status[data-kind=\"error\"]",
   "@media (max-width: 560px)"
 ].forEach((value) => assertIncludes(styles, value, "Google Ads workbench styles"));
+
+const entry = fs.readFileSync("frontend/src/entry.ts", "utf8");
+[
+  'import GoogleAdsPage from "./features/google-ads/GoogleAdsPage.vue"',
+  "async function loadGoogleAds",
+  '"google-ads": googleAdsFactory',
+  'loadData: loadGoogleAds'
+].forEach((value) => assertIncludes(entry, value, "Google Ads modern entry wiring"));
+
+[
+  "frontend/src/features/google-ads/GoogleAdsPage.vue",
+  "frontend/src/features/google-ads/googleAdsModel.ts",
+  "frontend/src/features/google-ads/useGoogleAds.ts",
+  "frontend/src/features/google-ads/GoogleAdsPage.test.ts",
+  "frontend/src/features/google-ads/googleAdsModel.test.ts",
+  "frontend/src/features/google-ads/useGoogleAds.test.ts"
+].forEach((path) => {
+  if (!fs.existsSync(path)) throw new Error("Google Ads modern file missing: " + path);
+});
 
 assertIncludes(styles, ".nav-primary-link", "Google Ads primary navigation styles");
 assertIncludes(styles, "font-size: 14px", "Expanded sidebar navigation typography");

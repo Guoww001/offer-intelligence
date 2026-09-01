@@ -540,6 +540,39 @@
   .google-ads-method-panel dd { padding-bottom: 7px; border-bottom: 1px solid #edf2f4; }
 }
 
+.google-ads-status[data-kind="error"] { color: #b62f36; }
+.google-ads-status[data-kind="success"] { color: #137650; }
+.google-ads-status[data-kind="loading"] { color: var(--google-blue); }
+
+/* Google Ads modern migration */
+.google-ads-page.is-modern > :not(#googleAdsModernRoot) {
+  display: none !important;
+}
+
+.google-ads-page:not(.is-modern) > #googleAdsModernRoot {
+  display: none !important;
+}
+
+.google-ads-page.is-modern > #googleAdsModernRoot {
+  display: block;
+}
+
+.google-ads-page > #googleAdsModernRoot {
+  overflow-x: hidden;
+  min-width: 0;
+  width: 100%;
+}
+
+.google-ads-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 /* Offer List Tracker */
 .offer-tracker-page.is-modern > :not(#offerListTrackerModernRoot) {
   display: none !important;
@@ -612,7 +645,7 @@
 }
 
 /* Brand Media modern migration */
-#brandMediaPage.is-modern > :not(#brandMediaModernRoot) {
+.brand-media-page.is-modern > :not(#brandMediaModernRoot) {
   display: none !important;
 }
 
@@ -17492,7 +17525,6 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .c
 }
 body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .chat-reminder-reminder {
   color: #5a3fc5;
-}
 }
 
 /* ── 滚动条 ─────────────────────────────────────────── */

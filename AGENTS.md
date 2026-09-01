@@ -54,6 +54,8 @@ node --check public/chatbot_i18n.js
 node --check public/tier2_recommendation_rules.js
 node scripts/test_payments_frontend.mjs
 node scripts/test_brand_media_frontend.mjs
+node scripts/test_google_ads_workbench_frontend.mjs
+python scripts/test_google_ads_workbench.py
 python scripts/test_auth_helpers.py
 node scripts/test_chatbot_intent_flow.mjs
 node scripts/test_tier2_recommendation_rules.mjs

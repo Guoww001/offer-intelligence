@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-08-31（Targets、Category 与 Tier Vue 双轨接入；共享 XLSX 契约抽取；旧版/Vue 代码级样式对照）
+> 最近更新：2026-09-01（Google Ads Vue 双轨接入；固定 fixture 云端旧版/Vue 对比）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -114,17 +114,18 @@
     {
       "pageKey": "google-ads",
       "label": "Google Ads Workbench",
-      "status": "legacy",
-      "roots": ["#googleAdsPage"],
-      "legacyEntry": ["switchPage()", "renderGoogleAdsPage()", "_googleAdsLoad()", "_bindGoogleAdsPageInteractions()"],
-      "state": ["state.googleAds"],
+      "status": "dual",
+      "roots": ["#googleAdsPage", "#googleAdsModernRoot"],
+      "legacyEntry": ["switchPage()", "renderGoogleAdsPage()", "_googleAdsLoad()", "_bindGoogleAdsPageInteractions()", "modernApp.mountPage(\"google-ads\")"],
+      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/google-ads/GoogleAdsPage.vue", "frontend/src/features/google-ads/googleAdsModel.ts", "frontend/src/features/google-ads/useGoogleAds.ts"],
+      "state": ["state.googleAds", "useGoogleAds() 的日期/请求/加载状态"],
       "apis": ["/api/ui/db/google-ads-workbench"],
       "storage": [],
       "exports": [],
       "overlays": [],
-      "tests": ["scripts/test_google_ads_workbench.py", "scripts/test_google_ads_workbench_frontend.mjs"],
-      "testGap": "缺少真实浏览器中的日期范围、刷新和图表渲染验收。",
-      "notes": "聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS 和归因边界说明。"
+      "tests": ["scripts/test_google_ads_workbench.py", "scripts/test_google_ads_workbench_frontend.mjs", "frontend/src/features/google-ads/googleAdsModel.test.ts", "frontend/src/features/google-ads/useGoogleAds.test.ts", "frontend/src/features/google-ads/GoogleAdsPage.test.ts"],
+      "testGap": "固定 fixture 的云端桌面对比、日期范围/刷新/图表浏览器验收已完成；真实 Google Ads API/auth、390px 与生产账号数据仍待验收。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS、未匹配花费和归因边界说明。请求沿用 /api/ui/db/google-ads-workbench，快捷范围、显式日期和 force refresh 均由 composable 维护。"
     },
     {
       "pageKey": "monthly-new-merchants",
