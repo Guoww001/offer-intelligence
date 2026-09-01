@@ -73,4 +73,22 @@ describe("CategoryReportPage", () => {
     expect(downloads).toHaveLength(1);
     expect(calls).toEqual(["Tier 1", "Tier 2", "Tier 3", "Tier 4"]);
   });
+
+  it("exposes stable hooks for search, date, focus, and export interactions", () => {
+    const wrapper = mount(CategoryReportPage, {
+      props: {
+        language: "en",
+        reportData: report,
+        autoLoad: false,
+        download: () => undefined
+      }
+    });
+
+    expect(wrapper.get('[data-category-action="search"]').element.tagName).toBe("INPUT");
+    expect(wrapper.get('[data-category-date="start"]').element.tagName).toBe("INPUT");
+    expect(wrapper.get('[data-category-date="end"]').element.tagName).toBe("INPUT");
+    expect(wrapper.find('[data-category-action="apply-date"]').exists()).toBe(true);
+    expect(wrapper.find('[data-category-action="export"]').exists()).toBe(true);
+    expect(wrapper.find('[data-category-action="toggle-expanded"]').exists()).toBe(true);
+  });
 });

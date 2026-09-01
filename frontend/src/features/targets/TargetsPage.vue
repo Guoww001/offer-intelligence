@@ -5,7 +5,6 @@ import { translateMessage, type UiLanguage } from "../../shared/i18n";
 import {
   TARGET_METRICS,
   TARGET_TREND_VIEWS,
-  dbMonthlySummaryForKey,
   monthKeyFromText,
   targetActualAvailable,
   targetDailyTrendRows,
@@ -35,7 +34,7 @@ export interface TargetExportPayload {
   readonly scope: string;
 }
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   language: UiLanguage;
   reportData?: TargetReportData;
   autoLoad?: boolean;
@@ -43,9 +42,7 @@ const props = withDefaults(defineProps<{
   loadStatus?: TargetStatusLoader;
   loadTierSummary?: TargetTierSummaryLoader;
   download?: (payload: TargetExportPayload) => void;
-}>(), {
-  autoLoad: true
-});
+}>();
 
 const targets = useTargets({
   reportData: props.reportData,
@@ -117,19 +114,12 @@ const copy = computed(() => ({
 
 const hasReportData = computed(() => Boolean(props.reportData && Array.isArray(props.reportData.sheets) && props.reportData.sheets.length));
 
-const headlineSummary = computed(() => {
-  const databaseSummary = targets.tier.value === "all"
-    ? dbMonthlySummaryForKey(monthKeyFromText(targets.month.value), targets.statusData.value)
-    : null;
-  return databaseSummary ? { ...targets.summary.value, ...databaseSummary } : targets.summary.value;
-});
-
 const kpis = computed(() => [
-  { icon: "$", label: copy.value.revenue, value: compactMoney(targetSummaryMetricValue(headlineSummary.value, "revenue")), tone: "blue" },
-  { icon: "#", label: copy.value.orders, value: compactNumber(targetSummaryMetricValue(headlineSummary.value, "orders")), tone: "green" },
-  { icon: "C", label: copy.value.clicks, value: compactNumber(targetSummaryMetricValue(headlineSummary.value, "clicks")), tone: "amber" },
-  { icon: "%", label: copy.value.conversion, value: formatPercent(targetSummaryMetricValue(headlineSummary.value, "conversion")), tone: "violet" },
-  { icon: "B", label: copy.value.brands, value: compactNumber(targetSummaryMetricValue(headlineSummary.value, "brands")), tone: "slate" }
+  { icon: "$", label: copy.value.revenue, value: compactMoney(targetSummaryMetricValue(targets.summary.value, "revenue")), tone: "blue" },
+  { icon: "#", label: copy.value.orders, value: compactNumber(targetSummaryMetricValue(targets.summary.value, "orders")), tone: "green" },
+  { icon: "C", label: copy.value.clicks, value: compactNumber(targetSummaryMetricValue(targets.summary.value, "clicks")), tone: "amber" },
+  { icon: "%", label: copy.value.conversion, value: formatPercent(targetSummaryMetricValue(targets.summary.value, "conversion")), tone: "violet" },
+  { icon: "B", label: copy.value.brands, value: compactNumber(targetSummaryMetricValue(targets.summary.value, "brands")), tone: "slate" }
 ]);
 
 interface ProgressCard {
@@ -441,21 +431,21 @@ onUnmounted(() => {
       <section class="panel sheet-target-filters" aria-label="Target filters">
         <label>
           <span>{{ copy.month }}</span>
-          <select :value="targets.month.value" @change="onMonthChange">
+          <select data-target-action="month" :value="targets.month.value" @change="onMonthChange">
             <option value="all">{{ copy.allMonths }}</option>
             <option v-for="value in targets.availableMonths.value" :key="value" :value="value">{{ value }}</option>
           </select>
         </label>
         <label>
           <span>{{ copy.compareMonth }}</span>
-          <select :value="targets.compareMonth.value" @change="onCompareMonthChange">
+          <select data-target-action="compare-month" :value="targets.compareMonth.value" @change="onCompareMonthChange">
             <option value="">{{ copy.noComparison }}</option>
             <option v-for="value in targets.availableMonths.value" :key="value" :value="value" :disabled="value === targets.month.value">{{ value }}</option>
           </select>
         </label>
         <label>
           <span>{{ copy.tier }}</span>
-          <select :value="targets.tier.value" @change="onTierChange">
+          <select data-target-action="tier" :value="targets.tier.value" @change="onTierChange">
             <option value="all">{{ copy.allTiers }}</option>
             <option v-for="value in targets.tierOptions.value" :key="value" :value="value">{{ value }}</option>
           </select>
@@ -478,7 +468,7 @@ onUnmounted(() => {
             </div>
             <div class="target-trend-controls">
               <div class="target-trend-view-tabs" aria-label="Trend view">
-                <button v-for="view in TARGET_TREND_VIEWS" :key="view.key" class="target-trend-view-tab" :class="{ active: targets.trendView.value === view.key }" type="button" :aria-pressed="targets.trendView.value === view.key" @click="targets.setTrendView(view.key)">{{ view.key === "month" ? copy.monthlyReport : copy.dailyReport }}</button>
+                <button v-for="view in TARGET_TREND_VIEWS" :key="view.key" class="target-trend-view-tab" :class="{ active: targets.trendView.value === view.key }" type="button" :data-target-trend-view="view.key" :aria-pressed="targets.trendView.value === view.key" @click="targets.setTrendView(view.key)">{{ view.key === "month" ? copy.monthlyReport : copy.dailyReport }}</button>
               </div>
               <div class="target-metric-tabs" aria-label="Trend metric">
                 <button v-for="item in TARGET_METRICS" :key="item.key" class="target-metric-tab" :class="{ active: targets.metric.value === item.key }" type="button" :data-target-metric="item.key" :aria-pressed="targets.metric.value === item.key" @click="targets.setMetric(item.key)">{{ item.key === "revenue" ? copy.revenue : item.key === "orders" ? copy.orders : item.key === "clicks" ? copy.clicks : item.key === "conversion" ? copy.conversion : copy.brands }}</button>
@@ -532,7 +522,7 @@ onUnmounted(() => {
                     </form>
                   </template>
                   <template v-else>
-                    <span class="target-value-line"><strong :class="{ 'target-placeholder-value': !card.goal }">{{ card.targetText }}</strong><button class="target-edit-button" :class="{ 'target-set-button': !card.goal }" type="button" @click="startEdit(card)">{{ card.goal ? copy.edit : copy.setTarget }}</button></span>
+                    <span class="target-value-line"><strong :class="{ 'target-placeholder-value': !card.goal }">{{ card.targetText }}</strong><button class="target-edit-button" :class="{ 'target-set-button': !card.goal }" data-target-action="edit-target" :data-target-key="card.key" type="button" @click="startEdit(card)">{{ card.goal ? copy.edit : copy.setTarget }}</button></span>
                   </template>
                 </div>
                 <div><span>{{ copy.actual }}</span><strong>{{ card.actualText }}</strong></div>

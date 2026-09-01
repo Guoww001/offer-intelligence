@@ -252,6 +252,7 @@ onUnmounted(() => {
           <span>{{ copy.categoryMerchant }}</span>
           <input
             id="category-report-search"
+            data-category-action="search"
             type="search"
             list="category-report-options"
             :value="category.searchDraft.value"
@@ -276,10 +277,10 @@ onUnmounted(() => {
         <div class="tier-date-range-field dashboard-category-date-field">
           <span>{{ copy.dateRange }}</span>
           <div class="tier-date-range-controls">
-            <input v-model="startDraft" type="date" aria-label="Category report start date" />
+            <input v-model="startDraft" data-category-date="start" type="date" aria-label="Category report start date" />
             <span class="tier-date-range-separator" aria-hidden="true">–</span>
-            <input v-model="endDraft" type="date" aria-label="Category report end date" />
-            <button class="secondary-button tier-date-apply" type="button" :disabled="category.loading.value" @click="applyDateRange">
+            <input v-model="endDraft" data-category-date="end" type="date" aria-label="Category report end date" />
+            <button class="secondary-button tier-date-apply" data-category-action="apply-date" type="button" :disabled="category.loading.value" @click="applyDateRange">
               {{ copy.apply }}
             </button>
           </div>
@@ -301,7 +302,7 @@ onUnmounted(() => {
         </dl>
 
         <section v-if="category.pieSlices.value.length" class="dashboard-category-pie" :class="{ 'category-pie-focused': Boolean(category.focusKey.value) }" aria-label="Category pie chart">
-          <button v-if="category.focusKey.value" class="category-focus-back" type="button" @click="category.clearFocus">
+          <button v-if="category.focusKey.value" class="category-focus-back" data-category-action="clear-focus" type="button" @click="category.clearFocus">
             <span aria-hidden="true">←</span>
             <span>{{ copy.allCategories }}</span>
           </button>
@@ -359,7 +360,7 @@ onUnmounted(() => {
               </li>
             </ul>
             <div v-if="firstSlice" class="category-pie-actions" :style="{ '--category-color': firstSlice.color, '--category-tint': firstSlice.tint }">
-              <button class="category-focus-export" type="button" :disabled="!props.download" :title="copy.exportHint" @click="exportSlice">
+              <button class="category-focus-export" data-category-action="export" type="button" :disabled="!props.download" :title="copy.exportHint" @click="exportSlice">
                 {{ copy.export }}
               </button>
               <span>{{ firstSlice.label }}: {{ firstSlice.group.rowCount.toLocaleString() }} rows in selected tiers</span>
@@ -458,6 +459,7 @@ onUnmounted(() => {
                 <tr
                   class="dashboard-category-row"
                   :class="{ 'category-expanded': category.expandedKey.value === categoryKey(group.category) }"
+                  data-category-action="toggle-expanded"
                   :data-category-highlight="categoryKey(group.category)"
                   tabindex="0"
                   @click="category.toggleExpanded(categoryKey(group.category))"

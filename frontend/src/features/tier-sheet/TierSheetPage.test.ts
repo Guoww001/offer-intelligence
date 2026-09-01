@@ -85,4 +85,16 @@ describe("TierSheetPage", () => {
     expect(calls).toEqual(["Tier 1"]);
     expect(wrapper.attributes("aria-busy")).toBe("false");
   });
+  it("exposes stable hooks for tier navigation and table interactions", () => {
+    const wrapper = mount(TierSheetPage, { props: { language: "en", reportData: report, autoLoad: false } });
+
+    expect(wrapper.find('[data-tier-tab="Tier 1"]').exists()).toBe(true);
+    expect(wrapper.get('[data-tier-action="search"]').element.tagName).toBe("INPUT");
+    expect(wrapper.get('[data-tier-date="start"]').element.tagName).toBe("INPUT");
+    expect(wrapper.get('[data-tier-date="end"]').element.tagName).toBe("INPUT");
+    expect(wrapper.find('[data-tier-action="date-apply"]').exists()).toBe(true);
+    expect(wrapper.get('[data-tier-filter="network"]').element.tagName).toBe("SELECT");
+    expect(wrapper.find('[data-tier-action="download"]').exists()).toBe(true);
+  });
+
 });

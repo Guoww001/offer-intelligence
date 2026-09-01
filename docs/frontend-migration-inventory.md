@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-01（Google Ads Vue 双轨接入；固定 fixture 云端旧版/Vue 对比）
+> 最近更新：2026-09-01（M5 固定 fixture 交互验收；公开 Sites version 8）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -171,8 +171,8 @@
       "exports": ["downloadSheetTargetsXlsx()", "downloadTargets()", "downloadWorkbook()"],
       "overlays": ["inline target edit form"],
       "tests": ["scripts/test_target_month_selection.mjs", "scripts/test_db_status_view_model.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_targets_frontend.mjs", "scripts/test_m5_mobile_frontend.mjs", "frontend/src/features/targets/targetModel.test.ts", "frontend/src/features/targets/useTargets.test.ts", "frontend/src/features/targets/TargetsPage.test.ts"],
-      "testGap": "Sites version 7 fixed fixture 已完成 1363×936 legacy/Vue 对比与 390×844 Vue focused 截图；移动端筛选器和 KPI 已验证为单列且长数值不截断。真实生产 API/auth、完整目标编辑/趋势/矩阵/导出浏览器流程仍待验收。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月份/对比月份/Tier 筛选、5 个 KPI、月度/日度趋势、Tier 目标进度与 localStorage 编辑、Tier 对比矩阵和当前筛选结果导出。Sheet 快照与 2026-06 已核验目标模板作为回退，/api/ui/db/status 与 /api/ui/db/tier-summary 成功时覆盖数据库实际数据；目标 XLSX 保持 Month/Tier/Brand Count/Total Clicks/Order Count/Revenue/Avg Conversion/New Tier Entries/Tier Exits/Target 字段顺序。Sites version 7 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs` 与 Firecrawl screenshot 记录。"
+      "testGap": "Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 Vue focused 截图，并在公开 Browser 中验证 month/compare-month/Tier hooks、metric 和 daily trend 切换。真实生产 API/auth、完整目标编辑/趋势/矩阵/导出浏览器流程仍待验收。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月份/对比月份/Tier 筛选、5 个 KPI、月度/日度趋势、Tier 目标进度与 localStorage 编辑、Tier 对比矩阵和当前筛选结果导出。Sheet 快照与 2026-06 已核验目标模板作为回退，/api/ui/db/status 与 /api/ui/db/tier-summary 成功时覆盖数据库实际数据；目标 XLSX 保持 Month/Tier/Brand Count/Total Clicks/Order Count/Revenue/Avg Conversion/New Tier Entries/Tier Exits/Target 字段顺序。TargetsPage、CategoryReportPage、TierSheetPage 的关键控件提供稳定 data-* hooks，便于公开固定 fixture smoke 验收。"
     },
     {
       "pageKey": "category",
@@ -187,7 +187,7 @@
       "exports": ["downloadFocusedCategoryRows()", "downloadCategory()", "downloadWorkbook()"],
       "overlays": ["category pie spotlight", "category focused detail"],
       "tests": ["scripts/test_sheet_categories.mjs", "scripts/test_category_drilldown.mjs", "scripts/test_category_trend.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_category_frontend.mjs", "frontend/src/features/category-report/categoryReportModel.test.ts", "frontend/src/features/category-report/useCategoryReport.test.ts", "frontend/src/features/category-report/CategoryReportPage.test.ts"],
-      "testGap": "Sites version 7 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 页面加载；8 个分类、Revenue/Orders/CVR 与 focused export 入口可见。真实生产 API/auth、焦点/展开/导出文件的完整浏览器流程仍待验收。",
+      "testGap": "Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 页面加载；公开 Browser 已验证 Orders lens、pie focus/reset 与分类行展开，8 个分类、Revenue/Orders/CVR 与 focused export 入口可见。真实生产 API/auth、搜索/日期/导出文件的完整浏览器流程仍待验收。",
       "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖 DB sheetCategory → mainCategory → Feishu → 其他来源 → levantaCategory → Uncategorized 优先级、Tier 选择、分类/商家精确搜索、排序、饼图 Top 7 与 Other 下钻、趋势聚合、展开商家明细和 focused export。compact tier_sheet 响应按 Merchant ID 与 Sheet 快照合并，日期切换使用 AbortController/请求序号丢弃过期响应；页面复用旧版 dashboard-category class 和响应式规则，导出由 shared/export/xlsx.ts 生成。"
     },
     {
@@ -203,8 +203,8 @@
       "exports": ["downloadTierSheetXlsx()", "downloadTier()", "downloadWorkbook()"],
       "overlays": ["Tier Sheet overlay", "Tier Move dialog", "Tier 1 additions overlay", "Tier 1 merchant dialog", "Tier column panel"],
       "tests": ["scripts/test_tier_report_frontend.mjs", "scripts/test_tier_visual_status.mjs", "scripts/test_tier_visual_status_rules.py", "scripts/test_tier1_merchant_frontend.mjs", "scripts/test_tier2_recommendation_rules.mjs", "scripts/test_manual_tier_automation.py", "scripts/test_tier_frontend.mjs", "scripts/test_m5_mobile_frontend.mjs", "scripts/test_shared_xlsx_frontend.mjs", "frontend/src/features/tier-sheet/tierSheetModel.test.ts", "frontend/src/features/tier-sheet/useTierSheet.test.ts", "frontend/src/features/tier-sheet/TierSheetPage.test.ts", "frontend/src/shared/export/xlsx.test.ts"],
-      "testGap": "Sites version 7 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 截图；Tier 1–4 同行、Black Tier 独占整行且 tabs 完整可见。共享 Move API、管理员 token、Tier 1 merchant API、真实 webhook/持久化和完整移动端交互仍待真实浏览器端到端验收。",
-      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；version 7 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs` 与 Firecrawl screenshot 记录，真实 Move/computed-style 生产边界仍待验收。"
+      "testGap": "Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 截图；公开 Browser 已验证 Tier tab、行选择、Move dialog 打开、Display、Expand/Close，Tier 1–4 同行、Black Tier 独占整行且 tabs 完整可见。共享 Move API、管理员 token、Tier 1 merchant API、真实 webhook/持久化、确认提交和完整移动端交互仍待真实浏览器端到端验收。",
+      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；Tier/Category/Targets 关键控件提供稳定 data-* hooks，version 8 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs`、Firecrawl screenshot 与公开 Browser 交互记录，真实 Move/computed-style 生产边界仍待验收。"
     }
   ]
 }
@@ -228,7 +228,7 @@
 
 1. P1：Revenue Flow 已建立 Sankey 数据、选择上限、缓存和图表生命周期回归；待补真实数据与 390px BrowserAct 验收。
 2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
-3. P1：Targets/Category/Tier 已补齐固定 fixture 的 1363×936 对比与 390×844 focused 截图；仍需真实生产 API/auth、Tier Move webhook/持久化和完整移动端交互验收。
+3. P1：Targets/Category/Tier 已补齐固定 fixture 的 1363×936 对比、390×844 focused 截图和公开 Browser 核心交互 smoke；仍需真实生产 API/auth、Tier Move webhook/持久化、确认提交和完整移动端交互验收。
 4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，390px 已由用户验收通过；Google Ads 仍需补 390px、真实 API/auth 和生产账号回归。
 
 ## 状态更新记录
@@ -244,3 +244,4 @@
 | 2026-08-28 | Revenue Flow | `legacy` | `dual` | 新增 Vue model/composable、Canvas Sankey、品牌多选/日期范围/展开与卸载清理、模块级缓存/进行中请求复用、Brand Media 初始状态继承和连线 Flow tooltip；stash 冲突已保留当前分支完整公共壳层并补入 Revenue Flow modern root；15 项 Revenue Flow Vitest、排除 Publishers 后前端 Vitest 14 个文件/77 项、全量 typecheck、build、build contract、Revenue Flow 前端契约、node --check public/app.js、Brand Media 后端回归和 git diff --check 通过；真实数据与 BrowserAct 验收待补 |
 | 2026-08-31 | Targets/Category/Tier 与共享导出 | `Targets/Category dual，Tier legacy` | `Targets/Category/Tier dual` | Tier Vue model/composable/page 已接入 `#tierModernRoot`，保留 legacy fallback；Targets/Category/Tier 导出接入 shared `xlsx.ts`；shared fixture 对比 legacy/new 的列格式、worksheet XML、styles XML 和 ZIP package parts；旧版 CSS/HTML 与 Vue class/层级代码级对照完成，并修正 Tier/Category root 内边距与 Tier 弹层 z-index；30 个 Vitest 文件/137 项、typecheck/build、页面契约、旧版/Python 回归和 diff check 通过；真实浏览器截图和实际下载验收待可访问预览 URL |
 | 2026-09-01 | M5 Targets/Category/Tier 移动端续验 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 新增移动端 CSS 契约并按 TDD 完成 RED → GREEN；Targets 窄屏筛选/KPI 单列、Tier 390px tabs 采用 4+1 布局；同步 Tier 侧栏简化并修复本地重复/未闭合 nav button；Sites version 7 公开部署成功，完成 1363×936 compare、390×844 focused 截图和 Category/Targets/Tier 页面加载验收；真实生产 API/auth、Move webhook/持久化和完整移动交互仍待补 |
+| 2026-09-01 | M5 Targets/Category/Tier 交互入口续验 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 为三页补齐稳定 data-* hooks；公开 Sites version 8（source `f99c2a48b6b419063d7e0449f73c8effb0dbd59b`）完成 1363×936 compare、390×844 legacy/Vue screenshots，并在公开 Browser 验证 Targets metric/day、Category focus/reset/expand、Tier tab/select/Move dialog/Display/Expand-Close；真实生产 API/auth、Move 确认持久化和完整移动交互仍待补 |

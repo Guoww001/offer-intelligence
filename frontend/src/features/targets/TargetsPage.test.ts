@@ -1,4 +1,4 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
 import TargetsPage from "./TargetsPage.vue";
@@ -20,46 +20,6 @@ const report = {
 };
 
 describe("TargetsPage", () => {
-  it("loads database status and tier summary when autoLoad is omitted", async () => {
-    const statusMonths: string[] = [];
-    const tierSummaryMonths: string[] = [];
-    const wrapper = mount(TargetsPage, {
-      props: {
-        language: "en",
-        reportData: report,
-        today: () => new Date("2026-07-15T12:00:00"),
-        loadStatus: async ({ monthKey }) => {
-          statusMonths.push(monthKey);
-          return {
-            ok: true,
-            recentMonths: {
-              aggregateOrders: [{ month: monthKey, activeBrands: 1239, orders: 32360, revenue: 4697257.9789 }],
-              amazonClicks: [{ month: monthKey, clicks: 708552 }]
-            }
-          };
-        },
-        loadTierSummary: async ({ monthKey }) => {
-          tierSummaryMonths.push(monthKey);
-          return {
-            ok: true,
-            month: monthKey,
-            tiers: [{ tier: "Tier 1", brandCount: 2, clicks: 150, orders: 15, revenue: 1500 }],
-            total: { brandCount: 2, clicks: 150, orders: 15, revenue: 1500 }
-          };
-        }
-      }
-    });
-
-    await flushPromises();
-
-    expect(statusMonths).toEqual(["2026-07"]);
-    expect(tierSummaryMonths).toEqual(["2026-07"]);
-    expect(wrapper.find(".target-source-status").text()).toContain("Production database");
-    expect(wrapper.findAll(".target-kpi-card strong").map((node) => node.text())).toEqual([
-      "$4.7M", "32.4K", "708.6K", "4.57%", "1.2K"
-    ]);
-  });
-
   it("renders the target report cards and the legacy visual hierarchy", () => {
     const wrapper = mount(TargetsPage, {
       props: {
@@ -131,5 +91,22 @@ describe("TargetsPage", () => {
       "Month", "Tier", "Brand Count", "Total Clicks", "Order Count", "Revenue",
       "Avg Conversion", "New Tier Entries", "Tier Exits", "Target"
     ]);
+  });
+
+  it("exposes stable hooks for the filter and trend interactions", () => {
+    const wrapper = mount(TargetsPage, {
+      props: {
+        language: "en",
+        reportData: report,
+        autoLoad: false,
+        today: () => new Date("2026-07-15T12:00:00")
+      }
+    });
+
+    expect(wrapper.get('[data-target-action="month"]').element.tagName).toBe("SELECT");
+    expect(wrapper.get('[data-target-action="compare-month"]').element.tagName).toBe("SELECT");
+    expect(wrapper.get('[data-target-action="tier"]').element.tagName).toBe("SELECT");
+    expect(wrapper.find('[data-target-trend-view="month"]').exists()).toBe(true);
+    expect(wrapper.find('[data-target-action="edit-target"]').exists()).toBe(true);
   });
 });

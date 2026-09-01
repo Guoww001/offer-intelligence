@@ -276,6 +276,7 @@ onUnmounted(() => tier.dispose());
         :key="name"
         type="button"
         :class="{ active: tier.selectedTier.value === name }"
+        :data-tier-tab="name"
         :data-tier-select="name"
         @click="selectTier(name)"
       >{{ tierLabel(name) }}</button>
@@ -335,29 +336,29 @@ onUnmounted(() => tier.dispose());
     <section class="panel tier-sheet-filters" aria-label="Tier filters">
       <label>
         <span>{{ message("tierSheet.search", "Search") }}</span>
-        <input type="search" :value="tier.filters.value.search" :placeholder="message('tierSheet.searchPlaceholder', 'Merchant, ID, reason, recommendation')" @input="tier.setFilter('search', ($event.target as HTMLInputElement).value)" />
+        <input type="search" data-tier-action="search" :value="tier.filters.value.search" :placeholder="message('tierSheet.searchPlaceholder', 'Merchant, ID, reason, recommendation')" @input="tier.setFilter('search', ($event.target as HTMLInputElement).value)" />
       </label>
       <div class="tier-date-range-field">
         <span>{{ message("tierSheet.dateRange", "Date / range") }}</span>
         <small class="tier-date-status" :class="{ error: Boolean(tier.rangeError.value), loading: tier.loading.value }">{{ tier.rangeError.value || (tier.loading.value ? message("tierSheet.loading", "Loading YeahPromos data…") : sourceLabel) }}</small>
         <div class="tier-date-range-controls">
-          <input v-model="startDraft" type="date" :disabled="!isDateTier || tier.loading.value" aria-label="Tier report start date" />
+          <input v-model="startDraft" data-tier-date="start" type="date" :disabled="!isDateTier || tier.loading.value" aria-label="Tier report start date" />
           <span class="tier-date-range-separator" aria-hidden="true">–</span>
-          <input v-model="endDraft" type="date" :disabled="!isDateTier || tier.loading.value" aria-label="Tier report end date" />
-          <button class="secondary-button tier-date-apply" type="button" :disabled="!isDateTier || tier.loading.value" @click="applyDateRange">{{ message("tierSheet.apply", "Apply") }}</button>
+          <input v-model="endDraft" data-tier-date="end" type="date" :disabled="!isDateTier || tier.loading.value" aria-label="Tier report end date" />
+          <button class="secondary-button tier-date-apply" data-tier-action="date-apply" type="button" :disabled="!isDateTier || tier.loading.value" @click="applyDateRange">{{ message("tierSheet.apply", "Apply") }}</button>
         </div>
       </div>
       <label>
         <span>{{ message("tierSheet.networkAgency", "Network / Agency") }}</span>
-        <select :value="tier.filters.value.network" @change="tier.setFilter('network', ($event.target as HTMLSelectElement).value)"><option value="all">{{ message("tierSheet.allNetworks", "All networks") }}</option><option v-for="network in tier.availableNetworks.value" :key="network" :value="network">{{ network }}</option></select>
+        <select data-tier-filter="network" :value="tier.filters.value.network" @change="tier.setFilter('network', ($event.target as HTMLSelectElement).value)"><option value="all">{{ message("tierSheet.allNetworks", "All networks") }}</option><option v-for="network in tier.availableNetworks.value" :key="network" :value="network">{{ network }}</option></select>
       </label>
       <label>
         <span>{{ message("tierSheet.country", "Country") }}</span>
-        <select :value="tier.filters.value.country" @change="tier.setFilter('country', ($event.target as HTMLSelectElement).value)"><option value="all">{{ message("tierSheet.allCountries", "All countries") }}</option><option v-for="country in tier.availableCountries.value" :key="country" :value="country">{{ country }}</option></select>
+        <select data-tier-filter="country" :value="tier.filters.value.country" @change="tier.setFilter('country', ($event.target as HTMLSelectElement).value)"><option value="all">{{ message("tierSheet.allCountries", "All countries") }}</option><option v-for="country in tier.availableCountries.value" :key="country" :value="country">{{ country }}</option></select>
       </label>
       <label><span>{{ message("tierSheet.minEpc", "Min EPC") }}</span><input type="number" step="0.01" min="0" placeholder="0.00" :value="tier.filters.value.minEpc" @input="tier.setFilter('minEpc', ($event.target as HTMLInputElement).value)" /></label>
       <label><span>{{ message("tierSheet.minRevenue", "Min revenue") }}</span><input type="number" step="1" min="0" placeholder="0" :value="tier.filters.value.minRevenue" @input="tier.setFilter('minRevenue', ($event.target as HTMLInputElement).value)" /></label>
-      <button class="secondary-button tier-filter-reset" type="button" @click="tier.resetFilters">{{ message("tierSheet.reset", "Reset") }}</button>
+      <button class="secondary-button tier-filter-reset" data-tier-action="reset-filters" type="button" @click="tier.resetFilters">{{ message("tierSheet.reset", "Reset") }}</button>
     </section>
 
     <section class="table-panel tier-table-panel" :class="{ 'sheet-expanded-panel': tier.expanded.value }" aria-label="Tier table" :role="tier.expanded.value ? 'dialog' : undefined" :aria-modal="tier.expanded.value ? 'true' : undefined">
@@ -386,7 +387,7 @@ onUnmounted(() => tier.dispose());
           <button v-if="Object.keys(tier.manualMoves.value).length" class="icon-button table-reset-moves-button" type="button" @click="tier.resetMoves">{{ message("tierSheet.resetMoves", "Reset") }}</button>
           <button v-if="!tier.expanded.value" class="icon-button table-expand-button" type="button" data-tier-action="expand" :disabled="tier.selectedTier.value === 'BLACK TIER'" @click="tier.openOverlay">{{ message("tierSheet.expand", "Expand") }}</button>
           <button v-else class="icon-button table-close-button" type="button" data-tier-action="close-overlay" @click="tier.closeOverlay">{{ message("tierSheet.close", "Close") }}</button>
-          <button class="icon-button table-download-button" type="button" :disabled="!tier.sortedRows.value.length" @click="exportRows">{{ message("tierSheet.download", "Download") }}</button>
+          <button class="icon-button table-download-button" data-tier-action="download" type="button" :disabled="!tier.sortedRows.value.length" @click="exportRows">{{ message("tierSheet.download", "Download") }}</button>
           <span class="tier-move-inline-status" aria-live="polite">{{ tier.moveStatus.value }}</span>
         </div>
       </div>
