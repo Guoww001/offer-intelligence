@@ -750,14 +750,6 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - 验证结果：Revenue Flow Vitest 15 项、排除 Publishers 后的前端 Vitest 14 个文件/77 项、全量 `npm --prefix frontend run typecheck`、`npm --prefix frontend run build`、`node scripts/test_frontend_build_contract.mjs`、Revenue Flow 前端契约、`node --check public/app.js`、`python scripts/test_brand_media_trend.py` 和 `git diff --check` 通过；stash 冲突已按当前分支完整公共壳层解决，未修改 Publishers 文件。
 - 当前状态：Revenue Flow 进入 dual；现代 feature 源码、跨实例请求行为、公共壳层接线、构建产物和自动化回归已完成，真实数据与 BrowserAct 390px 视觉验收尚待补验；下一步按旧 CSS 基线进行桌面/390px 新旧对齐。
 
-**M4 Revenue Flow 节点交互修复记录（2026-08-31）：**
-
-- 问题根因：节点层尺寸没有跟随 Sankey 实际布局，导致右侧媒体节点和标签被裁切；视口的左键平移监听会先拦截节点点击，节点锁定不能稳定触发；旧版 `.brand-media-page.is-modern > :not(#brandMediaModernRoot)` 选择器还会误隐藏 Revenue Flow modern root。
-- 实现修复：节点层改为使用布局计算出的 `surfaceWidth/height`；产品和媒体节点的彩色 bar 及外层统一绑定节点点击，非平移模式下平移入口跳过整个节点区域；锁定后保留 `brand-media-sankey-chart-has-focus`、`brand-media-sankey-chart-has-lock`、`is-locked` 和 `is-selection-anchor` 状态，鼠标移出后不清除锁定；Canvas 根据锁定节点只提高关联 flow 的不透明度，并继续允许在高亮 flow 上显示详情 Tooltip。Brand Media 的 modern 显隐边界改为只匹配 `#brandMediaPage`。
-- 浏览器证据：在真实数据 BrowserAct 桌面视口中选择 `Shokz Official`，页面加载 61 个单品、128 个媒体和 1,508 条 flow；直接点击单品彩色节点 bar 后，图表保持 focus/lock，节点保持 `is-locked is-selection-anchor`、按钮 `aria-pressed="true"`，移开鼠标后状态仍保留；关联 flow 继续显示 Revenue、来源占比和去向占比 Tooltip。截图仅保留在临时目录，未写入仓库。
-- 自动化证据：Revenue Flow 3 个 Vitest 文件共 20 项通过，`npm --prefix frontend run typecheck`、`npm --prefix frontend run build` 和 `git diff --check` 通过；合并最新上游 `f6b9a6f` 后，`public/app.js` 的既有损坏内容使 `node --check public/app.js` 及依赖 legacy `switchPage()` 的静态契约失败，这属于本次节点交互修复之外的基线问题，不能据此宣称全量 CI 通过。
-- 当前边界：Revenue Flow 仍保持 `dual`；桌面真实数据、节点锁定/高亮/Tooltip 已有证据，390px 真实 viewport 验收仍因当前 BrowserAct 缺少 resize 能力待补，Publishers 未纳入本次修复范围。
-
 ### 任务 6：M5——迁移 Targets、Category Report 与 Tier 管理
 
 **迁移顺序：** `sheets` → `category` → `tier`
@@ -786,13 +778,14 @@ node scripts/test_offer_list_tracker_frontend.mjs
 
 **执行步骤：**
 
-- [x] 为 Targets 的日期、目标、趋势和矩阵建立失败测试并迁移；Targets 已进入 dual，视觉门槛待可访问预览后补验。
-- [x] 为 Category 的匹配、排序、饼图/趋势、选择联动建立失败测试并迁移；Category 已进入 dual，视觉门槛待可访问预览后补验。
-- [x] 为 Tier 的行转换、列面板、选择、Overlay、Move Dialog 和持久化建立失败测试并迁移；Tier 已进入 dual，视觉门槛待可访问预览后补验。
+- [x] 为 Targets 的日期、目标、趋势和矩阵建立失败测试并迁移；Targets 已进入 dual，云端 1363×936 同数据对比已通过，390px/生产 API 边界待补验。
+- [x] 为 Category 的匹配、排序、饼图/趋势、选择联动建立失败测试并迁移；Category 已进入 dual，云端 1363×936 同数据对比已通过，390px/生产 API 边界待补验。
+- [x] 为 Tier 的行转换、列面板、选择、Overlay、Move Dialog 和持久化建立失败测试并迁移；Tier 已进入 dual，云端 1363×936 同数据对比已通过，390px/生产 API 边界待补验。
 - [x] 抽取共享 XLSX 模块；用同一 fixture 比较新旧 workbook XML、styles XML、ZIP package parts 和单元格类型。
 - [ ] 逐页完成 dual → modern 门槛，并保留一个后续页面的回滚窗口。
 - [x] 运行所有 Tier/Category/Target/Python API 回归、前端全量测试、类型检查、构建和差异检查。
-- [ ] 在可访问预览中完成 Targets/Category/Tier 的同数据同视口、390px、关键交互和实际下载验收。
+- [x] 在可访问预览中完成 Targets/Category/Tier 固定 fixture 的同数据同视口（1363×936）、页面加载、关键控件和三类实际 XLSX 下载验收。
+- [ ] 在可访问预览中补完成 Targets/Category/Tier 的 390px、真实生产 API/auth、Tier Move webhook/持久化和移动端交互验收。
 
 退出门槛：三类页面均为 `modern`，Tier Move、导出、分类聚合和目标报表与旧实现字段级一致。
 
@@ -994,7 +987,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页、列设置、优先级规则和导出入口已由 Vue 接管；legacy fallback、构建契约、旧回归和应用内浏览器验收通过；旧导出设置对话框仍保留在 legacy |
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
 | M4 Shell 与低风险页面 | 进行中 | Payments、Publishers 与 Brand Media 已由 Vue modern root 接管并完成已验证范围内的旧项目 CSS/HTML 视觉基线对齐；Brand Media 390px 已由用户验收通过；Revenue Flow 已新增 Vue model/composable、Canvas Sankey、API loader、页面切换边界和聚焦回归，公共壳层冲突已按完整当前分支版本解决，全量 typecheck/build/build contract 已通过；Monthly New Merchants 已新增 Vue model/composable、抽屉、导入、批量保存、legacy fallback 和聚焦回归并进入 dual，Google Ads 与 Shell 以及真实数据/BrowserAct 对齐仍未完成 |
-| M5 Targets/Category/Tier | 进行中 | Targets、Category 与 Tier 已新增 Vue model/composable/page 并进入 dual；Targets/Category/Tier 均已接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；30 个 Vitest 文件/137 项测试、typecheck、build、页面契约、旧版/Python 回归和 diff check 已通过；同数据同视口截图、390px 和真实下载验收仍待可访问预览 |
+| M5 Targets/Category/Tier | 进行中 | Targets、Category 与 Tier 已新增 Vue model/composable/page 并进入 dual；Targets/Category/Tier 均已接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；30 个 Vitest 文件/137 项测试、typecheck、build、页面契约、旧版/Python 回归和 diff check 已通过；云端固定 fixture 的 1363×936 同数据截图、关键控件和三类 XLSX 下载已通过，390px、真实生产 API/auth 与 Move 持久化仍待验收 |
 | M6 Chatbot/Agent | 未开始 | 当前仍由原生 JS 执行 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
 | M8 部署切换 | 未开始 | Vercel 仍无前端 build command |
@@ -1006,14 +999,14 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；Offer Tracker、Payments 与 Brand Media 已按该流程完成已验证范围内的对齐并记录差异，Brand Media 390px 已由用户验收通过，Revenue Flow 已保留旧版 Sankey 样式基线并待补真实页面/390px 对齐，后续页面必须复用同一流程。
-- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M4 Payments、Publishers 已完成本批次验收，Brand Media 已完成桌面与关键交互验收但仍保留 `dual`，M4 的 Google Ads/Shell 仍需分批执行；M5 已完成 Targets、Category、Tier 的 dual 接入、共享 XLSX 抽取和自动化回归，已完成旧版 CSS/HTML 与 Vue class/层级的代码级对照并修复已发现的根节点内边距与 Tier 弹层层级差异，真实浏览器视觉/下载门槛仍需补齐。
+- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；Offer Tracker、Payments 与 Brand Media 已按该流程完成已验证范围内的对齐并记录差异，Brand Media 390px 已由用户验收通过；M5 Targets/Category/Tier 已在云端固定 fixture 上完成 1363×936 legacy/Vue 对比截图、关键控件和实际 XLSX 下载检查，390px 与真实生产 API/auth 仍待补齐；Revenue Flow 仍待补真实页面/390px 对齐，后续页面必须复用同一流程。
+- 范围边界：Roadmap 初始创建阶段只产出计划；当前 M0–M3 已按各自执行计划完成实现和测试，M4 Payments、Publishers 已完成本批次验收，Brand Media 已完成桌面与关键交互验收但仍保留 `dual`，M4 的 Google Ads/Shell 仍需分批执行；M5 已完成 Targets、Category、Tier 的 dual 接入、共享 XLSX 抽取和自动化回归，已完成旧版 CSS/HTML 与 Vue class/层级的代码级对照，并在云端固定 fixture 上完成 1363×936 同数据截图、关键控件和三类 XLSX 下载验收；390px、真实生产 API/auth 和 Move 持久化门槛仍未完成。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 与 Publishers 已完成，Brand Media 已进入 dual 并完成桌面、关键交互和用户确认的 390px 验收，Revenue Flow 与 Monthly New Merchants 已进入 dual 并完成自动化验证，仍待各自真实数据与视觉验收；M4 仍需继续完成 Google Ads 与 Shell，M5 已按路线完成 Targets、Category、Tier 的 dual 接入、共享 XLSX 和自动化回归，并完成旧版 CSS/HTML 与 Vue 结构的代码级对照。下一步先补可访问预览下的 Targets/Category/Tier 同数据同视口、390px、交互和真实下载验收，再回到 M4 的 Google Ads/Shell，之后才进入 M6 Chatbot/Agent。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payments 与 Publishers 已完成，Brand Media 已进入 dual 并完成桌面、关键交互和用户确认的 390px 验收，Revenue Flow 与 Monthly New Merchants 已进入 dual 并完成自动化验证，仍待各自真实数据与视觉验收；M4 仍需继续完成 Google Ads 与 Shell。M5 已按路线完成 Targets、Category、Tier 的 dual 接入、共享 XLSX、自动化回归、旧版 CSS/HTML 与 Vue 结构的代码级对照，并在云端固定 fixture 上完成 1363×936 同数据截图、关键控件和三类 XLSX 下载验收；下一步补 M5 的 390px、真实生产 API/auth 和 Move 持久化，再回到 M4 的 Google Ads/Shell，之后才进入 M6 Chatbot/Agent。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
 
 **M4 Monthly New Merchants 执行记录（2026-08-31）：**
 
@@ -1052,7 +1045,7 @@ Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payme
 
 - 实现边界：新增 `frontend/src/shared/export/xlsx.ts`，移植既有 `objectExportColumns()`、Tier percentage/integer format、worksheet XML、styles XML、workbook relationships、stored ZIP 和 download 边界；Targets、Category、Tier 由 `entry.ts` 直接调用，legacy bridge 仍保留回滚窗口。
 - 等价验证：同一 fixture 对比 legacy `tierSheetExportColumns()` 元数据、`worksheetXml()`、`stylesXml()` 和 workbook ZIP 中的 XML package parts；确认 `27.0 → 0.27`、`20.25 → 0.2025`、`0.125` 保持分数、Clicks/ATC/DPV 取整，sheet name/关系文件与旧实现一致。
-- 当前状态与下一步：共享导出已完成自动化契约；M5 全量 Vitest 30 个文件/137 项、typecheck、Vite build、静态页面契约、旧版/Python 回归和 `git diff --check` 均通过。下一步在可访问预览中对 Targets/Category/Tier 同数据、同视口、390px 和真实下载进行对照。通过这些视觉/下载门槛后，再按路线回到 M4 Google Ads/Shell，M5 才能从 `dual` 进入 `modern`。
+- 当前状态与下一步：共享导出已完成自动化契约；M5 全量 Vitest 30 个文件/137 项、typecheck、Vite build、静态页面契约、旧版/Python 回归和 `git diff --check` 均通过。云端固定 fixture 已完成 Targets/Category/Tier 同数据同视口（1363×936）对比、关键控件和三类实际 XLSX 下载；下一步补 390px、真实生产 API/auth 与 Move 持久化门槛，再按路线回到 M4 Google Ads/Shell，M5 才能从 `dual` 进入 `modern`。
 
 **M5 Targets/Category/Tier 旧版与 Vue 样式对照记录（2026-08-31）：**
 
@@ -1069,3 +1062,13 @@ Roadmap 获确认后，从 M0 开始执行；当前 M0–M3 已完成，M4 Payme
 - 已修正的代码级差异：Tier/Category Vue root 的额外 `padding: 4px` 已移除；Tier Move、Tier 1 merchant dialog、additions overlay 的 z-index 已分别对齐旧版 45/46/44；Tier 分类汇总同时对齐旧版 offer 分类优先级、点击加权 EPC、AOV 和排序口径。
 - 证据边界：本轮没有把静态 CSS/组件测试冒充截图或 computed-style 证据。Cloud Browser 仍拦截本地预览地址；Firecrawl 的 API 认证检查已通过，但 GitHub HTML/raw 页面本轮均返回上游 502，因此样式结论以仓库内旧版基线与 Vue 源码的可复核对照为准，真实截图、computed styles、390px 和 Blob 下载检查仍待可访问预览 URL。
 - 后续路线：保持三个页面 `dual`；拿到可访问预览后先完成同数据同视口、390px、Move/Overlay/筛选和三类 XLSX 实际下载门槛，再决定 `dual → modern`。之后回到 M4 Google Ads/Shell，M5 放行后才进入 M6 Chatbot/Agent。
+
+**M5 云端视觉与导出验收记录（2026-09-01）：**
+
+- 发布范围：复用 Sites 项目 `Offer Intelligence Visual QA`，以当前 `FRONTEND-VUE-MIGRATION` 分支的 Vue bundle 建立可访问验收入口；版本 4 使用 Sites source commit `8b0359520ca83ef95a15c9352445346b3b59431f`，生产部署状态为 `succeeded`。
+- 云端入口：`https://offer-intelligence-visual-qa.yeahguo-7642.chatgpt.site`；Targets、Category、Tier 分别使用 `/m5?page=targets&view=compare`、`/m5?page=category&view=compare`、`/m5?page=tier&view=compare`，legacy target 在左、当前 Vue bundle 在右，固定同一 fixture、日期范围和 1363×936 视口。
+- 数据对照：Targets 的总收入 `$3.12M`、订单 `321,210`、点击 `687,710`、活跃品牌 `6,119` 与 Vue 侧一致；Category 的 8 个分类、`$1.73M`、`11,041`、`5.6%` 与 Vue 侧一致；Tier 1 的 3 行、`$854.6K` 汇总与 Vue 侧一致。Category legacy 验收 fixture 曾少 1 个分类，本轮已改为从同一 `CATEGORY_GROUPS` 聚合并补齐 Travel/Tier 字段后重新发布。
+- 截图证据：`browser-screenshot-m5-targets-compare-v2-1363x936.jpg`、`browser-screenshot-m5-category-compare-v2-1363x936.jpg`、`browser-screenshot-m5-tier-compare-v2-1363x936.jpg`。截图确认 Vue 页面根节点实际挂载、来源徽标/现代控件可见，旧版与 Vue 的摘要、表格和分类内容使用同一 fixture；compare 画布将页面分成两列，长标签和宽表格在半宽面板中会被裁切，精确单页布局需继续使用各页 `focus=1` 入口复核，这不作为生产单页横向溢出结论。
+- 导出证据：云端实际生成 `monthly_targets_september-2026_5_rows_2026-09-01.xlsx`、`category_focus_home-kitchen_1_rows_2026-09-01.xlsx` 和 `tier_records_tier-1_3_rows_2026-09-01.xlsx`；Targets/Category/Tier 均由当前 Vue 入口触发导出。
+- 验证结果：Sites QA 项目的 `npm run test`（构建 + 5 项测试）通过，`npx eslint app/m5/page.tsx app/page.tsx` 和 `git diff --check` 通过；M5 主分支既有全量 Vitest、typecheck、build、页面契约和旧版/Python 回归继续保持通过。M5 三页仍保持 `dual`，因为 390px、真实生产 API/auth、Tier Move webhook/持久化尚未完成。
+- 后续路线：先补 M5 的 390px 与真实生产边界验收，满足退出门槛后再将页面逐页从 `dual` 切到 `modern`；随后按 Roadmap 回到 M4 Google Ads 与共享 Shell，最后进入 M6 Chatbot/Agent。
