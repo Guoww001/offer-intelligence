@@ -132,4 +132,20 @@ describe("useTierSheet", () => {
     await pending;
     expect(tier.moveSyncing.value).toBe(false);
   });
+
+  it("preloads Tier 1 additions without opening the history dialog", async () => {
+    const tier = useTierSheet({
+      reportData: report,
+      initialTier: "Tier 1",
+      loadTier1Additions: async () => ({
+        additions: [{ merchantId: "303", merchantName: "Gamma", currentTier: "Tier 1" }]
+      })
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tier.additions.value).toHaveLength(1);
+    expect(tier.additions.value[0]?.merchantId).toBe("303");
+    expect(tier.additionsOpen.value).toBe(false);
+  });
 });

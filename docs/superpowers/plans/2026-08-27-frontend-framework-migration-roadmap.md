@@ -8,7 +8,7 @@
 
 **技术栈：** Vue 3、TypeScript、Vite、Vitest、Vue Test Utils、`happy-dom`、现有 Python 3.12 服务、现有 Vercel Python Functions、现有 Node 22 CI、现有原生 JavaScript 回归脚本；运行时不引入 Pinia、Vue Router、组件库或 CSS 框架，除非后续独立 ADR 证明必要。
 
-> **最近更新：** 2026-09-01；用户确认 M4/M5 验收任务已完成，本轮补齐 M4 共享 `AppShell`、导航、主题和页面标题；页面 `dual`/`modern` 状态按实际迁移放行状态记录。
+> **最近更新：** 2026-09-01；用户确认 M4/M5 验收任务已完成，本轮补齐 M4 共享 `AppShell`、导航、主题和页面标题，并修复 Tier 1 additions 挂载预加载一致性；公开 Sites version 14 已完成 legacy/Vue 对比，M4/M5 页面已按统一契约完成 `dual → modern` 安全放行，legacy fallback 继续保留。
 
 ## 全局约束
 
@@ -782,14 +782,14 @@ node scripts/test_offer_list_tracker_frontend.mjs
 
 - [x] 为 Targets 的日期、目标、趋势和矩阵建立失败测试并迁移；Targets 已完成验收与 `dual → modern` 安全放行，云端 1363×936 同数据对比和 390×844 fixed-fixture focused 验收已通过，legacy fallback 进入回滚窗口。
 - [x] 为 Category 的匹配、排序、饼图/趋势、选择联动建立失败测试并迁移；Category 已完成验收与 `dual → modern` 安全放行，云端 1363×936 同数据对比和 390×844 fixed-fixture focused 验收已通过，legacy fallback 进入回滚窗口。
-- [x] 为 Tier 的行转换、列面板、选择、Overlay、Move Dialog 和持久化建立失败测试并迁移；Tier 已完成验收与 `dual → modern` 安全放行，公开 Sites version 10 已完成 1363×936 同数据对比、390×844 legacy/Vue focused 验收、Tier 2/选行/Move dialog/目标切换 smoke；新增 Move busy/mobile/API boundary 契约已通过，legacy fallback 进入回滚窗口。
+- [x] 为 Tier 的行转换、列面板、选择、Overlay、Move Dialog 和持久化建立失败测试并迁移；Tier 已完成验收与 `dual → modern` 安全放行，公开 Sites version 14 已完成 1363×936 同数据对比、390×844 legacy/Vue focused 验收、Tier 2/选行/Move dialog/目标切换 smoke；新增 Move busy/mobile/API boundary 与 Tier 1 additions 挂载预加载契约已通过，legacy fallback 进入回滚窗口。
 - [x] 抽取共享 XLSX 模块；用同一 fixture 比较新旧 workbook XML、styles XML、ZIP package parts 和单元格类型。
 - [x] 逐页完成 dual → modern 门槛，并保留一个后续页面的回滚窗口；M5 Targets、Category、Tier 的验收已由用户于 2026-09-01 确认完成，三页已完成安全放行并保留 legacy fallback。
 - [x] 运行所有 Tier/Category/Target/Python API 回归、前端全量测试、类型检查、构建和差异检查。
 - [x] 在可访问预览中完成 Targets/Category/Tier 固定 fixture 的同数据同视口（1363×936）、页面加载、关键控件和三类实际 XLSX 下载验收。
 - [x] 在可访问预览中完成 Targets/Category/Tier 的 390×844 focused 页面验收，修复 Targets 移动筛选器/KPI 与 Tier tabs，并记录修复前后截图；桌面双栏对比和固定 fixture 导出继续通过。
 - [x] 为 Targets、Category、Tier 的筛选/切换/聚焦/展开/表格工具栏补齐稳定 `data-*` 交互 hooks，并在公开固定 fixture Browser 中完成核心点击 smoke；不替代真实生产 API/auth、Move 持久化或完整移动端门槛。
-- [x] 在真实生产边界补完 API/auth、Tier Move webhook/持久化和完整移动端交互；相关 M5 验收已由用户于 2026-09-01 确认完成，本轮补充 version 10 的 Tier Move 请求/响应边界、共享保存 busy 状态和移动弹窗契约；三页已按回滚安全规则逐页完成 `dual → modern` 放行。
+- [x] 在真实生产边界补完 API/auth、Tier Move webhook/持久化和完整移动端交互；相关 M5 验收已由用户于 2026-09-01 确认完成，本轮补充 version 14 的 Tier Move 请求/响应边界、共享保存 busy 状态、移动弹窗契约和 Tier 1 additions 挂载预加载；三页已按回滚安全规则逐页完成 `dual → modern` 放行。
 
 退出门槛：三类页面完成验收且逐页 `dual → modern` 放行；Tier Move、导出、分类聚合和目标报表与旧实现字段级一致。验收完成不自动改变迁移状态。
 
@@ -991,7 +991,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M2 Offer Tracker 试点 | 已验证 | 核心筛选/排序/选择/分页、列设置、优先级规则和导出入口已由 Vue 接管；modern-first 挂载、legacy fallback、构建契约、旧回归和应用内浏览器验收通过；高级保存视图、规则面板和旧导出设置对话框仍保留在 legacy 回滚范围 |
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
 | M4 Shell 与低风险页面 | 已验证 | M4 的功能、视觉和交互验收由用户于 2026-09-01 确认完成；Payments、Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 均已由 Vue modern root 接管并完成 `dual → modern` 安全放行；本轮新增共享 `AppShell` 导航状态、主题持久化和页面标题同步，保留 legacy 侧边栏、移动端导航和各页 legacy fallback；自动化测试、typecheck、build、页面契约和 diff check 通过 |
-| M5 Targets/Category/Tier | 已验证 | M5 的固定 fixture、桌面/移动、关键控件、导出及其余验收由用户于 2026-09-01 确认完成；Targets、Category、Tier 已完成 `dual → modern` 安全放行并接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；公开 Sites version 10 的 Tier Move API 边界、共享保存 busy/aria-busy、移动弹窗和页面回归均通过，legacy fallback 继续保留 |
+| M5 Targets/Category/Tier | 已验证 | M5 的固定 fixture、桌面/移动、关键控件、导出及其余验收由用户于 2026-09-01 确认完成；Targets、Category、Tier 已完成 `dual → modern` 安全放行并接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；公开 Sites version 14 的 Tier Move API 边界、共享保存 busy/aria-busy、移动弹窗、Tier 1 additions 预加载和页面回归均通过，legacy fallback 继续保留 |
 | M6 Chatbot/Agent | 未开始 | 当前仍由原生 JS 执行 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
 | M8 部署切换 | 未开始 | Vercel 仍无前端 build command |
@@ -1003,8 +1003,8 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 ## 8. Roadmap 自检
 
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；M4/M5 的页面视觉与交互验收由用户于 2026-09-01 确认完成，本轮补充公开 Sites version 10 的 Tier legacy/Vue 390×844 截图、1363×936 compare 和 Move dialog/mobile boundary 证据，不把静态测试当作截图证据。
-- 范围边界：Roadmap 初始创建阶段只产出计划；M0–M5 验收、共享 Shell 和当前七个页面的逐页 `dual → modern` 放行已完成，页面清单仍保留 legacy rollback window；Offer Tracker 高级面板和 Chatbot/Agent 仍是后续工作，legacy 删除必须等待回滚窗口与删除安全检查；version 10 的 Tier Move API 边界、busy 状态和移动弹窗保护已纳入上述验证。
+- 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；M4/M5 的页面视觉与交互验收由用户于 2026-09-01 确认完成，本轮补充公开 Sites version 14 的 Tier legacy/Vue 390×844 截图、1363×936 compare、Tier 1 additions 对齐和 Move dialog/mobile boundary 证据，不把静态测试当作截图证据。
+- 范围边界：Roadmap 初始创建阶段只产出计划；M0–M5 验收、共享 Shell 和当前七个页面的逐页 `dual → modern` 放行已完成，页面清单仍保留 legacy rollback window；Offer Tracker 高级面板和 Chatbot/Agent 仍是后续工作，legacy 删除必须等待回滚窗口与删除安全检查；version 14 的 Tier Move API 边界、busy 状态、移动弹窗保护、Tier 1 additions 预加载及其固定 fixture 证据已纳入上述验证。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
@@ -1152,6 +1152,14 @@ Roadmap 获确认后，从 M0 开始执行；当前 M0–M5 的实现、自动�
 - 交互验收：Browser 在 Vue 侧完成 Tier 2 tab、行选择、Move dialog、目标 Tier 激活和关闭 smoke；共享保存的 pending 状态通过 `moveSyncing`/`aria-busy` 单元测试覆盖，未在公开 fixture 提交真实 Move。
 - 验证结果：前端全量 Vitest（M5 基线 33 个文件/160 项）、typecheck、Vite build、M5/Tier/Google Ads 静态契约、`node --check public/app.js`、Google Ads/Python 回归、Tier Move API boundary 和 `git diff --check` 通过；Sites QA build、5 tests、ESLint 和 diff check 通过。该记录补充自动化边界和固定 fixture 证据；随后本轮按回滚安全规则完成三页 `dual → modern` 放行。
 - 后续路线：继续保留 legacy 回滚窗口并补 legacy 删除安全检查；随后进入 M6 Chatbot/Agent，Offer Tracker 高级面板作为后续收尾项。
+
+**M5 Tier 1 additions 预加载一致性修复记录（2026-09-01）：**
+
+- 问题定位：公开 Sites version 13 的同一 fixed fixture 对比显示 legacy `Added merchants=1`、Vue `0`；代码核对确认 legacy 在进入 Tier 1 时自动加载 additions，而 Vue 仅在打开历史弹层时加载。
+- RED → GREEN：先为 `useTierSheet` 与 `TierSheetPage` 增加“预加载但不打开弹层”回归测试，分别复现缺口；随后抽取可缓存的 `loadAdditions()` 并在页面 `onMounted` 接入，空响应也标记为已加载以避免重复请求，历史弹层仍按需打开。
+- 云端复验：QA version 14（QA commit `fcb53dcff5873db4341ce6ae86375f854f07e092`）成功部署；Firecrawl `firecrawl-m5-tier-target-390-v14.png`、`firecrawl-m5-tier-modern-390-v14.png` 与 Browser `browser-screenshot-m5-tier-compare-v14-1363x936.jpg` 均确认两侧 `Added merchants=1`，Brand Count3、Clicks83,400/83.4K、Orders6,050/6.1K、Revenue$854.6K、Avg Conversion7.3%/7.25% 一致；浏览器 document overflow 为 1348/1348，宽表由局部 `overflow-x: auto` 容器承载。
+- 验证结果：前端全量 Vitest 33 个文件/162 项、typecheck/build、Tier/M5/Google Ads contract、Python/legacy checks、`git diff --check` 通过；QA build、6 tests、ESLint 和 diff check 通过；Browser Tier 2/行选择/Move dialog/目标 Tier/关闭 smoke 通过，未提交真实 Move。
+- 后续路线：Targets/Category/Tier 已按统一契约完成 `dual → modern`，继续保留 legacy rollback window 并补 legacy 删除安全检查；之后进入 M6 Chatbot/Agent，先重新核对 chatbot feature report、Agent protocol、tool registry、Trace、SSE 和 Report/Chat Mode 边界。
 
 **M4/M5 与 Offer Tracker 页面 dual → modern 安全放行记录（2026-09-01）：**
 

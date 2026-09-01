@@ -242,6 +242,7 @@ onMounted(() => {
   if (props.autoLoad) {
     if (props.loadSharedMoves) void tier.loadSharedMoves();
     if (props.loadTier) void tier.loadSelectedTier();
+    if (props.loadTier1Additions && tier.selectedTier.value === "Tier 1") void tier.loadAdditions();
   }
 });
 

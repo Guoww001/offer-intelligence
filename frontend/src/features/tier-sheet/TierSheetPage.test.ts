@@ -85,6 +85,28 @@ describe("TierSheetPage", () => {
     expect(calls).toEqual(["Tier 1"]);
     expect(wrapper.attributes("aria-busy")).toBe("false");
   });
+
+  it("preloads the Tier 1 additions count without opening its dialog", async () => {
+    let calls = 0;
+    const wrapper = mount(TierSheetPage, {
+      props: {
+        language: "en",
+        reportData: report,
+        autoLoad: true,
+        loadTier1Additions: async () => {
+          calls += 1;
+          return { additions: [{ merchantId: "303", merchantName: "Gamma", currentTier: "Tier 1" }] };
+        }
+      }
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(calls).toBe(1);
+    expect(wrapper.get(".tier1-additions-count").text()).toBe("1");
+    expect(wrapper.find(".tier1-additions-overlay").exists()).toBe(false);
+  });
+
   it("exposes stable hooks for tier navigation and table interactions", () => {
     const wrapper = mount(TierSheetPage, { props: { language: "en", reportData: report, autoLoad: false } });
 

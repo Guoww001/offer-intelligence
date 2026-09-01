@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-01（M5 Tier Move 生产边界与移动交互；M4/M5 页面与 M2 Offer Tracker 已完成 dual → modern 安全放行；共享 AppShell、导航、主题与页面标题接入；公开 Sites version 10）
+> 最近更新：2026-09-01（M5 Tier Move 生产边界、移动交互与 Tier 1 预加载一致性；M4/M5 页面与 M2 Offer Tracker 已完成 dual → modern 安全放行；共享 AppShell、导航、主题与页面标题接入；公开 Sites version 14）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -202,9 +202,9 @@
       "storage": ["offerTierOverrides", "offerTierVisibleColumns.v4", "offerTrendVisibleColumns.v1", "offerTierSheetManualMoves.v1", "offerTierMoveAdminToken"],
       "exports": ["downloadTierSheetXlsx()", "downloadTier()", "downloadWorkbook()"],
       "overlays": ["Tier Sheet overlay", "Tier Move dialog", "Tier 1 additions overlay", "Tier 1 merchant dialog", "Tier column panel"],
-      "tests": ["scripts/test_tier_report_frontend.mjs", "scripts/test_tier_visual_status.mjs", "scripts/test_tier_visual_status_rules.py", "scripts/test_tier1_merchant_frontend.mjs", "scripts/test_tier2_recommendation_rules.mjs", "scripts/test_manual_tier_automation.py", "scripts/test_tier_moves_api.py", "scripts/test_tier_frontend.mjs", "scripts/test_m5_mobile_frontend.mjs", "scripts/test_shared_xlsx_frontend.mjs", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/tier-sheet/tierSheetModel.test.ts", "frontend/src/features/tier-sheet/useTierSheet.test.ts", "frontend/src/features/tier-sheet/TierSheetPage.test.ts", "frontend/src/shared/export/xlsx.test.ts"],
-      "testGap": "M5 Tier 验收已由用户于 2026-09-01 确认完成；Sites version 10 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 legacy/Vue focused 截图；公开 Browser 已验证 Tier 2、行选择、Move dialog、目标 Tier 激活和安全关闭，页面级无横向溢出且宽表由局部滚动容器承载。新增 Tier Move API 边界测试覆盖非对象 JSON、256 KiB 请求体上限、1000 条记录上限和 webhook JSON 形状归一化；Vue 共享保存 busy/disabled/aria-busy 和 560px 移动弹窗契约已覆盖；本次完成 dual → modern 安全放行，页面仍保留 legacy fallback。",
-      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；Tier/Category/Targets 关键控件提供稳定 data-* hooks；version 10 增加 `api/tier_moves.py` 的请求/响应边界保护、`useTierSheet` 的 `moveSyncing` 状态和 modern 移动弹窗约束，并由 Firecrawl screenshot 与公开 Browser 交互记录验证；本次不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "tests": ["scripts/test_tier_report_frontend.mjs","scripts/test_tier_visual_status.mjs","scripts/test_tier_visual_status_rules.py","scripts/test_tier1_merchant_frontend.mjs","scripts/test_tier2_recommendation_rules.mjs","scripts/test_manual_tier_automation.py","scripts/test_tier_moves_api.py","scripts/test_tier_frontend.mjs","scripts/test_m5_mobile_frontend.mjs","scripts/test_shared_xlsx_frontend.mjs","scripts/test_modern_page_cutover.mjs","frontend/src/features/tier-sheet/tierSheetModel.test.ts","frontend/src/features/tier-sheet/useTierSheet.test.ts","frontend/src/features/tier-sheet/TierSheetPage.test.ts","frontend/src/shared/export/xlsx.test.ts"],
+      "testGap": "M5 Tier 验收已由用户于 2026-09-01 确认完成；Sites version 14 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 legacy/Vue focused 截图；两侧 Added merchants 均为 1，Brand Count/Clicks/Orders/Revenue/Avg Conversion 使用同一可见 Tier 行口径；公开 Browser 已验证 Tier 2、行选择、Move dialog、目标 Tier 激活和安全关闭，页面级无横向溢出且宽表由局部滚动容器承载。新增 Tier Move API 边界测试覆盖非对象 JSON、256 KiB 请求体上限、1000 条记录上限和 webhook JSON 形状归一化；Vue 共享保存 busy/disabled/aria-busy 和 560px 移动弹窗契约已覆盖；Tier 1 additions 在挂载时预加载并缓存空响应，新增 composable/page 回归；本次完成 dual → modern 安全放行，页面仍保留 legacy fallback。",
+      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；Tier/Category/Targets 关键控件提供稳定 data-* hooks；version 14 补充 `api/tier_moves.py` 的请求/响应边界保护、`useTierSheet` 的 `moveSyncing` 状态、Tier 1 additions 挂载预加载与 modern 移动弹窗约束，并由 Firecrawl screenshot 与公开 Browser 交互记录验证；本次完成 dual → modern 安全放行，不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
     }
   ]
 }
@@ -226,9 +226,10 @@
 
 ## 当前测试缺口优先级
 
-1. P1：Offer Tracker 高级保存视图、列面板、规则面板和导出对话框仍由 legacy 提供，需在回滚窗口内继续迁移或明确保留边界。
-2. P1：M6 Chatbot/Agent 仍由 legacy 执行，进入迁移前需按 `docs/chatbot-feature-report.md` 重新核对协议、工具和 Trace。
-3. P2：七个已放行页面仍保留 legacy rollback window；后续阶段按删除安全规则清理旧渲染与事件代码。
+1. P1：Brand Media、Revenue Flow、Google Ads、Targets、Category、Tier 已完成当前 M4/M5 验收与 `dual → modern` 安全放行，继续保留 legacy rollback window 并按删除安全规则收尾。
+2. P1：M2 Offer Tracker 仍需旧/新页面逐字段差异报告，并迁移高级保存视图、列面板、规则面板和导出对话框。
+3. P1：M6 Chatbot/Agent 仍由 legacy 执行，进入迁移前需按 `docs/chatbot-feature-report.md` 重新核对协议、工具和 Trace。
+4. P2：modern 页面仍保留 legacy rollback window；后续阶段再按删除安全规则清理旧渲染与事件代码。
 
 ## 状态更新记录
 
@@ -250,7 +251,7 @@
 | 2026-09-01 | M4 Brand Media/Revenue Flow/Google Ads modern 放行 | `M4 dual` | `M4 modern` | M4 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过统一放行契约；不修改 API、数据口径、认证或侧边栏视觉 |
 | 2026-09-01 | M5 Targets/Category/Tier modern 放行 | `M5 dual` | `M5 modern` | M5 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback、shared XLSX、Tier Move 和分类/目标报表边界均通过既有页面契约与统一放行契约 |
 | 2026-09-01 | Offer List Tracker modern 放行 | `Offer List Tracker dual` | `Offer List Tracker modern` | 核心路径的筛选、排序、选择、分页和导出已由 Vue 接管；modern-first mount、卸载清理、legacy fallback 和 CSS boundary 通过统一放行契约，高级面板继续保留 legacy 回滚范围 |
-| 2026-09-01 | M5 Tier Move 生产边界与移动交互 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy` 和 modern 560px Move dialog 边界，前端全量 33 个 Vitest 文件/160 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 10（QA commit `97f93d99ab833fdaf64932c9bd8a216007245393`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；按当时 M5 验收结论保持 `dual`，随后按回滚安全规则完成逐页 `dual → modern` 放行 |
+| 2026-09-01 | M5 Tier Move 生产边界、移动交互与 Tier 1 预加载一致性 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy`、modern 560px Move dialog 边界和 Tier 1 additions 挂载预加载/空响应缓存，前端全量 33 个 Vitest 文件/162 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 14（QA commit `fcb53dcff5873db4341ce6ae86375f854f07e092`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；两侧 Added merchants 均为 1，按既有 M5 验收结论保持 `dual`，后续按回滚安全规则逐页放行 |
 | 2026-09-01 | M4 Brand Media/Revenue Flow/Google Ads modern 放行 | `M4 dual` | `M4 modern` | M4 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过统一放行契约；不修改 API、数据口径、认证或侧边栏视觉 |
 | 2026-09-01 | M5 Targets/Category/Tier modern 放行 | `M5 dual` | `M5 modern` | M5 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback、shared XLSX、Tier Move 和分类/目标报表边界均通过既有页面契约与统一放行契约 |
 | 2026-09-01 | Offer List Tracker modern 放行 | `Offer List Tracker dual` | `Offer List Tracker modern` | 核心路径的筛选、排序、选择、分页和导出已由 Vue 接管；modern-first mount、卸载清理、legacy fallback 和 CSS boundary 通过统一放行契约，高级面板继续保留 legacy 回滚范围 |
