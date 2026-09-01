@@ -14,6 +14,7 @@ export interface TargetSheetData {
 export interface TargetReportData {
   readonly sheets?: readonly TargetSheetData[];
   readonly tierSheets?: readonly unknown[];
+  readonly referenceMonthKey?: unknown;
 }
 
 export interface TargetRecord {
@@ -485,7 +486,9 @@ function deriveTargetRecordsFromTierSheets(sheets: readonly { name: string; rows
 }
 
 export function buildTargetRecords(reportData: TargetReportData, options: BuildTargetRecordsOptions = {}): TargetRecord[] {
-  const referenceMonthKey = monthKeyFromText(options.referenceMonthKey || currentReportingMonthKey(options.today));
+  const referenceMonthKey = monthKeyFromText(
+    options.referenceMonthKey || reportData.referenceMonthKey || currentReportingMonthKey(options.today)
+  );
   if (!referenceMonthKey) return [];
   const sheets = normalizedSheets(reportData);
   const summaryRows = sheets.flatMap(parseSummaryRows);
@@ -690,23 +693,40 @@ function valueFromDbRow(row: RawRecord, keys: readonly string[]): number {
   return parseSheetNumber(firstValue(row, keys));
 }
 
-export function dbMonthlyTrendRows(payload: DbStatusPayload | null, metric: TargetMetricKey = "revenue"): TargetTrendRow[] {
+interface DatabaseMonthTotals {
+  readonly monthKey: string;
+  readonly revenue: number;
+  readonly orders: number;
+  readonly clicks: number;
+  readonly activeBrands: number;
+}
+
+function dbMonthlyTotals(payload: DbStatusPayload | null): DatabaseMonthTotals[] {
   const recent = isRecord(payload?.recentMonths) ? payload.recentMonths : {};
   const aggregateRows = Array.isArray(recent.aggregateOrders) ? recent.aggregateOrders.filter(isRecord) : [];
   const clickRows = Array.isArray(recent.amazonClicks) ? recent.amazonClicks.filter(isRecord) : [];
-  const byMonth = new Map<string, { monthKey: string; revenue: number; orders: number; clicks: number; activeBrands: number }>();
+  const byMonth = new Map<string, DatabaseMonthTotals>();
   aggregateRows.forEach((row) => {
     const monthKey = monthKeyFromText(row.month);
-    if (monthKey) byMonth.set(monthKey, { monthKey, revenue: valueFromDbRow(row, ["revenue"]), orders: valueFromDbRow(row, ["orders"]), clicks: 0, activeBrands: valueFromDbRow(row, ["activeBrands", "brandCount"]) });
+    if (monthKey) byMonth.set(monthKey, {
+      monthKey,
+      revenue: valueFromDbRow(row, ["revenue"]),
+      orders: valueFromDbRow(row, ["orders"]),
+      clicks: 0,
+      activeBrands: valueFromDbRow(row, ["activeBrands", "brandCount"])
+    });
   });
   clickRows.forEach((row) => {
     const monthKey = monthKeyFromText(row.month);
     if (!monthKey) return;
     const current = byMonth.get(monthKey) || { monthKey, revenue: 0, orders: 0, clicks: 0, activeBrands: 0 };
-    current.clicks = valueFromDbRow(row, ["clicks"]);
-    byMonth.set(monthKey, current);
+    byMonth.set(monthKey, { ...current, clicks: valueFromDbRow(row, ["clicks"]) });
   });
-  return Array.from(byMonth.values()).sort((left, right) => left.monthKey.localeCompare(right.monthKey)).map((row) => {
+  return Array.from(byMonth.values()).sort((left, right) => left.monthKey.localeCompare(right.monthKey));
+}
+
+export function dbMonthlyTrendRows(payload: DbStatusPayload | null, metric: TargetMetricKey = "revenue"): TargetTrendRow[] {
+  return dbMonthlyTotals(payload).map((row) => {
     const value = metric === "orders"
       ? row.orders
       : metric === "clicks"
@@ -725,6 +745,21 @@ export function dbMonthlyTrendRows(payload: DbStatusPayload | null, metric: Targ
       detail: `${monthAxisLabel(row.monthKey)}: ${formatTargetMetricValue(metric, value)}`
     };
   });
+}
+
+export function dbMonthlySummaryForKey(
+  monthKey: string,
+  payload: DbStatusPayload | null
+): Pick<TargetSummary, "brands" | "clicks" | "orders" | "revenue" | "conversionRate"> | null {
+  const row = dbMonthlyTotals(payload).find((candidate) => candidate.monthKey === monthKeyFromText(monthKey));
+  if (!row) return null;
+  return {
+    brands: row.activeBrands,
+    clicks: row.clicks,
+    orders: row.orders,
+    revenue: row.revenue,
+    conversionRate: row.clicks ? row.orders / row.clicks : 0
+  };
 }
 
 export function dbMonthlyRowForKey(monthKey: string, payload: DbStatusPayload | null): TargetTrendRow | null {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTargetRecords,
+  dbMonthlySummaryForKey,
   formatTargetMetricValue,
   parseSheetNumber,
   targetGoal,
@@ -29,6 +30,23 @@ const report: TargetReportData = {
 };
 
 describe("targetModel", () => {
+  it("reads portfolio KPI totals from the selected production database month", () => {
+    const summary = dbMonthlySummaryForKey("2026-08", {
+      recentMonths: {
+        aggregateOrders: [{ month: "2026-08", activeBrands: 1239, orders: 32360, revenue: 4697257.9789 }],
+        amazonClicks: [{ month: "2026-08", clicks: 708552 }]
+      }
+    });
+
+    expect(summary).toEqual({
+      brands: 1239,
+      clicks: 708552,
+      orders: 32360,
+      revenue: 4697257.9789,
+      conversionRate: 32360 / 708552
+    });
+  });
+
   it("derives tier target records from the existing sheet report and keeps the June preset", () => {
     const records = buildTargetRecords(report, {
       today: () => new Date("2026-07-15T12:00:00")
@@ -40,6 +58,16 @@ describe("targetModel", () => {
     expect(julyTotal?.brandCount).toBe(3);
     expect(julyTotal?.revenue).toBe(3500);
     expect(records.some((record) => record.monthKey === "2026-05")).toBe(true);
+  });
+
+  it("uses the report snapshot month before the browser current month for derived rows", () => {
+    const records = buildTargetRecords({ ...report, referenceMonthKey: "2026-08" }, {
+      today: () => new Date("2026-09-01T12:00:00")
+    });
+    const augustTotal = records.find((record) => record.monthKey === "2026-08" && record.tier === "Total");
+
+    expect(augustTotal).toMatchObject({ brandCount: 3, clicks: 350, orders: 35, revenue: 3500 });
+    expect(records.some((record) => record.monthKey === "2026-09")).toBe(false);
   });
 
   it("parses targets, totals and metric formatting without changing business units", () => {

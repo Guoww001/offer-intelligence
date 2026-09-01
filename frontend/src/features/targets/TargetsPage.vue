@@ -5,6 +5,7 @@ import { translateMessage, type UiLanguage } from "../../shared/i18n";
 import {
   TARGET_METRICS,
   TARGET_TREND_VIEWS,
+  dbMonthlySummaryForKey,
   monthKeyFromText,
   targetActualAvailable,
   targetDailyTrendRows,
@@ -34,7 +35,7 @@ export interface TargetExportPayload {
   readonly scope: string;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   language: UiLanguage;
   reportData?: TargetReportData;
   autoLoad?: boolean;
@@ -42,7 +43,9 @@ const props = defineProps<{
   loadStatus?: TargetStatusLoader;
   loadTierSummary?: TargetTierSummaryLoader;
   download?: (payload: TargetExportPayload) => void;
-}>();
+}>(), {
+  autoLoad: true
+});
 
 const targets = useTargets({
   reportData: props.reportData,
@@ -114,12 +117,19 @@ const copy = computed(() => ({
 
 const hasReportData = computed(() => Boolean(props.reportData && Array.isArray(props.reportData.sheets) && props.reportData.sheets.length));
 
+const headlineSummary = computed(() => {
+  const databaseSummary = targets.tier.value === "all"
+    ? dbMonthlySummaryForKey(monthKeyFromText(targets.month.value), targets.statusData.value)
+    : null;
+  return databaseSummary ? { ...targets.summary.value, ...databaseSummary } : targets.summary.value;
+});
+
 const kpis = computed(() => [
-  { icon: "$", label: copy.value.revenue, value: compactMoney(targetSummaryMetricValue(targets.summary.value, "revenue")), tone: "blue" },
-  { icon: "#", label: copy.value.orders, value: compactNumber(targetSummaryMetricValue(targets.summary.value, "orders")), tone: "green" },
-  { icon: "C", label: copy.value.clicks, value: compactNumber(targetSummaryMetricValue(targets.summary.value, "clicks")), tone: "amber" },
-  { icon: "%", label: copy.value.conversion, value: formatPercent(targetSummaryMetricValue(targets.summary.value, "conversion")), tone: "violet" },
-  { icon: "B", label: copy.value.brands, value: compactNumber(targetSummaryMetricValue(targets.summary.value, "brands")), tone: "slate" }
+  { icon: "$", label: copy.value.revenue, value: compactMoney(targetSummaryMetricValue(headlineSummary.value, "revenue")), tone: "blue" },
+  { icon: "#", label: copy.value.orders, value: compactNumber(targetSummaryMetricValue(headlineSummary.value, "orders")), tone: "green" },
+  { icon: "C", label: copy.value.clicks, value: compactNumber(targetSummaryMetricValue(headlineSummary.value, "clicks")), tone: "amber" },
+  { icon: "%", label: copy.value.conversion, value: formatPercent(targetSummaryMetricValue(headlineSummary.value, "conversion")), tone: "violet" },
+  { icon: "B", label: copy.value.brands, value: compactNumber(targetSummaryMetricValue(headlineSummary.value, "brands")), tone: "slate" }
 ]);
 
 interface ProgressCard {
