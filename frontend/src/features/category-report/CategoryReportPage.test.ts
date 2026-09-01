@@ -73,7 +73,6 @@ describe("CategoryReportPage", () => {
     expect(downloads).toHaveLength(1);
     expect(calls).toEqual(["Tier 1", "Tier 2", "Tier 3", "Tier 4"]);
   });
-
   it("exposes stable hooks for search, date, focus, and export interactions", () => {
     const wrapper = mount(CategoryReportPage, {
       props: {
@@ -91,4 +90,5 @@ describe("CategoryReportPage", () => {
     expect(wrapper.find('[data-category-action="export"]').exists()).toBe(true);
     expect(wrapper.find('[data-category-action="toggle-expanded"]').exists()).toBe(true);
   });
+
 });
