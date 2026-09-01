@@ -181,6 +181,8 @@
   const PAYMENT_TODAY = new Date(`${localDateKey(new Date())}T00:00:00`);
   const DEFAULT_TIER_REPORT_END_DATE = localDateKey(new Date());
   const DEFAULT_TIER_REPORT_START_DATE = `${DEFAULT_TIER_REPORT_END_DATE.slice(0, 7)}-01`;
+  const SHEET_REPORT_START_DATE = String(sheetReport.startDate || "").trim() || DEFAULT_TIER_REPORT_START_DATE;
+  const SHEET_REPORT_END_DATE = String(sheetReport.endDate || "").trim() || DEFAULT_TIER_REPORT_END_DATE;
   const originalTierSheetRows = new Map();
   const originalTierSheetRowIndex = new Map();
   const dbMerchantCache = new Map();
@@ -423,8 +425,8 @@
       minRevenue: ""
     },
     tierReport: {
-      startDate: DEFAULT_TIER_REPORT_START_DATE,
-      endDate: DEFAULT_TIER_REPORT_END_DATE,
+      startDate: SHEET_REPORT_START_DATE,
+      endDate: SHEET_REPORT_END_DATE,
       payloads: new Map(),
       activeKeys: new Map(),
       loadingKeys: new Set(),

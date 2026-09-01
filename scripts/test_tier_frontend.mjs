@@ -44,6 +44,10 @@ assert(tierFeatureStyles.includes("  padding: 0;"), "Tier Vue root 不应引入�
 assert(tierFeatureStyles.includes(".tier-page-modern .tier-move-dialog {\n  z-index: 45;"), "Tier Move 弹层层级未与旧版对齐");
 assert(tierFeatureStyles.includes(".tier-page-modern .tier1-merchant-dialog {\n  z-index: 46;"), "Tier 新增商家弹层层级未与旧版对齐");
 
+const auth = read("public/auth.js");
+assert(auth.includes('startDate: offersResp.startDate || ""'), "认证启动链必须保留 Tier 报告开始日期");
+assert(auth.includes('endDate: offersResp.endDate || ""'), "认证启动链必须保留 Tier 报告结束日期");
+
 const entry = read("frontend/src/entry.ts");
 for (const contract of [
   'import "./features/tier-sheet/tierSheet.css"',
@@ -62,6 +66,8 @@ for (const contract of [
 }
 
 const app = read("public/app.js");
+assert(app.includes("startDate: SHEET_REPORT_START_DATE"), "legacy Tier 状态必须使用缓存报告开始日期");
+assert(app.includes("endDate: SHEET_REPORT_END_DATE"), "legacy Tier 状态必须使用缓存报告结束日期");
 const tierNavBindingStart = app.indexOf("els.tierNavButtons.forEach((button) => {");
 const tierNavBindingEnd = app.indexOf("els.tier1AdditionsToggle", tierNavBindingStart);
 assert(tierNavBindingStart >= 0 && tierNavBindingEnd > tierNavBindingStart, "无法定位 Tier 导航绑定");

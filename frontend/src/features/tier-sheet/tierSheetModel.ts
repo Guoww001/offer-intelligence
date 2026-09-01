@@ -55,6 +55,8 @@ export interface TierSheetData {
 }
 
 export interface TierSheetReportData {
+  readonly startDate?: unknown;
+  readonly endDate?: unknown;
   readonly sheets?: readonly TierSheetData[];
   readonly tierSheets?: readonly unknown[];
   readonly offers?: readonly unknown[];

@@ -118,6 +118,10 @@ function localDateKey(date: Date): string {
 }
 
 function firstDateRange(data: TierSheetReportData): { readonly startDate: string; readonly endDate: string } {
+  const reportStartDate = text(data.startDate);
+  const reportEndDate = text(data.endDate);
+  if (reportStartDate && reportEndDate) return { startDate: reportStartDate, endDate: reportEndDate };
+
   const sheet = Array.isArray(data.sheets)
     ? data.sheets.find((candidate) => isRecord(candidate) && isRecord(candidate.reportRange))
     : undefined;

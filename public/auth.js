@@ -244,6 +244,8 @@
       };
 
       window.SHEET_REPORT_DATA = {
+        startDate: offersResp.startDate || "",
+        endDate: offersResp.endDate || "",
         sheets: offersResp.sheets || [],
         tierSheets: ["Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"]
       };

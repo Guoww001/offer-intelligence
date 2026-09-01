@@ -64,6 +64,46 @@ describe("useTierSheet", () => {
     expect(tier.loading.value).toBe(false);
   });
 
+  it("uses the cached report range when refreshing live tier metrics", async () => {
+    const cachedTierOne = report.sheets[0];
+    if (!cachedTierOne) throw new Error("Tier 1 test fixture is missing");
+    const cachedReport = {
+      ...report,
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
+      sheets: [
+        {
+          ...cachedTierOne,
+          rows: [{ ...cachedTierOne.rows[0], "Order count": "1" }]
+        },
+        ...report.sheets.slice(1)
+      ]
+    };
+    const requests: Array<{ startDate: string; endDate: string }> = [];
+    const tier = useTierSheet({
+      reportData: cachedReport,
+      initialTier: "Tier 1",
+      today: () => new Date("2026-09-01T00:00:00"),
+      autoLoad: false,
+      loadTier: async ({ startDate, endDate }) => {
+        requests.push({ startDate, endDate });
+        return {
+          rows: [{
+            "Merchant ID": "101",
+            Revenue: startDate === "2026-08-01" ? "100" : "0",
+            Clicks: startDate === "2026-08-01" ? "10" : "0",
+            "Order count": startDate === "2026-08-01" ? "1" : "0"
+          }]
+        };
+      }
+    });
+
+    await tier.loadSelectedTier();
+
+    expect(requests).toEqual([{ startDate: "2026-08-01", endDate: "2026-08-31" }]);
+    expect(tier.summary.value).toMatchObject({ clicks: 10, orders: 1, revenue: 100, avgConversion: 0.1 });
+  });
+
   it("keeps one visible row selected when selecting all and prevents empty columns", () => {
     const tier = useTierSheet({ reportData: report, initialTier: "Tier 1", autoLoad: false, storage: storage() });
     tier.selectAllVisible(true);
