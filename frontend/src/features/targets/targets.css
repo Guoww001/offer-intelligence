@@ -49,3 +49,22 @@
     grid-row: auto;
   }
 }
+
+@media (max-width: 760px) {
+  .sheet-page-modern > .sheet-target-filters,
+  .sheet-page-modern > .tier-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sheet-page-modern .target-kpi-card {
+    min-width: 0;
+  }
+
+  .sheet-page-modern .target-kpi-card > div:last-child {
+    min-width: 0;
+  }
+
+  .sheet-page-modern .target-kpi-card strong {
+    overflow-wrap: anywhere;
+  }
+}

@@ -132,3 +132,25 @@
     flex: 0 0 auto;
   }
 }
+
+@media (max-width: 420px) {
+  .tier-modern-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: 100%;
+    overflow-x: visible;
+  }
+
+  .tier-modern-tabs button {
+    min-width: 0;
+    overflow: hidden;
+    padding-right: 6px;
+    padding-left: 6px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tier-modern-tabs button:last-child {
+    grid-column: 1 / -1;
+  }
+}
