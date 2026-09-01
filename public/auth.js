@@ -1,6 +1,6 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260831-vue-m5-tier";
-  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-vue-m4-google-ads";
+  const APP_SCRIPT = "./app.js?v=20260901-m4-shell";
+  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-m4-shell";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -288,7 +288,7 @@
   }
 
   function bindLogout() {
-    const logout = document.getElementById("logoutButton");
+    const logout = document.getElementById("modernLogoutButton") || document.getElementById("logoutButton");
     if (!logout) return;
     logout.addEventListener("click", async () => {
       logout.disabled = true;

@@ -561,6 +561,7 @@
   };
 
   const llmClassifyCache = new Map();
+  let modernShellMounted = false;
 
   const els = {
     primarySidebar: document.getElementById("primarySidebar"),
@@ -964,6 +965,7 @@
     paymentSort: document.getElementById("paymentSortFilter"),
     paymentSearch: document.getElementById("paymentSearch"),
     languageToggle: document.getElementById("languageToggle"),
+    dashThemeToggle: document.getElementById("dashThemeToggle"),
     chatModeToggle: null,
     modeFastBtn: null,
     modeDeepBtn: null
@@ -2367,10 +2369,36 @@
     updateMobileCurrentPage();
   }
 
-  function toggleLanguage() {
-    state.language = state.language === "zh" ? "en" : "zh";
+  function setLegacyLanguage(language) {
+    state.language = language === "en" ? "en" : "zh";
     localStorage.setItem("offerLanguage", state.language);
     rerenderForLanguage();
+    if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+      window.OI_MODERN_APP.setLanguage(state.language);
+    }
+  }
+
+  function toggleLanguage() {
+    setLegacyLanguage(state.language === "zh" ? "en" : "zh");
+  }
+
+  function applyDashTheme() {
+    if (localStorage.getItem("oi-dash-theme") === "dark") {
+      document.body.removeAttribute("data-dash-theme");
+      document.body.dataset.oiTheme = "dark";
+    } else {
+      document.body.setAttribute("data-dash-theme", "light");
+      document.body.dataset.oiTheme = "light";
+    }
+  }
+
+  function toggleDashTheme() {
+    if (document.body.getAttribute("data-dash-theme") === "light") {
+      localStorage.setItem("oi-dash-theme", "dark");
+    } else {
+      localStorage.removeItem("oi-dash-theme");
+    }
+    applyDashTheme();
   }
 
   function number(value) {
@@ -31360,6 +31388,49 @@ var _NUMERIC_COL_PATTERNS = [
     document.body.classList.toggle("tier-scroll-mode", page === "tier");
   }
 
+  function mountModernShell() {
+    if (modernShellMounted) return true;
+    const root = document.getElementById("modernShellRoot");
+    const appShell = document.getElementById("appShell");
+    const modernApp = window.OI_MODERN_APP;
+    if (
+      !root
+      || !appShell
+      || !modernApp
+      || typeof modernApp.mountShell !== "function"
+    ) {
+      return false;
+    }
+    try {
+      modernShellMounted = Boolean(modernApp.mountShell(root));
+    } catch (error) {
+      modernShellMounted = false;
+      if (typeof modernApp.unmountShell === "function") {
+        try {
+          modernApp.unmountShell();
+        } catch (_unmountError) {
+          // Shell 创建失败时继续使用 legacy 外壳。
+        }
+      }
+      console.warn("Modern AppShell unavailable; continuing with the legacy shell.", error);
+    }
+    // 保留 legacy 外壳作为唯一可见的侧边栏，AppShell 仅承担共享状态同步。
+    root.classList.add("hidden");
+    appShell.classList.remove("shell-modern-ready");
+    return modernShellMounted;
+  }
+
+  function syncModernShellPage(page = state.page) {
+    if (!modernShellMounted) return;
+    const modernApp = window.OI_MODERN_APP;
+    if (!modernApp || typeof modernApp.setPage !== "function") return;
+    try {
+      modernApp.setPage(page);
+    } catch (error) {
+      console.warn("Modern AppShell page sync failed; continuing with legacy navigation.", error);
+    }
+  }
+
   function mobileCurrentPageLabel() {
     if (state.page === "tier") return state.selectedTierPage || "Tier 1";
     const labels = {
@@ -31680,6 +31751,7 @@ var _NUMERIC_COL_PATTERNS = [
       _revenueFlowSetChartExpanded(false);
     }
     state.page = page;
+    syncModernShellPage(page);
     updatePageModeClass(page);
     if (page !== "tier") {
       state.selectedTierRowKeys.clear();
@@ -32340,6 +32412,8 @@ var _NUMERIC_COL_PATTERNS = [
   function init() {
     state.llmEnabled = window.__OI_LLM_ENABLED !== false;
     state.agentEnabled = window.__OI_AGENT_ENABLED !== false;
+    applyDashTheme();
+    mountModernShell();
 
     // 模式切换
     els.chatModeToggle = document.getElementById("chatModeToggle");
@@ -32950,6 +33024,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (els.paymentHead) els.paymentHead.addEventListener("click", handleReportSortClick);
     els.paymentSync.addEventListener("click", () => refreshLevantaPayments());
     els.languageToggle.addEventListener("click", toggleLanguage);
+    if (els.dashThemeToggle) els.dashThemeToggle.addEventListener("click", toggleDashTheme);
     if (els.reset) els.reset.addEventListener("click", resetFilters);
     els.download.addEventListener("click", downloadFilteredXlsx);
     // ── Overview 切换 / 折叠 ──
@@ -33713,6 +33788,7 @@ var _NUMERIC_COL_PATTERNS = [
 
   window.OI_LEGACY_BRIDGE = {
     navigate: (page) => switchPage(page),
+    setLanguage: (language) => setLegacyLanguage(language),
     download: (type, payload) => (
       type === "offer-tracker"
         ? downloadModernOfferTracker(payload)

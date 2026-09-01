@@ -18,7 +18,7 @@ assert(indexHtml.includes('id="publishersModernRoot"'), "index.html should provi
 assert(styles.includes(".publishers-page.is-modern > :not(#publishersModernRoot)"), "legacy styles should isolate the modern Publishers root");
 assert(app.includes('mountPage("publishers"'), "switchPage() should mount modern Publishers");
 assert(app.includes('unmountPage("publishers"'), "switchPage() should unmount modern Publishers");
-assert(app.includes('type === "publishers" && downloadModernPublishers(payload)'), "legacy bridge should keep Publishers export available");
+assert(/type === "publishers"\s*(?:&&|\?)\s*downloadModernPublishers\(payload\)/.test(app), "legacy bridge should keep Publishers export available");
 assert(page.includes("publisher-layout" ) || page.includes("layout-editing"), "Publishers should expose layout editing state");
 assert(page.includes("publisher-affinity-panel"), "Publishers should retain the affinity panel");
 assert(page.includes("publisher-portfolio-table"), "Publishers should retain the portfolio table");

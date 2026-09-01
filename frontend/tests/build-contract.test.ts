@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { createModernAppApi, getLegacySnapshot } from "../src/legacy/bridge";
-import type { LegacyBootstrapData, ModernPageFactory } from "../src/legacy/contracts";
+import type {
+  LegacyBootstrapData,
+  ModernPageFactory,
+  ModernShellFactory
+} from "../src/legacy/contracts";
 
 function bootstrapData(): LegacyBootstrapData {
   return {
@@ -78,5 +82,23 @@ describe("Legacy Bridge 构建契约", () => {
     expect(calls).toEqual(["unmount", "unmount"]);
     modernApp.unmountPage("offer-list-tracker");
     expect(calls).toEqual(["unmount", "unmount"]);
+  });
+
+  it("注册共享 Shell 后支持页面/语言同步和安全卸载", () => {
+    const calls: string[] = [];
+    const shellFactory: ModernShellFactory = () => ({
+      setPage: (page) => calls.push(`page:${page}`),
+      setLanguage: (language) => calls.push(`language:${language}`),
+      unmount: () => calls.push("unmount")
+    });
+    const modernApp = createModernAppApi({}, shellFactory);
+    const root = document.createElement("section");
+
+    expect(modernApp.mountShell(root)).toBe(true);
+    modernApp.setPage("payments");
+    modernApp.setLanguage("en");
+    modernApp.unmountShell();
+
+    expect(calls).toEqual(["page:payments", "language:en", "unmount"]);
   });
 });

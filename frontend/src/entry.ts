@@ -11,12 +11,14 @@ import "./features/google-ads/googleAds.css";
 import "./features/targets/targets.css";
 import "./features/category-report/categoryReport.css";
 import "./features/tier-sheet/tierSheet.css";
+import "./shell/shell.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
 import type {
   LegacyBootstrapData,
   ModernPageController,
-  ModernPageFactory
+  ModernPageFactory,
+  ModernShellFactory
 } from "./legacy/contracts";
 import type {
   OfferRecord,
@@ -68,6 +70,8 @@ import type {
 import type { TierSheetReportData } from "./features/tier-sheet/tierSheetModel";
 import GoogleAdsPage from "./features/google-ads/GoogleAdsPage.vue";
 import type { GoogleAdsLoadRequest } from "./features/google-ads/useGoogleAds";
+import AppShell from "./shell/AppShell.vue";
+import type { AppShellController } from "./shell/appShellContracts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -220,7 +224,8 @@ async function loadBrandMediaTrend(request: BrandMediaTrendRequest): Promise<unk
     endDate: request.endDate
   });
   return apiRequest<unknown>(`/api/ui/db/brand-media-trend?${query.toString()}`, {
-    signal: request.signal
+    signal: request.signal,
+    timeoutMs: 30_000
   });
 }
 
@@ -526,6 +531,48 @@ function downloadTier(payload: TierExportPayload): boolean {
   );
 }
 
+const shellFactory: ModernShellFactory = (element) => {
+  const i18n = createI18nStore(getLegacySnapshot().value.language);
+  let shellController: AppShellController | null = null;
+  const app = createApp({
+    name: "ModernAppShellMount",
+    setup() {
+      return () => h(AppShell, {
+        initialPage: "agent",
+        language: i18n.language.value,
+        navigate(page) {
+          window.OI_LEGACY_BRIDGE?.navigate(page);
+        },
+        setLanguage(language) {
+          if (window.OI_LEGACY_BRIDGE?.setLanguage) {
+            window.OI_LEGACY_BRIDGE.setLanguage(language);
+          } else {
+            i18n.setLanguage(language);
+          }
+        },
+        storage: browserStorage(),
+        onReady(controller) {
+          shellController = controller;
+        }
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setPage(page) {
+      shellController?.setPage(page);
+    },
+    setLanguage(language) {
+      i18n.setLanguage(language);
+      shellController?.setLanguage(language);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 const offerTrackerFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
@@ -813,4 +860,4 @@ window.OI_MODERN_APP = createModernAppApi({
   "revenue-flow": revenueFlowFactory,
   category: categoryReportFactory,
   tier: tierFactory
-});
+}, shellFactory);

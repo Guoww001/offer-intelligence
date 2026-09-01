@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-01（M4 Google Ads 390px 修复；公开 Sites version 9）
+> 最近更新：2026-09-01（M4 Google Ads 390px 修复；M4/M5 验收完成；Monthly New Merchants 已完成 dual → modern 安全放行；共享 AppShell、导航、主题与页面标题接入；公开 Sites version 9）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -93,8 +93,8 @@
       "exports": [],
       "overlays": ["expanded brand media chart", "merchant combobox dropdown"],
       "tests": ["scripts/test_brand_media_trend.py", "scripts/test_brand_media_trend_frontend.mjs", "scripts/test_brand_media_frontend.mjs", "frontend/src/features/brand-media/brandMediaModel.test.ts", "frontend/src/features/brand-media/useBrandMedia.test.ts", "frontend/src/features/brand-media/BrandMediaPage.test.ts"],
-      "testGap": "真实趋势接口在当前本地环境返回 503，已验证受控错误，但未能以真实数据完成图表对比；390px 视口已由用户验收通过。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端已完成旧 CSS/HTML 几何对齐及 BrowserAct hover、Manager、锁定、展开/Escape 验收；390px 已由用户验收通过，真实趋势 populated 验收仍待数据环境补验。"
+      "testGap": "",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端、关键交互和 390px 视觉验收已完成，2026-09-01 由用户确认 M4 验收完成。"
     },
     {
       "pageKey": "revenue-flow",
@@ -108,8 +108,8 @@
       "exports": [],
       "overlays": ["expanded revenue flow chart", "merchant multi-select dropdown"],
       "tests": ["frontend/src/features/revenue-flow/revenueFlowModel.test.ts", "frontend/src/features/revenue-flow/useRevenueFlow.test.ts", "frontend/src/features/revenue-flow/RevenueFlowPage.test.ts", "scripts/test_revenue_flow_frontend.mjs"],
-      "testGap": "现代 Revenue Flow feature、请求契约和 Canvas 交互已有聚焦回归；当前真实数据与 390px BrowserAct 验收仍待补验，页面已具备完整公共壳层和构建产物。",
-      "notes": "最多选择 12 个品牌，useRevenueFlow 维护模块级请求去重、进行中请求复用、AbortController、payload 缓存、日期快捷范围和展开生命周期；Revenue FlowSankey 使用 Canvas、可聚焦节点 overlay 与连线 Flow tooltip，entry 使用 /api/ui/db/publishers 和 /api/ui/db/brand-media-sankey，挂载失败保留 legacy fallback。"
+      "testGap": "",
+      "notes": "最多选择 12 个品牌，useRevenueFlow 维护模块级请求去重、进行中请求复用、AbortController、payload 缓存、日期快捷范围和展开生命周期；Revenue FlowSankey 使用 Canvas、可聚焦节点 overlay 与连线 Flow tooltip，entry 使用 /api/ui/db/publishers 和 /api/ui/db/brand-media-sankey，挂载失败保留 legacy fallback。M4 真实数据、关键交互和移动端视觉验收已由用户于 2026-09-01 确认完成。"
     },
     {
       "pageKey": "google-ads",
@@ -124,13 +124,13 @@
       "exports": [],
       "overlays": [],
       "tests": ["scripts/test_google_ads_workbench.py", "scripts/test_google_ads_workbench_frontend.mjs", "scripts/test_google_ads_mobile_frontend.mjs", "frontend/src/features/google-ads/googleAdsModel.test.ts", "frontend/src/features/google-ads/useGoogleAds.test.ts", "frontend/src/features/google-ads/GoogleAdsPage.test.ts"],
-      "testGap": "Sites version 9 fixed fixture 已完成 1363×936 legacy/Vue 桌面对比、390×844 legacy/Vue 截图、日期范围/刷新交互和标题 computed-style 对齐；真实 Google Ads API/auth、生产账号数据与共享 Shell 仍待验收。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS、未匹配花费和归因边界说明。请求沿用 /api/ui/db/google-ads-workbench，快捷范围、显式日期和 force refresh 均由 composable 维护；Google Ads feature CSS 负责 modern mount 的窄屏最小宽度、局部横向滚动和长文案换行，页面标题复用 legacy h2 视觉契约。"
+      "testGap": "Sites version 9 fixed fixture 已完成 1363×936 legacy/Vue 桌面对比、390×844 legacy/Vue 截图、日期范围/刷新交互和标题 computed-style 对齐；M4 浏览器验收已由用户于 2026-09-01 确认完成；页面仍保留 legacy fallback，逐页 dual → modern 安全放行尚待执行。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS、未匹配花费和归因边界说明。请求沿用 /api/ui/db/google-ads-workbench，快捷范围、显式日期和 force refresh 均由 composable 维护；Google Ads feature CSS 负责 modern mount 的窄屏最小宽度、局部横向滚动和长文案换行，页面标题复用 legacy h2 视觉契约；M4 真实数据、关键交互和移动端视觉验收已由用户于 2026-09-01 确认完成。"
     },
     {
       "pageKey": "monthly-new-merchants",
       "label": "Monthly New Merchants",
-      "status": "dual",
+      "status": "modern",
       "roots": ["#monthlyNewMerchantsPage", "#monthlyNewMerchantsModernRoot"],
       "legacyEntry": ["switchPage()", "renderMonthlyNewMerchantsPage()", "loadMonthlyNewMerchants()", "openMonthlyNewMerchantDrawer()", "openMonthlyNewMerchantImport()"],
       "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.vue", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.ts"],
@@ -139,9 +139,9 @@
       "storage": [],
       "exports": ["downloadMonthlyNewMerchantTemplate()"],
       "overlays": ["monthly merchant edit drawer", "monthly merchant import dialog", "month picker"],
-      "tests": ["scripts/test_monthly_new_merchants.py", "scripts/test_monthly_new_merchants_frontend.mjs", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.test.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.test.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.test.ts"],
-      "testGap": "当前 Cloud Browser 的 URL policy 拦截了本地预览地址，未能采集实际 modern/legacy 同视口截图；待提供可访问预览 URL 后补做桌面和 390px 视觉验收。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月度查询、14 列列表、重点标记、搜索、增改删抽屉、CSV/TSV/Excel 粘贴或文件导入、逐行错误预览、模板下载、批量保存和焦点恢复。XLS/XLSX 读取器由 entry 注入，API 与数据库 payload 沿用既有契约。"
+      "tests": ["scripts/test_monthly_new_merchants.py", "scripts/test_monthly_new_merchants_frontend.mjs", "scripts/test_monthly_new_merchants_modern_cutover.mjs", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.test.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.test.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.test.ts"],
+      "testGap": "",
+      "notes": "Vue modern root 默认渲染；legacy fallback 继续保留在回滚窗口。覆盖月度查询、14 列列表、重点标记、搜索、增改删抽屉、CSV/TSV/Excel 粘贴或文件导入、逐行错误预览、模板下载、批量保存和焦点恢复。XLS/XLSX 读取器由 entry 注入，API 与数据库 payload 沿用既有契约。M4 桌面、移动端和关键交互验收已由用户于 2026-09-01 确认完成，并据此完成 modern 放行。"
     },
     {
       "pageKey": "offer-list-tracker",
@@ -171,8 +171,8 @@
       "exports": ["downloadSheetTargetsXlsx()", "downloadTargets()", "downloadWorkbook()"],
       "overlays": ["inline target edit form"],
       "tests": ["scripts/test_target_month_selection.mjs", "scripts/test_db_status_view_model.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_targets_frontend.mjs", "scripts/test_m5_mobile_frontend.mjs", "frontend/src/features/targets/targetModel.test.ts", "frontend/src/features/targets/useTargets.test.ts", "frontend/src/features/targets/TargetsPage.test.ts"],
-      "testGap": "Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 Vue focused 截图，并在公开 Browser 中验证 month/compare-month/Tier hooks、metric 和 daily trend 切换。真实生产 API/auth、完整目标编辑/趋势/矩阵/导出浏览器流程仍待验收。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月份/对比月份/Tier 筛选、5 个 KPI、月度/日度趋势、Tier 目标进度与 localStorage 编辑、Tier 对比矩阵和当前筛选结果导出。Sheet 快照与 2026-06 已核验目标模板作为回退，/api/ui/db/status 与 /api/ui/db/tier-summary 成功时覆盖数据库实际数据；目标 XLSX 保持 Month/Tier/Brand Count/Total Clicks/Order Count/Revenue/Avg Conversion/New Tier Entries/Tier Exits/Target 字段顺序。TargetsPage、CategoryReportPage、TierSheetPage 的关键控件提供稳定 data-* hooks，便于公开固定 fixture smoke 验收。"
+      "testGap": "M5 Targets 验收已由用户于 2026-09-01 确认完成；Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 Vue focused 截图，并在公开 Browser 中验证 month/compare-month/Tier hooks、metric 和 daily trend 切换；后续仅需按回滚安全规则逐页完成 dual → modern 放行。",
+      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月份/对比月份/Tier 筛选、5 个 KPI、月度/日度趋势、Tier 目标进度与 localStorage 编辑、Tier 对比矩阵和当前筛选结果导出。Sheet 快照与 2026-06 已核验目标模板作为回退，/api/ui/db/status 与 /api/ui/db/tier-summary 成功时覆盖数据库实际数据；目标 XLSX 保持 Month/Tier/Brand Count/Total Clicks/Order Count/Revenue/Avg Conversion/New Tier Entries/Tier Exits/Target 字段顺序。TargetsPage、CategoryReportPage、TierSheetPage 的关键控件提供稳定 data-* hooks，便于公开固定 fixture smoke 验收；Sites version 7 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs` 与 Firecrawl screenshot 记录。"
     },
     {
       "pageKey": "category",
@@ -187,7 +187,7 @@
       "exports": ["downloadFocusedCategoryRows()", "downloadCategory()", "downloadWorkbook()"],
       "overlays": ["category pie spotlight", "category focused detail"],
       "tests": ["scripts/test_sheet_categories.mjs", "scripts/test_category_drilldown.mjs", "scripts/test_category_trend.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_category_frontend.mjs", "frontend/src/features/category-report/categoryReportModel.test.ts", "frontend/src/features/category-report/useCategoryReport.test.ts", "frontend/src/features/category-report/CategoryReportPage.test.ts"],
-      "testGap": "Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 页面加载；公开 Browser 已验证 Orders lens、pie focus/reset 与分类行展开，8 个分类、Revenue/Orders/CVR 与 focused export 入口可见。真实生产 API/auth、搜索/日期/导出文件的完整浏览器流程仍待验收。",
+      "testGap": "M5 Category 验收已由用户于 2026-09-01 确认完成；Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 页面加载，并在公开 Browser 验证 Orders lens、pie focus/reset 与分类行展开；后续仅需按回滚安全规则逐页完成 dual → modern 放行。",
       "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖 DB sheetCategory → mainCategory → Feishu → 其他来源 → levantaCategory → Uncategorized 优先级、Tier 选择、分类/商家精确搜索、排序、饼图 Top 7 与 Other 下钻、趋势聚合、展开商家明细和 focused export。compact tier_sheet 响应按 Merchant ID 与 Sheet 快照合并，日期切换使用 AbortController/请求序号丢弃过期响应；页面复用旧版 dashboard-category class 和响应式规则，导出由 shared/export/xlsx.ts 生成。"
     },
     {
@@ -203,8 +203,8 @@
       "exports": ["downloadTierSheetXlsx()", "downloadTier()", "downloadWorkbook()"],
       "overlays": ["Tier Sheet overlay", "Tier Move dialog", "Tier 1 additions overlay", "Tier 1 merchant dialog", "Tier column panel"],
       "tests": ["scripts/test_tier_report_frontend.mjs", "scripts/test_tier_visual_status.mjs", "scripts/test_tier_visual_status_rules.py", "scripts/test_tier1_merchant_frontend.mjs", "scripts/test_tier2_recommendation_rules.mjs", "scripts/test_manual_tier_automation.py", "scripts/test_tier_frontend.mjs", "scripts/test_m5_mobile_frontend.mjs", "scripts/test_shared_xlsx_frontend.mjs", "frontend/src/features/tier-sheet/tierSheetModel.test.ts", "frontend/src/features/tier-sheet/useTierSheet.test.ts", "frontend/src/features/tier-sheet/TierSheetPage.test.ts", "frontend/src/shared/export/xlsx.test.ts"],
-      "testGap": "Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 截图；公开 Browser 已验证 Tier tab、行选择、Move dialog 打开、Display、Expand/Close，Tier 1–4 同行、Black Tier 独占整行且 tabs 完整可见。共享 Move API、管理员 token、Tier 1 merchant API、真实 webhook/持久化、确认提交和完整移动端交互仍待真实浏览器端到端验收。",
-      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；Tier/Category/Targets 关键控件提供稳定 data-* hooks，version 8 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs`、Firecrawl screenshot 与公开 Browser 交互记录，真实 Move/computed-style 生产边界仍待验收。"
+      "testGap": "M5 Tier 验收已由用户于 2026-09-01 确认完成；Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 Vue focused 截图，并在公开 Browser 验证 Tier tab、行选择、Move dialog 打开、Display、Expand/Close，Tier 1–4 同行、Black Tier 独占整行且 tabs 完整可见；后续仅需按回滚安全规则逐页完成 dual → modern 放行。",
+      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；Tier/Category/Targets 关键控件提供稳定 data-* hooks，version 8 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs`、Firecrawl screenshot 与公开 Browser 交互记录。"
     }
   ]
 }
@@ -216,20 +216,20 @@
 | 依赖 | 当前入口 | 迁移要求 |
 | --- | --- | --- |
 | 认证与数据预载 | `public/auth.js` | M1 保持会话、登录和 `/api/ui/db/offers` 语义；modern bundle 失败时仍可进入旧应用 |
-| 全局导航 | `switchPage()`、`syncNavigationGroupState()` | Shell 迁移前保持唯一权威入口，禁止新旧两侧各维护一套路由状态 |
+| 全局导航 | `frontend/src/shell/AppShell.vue`、`public/app.js:switchPage()`、`syncNavigationGroupState()` | legacy 侧边栏继续负责可见展示和交互，AppShell 负责共享导航模型与页面同步；`switchPage()` 仍是唯一页面切换权威入口，禁止新旧两侧各维护一套路由状态 |
 | 语言 | `state.language`、`offerLanguage`、`chatbot_i18n.js`、`frontend/src/shared/i18n/` | legacy 仍由 `state.language` 管理，通过 `OI_MODERN_APP.setLanguage()` 同步 modern；迁移文案必须中文/英文成对维护 |
 | 共享 API、错误与契约 | `frontend/src/shared/api/`、`frontend/src/shared/contracts/` | M3 的 modern 页面使用统一 JSON/错误/超时边界；契约只保留跨页面稳定字段，不复制完整数据库响应 |
 | 导出 | `frontend/src/shared/export/xlsx.ts`、`downloadWorkbook()`；legacy `downloadRowsAsXlsx()` | M2–M5 逐步复用；Targets/Category/Tier 已以同一 fixture 比较列格式、worksheet XML、styles XML 和 workbook package parts，legacy bridge 继续保留回滚窗口 |
 | Deep Window | `_deepPanels` 与相关渲染函数 | 页面切换、最小化、恢复和请求中止在 Chatbot 阶段统一迁移 |
 | 数据启动对象 | `window.CHATBOT_DATA`、`window.SHEET_REPORT_DATA`、`window.PRODUCT_KEYWORDS` | 只在 `LegacyBootstrapData` 边界读取，Vue feature 不得直接读取任意全局对象 |
-| 主题与移动导航 | `public/index.html` 内联主题脚本、`public/app.js` 事件绑定 | M4 Shell 阶段迁移，之前不能改变现有主题默认值和焦点陷阱 |
+| 主题与移动导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/shell/theme.ts`、`public/app.js` | AppShell 负责主题状态与页面标题同步；可见移动端 sticky bar/drawer 和桌面侧边栏继续由 legacy 外壳提供，避免改变既有视觉；modern 挂载失败时 legacy 外壳和主题事件继续工作 |
 
 ## 当前测试缺口优先级
 
-1. P1：Revenue Flow 已建立 Sankey 数据、选择上限、缓存和图表生命周期回归；待补真实数据与 390px BrowserAct 验收。
-2. P1：Offer Tracker 核心大数据路径和下载已完成浏览器验收；M3 后仍需补旧/新页面逐字段差异报告并迁移高级面板。
-3. P1：Targets/Category/Tier 已补齐固定 fixture 的 1363×936 对比、390×844 focused 截图和公开 Browser 核心交互 smoke；仍需真实生产 API/auth、Tier Move webhook/持久化、确认提交和完整移动端交互验收。
-4. P1：Brand Media 已补齐桌面端 BrowserAct 交互证据，390px 已由用户验收通过；Google Ads 的 fixed fixture 390px 已补齐，仍需真实 API/auth、生产账号回归和共享 Shell。
+1. P1：Brand Media、Revenue Flow、Google Ads、Targets、Category、Tier 已完成当前 M4/M5 验收，下一步按页面逐一执行 dual → modern 安全放行并保留 legacy rollback window。
+2. P1：M2 Offer Tracker 仍需旧/新页面逐字段差异报告，并迁移高级保存视图、列面板、规则面板和导出对话框。
+3. P1：M6 Chatbot/Agent 仍由 legacy 执行，进入迁移前需按 `docs/chatbot-feature-report.md` 重新核对协议、工具和 Trace。
+4. P2：modern 页面仍保留 legacy rollback window；后续阶段再按删除安全规则清理旧渲染与事件代码。
 
 ## 状态更新记录
 
@@ -246,3 +246,5 @@
 | 2026-09-01 | M5 Targets/Category/Tier 移动端续验 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 新增移动端 CSS 契约并按 TDD 完成 RED → GREEN；Targets 窄屏筛选/KPI 单列、Tier 390px tabs 采用 4+1 布局；同步 Tier 侧栏简化并修复本地重复/未闭合 nav button；Sites version 7 公开部署成功，完成 1363×936 compare、390×844 focused 截图和 Category/Targets/Tier 页面加载验收；真实生产 API/auth、Move webhook/持久化和完整移动交互仍待补 |
 | 2026-09-01 | M5 Targets/Category/Tier 交互入口续验 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 为三页补齐稳定 data-* hooks；公开 Sites version 8（source `f99c2a48b6b419063d7e0449f73c8effb0dbd59b`）完成 1363×936 compare、390×844 legacy/Vue screenshots，并在公开 Browser 验证 Targets metric/day、Category focus/reset/expand、Tier tab/select/Move dialog/Display/Expand-Close；真实生产 API/auth、Move 确认持久化和完整移动交互仍待补 |
 | 2026-09-01 | Google Ads 390px 与视觉边界 | `dual` | `dual` | 修复 Vue 标题与 legacy `h2` 样式不一致；新增 `googleAds.css` 和 `test_google_ads_mobile_frontend.mjs`，补齐 modern mount 的窄屏宽度、局部 chart/table 横向滚动、长文案换行和稳定 Refresh hook；Google Ads feature 8 项 Vitest、typecheck/build、旧版/Python 回归与公开 Sites version 9 通过；Firecrawl 390×844 legacy/Vue 截图及 Browser 1363×936 compare、标题 computed-style（两侧 35.438px）和 30D/Refresh smoke 已验证；真实 API/auth、生产账号和共享 Shell 仍待 |
+| 2026-09-01 | M4/M5 页面验收与共享 Shell | `M4/M5 dual` | `M4/M5 dual` | 用户明确确认 M4 与 M5 验收任务全部完成；本次实现补齐 `AppShell`、统一导航模型、单一 Tier 入口、主题持久化和页面标题同步；可见桌面/移动侧边栏继续沿用 legacy 样式，页面迁移状态不因验收记录被误改，继续按实际 `dual`/`modern` 保留 legacy fallback |
+| 2026-09-01 | Monthly New Merchants modern 放行 | `Monthly New Merchants dual` | `Monthly New Merchants modern` | M4 验收已由用户确认完成；modern root、Vue factory、modern-first `switchPage()` 顺序、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过放行契约；不修改月度商家 API、数据字段、认证或侧边栏视觉 |

@@ -31,6 +31,9 @@ export interface ModernAppApi {
   bootstrap(data: LegacyBootstrapData): void;
   mountPage(page: ModernPageName, element: HTMLElement): boolean;
   unmountPage(page: ModernPageName): void;
+  mountShell(element: HTMLElement): boolean;
+  unmountShell(): void;
+  setPage(page: ModernPageName): void;
   setLanguage(language: UiLanguage): void;
   hasPage(page: ModernPageName): boolean;
 }
@@ -42,7 +45,16 @@ export interface ModernPageController {
 
 export type ModernPageFactory = (element: HTMLElement) => ModernPageController;
 
+export interface ModernShellController {
+  unmount(): void;
+  setPage?(page: ModernPageName): void;
+  setLanguage?(language: UiLanguage): void;
+}
+
+export type ModernShellFactory = (element: HTMLElement) => ModernShellController;
+
 export interface LegacyBridgeApi {
   navigate(page: ModernPageName): void;
+  setLanguage(language: UiLanguage): void;
   download(type: string, payload: unknown): boolean;
 }

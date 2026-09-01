@@ -645,7 +645,7 @@
 }
 
 /* Brand Media modern migration */
-.brand-media-page.is-modern > :not(#brandMediaModernRoot) {
+#brandMediaPage.is-modern > :not(#brandMediaModernRoot) {
   display: none !important;
 }
 

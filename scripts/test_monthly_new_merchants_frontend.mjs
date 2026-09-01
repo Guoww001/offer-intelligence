@@ -387,6 +387,17 @@ assert(appSource.includes('mountPage("monthly-new-merchants"'),
   "monthly new merchants should mount through the modern page bridge");
 assert(appSource.includes('unmountPage("monthly-new-merchants"'),
   "monthly new merchants should unmount through the modern page bridge");
+assert(/"pageKey":\s*"monthly-new-merchants"[\s\S]*?"status":\s*"modern"/.test(
+  fs.readFileSync("docs/frontend-migration-inventory.md", "utf8")
+), "Monthly New Merchants should be released as modern after acceptance");
+const switchPageStart = appSource.indexOf("function switchPage(page)");
+const switchPageEnd = appSource.indexOf("function init()", switchPageStart);
+assert(switchPageStart >= 0 && switchPageEnd > switchPageStart, "switchPage() should be available for cutover checks");
+const switchPageSource = appSource.slice(switchPageStart, switchPageEnd);
+assert(
+  switchPageSource.indexOf('mountPage("monthly-new-merchants"') < switchPageSource.indexOf("renderMonthlyNewMerchantsPage()"),
+  "modern Monthly New Merchants must be attempted before the legacy renderer"
+);
 
 const styles = fs.readFileSync("public/styles.css", "utf8");
 assert(styles.includes(".monthly-new-merchant-id-column"),

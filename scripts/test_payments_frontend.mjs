@@ -19,8 +19,9 @@ assert(entry.includes("paymentsFactory"), "modern entry 未定义 paymentsFactor
 assert(entry.includes("/api/levanta/payments"), "Payments modern loader 未连接既有 API");
 assert(entry.includes('payments: paymentsFactory'), "modern entry 未注册 payments 页面");
 assert(indexHtml.includes('id="paymentsModernRoot"'), "index.html 缺少 paymentsModernRoot");
-assert(indexHtml.includes("oi-modern.css?v=20260831-vue-m5-tier"), "index.html 未更新 modern CSS cache busting");
-assert(auth.includes('oi-modern.js?v=20260831-vue-m5-tier'), "auth.js 未更新 modern JS cache busting");
+const modernCssVersion = indexHtml.match(/oi-modern\.css\?v=([^"']+)/)?.[1];
+const modernJsVersion = auth.match(/oi-modern\.js\?v=([^"']+)/)?.[1];
+assert(modernCssVersion && modernCssVersion === modernJsVersion, "index.html/auth.js modern cache busting 版本不一致");
 
 const switchPageStart = app.indexOf("function switchPage(page)");
 const switchPageEnd = app.indexOf("function init()", switchPageStart);

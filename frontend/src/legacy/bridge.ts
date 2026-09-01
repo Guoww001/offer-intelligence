@@ -6,6 +6,8 @@ import type {
   ModernPageController,
   ModernPageFactory,
   ModernPageName,
+  ModernShellController,
+  ModernShellFactory,
   UiLanguage
 } from "./contracts";
 
@@ -47,15 +49,24 @@ function assertLegacyBootstrapData(data: LegacyBootstrapData): void {
 }
 
 export function createModernAppApi(
-  definitions: Partial<Record<ModernPageName, ModernPageFactory>> = {}
+  definitions: Partial<Record<ModernPageName, ModernPageFactory>> = {},
+  shellFactory?: ModernShellFactory
 ): ModernAppApi {
   let activePage: { name: ModernPageName; controller: ModernPageController } | null = null;
+  let activeShell: ModernShellController | null = null;
 
   function unmountActivePage(): void {
     if (!activePage) return;
     const current = activePage;
     activePage = null;
     current.controller.unmount();
+  }
+
+  function unmountActiveShell(): void {
+    if (!activeShell) return;
+    const current = activeShell;
+    activeShell = null;
+    current.unmount();
   }
 
   return {
@@ -78,6 +89,22 @@ export function createModernAppApi(
       unmountActivePage();
     },
 
+    mountShell(element) {
+      if (!shellFactory) return false;
+      unmountActiveShell();
+      const controller = shellFactory(element);
+      activeShell = controller;
+      return true;
+    },
+
+    unmountShell() {
+      unmountActiveShell();
+    },
+
+    setPage(page: ModernPageName) {
+      activeShell?.setPage?.(page);
+    },
+
     setLanguage(language: UiLanguage) {
       assertLanguage(language);
       legacySnapshot.value = Object.freeze({
@@ -85,6 +112,7 @@ export function createModernAppApi(
         language
       });
       activePage?.controller.setLanguage?.(language);
+      activeShell?.setLanguage?.(language);
     },
 
     hasPage(page: ModernPageName) {

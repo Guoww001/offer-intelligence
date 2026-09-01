@@ -90,7 +90,7 @@ read("frontend/src/shared/export/xlsx.test.ts");
 
 const indexHtml = read("public/index.html");
 assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260901-vue-m4-google-ads'),
+  indexHtml.includes('./assets/modern/oi-modern.css?v=20260901-m4-shell'),
   "index.html 缺少当前本地 modern CSS"
 );
 const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
@@ -101,7 +101,7 @@ assert(
 
 const auth = read("public/auth.js");
 assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-vue-m4-google-ads";'),
+  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-m4-shell";'),
   "auth.js 缺少当前本地 modern bundle 常量"
 );
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");

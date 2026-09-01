@@ -1,0 +1,7 @@
+/*
+ * 可见侧边栏继续使用 public/styles.css 中的 legacy 外壳。
+ * AppShell 只保留页面、语言、主题和标题同步，不替换现有侧边栏视觉。
+ */
+#modernShellRoot {
+  display: none !important;
+}

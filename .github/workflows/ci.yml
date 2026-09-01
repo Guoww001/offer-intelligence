@@ -63,6 +63,7 @@ jobs:
            node scripts/test_publisher_manager_tier_frontend.mjs
           python scripts/test_monthly_new_merchants.py
           node scripts/test_monthly_new_merchants_frontend.mjs
+          node scripts/test_monthly_new_merchants_modern_cutover.mjs
           node scripts/test_targets_frontend.mjs
           node scripts/test_category_frontend.mjs
           node scripts/test_tier_frontend.mjs
@@ -76,6 +77,7 @@ jobs:
           python scripts/test_workflow_cache_split.py
           node scripts/test_frontend_migration_inventory.mjs
           node scripts/test_frontend_build_contract.mjs
+          node scripts/test_m4_shell_frontend.mjs
           node scripts/test_payments_frontend.mjs
           node scripts/test_google_ads_workbench_frontend.mjs
           python scripts/test_google_ads_workbench.py

@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Offer Intelligence Chat</title>
+    <title>YeahPromos Offer Intelligence</title>
     <link rel="icon" href="data:," />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./fonts/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./styles.css?v=20260826-agent-memory1" />
-    <link rel="stylesheet" href="./assets/modern/oi-modern.css?v=20260901-vue-m4-google-ads" />
+    <link rel="stylesheet" href="./styles.css?v=20260901-m4-shell" />
+    <link rel="stylesheet" href="./assets/modern/oi-modern.css?v=20260901-m4-shell" />
   </head>
   <body class="auth-pending app-loading">
     <section class="auth-shell" id="authShell" aria-labelledby="authTitle">
@@ -55,6 +55,7 @@
       </div>
     </section>
     <div class="app-shell hidden" id="appShell">
+      <div id="modernShellRoot" class="modern-shell-root hidden" aria-live="polite"></div>
       <header class="mobile-shell-bar" id="mobileShellBar">
         <button
           class="mobile-nav-toggle"
@@ -2120,32 +2121,6 @@
     <script src="./tier2_recommendation_rules.js?v=20260626-tier2pub1"></script>
     <script src="./agent_memory_state.js?v=20260826-agent-memory1"></script>
     <script async src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="./auth.js?v=20260826-agent-memory1"></script>
-    <script>
-      // Dashboard 深浅主题切换：默认浅色；状态存 localStorage（键 oi-dash-theme），
-      // "dark" = 深色，其他/无值 = 浅色（body 挂 data-dash-theme="light"，仅 dashboard 页生效）。
-      (function () {
-        var THEME_KEY = "oi-dash-theme";
-        function applyDashTheme() {
-          if (localStorage.getItem(THEME_KEY) === "dark") {
-            document.body.removeAttribute("data-dash-theme");
-          } else {
-            document.body.setAttribute("data-dash-theme", "light");
-          }
-        }
-        applyDashTheme();
-        var toggle = document.getElementById("dashThemeToggle");
-        if (toggle) {
-          toggle.addEventListener("click", function () {
-            if (document.body.getAttribute("data-dash-theme") === "light") {
-              localStorage.setItem(THEME_KEY, "dark");
-            } else {
-              localStorage.removeItem(THEME_KEY);
-            }
-            applyDashTheme();
-          });
-        }
-      })();
-    </script>
+    <script src="./auth.js?v=20260901-m4-shell"></script>
   </body>
 </html>
