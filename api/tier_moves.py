@@ -11,6 +11,8 @@ from auth import auth_enabled, is_authenticated, require_auth
 
 
 TIER_MOVE_TARGETS = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
+MAX_TIER_MOVE_REQUEST_BYTES = 256 * 1024
+MAX_TIER_MOVE_RECORDS = 1000
 
 
 def _json_bytes(payload):
@@ -110,8 +112,31 @@ def _read_json_body(target):
     length = int(target.headers.get("Content-Length") or 0)
     if length <= 0:
         return {}
+    if length > MAX_TIER_MOVE_REQUEST_BYTES:
+        raise ValueError("Request body is too large")
     raw = target.rfile.read(length).decode("utf-8")
-    return json.loads(raw or "{}")
+    payload = json.loads(raw or "{}")
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+    return payload
+
+
+def _normalize_webhook_response(status, payload):
+    if not isinstance(payload, dict):
+        return 502, {
+            "ok": False,
+            "configured": True,
+            "moves": [],
+            "error": "Tier move webhook returned a JSON object",
+        }
+    if "moves" in payload and not isinstance(payload["moves"], list):
+        return 502, {
+            "ok": False,
+            "configured": True,
+            "moves": [],
+            "error": "Tier move webhook returned an invalid moves list",
+        }
+    return status, payload
 
 
 def _call_webhook(method, payload=None):
@@ -154,7 +179,7 @@ def _call_webhook(method, payload=None):
             except json.JSONDecodeError:
                 data = {"ok": False, "error": text[:500]}
             status = response.status if getattr(response, "status", None) else 200
-            return status, data
+            return _normalize_webhook_response(status, data)
     except HTTPError as error:
         body = error.read().decode("utf-8", "replace")[:500]
         return error.code, {"ok": False, "configured": True, "error": body}
@@ -185,8 +210,9 @@ def handle_tier_moves(target, method):
 
     try:
         body = _read_json_body(target)
-    except (ValueError, json.JSONDecodeError):
-        _send_json(target, 400, {"ok": False, "error": "Invalid JSON body"})
+    except (ValueError, json.JSONDecodeError) as error:
+        message = "Invalid JSON body" if isinstance(error, json.JSONDecodeError) else str(error) or "Invalid JSON body"
+        _send_json(target, 400, {"ok": False, "error": message})
         return
 
     action = str(body.get("action") or "replace").strip().lower()
@@ -194,9 +220,17 @@ def handle_tier_moves(target, method):
         _send_json(target, 400, {"ok": False, "error": "Unsupported tier move action"})
         return
 
+    raw_moves = body.get("moves", [])
+    if not isinstance(raw_moves, list):
+        _send_json(target, 400, {"ok": False, "error": "moves must be an array"})
+        return
+    if len(raw_moves) > MAX_TIER_MOVE_RECORDS:
+        _send_json(target, 413, {"ok": False, "error": "Too many tier move records"})
+        return
+
     payload = {
         "action": action,
-        "moves": _clean_moves(body.get("moves") or []),
+        "moves": _clean_moves(raw_moves),
         "updatedBy": str(body.get("updatedBy") or "offer-intelligence-ui").strip(),
         "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
     }

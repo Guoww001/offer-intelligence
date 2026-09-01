@@ -76,6 +76,11 @@ for (const contract of [
   assert(entry.includes(contract), `entry.ts 缺少 Tier 接入契约: ${contract}`);
 }
 
+const tierVue = read("frontend/src/features/tier-sheet/TierSheetPage.vue");
+assert(tierVue.includes("tier.moveSyncing.value"), "Tier Move 操作必须暴露共享持久化忙碌状态");
+assert(tierVue.includes('data-tier-action="reset-moves"'), "Tier Reset Move 缺少稳定交互标记");
+assert(tierVue.includes(":aria-busy=\"tier.moveSyncing.value ? 'true' : 'false'\""), "Tier Move 状态缺少 aria-busy 反馈");
+
 const app = read("public/app.js");
 assert(app.includes("startDate: SHEET_REPORT_START_DATE"), "legacy Tier 状态必须使用缓存报告开始日期");
 assert(app.includes("endDate: SHEET_REPORT_END_DATE"), "legacy Tier 状态必须使用缓存报告结束日期");

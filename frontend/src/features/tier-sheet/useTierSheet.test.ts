@@ -111,4 +111,25 @@ describe("useTierSheet", () => {
     tier.setVisibleHeaders([]);
     expect(tier.displayHeaders.value.length).toBeGreaterThan(0);
   });
+
+  it("exposes a busy state while a shared tier move is being persisted", async () => {
+    let resolveSave: (value: unknown) => void = () => {
+      throw new Error("save resolver was not initialized");
+    };
+    const tier = useTierSheet({
+      reportData: report,
+      initialTier: "Tier 1",
+      autoLoad: false,
+      saveSharedMoves: () => new Promise((resolve) => { resolveSave = resolve; })
+    });
+    tier.toggleRowSelection(tier.rows.value[0]?.key || "", true);
+    tier.openMoveDialog();
+    tier.setMoveTarget("Tier 2");
+
+    const pending = tier.moveSelectedRows();
+    expect(tier.moveSyncing.value).toBe(true);
+    resolveSave({ ok: true, configured: true, moves: [] });
+    await pending;
+    expect(tier.moveSyncing.value).toBe(false);
+  });
 });

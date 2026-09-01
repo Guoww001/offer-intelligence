@@ -234,6 +234,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
   const moveDialogOpen = ref(false);
   const moveTarget = ref<TierName | "">("");
   const moveStatus = ref("");
+  const moveSyncing = ref(false);
   const sharedMovesConfigured = ref(false);
   const additions = ref<Tier1Merchant[]>([]);
   const additionsOpen = ref(false);
@@ -457,6 +458,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
 
   async function syncMoves(action: "replace" | "clear"): Promise<void> {
     if (!options.saveSharedMoves) return;
+    moveSyncing.value = true;
     try {
       const result = await options.saveSharedMoves({ action, moves: movePayload() });
       const payload = isRecord(result) ? result : {};
@@ -470,12 +472,14 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
       else if (payload.configured) moveStatus.value += "; synced for everyone";
     } catch (error) {
       moveStatus.value += `; local only (${errorText(error)})`;
+    } finally {
+      moveSyncing.value = false;
     }
   }
 
   async function moveSelectedRows(): Promise<boolean> {
     const target = moveTarget.value;
-    if (!target || target === selectedTier.value || !selectedRows.value.length) return false;
+    if (moveSyncing.value || !target || target === selectedTier.value || !selectedRows.value.length) return false;
     const movedCount = selectedRows.value.length;
     const next: Record<string, TierMove> = { ...manualMoves.value };
     selectedRows.value.forEach((row) => {
@@ -501,7 +505,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
   }
 
   async function resetMoves(): Promise<boolean> {
-    if (!Object.keys(manualMoves.value).length) return false;
+    if (moveSyncing.value || !Object.keys(manualMoves.value).length) return false;
     manualMoves.value = {};
     persistMoves();
     clearSelection();
@@ -674,6 +678,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
     moveDialogOpen,
     moveTarget,
     moveStatus,
+    moveSyncing,
     sharedMovesConfigured,
     additions,
     additionsOpen,

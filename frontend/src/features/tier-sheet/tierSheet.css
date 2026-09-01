@@ -602,6 +602,28 @@
   z-index: 45;
 }
 
+.tier-page-modern .tier-move-dialog .tier-move-card {
+  width: min(620px, 100%);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tier-page-modern .tier-move-dialog .tier-move-targets,
+.tier-page-modern .tier-move-dialog .tier-move-target,
+.tier-page-modern .tier-move-dialog .tier-move-footer {
+  min-width: 0;
+}
+
+.tier-page-modern .tier-move-dialog .tier-move-target span,
+.tier-page-modern .tier-move-dialog .tier-move-target small,
+.tier-page-modern .tier-move-dialog .tier-move-status {
+  overflow-wrap: anywhere;
+}
+
+.tier-page-modern .tier-move-card .tier-move-footer button {
+  min-width: 0;
+}
+
 .tier-page-modern .tier1-additions-overlay {
   z-index: 44;
 }
@@ -774,6 +796,26 @@
 
   .tier-page-modern .tier-date-range-controls .tier-date-apply {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .tier-page-modern .tier-move-dialog {
+    padding: 12px;
+  }
+
+  .tier-page-modern .tier-move-dialog .tier-move-card {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 14px;
+  }
+
+  .tier-page-modern .tier-move-card .tier-move-footer {
+    gap: 8px;
+  }
+
+  .tier-page-modern .tier-move-card .tier-move-footer button {
+    width: 100%;
   }
 }
 

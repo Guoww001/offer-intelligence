@@ -384,7 +384,7 @@ onUnmounted(() => tier.dispose());
             </div>
           </div>
           <button class="icon-button table-move-button" type="button" data-tier-action="move" :disabled="!tier.selectedCount.value" @click="tier.openMoveDialog">{{ message("tierSheet.move", "Move") }}</button>
-          <button v-if="Object.keys(tier.manualMoves.value).length" class="icon-button table-reset-moves-button" type="button" @click="tier.resetMoves">{{ message("tierSheet.resetMoves", "Reset") }}</button>
+          <button v-if="Object.keys(tier.manualMoves.value).length" class="icon-button table-reset-moves-button" data-tier-action="reset-moves" type="button" :disabled="tier.moveSyncing.value" @click="tier.resetMoves">{{ message("tierSheet.resetMoves", "Reset") }}</button>
           <button v-if="!tier.expanded.value" class="icon-button table-expand-button" type="button" data-tier-action="expand" :disabled="tier.selectedTier.value === 'BLACK TIER'" @click="tier.openOverlay">{{ message("tierSheet.expand", "Expand") }}</button>
           <button v-else class="icon-button table-close-button" type="button" data-tier-action="close-overlay" @click="tier.closeOverlay">{{ message("tierSheet.close", "Close") }}</button>
           <button class="icon-button table-download-button" data-tier-action="download" type="button" :disabled="!tier.sortedRows.value.length" @click="exportRows">{{ message("tierSheet.download", "Download") }}</button>
@@ -411,8 +411,8 @@ onUnmounted(() => tier.dispose());
       <div class="tier-move-card">
         <div class="tier-move-header"><div><h3>{{ message("tierSheet.moveTitle", "Move selected merchants") }}</h3><p>{{ tier.selectedCount.value }} selected from {{ tierLabel(tier.selectedTier.value) }}</p></div><button class="icon-button tier-move-close" type="button" @click="tier.closeMoveDialog">{{ message("tierSheet.close", "Close") }}</button></div>
         <div class="tier-move-targets" aria-label="Move target tier"><button v-for="name in TIER_NAMES" :key="name" class="tier-move-target" :class="{ active: tier.moveTarget.value === name }" :data-tier-move-target="name" :disabled="name === tier.selectedTier.value" type="button" @click="tier.setMoveTarget(name)"><span>{{ tierLabel(name) }}</span><small>{{ name === tier.selectedTier.value ? message("tierSheet.currentTier", "Current tier") : '' }}</small></button></div>
-        <p class="tier-move-status">{{ tier.moveStatus.value }}</p>
-        <div class="tier-move-footer"><button class="secondary-button" type="button" @click="tier.closeMoveDialog">{{ message("tierSheet.cancel", "Cancel") }}</button><button class="secondary-button tier-move-confirm" data-tier-action="confirm-move" type="button" :disabled="!tier.moveTarget.value" @click="tier.moveSelectedRows">{{ message("tierSheet.confirmMove", "Move merchants") }}</button></div>
+        <p class="tier-move-status" :aria-busy="tier.moveSyncing.value ? 'true' : 'false'">{{ tier.moveStatus.value }}</p>
+        <div class="tier-move-footer"><button class="secondary-button" type="button" :disabled="tier.moveSyncing.value" @click="tier.closeMoveDialog">{{ message("tierSheet.cancel", "Cancel") }}</button><button class="secondary-button tier-move-confirm" data-tier-action="confirm-move" type="button" :disabled="!tier.moveTarget.value || tier.moveSyncing.value" @click="tier.moveSelectedRows">{{ tier.moveSyncing.value ? message("tierSheet.saving", "Saving…") : message("tierSheet.confirmMove", "Move merchants") }}</button></div>
       </div>
     </div>
 
