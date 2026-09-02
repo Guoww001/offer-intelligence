@@ -237,6 +237,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
   const moveSyncing = ref(false);
   const sharedMovesConfigured = ref(false);
   const additions = ref<Tier1Merchant[]>([]);
+  const additionsLoaded = ref(false);
   const additionsOpen = ref(false);
   const additionsLoading = ref(false);
   const additionsError = ref("");
@@ -562,18 +563,23 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
     }
   }
 
-  async function openAdditions(): Promise<void> {
-    additionsOpen.value = true;
-    if (additions.value.length || !options.loadTier1Additions || additionsLoading.value) return;
+  async function loadAdditions(): Promise<void> {
+    if (additionsLoaded.value || !options.loadTier1Additions || additionsLoading.value) return;
     additionsLoading.value = true;
     additionsError.value = "";
     try {
       additions.value = tier1Additions(await options.loadTier1Additions());
+      additionsLoaded.value = true;
     } catch (error) {
       additionsError.value = errorText(error);
     } finally {
       additionsLoading.value = false;
     }
+  }
+
+  async function openAdditions(): Promise<void> {
+    additionsOpen.value = true;
+    await loadAdditions();
   }
 
   function closeAdditions(): void {
@@ -635,6 +641,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
       selectedMerchant.value = merchantResults.value.find((item) => item.merchantId === merchant.merchantId) || { ...merchant, currentTier: "Tier 1" };
       merchantStatus.value = "Tier 1 assignment saved.";
       additions.value = tier1Additions(payload.additions || { additions: [] });
+      additionsLoaded.value = true;
       payloads.value = new Map();
       await loadSelectedTier();
       return true;
@@ -651,6 +658,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
   if (options.autoLoad !== false) {
     if (options.loadSharedMoves) void loadSharedMoves();
     if (options.loadTier) void loadSelectedTier();
+    if (selectedTier.value === "Tier 1" && options.loadTier1Additions) void loadAdditions();
   }
 
   function dispose(): void {
@@ -729,6 +737,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
     resetMoves,
     loadSelectedTier,
     loadSharedMoves,
+    loadAdditions,
     openAdditions,
     closeAdditions,
     openMerchantDialog,
