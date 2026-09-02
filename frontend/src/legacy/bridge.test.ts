@@ -237,6 +237,44 @@ describe("Legacy session bridge contracts", () => {
     expect(bridge.getState()).toMatchObject({ status: "idle", response: "" });
   });
 
+  it("keeps Agent result views structured and drops arbitrary markup/payloads", async () => {
+    let state = agentState();
+    const bridge = createLegacyAgentSessionBridge({
+      getState: () => state,
+      submit: vi.fn(async (_request, callbacks) => {
+        callbacks.onResultView?.({
+          id: "metric-1",
+          toolName: "merchant_analysis",
+          kind: "metric",
+          status: "done",
+          title: "EPC",
+          source: "database",
+          dataAsOf: "2026-08",
+          estimated: false,
+          partial: false,
+          metrics: [{ label: "EPC", value: "1.23", delta: "<script>bad</script>" }],
+          columns: [],
+          rows: [],
+          message: "safe",
+          html: "<script>must not cross</script>",
+          toolPayload: { secret: "must not cross" }
+        } as never);
+        return { ok: true, status: "done" as const, response: "ok", steps: [] };
+      }),
+      stop: vi.fn(),
+      newConversation: vi.fn()
+    });
+    const views: unknown[] = [];
+    const result = await bridge.submit({ prompt: "查询", language: "zh", history: [], memoryText: "", signal: new AbortController().signal }, {
+      onResultView: (view) => views.push(view)
+    });
+
+    expect(views[0]).toMatchObject({ id: "metric-1", kind: "metric" });
+    expect(JSON.stringify(views[0])).not.toContain("<script>");
+    expect(JSON.stringify(views[0])).not.toContain("toolPayload");
+    expect(result).not.toHaveProperty("toolPayload");
+  });
+
   it("whitelists Agent memory state and events before exposing them", async () => {
     let state = agentState({
       hasMemory: true,

@@ -76,6 +76,8 @@ import ChatbotPage from "./features/chatbot/ChatbotPage.vue";
 import type { ChatbotChatRunner } from "./features/chatbot/chatbotViewTypes";
 import AgentPage, { type AgentRunner } from "./features/agent/AgentPage.vue";
 import type { AgentMemoryEvent } from "./features/agent/agentModel";
+import { createCopilotKitAgentRunner } from "./features/agent/copilotkitTransport";
+import { normalizeAgentResultViews } from "./shared/contracts/agentResult";
 import AppShell from "./shell/AppShell.vue";
 import type { AppShellController } from "./shell/appShellContracts";
 
@@ -888,9 +890,16 @@ const modernAgentRunner: AgentRunner = async (request) => {
   }
   return {
     ...result,
-    memoryEvents: modernAgentMemoryEvents(result.memoryEvents)
+    memoryEvents: modernAgentMemoryEvents(result.memoryEvents),
+    resultViews: normalizeAgentResultViews(result.resultViews)
   };
 };
+
+function configuredCopilotKitRunner(): AgentRunner | null {
+  const config = window.OI_COPILOTKIT_RUNTIME;
+  if (!config?.enabled || config.authority !== "python-registry") return null;
+  return createCopilotKitAgentRunner({ endpoint: config.endpoint });
+}
 
 const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
@@ -923,13 +932,16 @@ const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
 const agentFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
+  const copilotKitRunner = configuredCopilotKitRunner();
   const app = createApp({
     name: "ModernAgentMount",
     setup() {
       return () => h(AgentPage, {
         language: i18n.language.value,
-        run: modernAgentRunner,
-        session: window.OI_LEGACY_BRIDGE?.agentSession,
+        run: copilotKitRunner || modernAgentRunner,
+        // A CopilotKit transport is opt-in and must advertise the same
+        // Python authority; otherwise keep the existing session bridge.
+        session: copilotKitRunner ? undefined : window.OI_LEGACY_BRIDGE?.agentSession,
         storage: browserStorage(),
         autoFocus: false
       });

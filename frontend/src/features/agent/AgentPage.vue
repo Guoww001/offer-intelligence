@@ -4,14 +4,22 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import type { UiLanguage } from "../../shared/i18n";
 import type { LegacyAgentSessionBridge, LegacyAgentViewState } from "../../legacy/contracts";
 import { renderMarkdownToHtml } from "../../shared/markdown/markdown";
+import type { AgentResultView as AgentResultViewModel } from "../../shared/contracts/agentResult";
+import { normalizeAgentResultViews } from "../../shared/contracts/agentResult";
 import FeedbackForm from "../chatbot/FeedbackForm.vue";
 import AgentTimeline from "./AgentTimeline.vue";
+import AgentResultView from "./AgentResultView.vue";
+import {
+  createAgentRunLifecycleState,
+  reduceAgentRun,
+  type AgentRunLifecycleEvent,
+  type AgentRunLifecycleState
+} from "./agentRunReducer";
 import {
   agentMemoryDisplayText,
   agentMemoryPromptText,
   applyAgentMemoryEvents,
   clearAgentMemory,
-  createAgentRunState,
   emptyAgentMemory,
   loadAgentMemory,
   normalizeAgentMemory,
@@ -32,6 +40,7 @@ export interface AgentRunRequest {
   readonly signal: AbortSignal;
   readonly onToken?: (token: string) => void;
   readonly onTimeline?: (step: AgentTimelineStep) => void;
+  readonly onResultView?: (view: AgentResultViewModel) => void;
 }
 
 export interface AgentRunResult {
@@ -41,7 +50,9 @@ export interface AgentRunResult {
   readonly steps: readonly unknown[];
   readonly partial?: boolean;
   readonly omittedTargets?: readonly string[];
+  readonly resultViews?: readonly AgentResultViewModel[];
   readonly memoryEvents?: readonly AgentMemoryEvent[];
+  readonly errorCode?: string | null;
 }
 
 export type AgentRunner = (request: AgentRunRequest) => Promise<AgentRunResult>;
@@ -65,6 +76,8 @@ const runStatus = ref<AgentRunStatus>("idle");
 const response = ref("");
 const partial = ref(false);
 const omittedTargets = ref<string[]>([]);
+const resultViews = ref<AgentResultViewModel[]>([]);
+const runLifecycle = ref<AgentRunLifecycleState>(createAgentRunLifecycleState());
 const memory = ref<AgentMemoryState>(emptyAgentMemory());
 const error = ref("");
 const feedbackRefreshKey = ref(0);
@@ -72,6 +85,32 @@ const inputRef = ref<HTMLTextAreaElement | null>(null);
 let abortController: AbortController | null = null;
 let stopSessionSubscription: (() => void) | null = null;
 let idCounter = 0;
+
+function dispatchLifecycle(event: AgentRunLifecycleEvent): void {
+  const next = reduceAgentRun(runLifecycle.value, event);
+  runLifecycle.value = next;
+  runStatus.value = next.status;
+  timeline.value = [...next.steps];
+  response.value = next.response;
+  partial.value = next.partial;
+  omittedTargets.value = [...next.omittedTargets];
+}
+
+function dispatchTimelineStep(step: AgentTimelineStep): void {
+  const phase = step.phase === "planning"
+    ? (/replan|重新规划|修正查询/i.test(`${step.label} ${step.detail || ""}`) ? "replan" : "planning")
+    : step.phase === "synthesis" ? "synthesis" : "tools";
+  dispatchLifecycle({ type: "PHASE_STARTED", phase, step });
+}
+
+function upsertResultView(view: unknown): void {
+  const normalized = normalizeAgentResultViews([view])[0];
+  if (!normalized) return;
+  const index = resultViews.value.findIndex((item) => item.id === normalized.id);
+  resultViews.value = index < 0
+    ? [...resultViews.value, normalized].slice(0, 8)
+    : resultViews.value.map((item, itemIndex) => itemIndex === index ? normalized : item);
+}
 
 const copy = computed(() => props.language === "zh" ? {
   eyebrow: "DASHBOARD / AGENT",
@@ -125,11 +164,18 @@ function downloadLogs(kind: "questions" | "feedback", format: "csv" | "jsonl"): 
 }
 
 function syncSessionState(next: LegacyAgentViewState = props.session!.getState()): void {
-  runStatus.value = next.status;
-  timeline.value = next.steps.map(normalizeAgentTimelineStep);
-  response.value = next.response || "";
-  partial.value = next.partial;
-  omittedTargets.value = next.omittedTargets.slice(0, 20);
+  dispatchLifecycle({
+    type: "STATE_SYNC",
+    state: {
+      status: next.status,
+      steps: next.steps.map(normalizeAgentTimelineStep),
+      response: next.response || "",
+      partial: next.partial,
+      omittedTargets: next.omittedTargets.slice(0, 20),
+      errorCode: next.errorCode || null
+    }
+  });
+  if (Array.isArray(next.resultViews)) resultViews.value = normalizeAgentResultViews(next.resultViews);
   error.value = next.status === "error" ? copy.value.failed : "";
   const sessionMessages = next.messages || next.history;
   messages.value = sessionMessages.map((message, index) => ({
@@ -154,12 +200,9 @@ async function submit(): Promise<void> {
   if (!prompt) return;
   if (props.session) {
     input.value = "";
-    response.value = "";
     error.value = "";
-    partial.value = false;
-    omittedTargets.value = [];
-    timeline.value = [];
-    runStatus.value = "running";
+    resultViews.value = [];
+    dispatchLifecycle({ type: "RUN_STARTED" });
     feedbackRefreshKey.value += 1;
     abortController = new AbortController();
     try {
@@ -172,26 +215,29 @@ async function submit(): Promise<void> {
         signal: abortController.signal
       }, {
         onToken: (token) => {
-          response.value += token;
+          dispatchLifecycle({ type: "TOKEN", token });
+        },
+        onResultView: (view) => {
+          upsertResultView(view);
         },
         onTimeline: (step) => {
           const normalized = normalizeAgentTimelineStep(step);
-          const existing = timeline.value.findIndex((item) => item.id === normalized.id);
-          if (existing >= 0) timeline.value[existing] = normalized;
-          else timeline.value = [...timeline.value, normalized];
+          dispatchTimelineStep(normalized);
         }
       });
+      if (result.resultViews?.length) resultViews.value = normalizeAgentResultViews(result.resultViews);
       if (result.status === "error" && !result.response) error.value = copy.value.failed;
       feedbackRefreshKey.value += 1;
       syncSessionState();
     } catch (caught) {
       const stopped = abortController.signal.aborted || (caught instanceof DOMException && caught.name === "AbortError");
-      runStatus.value = stopped ? "stopped" : "error";
-      response.value = stopped ? copy.value.stopped : "";
+      dispatchLifecycle(stopped
+        ? { type: "RUN_STOPPED", response: copy.value.stopped }
+        : { type: "RUN_ERROR", errorCode: "agent_runtime_error" });
       if (!stopped) error.value = copy.value.failed;
     } finally {
       abortController = null;
-      if (runStatus.value === "running") runStatus.value = "error";
+      if (runLifecycle.value.status === "running") dispatchLifecycle({ type: "RUN_ERROR", errorCode: "agent_runtime_error" });
       inputRef.value?.focus();
     }
     return;
@@ -200,12 +246,9 @@ async function submit(): Promise<void> {
   const userId = nextId("user");
   messages.value = [...messages.value, { id: userId, role: "user", content: prompt }];
   input.value = "";
-  response.value = "";
   error.value = "";
-  partial.value = false;
-  omittedTargets.value = [];
-  timeline.value = [];
-  runStatus.value = "running";
+  resultViews.value = [];
+  dispatchLifecycle({ type: "RUN_STARTED" });
   feedbackRefreshKey.value += 1;
   abortController = new AbortController();
   try {
@@ -215,13 +258,26 @@ async function submit(): Promise<void> {
       history: currentHistory,
       memory: memory.value,
       memoryText: agentMemoryPromptText(memory.value, props.language),
-      signal: abortController.signal
+      signal: abortController.signal,
+      onToken: (token) => dispatchLifecycle({ type: "TOKEN", token }),
+      onTimeline: (step) => dispatchTimelineStep(normalizeAgentTimelineStep(step)),
+      onResultView: (view) => upsertResultView(view)
     });
-    timeline.value = result.steps.map(normalizeAgentTimelineStep);
-    partial.value = result.partial === true;
-    omittedTargets.value = (result.omittedTargets || []).map(String).filter(Boolean).slice(0, 20);
-    runStatus.value = result.status;
-    response.value = result.response || (result.status === "stopped" ? copy.value.stopped : "");
+    const normalizedSteps = result.steps.map(normalizeAgentTimelineStep);
+    if (result.resultViews?.length) resultViews.value = normalizeAgentResultViews(result.resultViews);
+    if (result.status === "done") {
+      dispatchLifecycle({
+        type: "RUN_FINISHED",
+        response: result.response || "",
+        steps: normalizedSteps,
+        partial: result.partial,
+        omittedTargets: result.omittedTargets
+      });
+    } else if (result.status === "stopped") {
+      dispatchLifecycle({ type: "RUN_STOPPED", response: result.response || copy.value.stopped });
+    } else {
+      dispatchLifecycle({ type: "RUN_ERROR", response: result.response || "", errorCode: "agent_runtime_error" });
+    }
     if (result.status === "done" && result.ok && result.response) {
       messages.value = [...messages.value, { id: nextId("assistant"), role: "assistant", content: result.response }];
     }
@@ -236,12 +292,13 @@ async function submit(): Promise<void> {
     feedbackRefreshKey.value += 1;
   } catch (caught) {
     const stopped = abortController.signal.aborted || (caught instanceof DOMException && caught.name === "AbortError");
-    runStatus.value = stopped ? "stopped" : "error";
-    response.value = stopped ? copy.value.stopped : "";
+    dispatchLifecycle(stopped
+      ? { type: "RUN_STOPPED", response: copy.value.stopped }
+      : { type: "RUN_ERROR", errorCode: "agent_runtime_error" });
     if (!stopped) error.value = copy.value.failed;
   } finally {
     abortController = null;
-    if (runStatus.value === "running") runStatus.value = "error";
+    if (runLifecycle.value.status === "running") dispatchLifecycle({ type: "RUN_ERROR", errorCode: "agent_runtime_error" });
     inputRef.value?.focus();
   }
 }
@@ -255,18 +312,16 @@ function newConversation(): void {
   if (runStatus.value === "running") return;
   if (props.session) {
     props.session.newConversation();
+    resultViews.value = [];
     feedbackRefreshKey.value += 1;
     syncSessionState();
     nextTick(() => inputRef.value?.focus());
     return;
   }
   messages.value = [];
-  timeline.value = [];
-  runStatus.value = "idle";
-  response.value = "";
+  dispatchLifecycle({ type: "RESET" });
+  resultViews.value = [];
   error.value = "";
-  partial.value = false;
-  omittedTargets.value = [];
   feedbackRefreshKey.value += 1;
   memory.value = emptyAgentMemory();
   clearAgentMemory(props.storage);
@@ -363,10 +418,20 @@ onBeforeUnmount(() => {
           aria-live="polite"
         >{{ response }}</p>
 
+        <section v-if="resultViews.length" class="agent-modern-results" aria-label="Structured tool results">
+          <AgentResultView
+            v-for="view in resultViews"
+            :key="view.id"
+            :language="language"
+            :view="view"
+          />
+        </section>
+
         <AgentTimeline
           v-if="timeline.length || runStatus !== 'idle'"
           :language="language"
           :status="runStatus"
+          :phase="runLifecycle.phase"
           :steps="timeline"
           :partial="partial"
           :omitted-targets="omittedTargets"
