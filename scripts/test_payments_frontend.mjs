@@ -34,7 +34,9 @@ assert(switchPageSource.includes("renderPaymentsPage()"), "Payments 缺少 legac
 
 const bridgeStart = app.indexOf("window.OI_LEGACY_BRIDGE");
 assert(bridgeStart >= 0, "legacy bridge 未注册");
-const bridgeSource = app.slice(bridgeStart, bridgeStart + 500);
+const bridgeEnd = app.indexOf("cacheOriginalTierSheetRows();", bridgeStart);
+assert(bridgeEnd > bridgeStart, "legacy bridge 定义边界缺失");
+const bridgeSource = app.slice(bridgeStart, bridgeEnd);
 assert(bridgeSource.includes('type === "payments"'), "legacy bridge 未接入 Payments 导出");
 assert(bridgeSource.includes("downloadModernPayments"), "legacy bridge 未接入 Payments XLSX 适配器");
 
