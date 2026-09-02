@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const html = fs.readFileSync("public/index.html", "utf8");
-const app = fs.readFileSync("public/app.js", "utf8");
-const css = fs.readFileSync("public/styles.css", "utf8");
+const app = fs.readFileSync("public/app.js", "utf8").replace(/\r\n?/g, "\n");
+const css = fs.readFileSync("public/styles.css", "utf8").replace(/\r\n?/g, "\n");
 
 assert.match(
   html,

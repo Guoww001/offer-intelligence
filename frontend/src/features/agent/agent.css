@@ -1,0 +1,89 @@
+.agent-modern-root,
+.agent-modern-page {
+  --agent-ink: #15283b;
+  --agent-muted: #6e7d88;
+  --agent-line: #d7e3e7;
+  --agent-teal: #168b82;
+  --agent-soft: #f2f7f8;
+  min-width: 0;
+}
+
+.agent-modern-page { display: grid; gap: 18px; padding: 22px 24px 28px; color: var(--agent-ink); background: linear-gradient(135deg, #f8fbfb, #eef5f6); border: 1px solid rgba(210, 224, 228, .88); border-radius: 18px; box-shadow: 0 18px 40px rgba(29, 61, 75, .08); }
+.agent-modern-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.agent-modern-eyebrow { display: block; color: var(--agent-teal); font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.agent-modern-heading h1 { margin: 6px 0 5px; font-size: clamp(24px, 3vw, 34px); line-height: 1.05; letter-spacing: -.04em; }
+.agent-modern-heading p { max-width: 600px; margin: 0; color: var(--agent-muted); font-size: 13px; line-height: 1.65; }
+.agent-modern-header-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.agent-modern-header-actions button { min-height: 36px; padding: 0 12px; border: 1px solid var(--agent-line); border-radius: 9px; color: var(--agent-ink); background: #fff; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.agent-modern-header-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.agent-modern-logs { position: relative; }
+.agent-modern-logs > summary { display: inline-flex; align-items: center; min-height: 36px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--agent-line); border-radius: 9px; color: var(--agent-ink); background: #fff; font-size: 11px; font-weight: 800; cursor: pointer; list-style: none; }
+.agent-modern-logs > summary::-webkit-details-marker { display: none; }
+.agent-modern-logs-menu { position: absolute; z-index: 10; top: calc(100% + 6px); right: 0; display: grid; grid-template-columns: 1fr auto auto; gap: 5px 7px; min-width: 190px; padding: 10px; border: 1px solid var(--agent-line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(29, 61, 75, .14); }
+.agent-modern-logs-menu span { grid-column: 1 / -1; color: var(--agent-muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.agent-modern-logs-menu button { min-height: 26px; padding: 0 7px; font-size: 10px; }
+.agent-modern-readonly { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #cde9e5; border-radius: 999px; color: var(--agent-teal); background: #effaf8; font-size: 10px; font-weight: 800; }
+.agent-modern-readonly span { width: 6px; height: 6px; border-radius: 50%; background: #48bf9d; box-shadow: 0 0 0 3px rgba(72, 191, 157, .15); }
+.agent-modern-workspace { display: grid; grid-template-columns: minmax(190px, .42fr) minmax(0, 1.58fr); gap: 15px; min-height: 520px; }
+.agent-modern-rail, .agent-modern-chat { min-width: 0; border: 1px solid var(--agent-line); border-radius: 14px; background: #fff; box-shadow: 0 8px 22px rgba(29, 61, 75, .045); }
+.agent-modern-rail { align-self: start; padding: 20px 18px; }
+.agent-modern-rail-label { display: block; margin-bottom: 19px; color: var(--agent-muted); font-size: 9px; font-weight: 900; letter-spacing: .16em; }
+.agent-modern-rail > strong { display: block; color: var(--agent-teal); font-size: 11px; letter-spacing: .08em; }
+.agent-modern-rail > p { margin: 8px 0 20px; color: var(--agent-muted); font-size: 11px; line-height: 1.6; }
+.agent-modern-capabilities { display: grid; gap: 10px; padding-top: 15px; border-top: 1px solid #e6edef; color: #9aa8af; font-size: 10px; }
+.agent-modern-capabilities span { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 5px; }
+.agent-modern-capabilities b { color: var(--agent-ink); font-size: 10px; }
+.agent-modern-chat { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; overflow: hidden; }
+.agent-modern-welcome { display: grid; place-content: center; align-content: center; justify-items: start; min-height: 370px; padding: 36px clamp(24px, 6vw, 80px); }
+.agent-modern-welcome-mark { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 22px; border-radius: 12px; color: #fff; background: var(--agent-teal); font-family: Georgia, serif; font-size: 23px; box-shadow: 0 8px 18px rgba(22, 139, 130, .2); }
+.agent-modern-welcome h2 { margin: 9px 0 7px; font-size: clamp(22px, 3vw, 31px); letter-spacing: -.04em; }
+.agent-modern-welcome > p { max-width: 500px; margin: 0; color: var(--agent-muted); font-size: 13px; line-height: 1.65; }
+.agent-modern-welcome .agent-modern-restored { margin-top: 12px; color: var(--agent-teal); font-size: 11px; }
+.agent-modern-welcome button { display: inline-flex; gap: 8px; align-items: center; margin-top: 22px; padding: 10px 12px; border: 1px solid #cde4e2; border-radius: 9px; color: var(--agent-ink); background: #f5fbfa; font: inherit; font-size: 11px; cursor: pointer; }
+.agent-modern-message-list { max-height: 420px; overflow: auto; padding: 24px; }
+.agent-modern-message { display: grid; grid-template-columns: 45px minmax(0, 1fr); gap: 11px; margin-bottom: 14px; }
+.agent-modern-message > span { padding-top: 4px; color: var(--agent-teal); font-size: 9px; font-weight: 900; letter-spacing: .1em; }
+.agent-modern-message p,
+.agent-modern-message-content { margin: 0; font-size: 13px; line-height: 1.65; }
+.agent-modern-message-content :first-child { margin-top: 0; }
+.agent-modern-message-content :last-child { margin-bottom: 0; }
+.agent-modern-message-content p { white-space: pre-wrap; }
+.agent-modern-message.is-user p { padding: 10px 12px; border-radius: 10px 10px 2px 10px; background: var(--agent-soft); }
+.agent-modern-response { grid-column: 2; margin: -8px 0 0; color: var(--agent-ink); font-size: 13px; line-height: 1.7; white-space: pre-wrap; }
+.agent-modern-streaming { margin: -2px 24px 14px 80px; padding: 10px 12px; border-left: 2px solid var(--agent-teal); color: var(--agent-ink); background: #f5fbfa; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.agent-modern-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; padding: 14px; border-top: 1px solid #e1eaec; background: #fbfdfd; }
+.agent-modern-composer textarea { width: 100%; box-sizing: border-box; min-height: 42px; max-height: 130px; padding: 11px 12px; border: 1px solid #ccdadd; border-radius: 10px; color: var(--agent-ink); background: #fff; font: inherit; font-size: 12px; outline: 0; resize: vertical; }
+.agent-modern-composer textarea:focus { border-color: var(--agent-teal); box-shadow: 0 0 0 3px rgba(22, 139, 130, .12); }
+.agent-modern-composer button { min-width: 70px; min-height: 42px; padding: 0 13px; border: 0; border-radius: 9px; color: #fff; background: var(--agent-teal); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.agent-modern-error { margin: 0; padding: 9px 14px; color: #b8454a; background: #fff4f4; font-size: 11px; }
+.agent-modern-timeline { margin: 0 14px 14px; padding: 12px 14px; border: 1px solid #dce8ea; border-radius: 11px; background: #fbfdfd; }
+.agent-modern-timeline-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.agent-modern-timeline-header strong { display: block; margin-top: 4px; font-size: 12px; }
+.agent-modern-timeline-status { color: var(--agent-teal); font-size: 10px; font-weight: 800; }
+.agent-modern-timeline-status[data-agent-status="error"], .agent-modern-timeline-status[data-agent-status="stopped"] { color: #b8454a; }
+.agent-modern-timeline-steps { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.agent-modern-timeline-steps li { display: grid; grid-template-columns: 21px minmax(0, 1fr); gap: 8px; align-items: start; }
+.agent-modern-timeline-icon { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; color: var(--agent-teal); background: #e7f4f2; font-size: 11px; font-weight: 900; }
+.agent-modern-timeline-steps li[data-step-status="error"] .agent-modern-timeline-icon, .agent-modern-timeline-steps li[data-step-status="timeout"] .agent-modern-timeline-icon { color: #b8454a; background: #fff0f0; }
+.agent-modern-timeline-phase { display: block; color: var(--agent-muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.agent-modern-timeline-steps strong { display: block; margin-top: 2px; font-size: 11px; }
+.agent-modern-timeline-steps p { margin: 2px 0 0; color: var(--agent-muted); font-size: 10px; }
+.agent-modern-timeline-steps small { display: block; margin-top: 4px; color: #8c9ba1; font-size: 9px; }
+.agent-modern-timeline-partial { display: grid; gap: 3px; margin-top: 12px; padding: 8px 9px; border-left: 3px solid #e0a54c; color: #8a611d; background: #fff9ed; font-size: 10px; }
+.agent-modern-timeline-partial strong { font-size: 10px; }
+
+@media (max-width: 820px) {
+  .agent-modern-page { padding: 16px; }
+  .agent-modern-workspace { grid-template-columns: 1fr; min-height: 0; }
+  .agent-modern-rail { display: none; }
+}
+
+@media (max-width: 560px) {
+  .agent-modern-header { display: grid; }
+  .agent-modern-header-actions { justify-content: flex-start; }
+  .agent-modern-chat { min-height: 540px; }
+  .agent-modern-welcome { padding: 28px 20px; }
+  .agent-modern-message-list { padding: 18px 14px; }
+  .agent-modern-composer { grid-template-columns: 1fr; }
+  .agent-modern-composer button { width: 100%; }
+}
