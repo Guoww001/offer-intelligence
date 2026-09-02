@@ -3,12 +3,10 @@ import { computed } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
 import type { AgentRunStatus, AgentTimelineStep } from "./agentModel";
-import type { AgentRunPhase } from "./agentRunReducer";
 
 const props = defineProps<{
   readonly language: UiLanguage;
   readonly status: AgentRunStatus;
-  readonly phase?: AgentRunPhase;
   readonly steps: readonly AgentTimelineStep[];
   readonly partial?: boolean;
   readonly omittedTargets?: readonly string[];
@@ -64,7 +62,7 @@ function elapsed(step: AgentTimelineStep): string {
 </script>
 
 <template>
-  <section class="agent-modern-timeline" data-agent-timeline :data-status="status" :data-phase="phase || status" :aria-label="copy.title">
+  <section class="agent-modern-timeline" data-agent-timeline :data-status="status" :aria-label="copy.title">
     <header class="agent-modern-timeline-header">
       <div>
         <span class="agent-modern-eyebrow">AGENT TRACE</span>

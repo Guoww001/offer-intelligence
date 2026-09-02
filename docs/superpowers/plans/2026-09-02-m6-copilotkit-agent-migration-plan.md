@@ -193,20 +193,6 @@ tests/
 
 以当前 bridge 实际位置为准，不为目录整洁做无关搬迁。
 
-## 8.1 当前 Vue Agent 增量实现（M6-C/01 的可回滚切片）
-
-本次切片已经落在 `frontend/src`，不改变现有 Python 执行权：
-
-- `features/agent/agentRunReducer.ts` 提供显式 `planning → tools → replan → synthesis → done/stopped/error` 生命周期 reducer；legacy session 的状态快照和未来 AG-UI 事件都可以归一到同一个 reducer；
-- `shared/contracts/agentResult.ts` 定义有界的文本/表格/指标结果视图，只允许 `metric`、`table`、`status`、`summary` 四种本地组件；不接受 HTML、完整 tool payload、参数、proof 或 Trace；
-- `features/agent/agentResultRegistry.ts` + `results/*` 使用 `markRaw` 的本地组件注册表，`AgentPage.vue` 通过 `<component :is>` 按 `kind` 渲染，不让模型生成组件模板；
-- `features/agent/copilotkitTransport.ts` 提供无 UI 依赖的 CopilotKit-compatible SSE transport seam。它只发送 message/history 与 `language/memoryText`，带上 `X-OI-Agent-Authority: python-registry` 路由提示，并将 `timeline`、`token`、`result_view`、`memory`、`done/error` 事件映射到 Vue；该 header 不是认证，Runtime 仍必须在服务端独立执行鉴权和 Python registry/proof；
-- `window.OI_COPILOTKIT_RUNTIME` 默认关闭。只有 server-issued `enabled=true` 且 `authority="python-registry"` 时，`entry.ts` 才选择该 transport；否则继续使用 `LegacyAgentSessionBridge`。因此可以按会话切换和回滚，不会把 CopilotKit 默认 Sidebar 或默认 CSS 带入生产 UI。
-
-该切片的定位是“可插拔接入点”，不是在浏览器复制第二套工具 registry。部署 `/api/copilotkit` 前，Runtime 必须完成同源鉴权、thread 绑定、Python registry/proof/Trace 调用和 abort；未满足这些条件时保持 flag 关闭。
-
-本地回归结果：`npm run typecheck` 通过；`npm test -- --run` 为 53 个测试文件 / 240 个用例全通过；`npm run build` 通过。构建仍输出原有 Modern bundle，CopilotKit SDK 未因该切片进入默认依赖。
-
 ## 9. 测试与验收矩阵
 
 ### 行为

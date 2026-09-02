@@ -1,5 +1,4 @@
 import { readonly, shallowRef } from "vue";
-import { normalizeAgentResultViews } from "../shared/contracts/agentResult";
 
 import type {
   LegacyAgentRunCallbacks,
@@ -401,7 +400,6 @@ function normalizeAgentState(value: LegacyAgentViewState): LegacyAgentViewState 
     omittedTargets: Array.isArray(state.omittedTargets)
       ? state.omittedTargets.map((item) => safeText(item, 160)).filter(Boolean).slice(0, 20)
       : [],
-    ...(Array.isArray(state.resultViews) ? { resultViews: normalizeAgentResultViews(state.resultViews) } : {}),
     hasMemory: state.hasMemory === true,
     ...(normalizeAgentMemorySnapshot(state.memory) ? { memory: normalizeAgentMemorySnapshot(state.memory) } : {}),
     ...(safeText(state.errorCode, 80) ? { errorCode: safeText(state.errorCode, 80) } : {})
@@ -419,7 +417,6 @@ function normalizeAgentResult(value: LegacyAgentRunResult): LegacyAgentRunResult
     ...(Array.isArray(value?.omittedTargets) ? {
       omittedTargets: value.omittedTargets.map((item) => safeText(item, 160)).filter(Boolean).slice(0, 20)
     } : {}),
-    resultViews: normalizeAgentResultViews(value?.resultViews),
     ...(Array.isArray(value?.memoryEvents) ? {
       memoryEvents: value.memoryEvents
         .map((event) => normalizeAgentMemoryEvent(event))
@@ -522,13 +519,6 @@ export function createLegacyAgentSessionBridge(options: LegacyAgentSessionBridge
             callbacks.onTimeline?.(next);
             const state = normalizeAgentState(options.getState());
             listeners.forEach((listener) => listener({ ...state, steps: [...state.steps, next] }));
-          },
-          onResultView: (view) => {
-            const normalized = normalizeAgentResultViews([view])[0];
-            if (!normalized) return;
-            callbacks.onResultView?.(normalized);
-            const state = normalizeAgentState(options.getState());
-            listeners.forEach((listener) => listener({ ...state, resultViews: normalizeAgentResultViews([...(state.resultViews || []), normalized]) }));
           },
           onChange: (state) => {
             const next = normalizeAgentState(state);

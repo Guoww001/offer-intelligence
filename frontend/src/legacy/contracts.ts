@@ -1,5 +1,4 @@
 import type { UiLanguage } from "../shared/i18n";
-import type { AgentResultView } from "../shared/contracts/agentResult";
 
 export const MODERN_PAGE_NAMES = [
   "offer-list-tracker",
@@ -212,8 +211,6 @@ export interface LegacyAgentViewState {
   readonly response: string;
   readonly partial: boolean;
   readonly omittedTargets: readonly string[];
-  /** Safe, render-ready projections only; raw tool payloads stay in Python. */
-  readonly resultViews?: readonly AgentResultView[];
   readonly hasMemory: boolean;
   readonly memory?: unknown;
   readonly errorCode?: string | null;
@@ -230,7 +227,6 @@ export interface LegacyAgentRunRequest {
 export interface LegacyAgentRunCallbacks {
   readonly onToken?: (token: string) => void;
   readonly onTimeline?: (step: LegacyAgentTimelineStep) => void;
-  readonly onResultView?: (view: AgentResultView) => void;
   readonly onChange?: (state: LegacyAgentViewState) => void;
 }
 
@@ -241,7 +237,6 @@ export interface LegacyAgentRunResult {
   readonly steps: readonly LegacyAgentTimelineStep[];
   readonly partial?: boolean;
   readonly omittedTargets?: readonly string[];
-  readonly resultViews?: readonly AgentResultView[];
   readonly memoryEvents?: readonly Record<string, unknown>[];
   readonly errorCode?: string | null;
 }
@@ -285,7 +280,6 @@ export interface LegacyBridgeApi {
     readonly signal: AbortSignal;
     readonly onToken?: (token: string) => void;
     readonly onTimeline?: (step: LegacyAgentTimelineStep) => void;
-    readonly onResultView?: (view: AgentResultView) => void;
   }): Promise<{
     readonly ok: boolean;
     readonly status: "done" | "stopped" | "error";
@@ -293,7 +287,6 @@ export interface LegacyBridgeApi {
     readonly steps: readonly LegacyAgentTimelineStep[];
     readonly partial?: boolean;
     readonly omittedTargets?: readonly string[];
-    readonly resultViews?: readonly AgentResultView[];
     readonly memoryEvents?: readonly Record<string, unknown>[];
   }>;
 }

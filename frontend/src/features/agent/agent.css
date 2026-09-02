@@ -71,29 +71,6 @@
 .agent-modern-timeline-steps small { display: block; margin-top: 4px; color: #8c9ba1; font-size: 9px; }
 .agent-modern-timeline-partial { display: grid; gap: 3px; margin-top: 12px; padding: 8px 9px; border-left: 3px solid #e0a54c; color: #8a611d; background: #fff9ed; font-size: 10px; }
 .agent-modern-timeline-partial strong { font-size: 10px; }
-.agent-modern-results { display: grid; gap: 8px; margin: 0 14px 14px; }
-.agent-modern-result-card { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid #dce8ea; border-radius: 11px; background: #fff; }
-.agent-modern-result-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.agent-modern-result-header strong { display: block; margin-top: 4px; font-size: 12px; }
-.agent-modern-result-status { flex: 0 0 auto; color: var(--agent-teal); font-size: 9px; font-weight: 800; text-transform: uppercase; }
-.agent-modern-result[data-result-status="error"] .agent-modern-result-card { border-color: #edcaca; background: #fffafa; }
-.agent-modern-result-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
-.agent-modern-result-metric { display: grid; gap: 3px; padding: 9px; border-radius: 8px; background: var(--agent-soft); }
-.agent-modern-result-metric span, .agent-modern-result-metric small, .agent-modern-result-meta, .agent-modern-result-card > small { color: var(--agent-muted); font-size: 9px; line-height: 1.45; }
-.agent-modern-result-metric strong { font-size: 14px; letter-spacing: -.02em; }
-.agent-modern-result-meta { display: flex; flex-wrap: wrap; gap: 8px; }
-.agent-modern-result-message { margin: 0; color: var(--agent-ink); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
-.agent-modern-result-table-wrap { overflow-x: auto; }
-.agent-modern-result-table { width: 100%; border-collapse: collapse; font-size: 10px; }
-.agent-modern-result-table th, .agent-modern-result-table td { padding: 7px 8px; border-bottom: 1px solid #e8eff0; text-align: left; white-space: nowrap; }
-.agent-modern-result-table thead th { color: var(--agent-muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
-.agent-modern-result-table tbody th { color: var(--agent-ink); font-weight: 700; }
-
-@media (max-width: 560px) {
-  .agent-modern-results { margin: 0 10px 10px; }
-  .agent-modern-result-card { padding: 11px; }
-  .agent-modern-result-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 
 @media (max-width: 820px) {
   .agent-modern-page { padding: 16px; }
