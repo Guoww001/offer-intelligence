@@ -53,8 +53,240 @@ export interface ModernShellController {
 
 export type ModernShellFactory = (element: HTMLElement) => ModernShellController;
 
+export type LegacyDataSource = "cache" | "db" | "unavailable";
+export type LegacySessionStatus = "idle" | "running" | "success" | "stopped" | "error";
+
+export interface LegacySessionMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+}
+
+export interface LegacyChatMemoryItem {
+  readonly id: string;
+  readonly title: string;
+  readonly text: string;
+  readonly html?: string;
+  readonly source?: LegacyDataSource;
+}
+
+export interface LegacyChatStarterCard {
+  readonly id: string;
+  readonly title: string;
+  readonly type: string;
+  readonly questions: readonly string[];
+}
+
+export interface LegacyChatViewResult {
+  readonly ok: boolean;
+  readonly status: Exclude<LegacySessionStatus, "idle" | "running">;
+  readonly mode: "report" | "chat";
+  readonly source: LegacyDataSource;
+  readonly intent?: string;
+  readonly response: string;
+  readonly contentHtml?: string;
+  readonly recommendationHtml?: string;
+  readonly reportSnapshot?: unknown;
+  readonly deepWindowId?: string | null;
+  readonly errorCode?: string | null;
+}
+
+export interface LegacyChatViewState {
+  readonly mode: "report" | "chat";
+  readonly language: UiLanguage;
+  readonly hasMemory: boolean;
+  readonly source: LegacyDataSource;
+  readonly status: LegacySessionStatus;
+  readonly history: readonly LegacySessionMessage[];
+  readonly messages: readonly LegacySessionMessage[];
+  readonly memory: readonly LegacyChatMemoryItem[];
+  readonly starterCards?: readonly LegacyChatStarterCard[];
+  readonly currentResult: LegacyChatViewResult | null;
+  readonly errorCode?: string | null;
+}
+
+export interface LegacyChatRunCallbacks {
+  readonly onToken?: (token: string) => void;
+  readonly onChange?: (state: LegacyChatViewState) => void;
+  readonly signal?: AbortSignal;
+}
+
+export interface LegacyChatSessionBridge {
+  getState(): LegacyChatViewState;
+  setMode(mode: "report" | "chat"): void;
+  submit(prompt: string, callbacks?: LegacyChatRunCallbacks): Promise<LegacyChatViewResult>;
+  addMemory?(result: LegacyChatViewResult): boolean;
+  removeMemory(memoryId: string): void;
+  clearConversation(): void;
+  downloadRecommendation?(downloadId: string): boolean;
+  openDeepWindow?: () => string | null;
+  onChange(listener: (state: LegacyChatViewState) => void): () => void;
+  feedback?: LegacyFeedbackBridge;
+  downloadLogs?: (kind: "questions" | "feedback", format: "csv" | "jsonl") => boolean;
+  toggleHelp?: () => boolean;
+  toggleGuide?: () => boolean;
+  startOnboarding?: () => boolean;
+}
+
+export interface LegacyFeedbackResult {
+  readonly ok: boolean;
+  readonly alreadyExists?: boolean;
+  readonly errorCode?: string;
+}
+
+export interface LegacyFeedbackBridge {
+  isAvailable(): boolean;
+  submit(reasonCode: string, reasonDetail?: string): Promise<LegacyFeedbackResult>;
+}
+
+export type LegacyDeepWindowStatus = "loading" | "content" | "error";
+
+export interface LegacyDeepWindowView {
+  readonly id: string;
+  readonly mode: "report" | "chat";
+  readonly status: LegacyDeepWindowStatus;
+  readonly title: string;
+  readonly prompt: string;
+  readonly summary: string;
+  readonly contentHtml?: string;
+  readonly source: LegacyDataSource;
+  readonly minimized: boolean;
+  readonly pinned: boolean;
+  readonly overlay: boolean;
+  readonly position: { readonly x: number; readonly y: number };
+  readonly canCancel: boolean;
+  readonly canAddMemory: boolean;
+  readonly addedToMemory: boolean;
+}
+
+export interface LegacyDeepWindowsViewState {
+  readonly windows: readonly LegacyDeepWindowView[];
+  readonly activeId: string | null;
+}
+
+export type LegacyDeepWindowInteraction =
+  | "trend-metric"
+  | "trend-category"
+  | "trend-column-toggle"
+  | "trend-column-core"
+  | "trend-column-all";
+
+export interface LegacyDeepWindowsBridge {
+  getState(): LegacyDeepWindowsViewState;
+  activate(id: string): void;
+  minimize(id: string): void;
+  restore(id: string): void;
+  close(id: string): void;
+  pin(id: string): boolean;
+  move(id: string, x: number, y: number): boolean;
+  clone(id: string): string | null;
+  toggleOverlay(id: string): boolean;
+  export(id: string): boolean;
+  cancel(id: string): boolean;
+  addToChat(id: string): boolean;
+  interact(id: string, action: LegacyDeepWindowInteraction, value?: string): boolean;
+  setTrendColumns(id: string, columns: readonly string[]): boolean;
+  onChange(listener: (state: LegacyDeepWindowsViewState) => void): () => void;
+}
+
+export type LegacyAgentTimelinePhase = "planning" | "tool" | "synthesis";
+export type LegacyAgentTimelineStatus = "running" | "done" | "error" | "stopped" | "timeout";
+
+export interface LegacyAgentTimelineStep {
+  readonly id: string;
+  readonly phase: LegacyAgentTimelinePhase;
+  readonly status: LegacyAgentTimelineStatus;
+  readonly label: string;
+  readonly detail?: string;
+  readonly elapsedMs?: number;
+  readonly dataSource?: "cache" | "database" | "mixed" | "unavailable" | "unknown";
+  readonly dataAsOf?: string | null;
+  readonly estimated?: boolean;
+}
+
+export interface LegacyAgentViewState {
+  readonly status: "idle" | "running" | "done" | "stopped" | "error";
+  readonly history: readonly LegacySessionMessage[];
+  readonly messages?: readonly LegacySessionMessage[];
+  readonly steps: readonly LegacyAgentTimelineStep[];
+  readonly response: string;
+  readonly partial: boolean;
+  readonly omittedTargets: readonly string[];
+  readonly hasMemory: boolean;
+  readonly memory?: unknown;
+  readonly errorCode?: string | null;
+}
+
+export interface LegacyAgentRunRequest {
+  readonly prompt: string;
+  readonly language: UiLanguage;
+  readonly history: readonly LegacySessionMessage[];
+  readonly memoryText: string;
+  readonly signal: AbortSignal;
+}
+
+export interface LegacyAgentRunCallbacks {
+  readonly onToken?: (token: string) => void;
+  readonly onTimeline?: (step: LegacyAgentTimelineStep) => void;
+  readonly onChange?: (state: LegacyAgentViewState) => void;
+}
+
+export interface LegacyAgentRunResult {
+  readonly ok: boolean;
+  readonly status: "done" | "stopped" | "error";
+  readonly response: string;
+  readonly steps: readonly LegacyAgentTimelineStep[];
+  readonly partial?: boolean;
+  readonly omittedTargets?: readonly string[];
+  readonly memoryEvents?: readonly Record<string, unknown>[];
+  readonly errorCode?: string | null;
+}
+
+export interface LegacyAgentSessionBridge {
+  getState(): LegacyAgentViewState;
+  submit(request: LegacyAgentRunRequest, callbacks?: LegacyAgentRunCallbacks): Promise<LegacyAgentRunResult>;
+  stop(): void;
+  newConversation(): void;
+  onChange(listener: (state: LegacyAgentViewState) => void): () => void;
+  feedback?: LegacyFeedbackBridge;
+  downloadLogs?: (kind: "questions" | "feedback", format: "csv" | "jsonl") => boolean;
+}
+
 export interface LegacyBridgeApi {
   navigate(page: ModernPageName): void;
   setLanguage(language: UiLanguage): void;
   download(type: string, payload: unknown): boolean;
+  chatSession?: LegacyChatSessionBridge;
+  agentSession?: LegacyAgentSessionBridge;
+  deepWindows?: LegacyDeepWindowsBridge;
+  runChat?(request: {
+    readonly prompt: string;
+    readonly language: UiLanguage;
+    readonly history: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+    readonly memoryText: string;
+    readonly signal?: AbortSignal;
+    readonly onToken?: (token: string) => void;
+  }): Promise<{
+    readonly ok: boolean;
+    readonly stopped?: boolean;
+    readonly response: string;
+    readonly usage?: Record<string, unknown> | null;
+    readonly errorCode?: string | null;
+  }>;
+  runAgent?(request: {
+    readonly prompt: string;
+    readonly language: UiLanguage;
+    readonly history: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+    readonly memoryText: string;
+    readonly signal: AbortSignal;
+    readonly onToken?: (token: string) => void;
+    readonly onTimeline?: (step: LegacyAgentTimelineStep) => void;
+  }): Promise<{
+    readonly ok: boolean;
+    readonly status: "done" | "stopped" | "error";
+    readonly response: string;
+    readonly steps: readonly LegacyAgentTimelineStep[];
+    readonly partial?: boolean;
+    readonly omittedTargets?: readonly string[];
+    readonly memoryEvents?: readonly Record<string, unknown>[];
+  }>;
 }

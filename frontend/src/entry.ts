@@ -11,6 +11,8 @@ import "./features/google-ads/googleAds.css";
 import "./features/targets/targets.css";
 import "./features/category-report/categoryReport.css";
 import "./features/tier-sheet/tierSheet.css";
+import "./features/chatbot/chatbot.css";
+import "./features/agent/agent.css";
 import "./shell/shell.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
@@ -70,6 +72,10 @@ import type {
 import type { TierSheetReportData } from "./features/tier-sheet/tierSheetModel";
 import GoogleAdsPage from "./features/google-ads/GoogleAdsPage.vue";
 import type { GoogleAdsLoadRequest } from "./features/google-ads/useGoogleAds";
+import ChatbotPage from "./features/chatbot/ChatbotPage.vue";
+import type { ChatbotChatRunner } from "./features/chatbot/chatbotViewTypes";
+import AgentPage, { type AgentRunner } from "./features/agent/AgentPage.vue";
+import type { AgentMemoryEvent } from "./features/agent/agentModel";
 import AppShell from "./shell/AppShell.vue";
 import type { AppShellController } from "./shell/appShellContracts";
 
@@ -849,6 +855,98 @@ const categoryReportFactory: ModernPageFactory = (element): ModernPageController
   };
 };
 
+const modernChatRunner: ChatbotChatRunner = async (request, onToken) => {
+  const result = await window.OI_LEGACY_BRIDGE?.runChat?.({ ...request, onToken });
+  if (!result) {
+    return {
+      ok: false,
+      response: "",
+      errorCode: "legacy_chat_bridge_unavailable"
+    };
+  }
+  return result;
+};
+
+function modernAgentMemoryEvents(events: readonly Record<string, unknown>[] | undefined): readonly AgentMemoryEvent[] {
+  return (events || []).flatMap((event) => {
+    const kind = event.kind;
+    if (kind !== "tool_success" && kind !== "candidates") return [];
+    return [{ ...event, kind } as AgentMemoryEvent];
+  });
+}
+
+const modernAgentRunner: AgentRunner = async (request) => {
+  const result = await window.OI_LEGACY_BRIDGE?.runAgent?.(request);
+  if (!result) {
+    return {
+      ok: false,
+      status: "error",
+      response: "",
+      steps: [],
+      memoryEvents: []
+    };
+  }
+  return {
+    ...result,
+    memoryEvents: modernAgentMemoryEvents(result.memoryEvents)
+  };
+};
+
+const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernChatbotMount",
+    setup() {
+      return () => h(ChatbotPage, {
+        offers: offerRecords(snapshot),
+        language: i18n.language.value,
+        runChat: modernChatRunner,
+        session: window.OI_LEGACY_BRIDGE?.chatSession,
+        deepWindows: window.OI_LEGACY_BRIDGE?.deepWindows,
+        autoFocus: false
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
+const agentFactory: ModernPageFactory = (element): ModernPageController => {
+  const snapshot = getLegacySnapshot().value;
+  const i18n = createI18nStore(snapshot.language);
+  const app = createApp({
+    name: "ModernAgentMount",
+    setup() {
+      return () => h(AgentPage, {
+        language: i18n.language.value,
+        run: modernAgentRunner,
+        session: window.OI_LEGACY_BRIDGE?.agentSession,
+        storage: browserStorage(),
+        autoFocus: false
+      });
+    }
+  });
+  app.mount(element);
+  return {
+    setLanguage(nextLanguage) {
+      i18n.setLanguage(nextLanguage);
+    },
+    unmount() {
+      app.unmount();
+      element.replaceChildren();
+    }
+  };
+};
+
 window.OI_MODERN_APP = createModernAppApi({
   "offer-list-tracker": offerTrackerFactory,
   payments: paymentsFactory,
@@ -859,5 +957,7 @@ window.OI_MODERN_APP = createModernAppApi({
   "brand-media": brandMediaFactory,
   "revenue-flow": revenueFlowFactory,
   category: categoryReportFactory,
-  tier: tierFactory
+  tier: tierFactory,
+  dashboard: chatbotFactory,
+  agent: agentFactory
 }, shellFactory);

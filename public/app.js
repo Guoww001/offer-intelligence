@@ -549,11 +549,29 @@
     deepReport: null,
     deepHistory: [],
     chatHistory: [],
+    chatSession: {
+      status: "idle",
+      messages: [],
+      currentResult: null,
+      errorCode: null,
+      feedbackContext: null,
+      chatDeepContext: null,
+      chatDeepWindowId: null,
+      abortController: null
+    },
     agentPage: {
       history: [],
+      messages: [],
       memory: agentMemoryApi ? agentMemoryApi.load(localStorage) : null,
       submitting: false,
-      abortController: null
+      abortController: null,
+      status: "idle",
+      steps: [],
+      response: "",
+      partial: false,
+      omittedTargets: [],
+      errorCode: null,
+      feedbackContext: null
     },
     reportMemory: [],
     reportMemoryContext: null,
@@ -2359,9 +2377,24 @@
       } else {
         renderGoogleAdsPage();
       }
+    } else if (state.page === "dashboard") {
+      const dashboardGrid = document.querySelector(".main-grid.dashboard-page");
+      if (dashboardGrid && dashboardGrid.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        renderAll();
+      }
     } else if (state.page === "agent") {
-      // Agent 页面内容由独立会话状态维护；空会话时同步恢复提示的语言。
-      renderAgentPageWelcomeIfIdle();
+      if (els.dashboardAgentPage && els.dashboardAgentPage.classList.contains("is-modern")) {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.setLanguage === "function") {
+          window.OI_MODERN_APP.setLanguage(state.language);
+        }
+      } else {
+        // Agent 页面内容由独立会话状态维护；空会话时同步恢复提示的语言。
+        renderAgentPageWelcomeIfIdle();
+      }
     } else {
       renderAll();
       if (state.currentContext.type !== "default") renderContextPanel(state.currentContext);
@@ -12103,6 +12136,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       abortController: null,
       state: "loading",
       minimized: false,
+      pinned: false,
+      overlay: false,
       zIndex: zIndex,
       dragState: null,
       title: t("deep.report.defaultTitle", "Analysis Report"),
@@ -12119,6 +12154,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     _initPanelDrag(panel);
     _bringPanelToFront(panel);
     _deepPanels.push(panel);
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyDeepWindows();
     return panel;
   }
 
@@ -12238,15 +12275,19 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
         _expandDeepPanel(panel.id);
         return;
       }
+      notifyLegacyDeepWindows();
     }
     document.removeEventListener("mousemove", _onPanelDragMove);
     document.removeEventListener("mouseup", _onPanelDragEnd);
   }
 
   function _bringPanelToFront(panel) {
+    if (!panel) return;
     _deepMaxZIndex++;
     panel.zIndex = _deepMaxZIndex;
     panel.el.style.zIndex = panel.zIndex;
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyDeepWindows();
   }
 
   // === 最小化 / 展开（动画版）===
@@ -12426,6 +12467,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (!panel) return;
     panel._hidden = true;
     panel.el.style.display = "none";
+    if (legacyDeepWindowActiveId === id) legacyDeepWindowActiveId = null;
+    notifyLegacyDeepWindows();
   }
 
   function _showDeepPanel(id) {
@@ -12436,7 +12479,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
 
     // Clean up any stale animation/inline state
     var el = panel.el;
-    el.style.display = "";
+    // Modern bridge 负责可见的 Vue 浮层；恢复受控状态时仍保持 Legacy DOM 副本隐藏。
+    el.style.display = panel._modernBridgeHidden ? "none" : "";
     el.style.transform = "";
     el.style.borderRadius = "";
     el.style.transition = "";
@@ -12463,6 +12507,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
 
     _syncChatAddButton(panel);
     _bringPanelToFront(panel);
+    notifyLegacyDeepWindows();
   }
 
   // 「加入对话」按钮状态同步：仅内容态可见；已加入 → 禁用 + 「已加入」。
@@ -12517,6 +12562,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (panel._animTO) { clearTimeout(panel._animTO); panel._animTO = null; }
     panel.el.remove();
     _deepPanels.splice(idx, 1);
+    if (legacyDeepWindowActiveId === id) legacyDeepWindowActiveId = null;
+    notifyLegacyDeepWindows();
   }
 
   // === 骨架屏 ===
@@ -12534,6 +12581,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
 
   function _showPanelSkeleton(panel, reasoning) {
     panel.state = "loading";
+    panel._contentHtml = "";
     if (panel.skeletonEl) panel.skeletonEl.classList.remove("hidden");
     if (panel.contentEl) panel.contentEl.classList.add("hidden");
     if (panel.errorEl) panel.errorEl.classList.add("hidden");
@@ -12549,6 +12597,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     panel.el.querySelector(".deep-window-export")?.classList.toggle("hidden", !!reasoning);
     panel.el.querySelector(".deep-window-chat-add")?.classList.add("hidden");
     panel.el.classList.toggle("generating", !!reasoning);
+    notifyLegacyDeepWindows();
   }
 
   function _renderPanelReport(panel, report) {
@@ -12589,6 +12638,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
           tableHtml +
           '</section>';
       }).join("");
+      panel._contentHtml = panel.sectionsEl.innerHTML;
     }
 
     // 恢复按钮
@@ -12602,10 +12652,12 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (window.CHATBOT_WELCOME) {
       window.CHATBOT_WELCOME.notify("report-ready", { panelEl: panel.el });
     }
+    notifyLegacyDeepWindows();
   }
 
   function _showPanelError(panel, message) {
     panel.state = "error";
+    panel._contentHtml = "";
     if (panel.skeletonEl) panel.skeletonEl.classList.add("hidden");
     if (panel.contentEl) panel.contentEl.classList.add("hidden");
     if (panel.errorEl) {
@@ -12619,6 +12671,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     panel.el.querySelector(".deep-window-export")?.classList.remove("hidden");
     panel.el.querySelector(".deep-window-chat-add")?.classList.add("hidden");
     panel.el.classList.remove("generating");
+    notifyLegacyDeepWindows();
   }
 
   function _cancelDeepPanel(id) {
@@ -12630,6 +12683,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     _removeDeepPanel(id);
     var msg = t("deep.stopAborted", "Analysis cancelled.");
     addMessage("assistant", t("deep.chat.summaryPrefix", "📊 Deep Analysis: ") + msg);
+    notifyLegacyDeepWindows();
   }
 
   // === 提交深度推理 ===
@@ -12720,6 +12774,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
         options.language || responseLanguageFor(prompt)
       );
       panel.sectionsEl.innerHTML = '<div class="deep-quick-result">' + html + '</div>' + recommendationCard;
+      panel._contentHtml = panel.sectionsEl.innerHTML;
     }
 
     // Restore buttons
@@ -12733,6 +12788,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (panel._mode === "report") {
       _syncContextChartToDeepPanel(panel);
     }
+    notifyLegacyDeepWindows();
   }
 
   // 全局标记：只有最近一次提问的面板允许从左侧 Context 面板同步内容。
@@ -12803,6 +12859,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       // Fallback: just show the whole context
       container.innerHTML = '<h4 class="deep-chart-heading">' + t("deep.chart.title", "趋势图表") + '</h4>'
         + contextHtml;
+      panel._contentHtml = sectionsEl.innerHTML;
+      notifyLegacyDeepWindows();
       return;
     }
 
@@ -12834,6 +12892,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
 
     // Bind metric switch buttons inside the cloned chart
     _bindDeepPanelChartControls(container, chartClone, panel);
+    panel._contentHtml = sectionsEl.innerHTML;
+    notifyLegacyDeepWindows();
   }
 
   // ★ Deep Mode: bind trend metric switch buttons inside Deep Window
@@ -12976,6 +13036,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
           + '<h4 class="deep-overview-heading">' + headingText + '</h4>'
           + body + '</div>';
         appendPreservedDownloadCards();
+        panel._contentHtml = panel.sectionsEl.innerHTML;
+        notifyLegacyDeepWindows();
         return;
       }
     }
@@ -12987,6 +13049,8 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       + '<div class="deep-overview-body">' + contextHtml + '</div>'
       + '</div>';
     appendPreservedDownloadCards();
+    panel._contentHtml = panel.sectionsEl.innerHTML;
+    notifyLegacyDeepWindows();
   }
 
   // ★ Deep Mode: summary card for chat (click to bring panel to front)
@@ -13289,6 +13353,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       }
     }
     _renderMemoryBar();
+    notifyLegacyDeepWindows();
   }
 
   function _extractPanelMemory(panel) {
@@ -13369,6 +13434,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (window.CHATBOT_WELCOME) {
       window.CHATBOT_WELCOME.notify("memory-added", { hasMemory: true });
     }
+    notifyLegacyDeepWindows();
   }
 
   // ── 一键加入对话：报告浮窗「加入对话」→ 记忆 + 自动切 Chat + 注入引导消息 ──
@@ -13382,6 +13448,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       btn.textContent = t("deep.chatAdded", "Added");
     }
     _switchToChatMode();
+    if (typeof notifyLegacyChatSession === "function") notifyLegacyChatSession();
     if (window.ONBOARDING_TOUR) window.ONBOARDING_TOUR.notify("chat-add");
     if (window.CHATBOT_WELCOME) {
       window.CHATBOT_WELCOME.notify("chat-add", {
@@ -13389,6 +13456,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
         title: panel.title || panel.prompt || ""
       });
     }
+    notifyLegacyDeepWindows();
   }
   // 记忆栏报告 → 聊天区底部「继续追问」示例卡片（Double-Bezel：外壳 + 内芯）：
   // 常驻在记忆栏之下、输入框之上，按记忆分组；组头 = 类型徽章 + 报告标题，
@@ -13943,8 +14011,10 @@ var _NUMERIC_COL_PATTERNS = [
     return String(data.headline || agentToolLabel(name, language)) + " · " + scope;
   }
 
-  function createAgentExecutionTimeline(chatLogEl, language) {
+  function createAgentExecutionTimeline(chatLogEl, language, options) {
     if (!chatLogEl || typeof document === "undefined" || typeof document.createElement !== "function") return null;
+    options = options || {};
+    var onStep = typeof options.onStep === "function" ? options.onStep : null;
     var copy = agentExecutionCopy(language);
     var root = document.createElement("details");
     root.className = "agent-run-timeline agent-run-timeline-running";
@@ -13991,6 +14061,37 @@ var _NUMERIC_COL_PATTERNS = [
     chatLogEl.appendChild(root);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
 
+    var stepId = 0;
+
+    function phaseForPayload(payload) {
+      var phase = String(payload && payload.phase || "").toLowerCase();
+      if (phase === "planning" || phase === "tool" || phase === "synthesis") return phase;
+      var label = String(payload && payload.label || "");
+      if (/规划|重新规划|planning|replanning/i.test(label)) return "planning";
+      if (/综合|直接回答|synthesis|direct/i.test(label)) return "synthesis";
+      return "tool";
+    }
+
+    function emitStep(step) {
+      if (!onStep || !step) return;
+      var payload = step._timelinePayload || {};
+      var status = String(step.getAttribute("data-status") || payload.status || "running");
+      if (status !== "running" && status !== "done" && status !== "error" && status !== "stopped" && status !== "timeout") status = "error";
+      var elapsed = payload.elapsedMs === undefined ? undefined : Number(payload.elapsedMs);
+      var safe = {
+        id: String(step._timelineId || "agent-step-" + stepId),
+        phase: phaseForPayload(payload),
+        status: status,
+        label: String(payload.label || "").trim().slice(0, 160),
+        detail: String(payload.detail || "").trim().slice(0, 320)
+      };
+      if (Number.isFinite(elapsed) && elapsed >= 0) safe.elapsedMs = Math.min(elapsed, 3600000);
+      if (payload.dataSource === "cache" || payload.dataSource === "database" || payload.dataSource === "mixed" || payload.dataSource === "unavailable" || payload.dataSource === "unknown") safe.dataSource = payload.dataSource;
+      if (payload.dataAsOf !== undefined) safe.dataAsOf = payload.dataAsOf ? String(payload.dataAsOf).slice(0, 48) : null;
+      if (payload.estimated === true) safe.estimated = true;
+      try { onStep(safe); } catch (_error) { /* 外部视图回调不能中断 Agent 执行 */ }
+    }
+
     function stepIcon(stepStatus) {
       return stepStatus === "done" ? "✓" : (stepStatus === "error" ? "✗" : (stepStatus === "stopped" ? "■" : "⋯"));
     }
@@ -13998,6 +14099,10 @@ var _NUMERIC_COL_PATTERNS = [
     function addStep(payload) {
       payload = payload || {};
       var step = document.createElement("div");
+      stepId += 1;
+      step._timelineId = "agent-step-" + stepId;
+      step._timelinePayload = {};
+      step.id = step._timelineId;
       step.className = "agent-run-step agent-run-step-" + (payload.status || "running");
       step.setAttribute("role", "listitem");
       step.setAttribute("data-status", payload.status || "running");
@@ -14031,6 +14136,7 @@ var _NUMERIC_COL_PATTERNS = [
     function updateStep(step, payload) {
       if (!step) return null;
       payload = payload || {};
+      step._timelinePayload = Object.assign({}, step._timelinePayload || {}, payload);
       var stepStatus = payload.status || "running";
       step.className = "agent-run-step agent-run-step-" + stepStatus;
       step.setAttribute("data-status", stepStatus);
@@ -14048,6 +14154,7 @@ var _NUMERIC_COL_PATTERNS = [
         : (stepStatus === "running"
           ? copy.elapsed + " " + agentElapsedText(Date.now() - step._startedAt, language)
           : "");
+      emitStep(step);
       return step;
     }
 
@@ -15415,7 +15522,7 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   async function streamAssistantReply(requestBody, opts) {
-    // opts: {chatLogEl, language, viewContext:{prompt, recommendationResult}, onError}
+    // opts: {chatLogEl, language, viewContext:{prompt, recommendationResult}, onError, onToken}
     opts = opts || {};
     var language = opts.language || "zh";
     var chatLogEl = opts.chatLogEl;
@@ -15530,9 +15637,11 @@ var _NUMERIC_COL_PATTERNS = [
                 usageMetadata.errorCode = String(parsed.errorCode);
                 streamHadError = true;
               } else if (parsed.token) {
-                msgContent.textContent += parsed.token;
-                fullResponse += parsed.token;
+                var token = String(parsed.token);
+                msgContent.textContent += token;
+                fullResponse += token;
                 responseChunks++;
+                if (typeof opts.onToken === "function") opts.onToken(token);
                 chatLogEl.scrollTop = chatLogEl.scrollHeight;
               }
               if (parsed.error) streamHadError = true;
@@ -16047,7 +16156,9 @@ var _NUMERIC_COL_PATTERNS = [
     var language = opts.language || "zh";
     var chatLogEl = opts.chatLogEl;
     var copy = agentStepCopy(language);
-    var execution = opts.executionTimeline ? createAgentExecutionTimeline(chatLogEl, language) : null;
+    var execution = opts.executionTimeline ? createAgentExecutionTimeline(chatLogEl, language, {
+      onStep: opts.onTimeline || null
+    }) : null;
     var executionCopy = agentExecutionCopy(language);
     var executionStartedAt = Date.now();
     var signal = opts.signal || null;
@@ -16158,6 +16269,7 @@ var _NUMERIC_COL_PATTERNS = [
           language: language,
           viewContext: opts.viewContext || null,
           onError: opts.onError || null,
+          onToken: opts.onToken || null,
           signal: signal,
           traceContext: traceContext,
           tracePhase: "synthesis"
@@ -16295,7 +16407,10 @@ var _NUMERIC_COL_PATTERNS = [
           status: result.ok ? "done" : "error",
           label: executionCopy.tool + " · " + agentToolLabel(call.name, language),
           detail: agentToolResultDetail(call.name, call.arguments || {}, result, language),
-          elapsedMs: Date.now() - toolStartedAt
+          elapsedMs: Date.now() - toolStartedAt,
+          dataSource: toolMeta.dataSource,
+          dataAsOf: toolMeta.dataAsOf,
+          estimated: toolMeta.estimated
         });
         return { id: call.id, name: call.name, arguments: call.arguments || {}, result: result };
       }));
@@ -16489,6 +16604,7 @@ var _NUMERIC_COL_PATTERNS = [
         language: language,
         viewContext: opts.viewContext || null,
         onError: opts.onError || null,
+        onToken: opts.onToken || null,
         signal: signal,
         traceContext: traceContext,
         tracePhase: "synthesis"
@@ -16825,7 +16941,8 @@ var _NUMERIC_COL_PATTERNS = [
     }
   }
 
-  async function applyPrompt(prompt) {
+  async function applyPrompt(prompt, bridgeOptions) {
+    bridgeOptions = bridgeOptions && typeof bridgeOptions === "object" ? bridgeOptions : {};
     const submittedPrompt = prompt;
     var isDeep = state.deepMode;
     const explicitChatIntent = isDeep ? parseChatIntentPrefix(prompt) : null;
@@ -16839,6 +16956,10 @@ var _NUMERIC_COL_PATTERNS = [
       ? createAgentTraceContext(questionEventId, language) : null;
     var questionLogPromise = beginQuestionLog(submittedPrompt, questionLogContext.mode, language, questionLogIntent, questionEventId);
     state.chatIntentOverride = explicitChatIntent;
+    function notifyBridgeFeedback(context) {
+      if (typeof bridgeOptions.onFeedbackContext !== "function" || !context) return;
+      try { bridgeOptions.onFeedbackContext(context); } catch (_error) { /* feedback registration cannot interrupt the answer */ }
+    }
 
     // ════════════════════════════════════════
     // Chat Mode: 流式 LLM 回答（独立聊天区）
@@ -16864,6 +16985,15 @@ var _NUMERIC_COL_PATTERNS = [
       }
       var chatRecommendationResult = await prepareChatMemoryRecommendation(prompt);
       memoryText = appendChatMemoryRecommendationContext(memoryText, chatRecommendationResult);
+      if (typeof bridgeOptions.onChatDeepContext === "function") {
+        try {
+          bridgeOptions.onChatDeepContext({
+            prompt: prompt,
+            language: language,
+            recommendationResult: chatRecommendationResult
+          });
+        } catch (_error) { /* Chat Deep Window 上下文登记不能中断回答 */ }
+      }
 
       try {
       if (state.agentEnabled !== false) {
@@ -16874,6 +17004,8 @@ var _NUMERIC_COL_PATTERNS = [
           history: chatHistoryBeforePrompt,
           viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
           onError: null,
+          onToken: typeof bridgeOptions.onToken === "function" ? bridgeOptions.onToken : null,
+          signal: bridgeOptions.signal || null,
           traceContext: traceContext
         });
         if (agentOutcome && agentOutcome.handled) {
@@ -16884,13 +17016,32 @@ var _NUMERIC_COL_PATTERNS = [
             _chatLog.appendChild(directMsg);
             _chatLog.scrollTop = _chatLog.scrollHeight;
             state.chatHistory = agentHistoryAfterOutcome(chatHistoryBeforePrompt, prompt, agentOutcome);
-            completeQuestionLog(questionLogPromise, "success", questionLogIntent);
-            return;
+            var directQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
+            var directFeedbackContext = {
+              questionPromise: directQuestionCompletion,
+              questionEventId: questionEventId,
+              mode: "chat",
+              prompt: prompt,
+              language: language,
+              intent: questionLogIntent,
+              getAnswer: function () { return agentOutcome.directContent; }
+            };
+            attachAnswerFeedbackButton(directMsg, directFeedbackContext);
+            notifyBridgeFeedback(directFeedbackContext);
+            return {
+              ok: true,
+              status: "success",
+              mode: "chat",
+              source: legacyChatDataSource(),
+              intent: questionLogIntent,
+              response: String(agentOutcome.directContent || ""),
+              contentHtml: markdownToHtml(agentOutcome.directContent) || escapeHtml(agentOutcome.directContent)
+            };
           }
           if (agentOutcome.ok) {
             state.chatHistory = agentHistoryAfterOutcome(chatHistoryBeforePrompt, prompt, agentOutcome);
             var agentQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
-            attachAnswerFeedbackButton(agentOutcome.statusBar, {
+            var agentFeedbackContext = {
               questionPromise: agentQuestionCompletion,
               questionEventId: questionEventId,
               mode: "chat",
@@ -16898,8 +17049,17 @@ var _NUMERIC_COL_PATTERNS = [
               language: language,
               intent: questionLogIntent,
               getAnswer: function () { return agentOutcome.fullResponse; }
-            });
-            return;
+            };
+            attachAnswerFeedbackButton(agentOutcome.statusBar, agentFeedbackContext);
+            notifyBridgeFeedback(agentFeedbackContext);
+            return {
+              ok: true,
+              status: "success",
+              mode: "chat",
+              source: legacyChatDataSource(),
+              intent: questionLogIntent,
+              response: String(agentOutcome.fullResponse || "")
+            };
           }
           // agent 综合失败 → 继续走下方单发 fallback
         }
@@ -16913,6 +17073,8 @@ var _NUMERIC_COL_PATTERNS = [
           viewContext: { prompt: prompt, recommendationResult: chatRecommendationResult },
           traceContext: traceContext,
           tracePhase: "synthesis",
+          onToken: typeof bridgeOptions.onToken === "function" ? bridgeOptions.onToken : null,
+          signal: bridgeOptions.signal || null,
           onError: function (error) {
             var _errMsg = document.createElement("div");
             _errMsg.className = "message assistant";
@@ -16933,11 +17095,19 @@ var _NUMERIC_COL_PATTERNS = [
       });
       if (!replyOutcome.ok) {
         completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
-        return;
+        return {
+          ok: false,
+          status: replyOutcome.stopped ? "stopped" : "error",
+          mode: "chat",
+          source: legacyChatDataSource(),
+          intent: questionLogIntent,
+          response: String(replyOutcome.fullResponse || ""),
+          errorCode: replyOutcome.stopped ? "stopped_by_user" : ((replyOutcome.usage && replyOutcome.usage.errorCode) || "synthesis_unavailable")
+        };
       }
       state.chatHistory = agentHistoryAfterOutcome(chatHistoryBeforePrompt, prompt, replyOutcome);
       var chatQuestionCompletion = completeQuestionLog(questionLogPromise, "success", questionLogIntent);
-      attachAnswerFeedbackButton(replyOutcome.statusBar, {
+      var chatFeedbackContext = {
         questionPromise: chatQuestionCompletion,
         questionEventId: questionEventId,
         mode: "chat",
@@ -16945,8 +17115,17 @@ var _NUMERIC_COL_PATTERNS = [
         language: language,
         intent: questionLogIntent,
         getAnswer: function () { return replyOutcome.fullResponse; }
-      });
-      return;
+      };
+      attachAnswerFeedbackButton(replyOutcome.statusBar, chatFeedbackContext);
+      notifyBridgeFeedback(chatFeedbackContext);
+      return {
+        ok: true,
+        status: "success",
+        mode: "chat",
+        source: legacyChatDataSource(),
+        intent: questionLogIntent,
+        response: String(replyOutcome.fullResponse || "")
+      };
       } catch (error) {
         console.error("[chat-agent] applyPrompt error:", error);
         var _agentErrMsg = document.createElement("div");
@@ -16961,7 +17140,15 @@ var _NUMERIC_COL_PATTERNS = [
           durationMs: traceContext ? Date.now() - traceContext.startedAt : null,
           errorCode: normalizeAgentTraceError(error)
         });
-        return;
+        return {
+          ok: false,
+          status: agentRequestWasStopped(error, bridgeOptions.signal || null) ? "stopped" : "error",
+          mode: "chat",
+          source: legacyChatDataSource(),
+          intent: questionLogIntent,
+          response: "",
+          errorCode: "chat_runtime_error"
+        };
       }
     }
 
@@ -16976,8 +17163,29 @@ var _NUMERIC_COL_PATTERNS = [
       panel = _createDeepPanel(submittedPrompt);
       panel._mode = "report";
       panel.el.classList.add("source-report");
+      if (bridgeOptions.controller && typeof bridgeOptions.controller.abort === "function") {
+        panel.abortController = bridgeOptions.controller;
+      }
+      if (bridgeOptions.modernBridge) {
+        panel._modernBridgeHidden = true;
+        panel.el.style.display = "none";
+        notifyLegacyDeepWindows();
+      }
       _showPanelSkeleton(panel, false);
       await new Promise(function (r) { setTimeout(r, 50); });
+      if (bridgeOptions.signal && bridgeOptions.signal.aborted) {
+        if (panel.el.isConnected) _removeDeepPanel(panel.id);
+        completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        return {
+          ok: false,
+          status: "stopped",
+          mode: "report",
+          source: legacyChatDataSource(),
+          intent: questionLogIntent,
+          response: "",
+          errorCode: "stopped_by_user"
+        };
+      }
     }
 
     if (!explicitChatIntent && state.llmEnabled !== false && !canSkipLLMClassify(effectivePrompt)) {
@@ -16989,6 +17197,19 @@ var _NUMERIC_COL_PATTERNS = [
       els.chatLog.scrollTop = els.chatLog.scrollHeight;
       const result = await classifyWithLLM(effectivePrompt, collectCategories());
       loadingMsg.remove();
+      if (bridgeOptions.signal && bridgeOptions.signal.aborted) {
+        if (panel && panel.el.isConnected) _removeDeepPanel(panel.id);
+        completeQuestionLog(questionLogPromise, "failed", questionLogIntent);
+        return {
+          ok: false,
+          status: "stopped",
+          mode: "report",
+          source: legacyChatDataSource(),
+          intent: questionLogIntent,
+          response: "",
+          errorCode: "stopped_by_user"
+        };
+      }
       state.llmClassifyResult = result;
       // LLM 分类结果更可靠（analysisType / 多实体）→ 覆盖面板报告类型，供记忆栏提问示例卡片使用
       if (panel && result) {
@@ -17016,6 +17237,7 @@ var _NUMERIC_COL_PATTERNS = [
       }
       if (addedMsg) enhanceMerchantCards(addedMsg);
       reportSucceeded = true;
+      if (panel) panel.abortController = null;
     } catch (error) {
       console.error("[analysis] answerPrompt error:", error);
       var errMsg = (language === "zh"
@@ -17033,7 +17255,7 @@ var _NUMERIC_COL_PATTERNS = [
       questionLogIntent
     );
     if (reportSucceeded && panel && panel.feedbackEl) {
-      attachAnswerFeedbackButton(panel.feedbackEl, {
+      var reportFeedbackContext = {
         questionPromise: reportQuestionCompletion,
         questionEventId,
         mode: "report",
@@ -17043,11 +17265,26 @@ var _NUMERIC_COL_PATTERNS = [
         getAnswer: function () {
           return String(panel.contentEl?.innerText || panel.contentEl?.textContent || "").trim();
         }
-      });
+      };
+      attachAnswerFeedbackButton(panel.feedbackEl, reportFeedbackContext);
+      notifyBridgeFeedback(reportFeedbackContext);
     }
     if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
     else loadDbSearchInsight(effectivePrompt);
     state.chatIntentOverride = null;
+    var reportMemory = reportSucceeded && panel ? _extractPanelMemory(panel) : null;
+    return {
+      ok: reportSucceeded,
+      status: reportSucceeded ? "success" : "error",
+      mode: "report",
+      source: legacyChatDataSource(),
+      intent: questionLogIntent,
+      response: reportSucceeded ? String(html || "") : "",
+      ...(reportSucceeded ? { contentHtml: String(html || "") } : {}),
+      ...(reportMemory ? { reportSnapshot: reportMemory } : {}),
+      ...(reportSucceeded && panel ? { deepWindowId: panel.id } : {}),
+      ...(!reportSucceeded ? { errorCode: "report_unavailable" } : {})
+    };
   }
 
   function renderMetrics(rows) {
@@ -31613,8 +31850,91 @@ var _NUMERIC_COL_PATTERNS = [
     ).trim();
   }
 
+  function modernChatbotAgentBridgeAvailable() {
+    var bridge = window.OI_LEGACY_BRIDGE;
+    var chat = bridge && bridge.chatSession;
+    var agent = bridge && bridge.agentSession;
+    var deepWindows = bridge && bridge.deepWindows;
+    var chatReady = chat
+      && typeof chat.getState === "function"
+      && typeof chat.setMode === "function"
+      && typeof chat.submit === "function"
+      && typeof chat.removeMemory === "function"
+      && typeof chat.clearConversation === "function"
+      && typeof chat.addMemory === "function"
+      && typeof chat.downloadRecommendation === "function"
+      && typeof chat.downloadLogs === "function"
+      && typeof chat.toggleHelp === "function"
+      && typeof chat.toggleGuide === "function"
+      && typeof chat.startOnboarding === "function"
+      && typeof chat.openDeepWindow === "function"
+      && chat.feedback
+      && typeof chat.feedback.isAvailable === "function"
+      && typeof chat.feedback.submit === "function"
+      && typeof chat.onChange === "function";
+    var agentReady = agent
+      && typeof agent.getState === "function"
+      && typeof agent.submit === "function"
+      && typeof agent.stop === "function"
+      && typeof agent.newConversation === "function"
+      && typeof agent.downloadLogs === "function"
+      && agent.feedback
+      && typeof agent.feedback.isAvailable === "function"
+      && typeof agent.feedback.submit === "function"
+      && typeof agent.onChange === "function";
+    var deepReady = deepWindows
+      && typeof deepWindows.getState === "function"
+      && typeof deepWindows.activate === "function"
+      && typeof deepWindows.minimize === "function"
+      && typeof deepWindows.restore === "function"
+      && typeof deepWindows.close === "function"
+      && typeof deepWindows.pin === "function"
+      && typeof deepWindows.move === "function"
+      && typeof deepWindows.clone === "function"
+      && typeof deepWindows.toggleOverlay === "function"
+      && typeof deepWindows.export === "function"
+      && typeof deepWindows.cancel === "function"
+      && typeof deepWindows.addToChat === "function"
+      && typeof deepWindows.interact === "function"
+      && typeof deepWindows.setTrendColumns === "function"
+      && typeof deepWindows.onChange === "function";
+    return Boolean(chatReady && agentReady && deepReady);
+  }
+
+  function modernChatbotAgentParityEnabled() {
+    // M6 行为等价和浏览器验收已完成；默认使用 Modern，保留显式 false 作为回滚开关。
+    return window.__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false && modernChatbotAgentBridgeAvailable();
+  }
+
   function switchPage(page) {
     const previousPage = state.page;
+    if (previousPage === "dashboard" && page !== "dashboard") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("dashboard");
+        }
+      } catch (error) {
+        console.warn("Modern Chatbot unmount failed; continuing with the legacy chatbot.", error);
+      }
+      const dashboardRoot = document.getElementById("chatbotModernRoot");
+      const dashboardGrid = document.querySelector(".main-grid.dashboard-page");
+      const dashboardTopbar = document.querySelector(".topbar.dashboard-page");
+      if (dashboardGrid) dashboardGrid.classList.remove("is-modern");
+      if (dashboardTopbar) dashboardTopbar.classList.remove("is-modern");
+      if (dashboardRoot) dashboardRoot.classList.add("hidden");
+    }
+    if (previousPage === "agent" && page !== "agent") {
+      try {
+        if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
+          window.OI_MODERN_APP.unmountPage("agent");
+        }
+      } catch (error) {
+        console.warn("Modern Agent unmount failed; continuing with the legacy Agent page.", error);
+      }
+      if (els.dashboardAgentPage) els.dashboardAgentPage.classList.remove("is-modern");
+      const agentRoot = document.getElementById("agentModernRoot");
+      if (agentRoot) agentRoot.classList.add("hidden");
+    }
     if (previousPage === "offer-list-tracker" && page !== "offer-list-tracker") {
       try {
         if (window.OI_MODERN_APP && typeof window.OI_MODERN_APP.unmountPage === "function") {
@@ -31761,6 +32081,7 @@ var _NUMERIC_COL_PATTERNS = [
     const isTier = page === "tier";
     const isSheets = page === "sheets";
     const isCategory = page === "category";
+    const isDashboard = page === "dashboard";
     const isAgent = page === "agent";
     const isMonthlyNewMerchants = page === "monthly-new-merchants";
     const isOfferListTracker = page === "offer-list-tracker";
@@ -31771,7 +32092,6 @@ var _NUMERIC_COL_PATTERNS = [
     const isGoogleAds = page === "google-ads";
     document.querySelectorAll(".dashboard-page").forEach((el) => el.classList.toggle("hidden", page !== "dashboard"));
     if (els.dashboardAgentPage) els.dashboardAgentPage.classList.toggle("hidden", !isAgent);
-    if (isAgent) renderAgentPageWelcomeIfIdle();
     els.paymentsPage.classList.toggle("hidden", page !== "payments");
     els.publishersPage.classList.toggle("hidden", page !== "publishers");
     if (els.googleAdsPage) els.googleAdsPage.classList.toggle("hidden", !isGoogleAds);
@@ -31807,6 +32127,121 @@ var _NUMERIC_COL_PATTERNS = [
         _minimizeDeepPanel(p.id);
       }
     });
+    if (isDashboard && modernChatbotAgentParityEnabled()) {
+      const modernRoot = document.getElementById("chatbotModernRoot");
+      const dashboardGrid = document.querySelector(".main-grid.dashboard-page");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "dashboard"
+        && dashboardGrid
+        && dashboardGrid.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("dashboard"));
+          if (modernPageAvailable) modernMounted = Boolean(modernApp.mountPage("dashboard", modernRoot));
+        }
+      } catch (error) {
+        console.warn("Modern Chatbot unavailable; continuing with the legacy chatbot.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (dashboardGrid) dashboardGrid.classList.add("is-modern");
+        const dashboardTopbar = document.querySelector(".topbar.dashboard-page");
+        if (dashboardTopbar) dashboardTopbar.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (dashboardGrid) dashboardGrid.classList.remove("is-modern");
+        const dashboardTopbar = document.querySelector(".topbar.dashboard-page");
+        if (dashboardTopbar) dashboardTopbar.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (!modernPageAvailable || !modernApp || typeof modernApp.hasPage !== "function" || typeof modernApp.mountPage !== "function")
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Chatbot unavailable; continuing with the legacy chatbot.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderAll();
+      }
+    }
+    if (isDashboard && !modernChatbotAgentParityEnabled()) {
+      renderAll();
+    }
+    if (isAgent && modernChatbotAgentParityEnabled()) {
+      const modernRoot = document.getElementById("agentModernRoot");
+      const modernApp = window.OI_MODERN_APP;
+      let modernMounted = false;
+      let modernPageAvailable = false;
+      let fallbackWarningShown = false;
+      if (
+        previousPage === "agent"
+        && els.dashboardAgentPage
+        && els.dashboardAgentPage.classList.contains("is-modern")
+        && modernRoot
+        && !modernRoot.classList.contains("hidden")
+      ) {
+        updateMobileCurrentPage();
+        closeMobileNavigation(true);
+        return;
+      }
+      try {
+        if (modernApp && typeof modernApp.setLanguage === "function") {
+          modernApp.setLanguage(state.language);
+        }
+        if (
+          modernRoot
+          && modernApp
+          && typeof modernApp.hasPage === "function"
+          && typeof modernApp.mountPage === "function"
+        ) {
+          modernPageAvailable = Boolean(modernApp.hasPage("agent"));
+          if (modernPageAvailable) modernMounted = Boolean(modernApp.mountPage("agent", modernRoot));
+        }
+      } catch (error) {
+        console.warn("Modern Agent unavailable; continuing with the legacy Agent page.", error);
+        fallbackWarningShown = true;
+      }
+      if (modernMounted) {
+        if (els.dashboardAgentPage) els.dashboardAgentPage.classList.add("is-modern");
+        if (modernRoot) modernRoot.classList.remove("hidden");
+      } else {
+        if (els.dashboardAgentPage) els.dashboardAgentPage.classList.remove("is-modern");
+        if (modernRoot) modernRoot.classList.add("hidden");
+        if (
+          (!modernPageAvailable || !modernApp || typeof modernApp.hasPage !== "function" || typeof modernApp.mountPage !== "function")
+          && !fallbackWarningShown
+        ) {
+          console.warn(
+            "Modern Agent unavailable; continuing with the legacy Agent page.",
+            new Error("Modern frontend page API is unavailable")
+          );
+        }
+        renderAgentPageWelcomeIfIdle();
+      }
+    }
+    if (isAgent && !modernChatbotAgentParityEnabled()) {
+      renderAgentPageWelcomeIfIdle();
+    }
     if (isPayments) {
       const modernRoot = document.getElementById("paymentsModernRoot");
       const modernApp = window.OI_MODERN_APP;
@@ -33786,9 +34221,1034 @@ var _NUMERIC_COL_PATTERNS = [
     return true;
   }
 
+  function modernRuntimeHost(className) {
+    var host = document.createElement("div");
+    host.className = className || "modern-legacy-runtime-buffer";
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = "position:fixed;left:-100000px;top:-100000px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none";
+    document.body.appendChild(host);
+    return host;
+  }
+
+  function modernResponseLanguage(prompt, fallback) {
+    try {
+      return responseLanguageFor(prompt) === "en" ? "en" : "zh";
+    } catch (error) {
+      return fallback === "en" ? "en" : "zh";
+    }
+  }
+
+  function modernQuestionRun(prompt, mode, language, withTrace) {
+    var questionEventId = createChatQuestionEventId();
+    var questionIntent = detectQuestionLogIntent(prompt);
+    var questionLogPromise = beginQuestionLog(prompt, mode, language, questionIntent, questionEventId);
+    var traceContext = withTrace ? createAgentTraceContext(questionEventId, language) : null;
+    return {
+      questionEventId: questionEventId,
+      questionIntent: questionIntent,
+      questionLogPromise: questionLogPromise,
+      traceContext: traceContext
+    };
+  }
+
+  async function runModernChat(request) {
+    request = request && typeof request === "object" ? request : {};
+    var prompt = String(request.prompt || "").trim();
+    var language = modernResponseLanguage(prompt, request.language);
+    var history = Array.isArray(request.history) ? request.history : [];
+    var signal = request.signal || null;
+    if (!prompt) return { ok: false, response: "", errorCode: "empty_prompt" };
+    var questionRun = modernQuestionRun(prompt, "chat", language, state.agentEnabled !== false);
+    var host = modernRuntimeHost("modern-chat-runtime-buffer");
+    var emittedTokenChars = 0;
+    var emitToken = typeof request.onToken === "function" ? function (token) {
+      var value = String(token || "");
+      emittedTokenChars += value.length;
+      request.onToken(value);
+    } : null;
+    try {
+      var outcome = null;
+      if (state.agentEnabled !== false) {
+        outcome = await runChatAgent(prompt, {
+          language: language,
+          chatLogEl: host,
+          memoryText: String(request.memoryText || ""),
+          history: history,
+          viewContext: null,
+          signal: signal,
+          executionTimeline: false,
+          onToken: emitToken,
+          traceContext: questionRun.traceContext
+        });
+      }
+      if (outcome && outcome.handled) {
+        var agentResponse = String(outcome.directContent || outcome.fullResponse || "");
+        if (agentResponse && !emittedTokenChars && emitToken) emitToken(agentResponse);
+        completeQuestionLog(questionRun.questionLogPromise, outcome.stopped ? "failed" : (outcome.ok ? "success" : "failed"), questionRun.questionIntent);
+        return {
+          ok: outcome.ok !== false && !outcome.stopped && Boolean(agentResponse.trim()),
+          stopped: Boolean(outcome.stopped),
+          response: agentResponse,
+          errorCode: outcome.stopped ? "stopped_by_user" : null
+        };
+      }
+      var fallback = await streamAssistantReply(
+        { prompt: prompt, memory: String(request.memoryText || ""), language: language, history: agentFallbackHistory(history) },
+        {
+          chatLogEl: host,
+          language: language,
+          viewContext: null,
+          signal: signal,
+          onToken: emitToken,
+          traceContext: questionRun.traceContext,
+          tracePhase: "synthesis"
+        }
+      );
+      appendAgentTraceSynthesis(
+        questionRun.traceContext,
+        fallback,
+        fallback && fallback.stopped ? "stopped" : (fallback && fallback.ok ? "success" : "failed"),
+        fallback && fallback.stopped ? "stopped_by_user" : (fallback && fallback.usage && fallback.usage.errorCode || "synthesis_unavailable")
+      );
+      completeAgentTrace(questionRun.traceContext, {
+        status: fallback && fallback.stopped ? "stopped" : (fallback && fallback.ok ? "success" : "failed"),
+        durationMs: Date.now() - (questionRun.traceContext ? questionRun.traceContext.startedAt : Date.now()),
+        stoppedByUser: Boolean(fallback && fallback.stopped),
+        fallbackDelivered: Boolean(fallback && fallback.ok && fallback.fullResponse),
+        errorCode: fallback && fallback.stopped ? "stopped_by_user" : (fallback && !fallback.ok ? "synthesis_unavailable" : null)
+      });
+      completeQuestionLog(questionRun.questionLogPromise, fallback && fallback.ok ? "success" : "failed", questionRun.questionIntent);
+      return {
+        ok: Boolean(fallback && fallback.ok),
+        stopped: Boolean(fallback && fallback.stopped),
+        response: String(fallback && fallback.fullResponse || ""),
+        errorCode: fallback && fallback.stopped ? "stopped_by_user" : null
+      };
+    } catch (error) {
+      var stopped = agentRequestWasStopped(error, signal);
+      completeQuestionLog(questionRun.questionLogPromise, "failed", questionRun.questionIntent);
+      completeAgentTrace(questionRun.traceContext, {
+        status: stopped ? "stopped" : "failed",
+        durationMs: questionRun.traceContext ? Date.now() - questionRun.traceContext.startedAt : null,
+        stoppedByUser: stopped,
+        errorCode: stopped ? "stopped_by_user" : "chat_runtime_error"
+      });
+      return { ok: false, stopped: stopped, response: "", errorCode: stopped ? "stopped_by_user" : "chat_runtime_error" };
+    } finally {
+      host.remove();
+    }
+  }
+
+  async function runModernAgent(request) {
+    request = request && typeof request === "object" ? request : {};
+    var prompt = String(request.prompt || "").trim();
+    var language = modernResponseLanguage(prompt, request.language);
+    var history = Array.isArray(request.history) ? request.history : [];
+    var signal = request.signal || null;
+    if (!prompt) return { ok: false, status: "error", response: "", steps: [], memoryEvents: [] };
+    var questionRun = modernQuestionRun(prompt, "agent", language, true);
+    var host = modernRuntimeHost("modern-agent-runtime-buffer");
+    var timelineSteps = [];
+    function collectTimelineStep(step) {
+      if (!step || typeof step !== "object") return;
+      var next = Object.assign({}, step);
+      var existing = timelineSteps.findIndex(function (item) { return item.id === next.id; });
+      if (existing >= 0) timelineSteps[existing] = next;
+      else timelineSteps.push(next);
+      if (typeof request.onTimeline === "function") request.onTimeline(next);
+    }
+    function registerAgentFeedback(host, answer) {
+      if (typeof request.onFeedbackContext !== "function" || !host || !String(answer || "").trim()) return;
+      var context = {
+        questionPromise: questionRun.questionLogPromise,
+        questionEventId: questionRun.questionEventId,
+        mode: "agent",
+        prompt: prompt,
+        language: language,
+        intent: questionRun.questionIntent,
+        getAnswer: function () { return String(answer || ""); }
+      };
+      attachAnswerFeedbackButton(host, context);
+      try { request.onFeedbackContext(context); } catch (_error) { /* feedback registration cannot interrupt Agent */ }
+    }
+    try {
+      var outcome = await runChatAgent(prompt, {
+        language: language,
+        chatLogEl: host,
+        memoryText: String(request.memoryText || ""),
+        history: history,
+        viewContext: null,
+        signal: signal,
+        executionTimeline: true,
+        traceContext: questionRun.traceContext,
+        onToken: typeof request.onToken === "function" ? request.onToken : null,
+        onTimeline: collectTimelineStep
+      });
+      var response = String(outcome && (outcome.directContent || outcome.fullResponse) || "");
+      var stopped = Boolean(outcome && outcome.stopped) || Boolean(signal && signal.aborted);
+      if (outcome && outcome.handled && response && outcome.statusBar) {
+        registerAgentFeedback(outcome.statusBar, response);
+      }
+      if ((!outcome || !outcome.handled) && !stopped) {
+        var fallback = await streamAssistantReply(
+          {
+            prompt: prompt,
+            memory: String(request.memoryText || ""),
+            language: language,
+            history: agentFallbackHistory(history)
+          },
+          {
+            chatLogEl: host,
+            language: language,
+            viewContext: null,
+            signal: signal,
+            onToken: typeof request.onToken === "function" ? request.onToken : null,
+            traceContext: questionRun.traceContext,
+            tracePhase: "synthesis"
+          }
+        );
+        response = String(fallback && fallback.fullResponse || "");
+        stopped = Boolean(fallback && fallback.stopped) || Boolean(signal && signal.aborted);
+        if (fallback && fallback.statusBar && response) registerAgentFeedback(fallback.statusBar, response);
+        appendAgentTraceSynthesis(
+          questionRun.traceContext,
+          fallback,
+          stopped ? "stopped" : (fallback && fallback.ok ? "success" : "failed"),
+          stopped ? "stopped_by_user" : (fallback && fallback.usage && fallback.usage.errorCode || "synthesis_unavailable")
+        );
+        completeAgentTrace(questionRun.traceContext, {
+          status: stopped ? "stopped" : (fallback && fallback.ok ? "success" : "failed"),
+          durationMs: Date.now() - questionRun.traceContext.startedAt,
+          stoppedByUser: stopped,
+          fallbackDelivered: Boolean(fallback && fallback.ok && fallback.fullResponse),
+          errorCode: stopped ? "stopped_by_user" : (fallback && !fallback.ok ? "synthesis_unavailable" : null)
+        });
+      }
+      var successfulRun = outcome && outcome.handled ? outcome.ok !== false : false;
+      if ((!outcome || !outcome.handled) && typeof fallback !== "undefined") successfulRun = Boolean(fallback && fallback.ok);
+      var status = stopped ? "stopped" : response.trim() && successfulRun ? "done" : "error";
+      completeQuestionLog(questionRun.questionLogPromise, status === "done" ? "success" : "failed", questionRun.questionIntent);
+      return {
+        ok: status === "done",
+        status: status,
+        response: response,
+        steps: timelineSteps,
+        partial: Boolean(outcome && outcome.partial),
+        omittedTargets: Array.isArray(outcome && outcome.omittedTargets) ? outcome.omittedTargets.slice(0, 20).map(String) : [],
+        memoryEvents: Array.isArray(outcome && outcome.memoryEvents) ? outcome.memoryEvents : []
+      };
+    } catch (error) {
+      var stoppedByError = agentRequestWasStopped(error, signal);
+      completeQuestionLog(questionRun.questionLogPromise, "failed", questionRun.questionIntent);
+      completeAgentTrace(questionRun.traceContext, {
+        status: stoppedByError ? "stopped" : "failed",
+        durationMs: Date.now() - questionRun.traceContext.startedAt,
+        stoppedByUser: stoppedByError,
+        errorCode: stoppedByError ? "stopped_by_user" : "agent_runtime_error"
+      });
+      return {
+        ok: false,
+        status: stoppedByError ? "stopped" : "error",
+        response: "",
+        steps: timelineSteps,
+        memoryEvents: []
+      };
+    } finally {
+      host.remove();
+    }
+  }
+
+  var legacyChatSessionListeners = new Set();
+  var legacyAgentSessionListeners = new Set();
+  var legacyDeepWindowListeners = new Set();
+
+  function legacyDeepWindowViewState() {
+    var windows = _deepPanels.filter(function (panel) {
+      return panel && panel.el && !panel._hidden;
+    }).map(function (panel) {
+      var left = Number.parseFloat(panel.el.style.left);
+      var top = Number.parseFloat(panel.el.style.top);
+      return {
+        id: String(panel.id || ""),
+        mode: panel._mode === "chat" ? "chat" : "report",
+        status: panel.state === "error" ? "error" : panel.state === "loading" ? "loading" : "content",
+        title: String(panel.title || ""),
+        prompt: String(panel.prompt || ""),
+        summary: String(panel.summaryEl && (panel.summaryEl.textContent || panel.summaryEl.innerText) || ""),
+        contentHtml: String(panel._contentHtml || panel.sectionsEl && panel.sectionsEl.innerHTML || ""),
+        source: panel._dataSource === "db" ? "db" : panel._dataSource === "unavailable" ? "unavailable" : legacyChatDataSource(),
+        minimized: panel.minimized === true,
+        pinned: panel.pinned === true,
+        overlay: panel.overlay === true,
+        position: {
+          x: Number.isFinite(left) ? left : 0,
+          y: Number.isFinite(top) ? top : 0
+        },
+        canCancel: panel.state === "loading" && !!panel.abortController,
+        canAddMemory: panel.state === "content" && panel._addedToMemory !== true,
+        addedToMemory: panel._addedToMemory === true
+      };
+    }).filter(function (panel) { return panel.id; });
+    var active = windows.find(function (panel) { return panel.id === legacyDeepWindowActiveId; });
+    return {
+      windows: windows,
+      activeId: active ? active.id : (windows.length ? windows[windows.length - 1].id : null)
+    };
+  }
+
+  var legacyDeepWindowActiveId = null;
+
+  function notifyLegacyDeepWindows() {
+    var snapshot = legacyDeepWindowViewState();
+    if (!legacyDeepWindowActiveId || !snapshot.windows.some(function (panel) { return panel.id === legacyDeepWindowActiveId; })) {
+      legacyDeepWindowActiveId = snapshot.activeId;
+    }
+    snapshot = legacyDeepWindowViewState();
+    legacyDeepWindowListeners.forEach(function (listener) {
+      try { listener(snapshot); } catch (_error) { /* ignore listener failures */ }
+    });
+    return snapshot;
+  }
+
+  function legacyDeepWindowById(id) {
+    return _deepPanels.find(function (panel) { return panel && panel.id === id; }) || null;
+  }
+
+  function activateLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel) return;
+    if (panel._hidden) _showDeepPanel(panel.id);
+    else _bringPanelToFront(panel);
+  }
+
+  function minimizeLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (panel) _minimizeDeepPanel(panel.id);
+  }
+
+  function restoreLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (panel) _expandDeepPanel(panel.id);
+  }
+
+  function closeLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (panel) _hideDeepPanel(panel.id);
+  }
+
+  function pinLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel) return false;
+    panel.pinned = !panel.pinned;
+    panel.el.classList.toggle("is-pinned", panel.pinned);
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyDeepWindows();
+    return panel.pinned;
+  }
+
+  function moveLegacyDeepWindow(id, x, y) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return false;
+    var left = Number(x);
+    var top = Number(y);
+    panel.el.style.left = left + "px";
+    panel.el.style.top = top + "px";
+    panel._origLeft = left;
+    panel._origTop = top;
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyDeepWindows();
+    return true;
+  }
+
+  function cloneLegacyDeepWindow(id) {
+    var source = legacyDeepWindowById(id);
+    if (!source) return null;
+    var clone = _createDeepPanel(source.prompt || "");
+    clone._mode = source._mode === "chat" ? "chat" : "report";
+    clone._reportType = source._reportType;
+    clone._dataSource = source._dataSource;
+    clone.title = source.title;
+    clone.el.classList.add("source-" + clone._mode);
+    if (clone.titleEl) clone.titleEl.textContent = clone.title;
+    if (clone.summaryEl) clone.summaryEl.textContent = source.summaryEl && source.summaryEl.textContent || "";
+    if (source.state === "content") {
+      clone.state = "content";
+      clone._contentHtml = source._contentHtml || source.sectionsEl && source.sectionsEl.innerHTML || "";
+      if (clone.skeletonEl) clone.skeletonEl.classList.add("hidden");
+      if (clone.contentEl) clone.contentEl.classList.remove("hidden");
+      if (clone.errorEl) clone.errorEl.classList.add("hidden");
+      if (clone.sectionsEl) clone.sectionsEl.innerHTML = clone._contentHtml;
+      clone.el.querySelector(".deep-window-stop")?.classList.add("hidden");
+      clone.el.querySelector(".deep-window-close")?.classList.remove("hidden");
+      clone.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+      clone.el.querySelector(".deep-window-chat-add")?.classList.remove("hidden");
+      clone.el.classList.remove("generating");
+    } else if (source.state === "error") {
+      clone.state = "error";
+      if (clone.skeletonEl) clone.skeletonEl.classList.add("hidden");
+      if (clone.contentEl) clone.contentEl.classList.add("hidden");
+      if (clone.errorEl) {
+        clone.errorEl.classList.remove("hidden");
+        clone.errorEl.innerHTML = source.errorEl ? source.errorEl.innerHTML : "";
+      }
+      clone.el.querySelector(".deep-window-stop")?.classList.add("hidden");
+      clone.el.querySelector(".deep-window-close")?.classList.remove("hidden");
+      clone.el.querySelector(".deep-window-export")?.classList.remove("hidden");
+      clone.el.querySelector(".deep-window-chat-add")?.classList.add("hidden");
+    }
+    clone.pinned = false;
+    clone.overlay = source.overlay === true;
+    if (source._modernBridgeHidden) {
+      clone._modernBridgeHidden = true;
+      clone.el.style.display = "none";
+    }
+    clone.el.classList.toggle("is-overlay", clone.overlay);
+    _bringPanelToFront(clone);
+    notifyLegacyDeepWindows();
+    return clone.id;
+  }
+
+  function toggleLegacyDeepWindowOverlay(id) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel) return false;
+    panel.overlay = !panel.overlay;
+    panel.el.classList.toggle("is-overlay", panel.overlay);
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyDeepWindows();
+    return panel.overlay;
+  }
+
+  function exportLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel || panel.state !== "content") return false;
+    legacyDeepWindowActiveId = panel.id;
+    if (typeof window.print === "function") window.print();
+    notifyLegacyDeepWindows();
+    return true;
+  }
+
+  function cancelLegacyDeepWindow(id) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel || panel.state !== "loading") return false;
+    _cancelDeepPanel(panel.id);
+    return true;
+  }
+
+  function addLegacyDeepWindowToChat(id) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel || panel.state !== "content" || panel._addedToMemory) return false;
+    _addToChat(panel);
+    return panel._addedToMemory === true;
+  }
+
+  function deepWindowChartRoot(panel) {
+    if (!panel) return null;
+    return panel.el && (panel.el.querySelector(".deep-context-chart") || panel.el.querySelector(".trend-context-wrap"))
+      || panel.sectionsEl
+      || null;
+  }
+
+  function notifyDeepWindowContent(panel) {
+    if (!panel) return;
+    if (panel.sectionsEl) panel._contentHtml = panel.sectionsEl.innerHTML;
+    notifyLegacyDeepWindows();
+  }
+
+  function interactLegacyDeepWindow(id, action, value) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel || panel.state !== "content") return false;
+    var root = deepWindowChartRoot(panel);
+    if (!root) return false;
+    var target = null;
+    if (action === "trend-metric") {
+      var metricButtons = root.querySelectorAll("button[data-trend-metric]");
+      for (var i = 0; i < metricButtons.length; i += 1) {
+        if (metricButtons[i].getAttribute("data-trend-metric") === String(value || "")) {
+          target = metricButtons[i];
+          break;
+        }
+      }
+    } else if (action === "trend-category") {
+      var categorySelect = root.querySelector("[data-trend-category-select]");
+      if (!categorySelect) return false;
+      categorySelect.value = String(value || "");
+      categorySelect.dispatchEvent(new Event("change", { bubbles: true }));
+      legacyDeepWindowActiveId = panel.id;
+      notifyDeepWindowContent(panel);
+      return true;
+    } else if (action === "trend-column-toggle") {
+      target = root.querySelector("[data-trend-column-toggle]");
+    } else if (action === "trend-column-core") {
+      target = root.querySelector("[data-trend-column-core]");
+    } else if (action === "trend-column-all") {
+      target = root.querySelector("[data-trend-column-all]");
+    }
+    if (!target || typeof target.click !== "function") return false;
+    target.click();
+    legacyDeepWindowActiveId = panel.id;
+    notifyDeepWindowContent(panel);
+    return true;
+  }
+
+  function setLegacyDeepWindowTrendColumns(id, columns) {
+    var panel = legacyDeepWindowById(id);
+    if (!panel || panel.state !== "content") return false;
+    var root = deepWindowChartRoot(panel);
+    if (!root) return false;
+    var checks = root.querySelectorAll("[data-trend-column-check]");
+    if (!checks.length) return false;
+    var requested = new Set(Array.isArray(columns) ? columns.map(function (column) { return String(column || ""); }) : []);
+    var checkedCount = 0;
+    for (var i = 0; i < checks.length; i += 1) {
+      checks[i].checked = requested.has(checks[i].value);
+      if (checks[i].checked) checkedCount += 1;
+    }
+    if (!checkedCount) checks[0].checked = true;
+    checks[0].dispatchEvent(new Event("change", { bubbles: true }));
+    legacyDeepWindowActiveId = panel.id;
+    notifyDeepWindowContent(panel);
+    return true;
+  }
+
+  function legacyFeedbackBridgeFor(getContext) {
+    return {
+      isAvailable: function () {
+        var context = typeof getContext === "function" ? getContext() : null;
+        return !!(context && String(context.answerSnapshot || context.answer || (context.getAnswer && context.getAnswer()) || "").trim());
+      },
+      submit: function (reasonCode, reasonDetail) {
+        var context = typeof getContext === "function" ? getContext() : null;
+        if (!context) return Promise.resolve({ ok: false, errorCode: "feedback_unavailable" });
+        var allowed = ["inaccurate", "not_answered", "incomplete_data", "unclear", "other"];
+        var reason = allowed.indexOf(String(reasonCode || "")) >= 0 ? String(reasonCode) : "other";
+        var detail = String(reasonDetail || "").slice(0, 4000);
+        return Promise.resolve(sendAnswerFeedback(context, reason, detail)).then(function (payload) {
+          return { ok: true, alreadyExists: !!(payload && payload.alreadyExists) };
+        }).catch(function () {
+          return { ok: false, errorCode: "feedback_submit_failed" };
+        });
+      }
+    };
+  }
+
+  function downloadLegacyRecommendation(downloadId) {
+    var id = String(downloadId || "").trim().slice(0, 120);
+    var item = state.recommendationDownloads && state.recommendationDownloads[id];
+    if (!id || !item || !Array.isArray(item.rows) || !item.rows.length) return false;
+    downloadRecommendationXlsx(id);
+    return true;
+  }
+
+  function legacyChatDataSource() {
+    var sources = data && data.sources && typeof data.sources === "object" ? data.sources : {};
+    var mode = String(sources.mode || sources.source || "").toLowerCase();
+    if (_liveChatbotDataLoaded && Array.isArray(_liveChatbotOffers) && _liveChatbotOffers.length) return "db";
+    if (mode === "db" || mode === "database" || mode === "live") return "db";
+    return offers.length ? "cache" : "unavailable";
+  }
+
+  function legacyChatMemoryItems() {
+    return (Array.isArray(state.reportMemory) ? state.reportMemory : []).map(function (memory) {
+      return {
+        id: String(memory.id || ""),
+        title: String(memory.title || memory.prompt || "报告").slice(0, 200),
+        text: String(memory.textContent || "").slice(0, 8000),
+        html: String(memory.html || "").slice(0, 160000),
+        source: legacyChatDataSource()
+      };
+    }).filter(function (memory) { return memory.id; });
+  }
+
+  function legacyChatStarterCards() {
+    if (state.deepMode) return [];
+    var language = state.language === "en" ? "en" : "zh";
+    return (Array.isArray(state.reportMemory) ? state.reportMemory : []).slice(-5).map(function (memory) {
+      var type = String(memory && memory.type || "");
+      var configured = REPORT_STARTER_QUESTIONS[type];
+      var questions = configured && configured.length
+        ? configured.map(function (item) { return String(item[language] || item.en || item.zh || "").trim(); })
+        : [
+            t("chat.starterAsk", "Analyze the report and give me suggestions"),
+            t("chat.starterPlan", "Summarize the data and plan next month's direction")
+          ];
+      return {
+        id: String(memory && memory.id || ""),
+        title: String(memory && (memory.title || memory.prompt) || "Report").slice(0, 200),
+        type: type.slice(0, 80),
+        questions: questions.map(function (question) { return question.slice(0, 400); }).filter(Boolean).slice(0, 6)
+      };
+    }).filter(function (card) { return card.id && card.questions.length; });
+  }
+
+  function legacyChatViewState() {
+    var runtime = state.chatSession || {};
+    var history = Array.isArray(state.chatHistory) ? state.chatHistory.slice() : [];
+    var messages = Array.isArray(runtime.messages) && runtime.messages.length
+      ? runtime.messages.slice() : history.slice();
+    return {
+      mode: state.deepMode ? "report" : "chat",
+      language: state.language === "en" ? "en" : "zh",
+      hasMemory: legacyChatMemoryItems().length > 0,
+      source: legacyChatDataSource(),
+      status: runtime.status === "running" || runtime.status === "success" || runtime.status === "stopped" || runtime.status === "error"
+        ? runtime.status : "idle",
+      history: history,
+      messages: messages,
+      memory: legacyChatMemoryItems(),
+      starterCards: legacyChatStarterCards(),
+      currentResult: runtime.currentResult || null,
+      errorCode: runtime.errorCode || null
+    };
+  }
+
+  function legacyAgentViewState() {
+    var page = state.agentPage || {};
+    var memoryText = agentMemoryApi
+      ? agentMemoryApi.toDisplayText(page.memory, state.language === "en" ? "en" : "zh")
+      : "";
+    return {
+      status: page.status === "running" || page.status === "done" || page.status === "stopped" || page.status === "error"
+        ? page.status : "idle",
+      history: Array.isArray(page.history) ? page.history.slice() : [],
+      messages: Array.isArray(page.messages) ? page.messages.slice() : [],
+      steps: Array.isArray(page.steps) ? page.steps.slice() : [],
+      response: String(page.response || ""),
+      partial: page.partial === true,
+      omittedTargets: Array.isArray(page.omittedTargets) ? page.omittedTargets.slice(0, 20) : [],
+      hasMemory: Boolean(memoryText),
+      memory: page.memory || null,
+      errorCode: page.errorCode || null
+    };
+  }
+
+  function notifyLegacyChatSession(callback) {
+    var snapshot = legacyChatViewState();
+    if (typeof callback === "function") {
+      try { callback(snapshot); } catch (_error) { /* 视图回调不能中断 Legacy 执行 */ }
+    }
+    legacyChatSessionListeners.forEach(function (listener) {
+      try { listener(snapshot); } catch (_error) { /* ignore listener failures */ }
+    });
+    return snapshot;
+  }
+
+  function notifyLegacyAgentSession(callback) {
+    var snapshot = legacyAgentViewState();
+    if (typeof callback === "function") {
+      try { callback(snapshot); } catch (_error) { /* 视图回调不能中断 Agent 执行 */ }
+    }
+    legacyAgentSessionListeners.forEach(function (listener) {
+      try { listener(snapshot); } catch (_error) { /* ignore listener failures */ }
+    });
+    return snapshot;
+  }
+
+  function legacyChatSessionAddMemory(result) {
+    var snapshot = result && result.reportSnapshot;
+    if (!snapshot || typeof snapshot !== "object" || !snapshot.id) return false;
+    var exists = (state.reportMemory || []).some(function (memory) { return memory.id === snapshot.id; });
+    if (!exists) state.reportMemory.push(snapshot);
+    _renderMemoryBar();
+    if (window.ONBOARDING_TOUR) window.ONBOARDING_TOUR.notify("memory-added");
+    if (window.CHATBOT_WELCOME) window.CHATBOT_WELCOME.notify("memory-added", { hasMemory: true });
+    notifyLegacyChatSession();
+    return true;
+  }
+
+  function openLegacyChatDeepWindow() {
+    var runtime = state.chatSession || {};
+    var result = runtime.currentResult;
+    if (!result || result.mode !== "chat" || result.status !== "success" || !String(result.response || "").trim()) return null;
+    var existing = runtime.chatDeepWindowId ? legacyDeepWindowById(runtime.chatDeepWindowId) : null;
+    if (existing) {
+      if (existing._hidden) _showDeepPanel(existing.id);
+      else _bringPanelToFront(existing);
+      return existing.id;
+    }
+    var context = runtime.chatDeepContext || {};
+    var prompt = String(context.prompt || "").trim();
+    if (!prompt) return null;
+    var panel = _createDeepPanel(prompt);
+    panel._mode = "chat";
+    panel.el.classList.add("source-chat");
+    var responseHtml = '<div class="chat-stream-text">' + (markdownToHtml(String(result.response || "")) || escapeHtml(String(result.response || ""))) + "</div>";
+    _showQuickResultInDeepPanel(panel, responseHtml, prompt, {
+      recommendationResult: context.recommendationResult,
+      language: state.language === "en" ? "en" : "zh"
+    });
+    panel._modernBridgeHidden = true;
+    panel.el.style.display = "none";
+    runtime.chatDeepWindowId = panel.id;
+    runtime.currentResult = Object.assign({}, result, { deepWindowId: panel.id });
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyChatSession();
+    notifyLegacyDeepWindows();
+    return panel.id;
+  }
+
+  async function legacyChatSessionSubmit(prompt, callbacks) {
+    callbacks = callbacks || {};
+    var query = String(prompt || "").trim();
+    var mode = state.deepMode ? "report" : "chat";
+    if (!query) {
+      return {
+        ok: false,
+        status: "error",
+        mode: mode,
+        source: legacyChatDataSource(),
+        response: "",
+        errorCode: "empty_prompt"
+      };
+    }
+    if (mode === "report") await loadLiveChatbotData();
+    var runtime = state.chatSession;
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var externalSignal = callbacks.signal || null;
+    var abortExternal = null;
+    if (externalSignal && controller && typeof externalSignal.addEventListener === "function") {
+      abortExternal = function () { controller.abort(); };
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener("abort", abortExternal, { once: true });
+    }
+    var sessionSignal = controller ? controller.signal : externalSignal;
+    if (sessionSignal && sessionSignal.aborted) {
+      return {
+        ok: false,
+        status: "stopped",
+        mode: mode,
+        source: legacyChatDataSource(),
+        response: "",
+        errorCode: "stopped_by_user"
+      };
+    }
+    runtime.abortController = controller;
+    runtime.status = "running";
+    runtime.errorCode = null;
+    runtime.currentResult = null;
+    runtime.feedbackContext = null;
+    runtime.chatDeepContext = null;
+    runtime.chatDeepWindowId = null;
+    if (mode === "chat") {
+      var previousMessages = Array.isArray(runtime.messages) && runtime.messages.length
+        ? runtime.messages.slice() : state.chatHistory.slice();
+      runtime.messages = previousMessages.concat([
+        { role: "user", content: query },
+        { role: "assistant", content: "" }
+      ]);
+    }
+    notifyLegacyChatSession(callbacks.onChange);
+    try {
+      var result = await applyPrompt(query, {
+        signal: sessionSignal,
+        controller: controller,
+        modernBridge: true,
+        onFeedbackContext: function (context) {
+          runtime.feedbackContext = context;
+        },
+        onChatDeepContext: function (context) {
+          runtime.chatDeepContext = context;
+        },
+        onToken: function (token) {
+          var value = String(token || "");
+          if (mode === "chat") {
+            var messages = Array.isArray(runtime.messages) ? runtime.messages.slice() : [];
+            var last = messages.length - 1;
+            if (last >= 0 && messages[last].role === "assistant") {
+              messages[last] = { role: "assistant", content: String(messages[last].content || "") + value };
+              runtime.messages = messages;
+            }
+          }
+          if (typeof callbacks.onToken === "function") callbacks.onToken(value);
+          notifyLegacyChatSession(callbacks.onChange);
+        }
+      });
+      result = result && typeof result === "object" ? result : {
+        ok: false,
+        status: "error",
+        mode: mode,
+        source: legacyChatDataSource(),
+        response: "",
+        errorCode: "legacy_chat_bridge_error"
+      };
+      if (mode === "chat" && result.status === "success") {
+        var recommendationHtml = renderMemoryRecommendationDownloadCard(
+          runtime.chatDeepContext && runtime.chatDeepContext.recommendationResult,
+          state.language === "en" ? "en" : "zh"
+        );
+        if (recommendationHtml) result = Object.assign({}, result, { recommendationHtml: recommendationHtml });
+      }
+      if (mode === "chat") {
+        if (result.ok && result.status === "success") {
+          runtime.messages = state.chatHistory.slice();
+        } else {
+          runtime.messages = (runtime.messages || []).slice(0, Math.max(0, runtime.messages.length - 2));
+        }
+      }
+      runtime.currentResult = result;
+      runtime.status = result.status === "success" ? "success" : (result.status === "stopped" ? "stopped" : "error");
+      runtime.errorCode = result.errorCode || null;
+      notifyLegacyChatSession(callbacks.onChange);
+      return result;
+    } catch (_error) {
+      runtime.status = "error";
+      runtime.errorCode = "legacy_chat_bridge_error";
+      runtime.currentResult = {
+        ok: false,
+        status: "error",
+        mode: mode,
+        source: legacyChatDataSource(),
+        response: "",
+        errorCode: runtime.errorCode
+      };
+      if (mode === "chat") runtime.messages = (runtime.messages || []).slice(0, Math.max(0, runtime.messages.length - 2));
+      notifyLegacyChatSession(callbacks.onChange);
+      return runtime.currentResult;
+    } finally {
+      if (externalSignal && abortExternal && typeof externalSignal.removeEventListener === "function") {
+        externalSignal.removeEventListener("abort", abortExternal);
+      }
+      runtime.abortController = null;
+    }
+  }
+
+  async function legacyAgentSessionSubmit(request, callbacks) {
+    request = request && typeof request === "object" ? request : {};
+    callbacks = callbacks || {};
+    var query = String(request.prompt || "").trim();
+    if (!query) return { ok: false, status: "error", response: "", steps: [], errorCode: "empty_prompt" };
+    var page = state.agentPage;
+    if (page.submitting) return { ok: false, status: "error", response: "", steps: [], errorCode: "agent_already_running" };
+    var historyBeforePrompt = Array.isArray(page.history) ? page.history.slice() : [];
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var externalSignal = request.signal || null;
+    var abortExternal = null;
+    if (externalSignal && controller && typeof externalSignal.addEventListener === "function") {
+      abortExternal = function () { controller.abort(); };
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener("abort", abortExternal, { once: true });
+    }
+    page.submitting = true;
+    page.abortController = controller;
+    page.status = "running";
+    page.response = "";
+    page.steps = [];
+    page.partial = false;
+    page.omittedTargets = [];
+    page.errorCode = null;
+    page.feedbackContext = null;
+    page.messages = (Array.isArray(page.messages) ? page.messages.slice() : historyBeforePrompt.slice()).concat([
+      { role: "user", content: query },
+      { role: "assistant", content: "" }
+    ]);
+    notifyLegacyAgentSession(callbacks.onChange);
+    function updateAssistant(value) {
+      page.response = String(value || "");
+      var messages = Array.isArray(page.messages) ? page.messages.slice() : [];
+      var last = messages.length - 1;
+      if (last >= 0 && messages[last].role === "assistant") {
+        messages[last] = { role: "assistant", content: page.response };
+        page.messages = messages;
+      }
+    }
+    function updateTimeline(step) {
+      if (!step || typeof step !== "object") return;
+      var next = Object.assign({}, step);
+      var index = page.steps.findIndex(function (item) { return item.id === next.id; });
+      if (index >= 0) page.steps[index] = next;
+      else page.steps.push(next);
+      if (typeof callbacks.onTimeline === "function") callbacks.onTimeline(next);
+      notifyLegacyAgentSession(callbacks.onChange);
+    }
+    try {
+      var result = await runModernAgent({
+        prompt: query,
+        language: request.language,
+        history: historyBeforePrompt,
+        memoryText: request.memoryText || agentPageMemoryText(request.language === "en" ? "en" : "zh"),
+        signal: controller ? controller.signal : externalSignal,
+        onToken: function (token) {
+          updateAssistant(String(page.response || "") + String(token || ""));
+          if (typeof callbacks.onToken === "function") callbacks.onToken(String(token || ""));
+          notifyLegacyAgentSession(callbacks.onChange);
+        },
+        onTimeline: updateTimeline,
+        onFeedbackContext: function (context) {
+          page.feedbackContext = context;
+        }
+      });
+      result = result || { ok: false, status: "error", response: "", steps: [] };
+      page.steps = Array.isArray(result.steps) && result.steps.length ? result.steps.slice() : page.steps;
+      page.partial = result.partial === true;
+      page.omittedTargets = Array.isArray(result.omittedTargets) ? result.omittedTargets.slice(0, 20) : [];
+      updateAssistant(result.response || page.response || "");
+      page.status = result.status === "done" ? "done" : (result.status === "stopped" ? "stopped" : "error");
+      page.errorCode = result.errorCode || (page.status === "error" ? "agent_runtime_error" : null);
+      if (page.status === "done" && result.ok && result.response) {
+        page.history = agentHistoryAfterOutcome(historyBeforePrompt, query, {
+          ok: true,
+          fullResponse: result.response
+        });
+        page.messages = page.history.slice();
+        commitAgentPageMemory(result.memoryEvents);
+      } else {
+        page.messages = (page.messages || []).slice(0, Math.max(0, page.messages.length - 2));
+        page.messages.push({
+          role: "assistant",
+          content: page.status === "stopped"
+            ? t("agent.stopped", "This Agent run was stopped.")
+            : t("agent.error", "The Agent is temporarily unavailable. Please try again.")
+        });
+      }
+      notifyLegacyAgentSession(callbacks.onChange);
+      return result;
+    } catch (_error) {
+      page.status = controller && controller.signal.aborted ? "stopped" : "error";
+      page.errorCode = page.status === "stopped" ? "stopped_by_user" : "agent_runtime_error";
+      page.messages = (page.messages || []).slice(0, Math.max(0, page.messages.length - 2));
+      page.messages.push({
+        role: "assistant",
+        content: page.status === "stopped"
+          ? t("agent.stopped", "This Agent run was stopped.")
+          : t("agent.error", "The Agent is temporarily unavailable. Please try again.")
+      });
+      notifyLegacyAgentSession(callbacks.onChange);
+      return {
+        ok: false,
+        status: page.status,
+        response: page.response || "",
+        steps: page.steps || [],
+        errorCode: page.errorCode
+      };
+    } finally {
+      if (externalSignal && abortExternal && typeof externalSignal.removeEventListener === "function") externalSignal.removeEventListener("abort", abortExternal);
+      page.submitting = false;
+      page.abortController = null;
+      notifyLegacyAgentSession(callbacks.onChange);
+    }
+  }
+
+  var legacyChatSession = {
+    getState: legacyChatViewState,
+    setMode: function (mode) {
+      if (mode === "chat") _switchToChatMode();
+      else _switchToReportMode();
+      notifyLegacyChatSession();
+    },
+    submit: legacyChatSessionSubmit,
+    downloadRecommendation: downloadLegacyRecommendation,
+    addMemory: legacyChatSessionAddMemory,
+    removeMemory: function (memoryId) {
+      _removeReportMemory(String(memoryId || ""));
+      notifyLegacyChatSession();
+    },
+    clearConversation: function () {
+      if (state.chatSession && state.chatSession.abortController && typeof state.chatSession.abortController.abort === "function") state.chatSession.abortController.abort();
+      state.chatHistory = [];
+      state.reportMemory = [];
+      state.reportMemoryContext = null;
+      state.chatSession.status = "idle";
+      state.chatSession.messages = [];
+      state.chatSession.currentResult = null;
+      state.chatSession.errorCode = null;
+      state.chatSession.feedbackContext = null;
+      state.chatSession.chatDeepContext = null;
+      state.chatSession.chatDeepWindowId = null;
+      if (els.chatLog) els.chatLog.innerHTML = "";
+      if (els.chatLogChat) els.chatLogChat.innerHTML = "";
+      _renderMemoryBar();
+      notifyLegacyChatSession();
+    },
+    openDeepWindow: openLegacyChatDeepWindow,
+    feedback: legacyFeedbackBridgeFor(function () { return state.chatSession.feedbackContext; }),
+    downloadLogs: function (kind, format) {
+      downloadChatLogs(kind, format);
+      return true;
+    },
+    toggleHelp: function () {
+      toggleReportHelp();
+      return true;
+    },
+    toggleGuide: function () {
+      toggleUserFlowGuide();
+      return true;
+    },
+    startOnboarding: function () {
+      if (!window.ONBOARDING_TOUR || typeof window.ONBOARDING_TOUR.startTour !== "function") return false;
+      window.ONBOARDING_TOUR.startTour();
+      return true;
+    },
+    onChange: function (listener) {
+      if (typeof listener !== "function") throw new TypeError("Legacy Chat listener 必须是函数");
+      legacyChatSessionListeners.add(listener);
+      return function () { legacyChatSessionListeners.delete(listener); };
+    }
+  };
+
+  var legacyAgentSession = {
+    getState: legacyAgentViewState,
+    submit: legacyAgentSessionSubmit,
+    stop: function () {
+      var controller = state.agentPage && state.agentPage.abortController;
+      if (controller && typeof controller.abort === "function") controller.abort();
+      notifyLegacyAgentSession();
+    },
+    newConversation: function () {
+      if (state.agentPage && state.agentPage.submitting) return;
+      state.agentPage.history = [];
+      state.agentPage.messages = [];
+      state.agentPage.status = "idle";
+      state.agentPage.steps = [];
+      state.agentPage.response = "";
+      state.agentPage.partial = false;
+      state.agentPage.omittedTargets = [];
+      state.agentPage.errorCode = null;
+      state.agentPage.feedbackContext = null;
+      state.agentPage.memory = agentMemoryApi ? agentMemoryApi.empty(Date.now()) : null;
+      if (agentMemoryApi) agentMemoryApi.clear(localStorage);
+      notifyLegacyAgentSession();
+    },
+    feedback: legacyFeedbackBridgeFor(function () { return state.agentPage.feedbackContext; }),
+    downloadLogs: function (kind, format) {
+      downloadChatLogs(kind, format);
+      return true;
+    },
+    onChange: function (listener) {
+      if (typeof listener !== "function") throw new TypeError("Legacy Agent listener 必须是函数");
+      legacyAgentSessionListeners.add(listener);
+      return function () { legacyAgentSessionListeners.delete(listener); };
+    }
+  };
+
+  var legacyDeepWindows = {
+    getState: legacyDeepWindowViewState,
+    activate: activateLegacyDeepWindow,
+    minimize: minimizeLegacyDeepWindow,
+    restore: restoreLegacyDeepWindow,
+    close: closeLegacyDeepWindow,
+    pin: pinLegacyDeepWindow,
+    move: moveLegacyDeepWindow,
+    clone: cloneLegacyDeepWindow,
+    toggleOverlay: toggleLegacyDeepWindowOverlay,
+    export: exportLegacyDeepWindow,
+    cancel: cancelLegacyDeepWindow,
+    addToChat: addLegacyDeepWindowToChat,
+    interact: interactLegacyDeepWindow,
+    setTrendColumns: setLegacyDeepWindowTrendColumns,
+    onChange: function (listener) {
+      if (typeof listener !== "function") throw new TypeError("Legacy Deep Window listener 必须是函数");
+      legacyDeepWindowListeners.add(listener);
+      return function () { legacyDeepWindowListeners.delete(listener); };
+    }
+  };
+
   window.OI_LEGACY_BRIDGE = {
     navigate: (page) => switchPage(page),
     setLanguage: (language) => setLegacyLanguage(language),
+    chatSession: legacyChatSession,
+    agentSession: legacyAgentSession,
+    deepWindows: legacyDeepWindows,
+    runChat: (request) => runModernChat(request),
+    runAgent: (request) => runModernAgent(request),
     download: (type, payload) => (
       type === "offer-tracker"
         ? downloadModernOfferTracker(payload)

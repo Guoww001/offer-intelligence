@@ -818,6 +818,57 @@
   overflow: visible;
 }
 
+/* Chatbot and Agent modern migration */
+.main-grid.dashboard-page.is-modern > :not(#chatbotModernRoot) {
+  display: none !important;
+}
+
+.topbar.dashboard-page.is-modern > div:first-child {
+  display: none !important;
+}
+
+.topbar.dashboard-page.is-modern {
+  justify-content: flex-end;
+}
+
+.main-grid.dashboard-page:not(.is-modern) > #chatbotModernRoot,
+#dashboardAgentPage:not(.is-modern) > #agentModernRoot {
+  display: none !important;
+}
+
+.main-grid.dashboard-page.is-modern > #chatbotModernRoot,
+#dashboardAgentPage.is-modern > #agentModernRoot {
+  display: block;
+}
+
+.main-grid.dashboard-page > #chatbotModernRoot,
+#dashboardAgentPage > #agentModernRoot {
+  overflow: visible;
+  min-width: 0;
+  width: 100%;
+}
+
+.main-grid.dashboard-page.is-modern {
+  display: block;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+#dashboardAgentPage.is-modern {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+#dashboardAgentPage.is-modern > :not(#agentModernRoot) {
+  display: none !important;
+}
+
 .offer-tracker-page {
   --tracker-blue: #1769d2;
   --tracker-blue-dark: #0c4fa8;

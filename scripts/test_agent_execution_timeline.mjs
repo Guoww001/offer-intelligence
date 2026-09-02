@@ -9,10 +9,15 @@ function assertIncludes(haystack, needle, label) {
 
 const app = fs.readFileSync("public/app.js", "utf8");
 const html = fs.readFileSync("public/index.html", "utf8");
-const styles = fs.readFileSync("public/styles.css", "utf8");
+const styles = fs.readFileSync("public/styles.css", "utf8").replace(/\r\n?/g, "\n");
 
 assertIncludes(app, "function createAgentExecutionTimeline", "execution timeline factory");
 assertIncludes(app, "executionTimeline: true", "Agent page timeline opt-in");
+assert.match(
+  app,
+  /execution\.updateStep\(timelineStep,\s*\{\s*status:\s*result\.ok[\s\S]*?elapsedMs:\s*Date\.now\(\)\s*-\s*toolStartedAt\s*,\s*dataSource:\s*toolMeta\.dataSource\s*,\s*dataAsOf:\s*toolMeta\.dataAsOf\s*,\s*estimated:\s*toolMeta\.estimated/,
+  "completed tool timeline step should expose controlled data metadata"
+);
 assertIncludes(app, "function stopAgentPageConversation", "Agent stop handler");
 assertIncludes(app, "agentPage.abortController", "Agent abort controller state");
 assertIncludes(html, "id=\"agentStopConversation\"", "Agent stop button");

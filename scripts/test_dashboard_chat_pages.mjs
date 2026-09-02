@@ -59,7 +59,10 @@ assert(app.includes("data-agent-example-prompt-key"), "Agent example prompt clic
 assert(app.includes("agentChatInput.value = prompt"), "Agent example prompt should populate the composer");
 assert(styles.includes(".agent-chat-log.agent-chat-log-has-messages .agent-page-welcome"), "Agent welcome state hide styles are missing");
 assert(styles.includes(".agent-page-chat-panel .message.assistant"), "Agent assistant surface override is missing");
-assert(styles.includes(".agent-page-chat-panel {\n    height: clamp(520px, calc(100dvh - 260px), 680px);"), "Agent mobile chat panel height constraint is missing");
+assert(
+  /@media\s*\(max-width:\s*767px\)[\s\S]*?\.agent-page-chat-panel\s*\{[\s\S]*?height:\s*clamp\(520px,\s*calc\(100dvh\s*-\s*260px\),\s*680px\);/.test(styles),
+  "Agent mobile chat panel height constraint is missing"
+);
 assert(styles.includes("@media (prefers-reduced-motion: reduce)"), "Reduced-motion coverage is missing");
 assert(styles.includes("@keyframes navGroupEnter"), "Navigation entry motion is missing");
 assert(styles.includes("max-height: 520px"), "Accordion expansion transition is missing");
