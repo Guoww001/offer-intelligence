@@ -351,11 +351,6 @@ function openDeep(): void {
   openLocalDeepWindow(reportResult.value);
 }
 
-function openChatDeep(): void {
-  const id = props.session?.openDeepWindow?.();
-  if (id && props.deepWindows) props.deepWindows.activate(id);
-}
-
 function openChatAnswer(answerId: string): void {
   const id = props.session?.openChatAnswer?.(answerId) || null;
   if (id && props.deepWindows) props.deepWindows.activate(id);
@@ -683,13 +678,11 @@ onBeforeUnmount(() => {
       :supplemental-html="supplementalHtml"
       :starter-cards="starterCards"
       :current-result="chatCurrentResult"
-      :open-deep-available="Boolean(session?.openDeepWindow && chatCurrentResult?.ok)"
       @update:input="chatInput = $event"
       @submit="submitChat"
       @stop="stopChat"
       @remove-memory="removeMemory"
       @starter-prompt="setStarterPrompt"
-      @open-deep="openChatDeep"
       @open-answer="openChatAnswer"
       @context-interact="interactContext"
       @download="downloadRecommendation"

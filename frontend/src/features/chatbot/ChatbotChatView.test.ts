@@ -25,7 +25,7 @@ describe("ChatbotChatView", () => {
     expect(wrapper.get("[data-chatbot-input]").attributes("placeholder")).toBe("询问 EPC、分层、AOV、转化率、未付款 offer...");
   });
 
-  it("renders memory starter questions and exposes the chat Deep Window action", async () => {
+  it("renders memory starter questions without an extra Chat Mode conversion button", async () => {
     const wrapper = mount(ChatbotChatView, {
       props: {
         language: "en",
@@ -42,8 +42,7 @@ describe("ChatbotChatView", () => {
           source: "db",
           response: "Answer",
           recommendationHtml: '<div data-recommendation-card><button type="button" data-download-id="memory-recommendation-1">Download</button></div>'
-        },
-        openDeepAvailable: true
+        }
       }
     });
 
@@ -53,13 +52,28 @@ describe("ChatbotChatView", () => {
     expect(wrapper.find('.chat-panel').exists()).toBe(true);
     expect(wrapper.find('.message.assistant .chat-stream-text').exists()).toBe(true);
     expect(wrapper.find('.chat-input .chat-input-field input[data-chatbot-input]').exists()).toBe(true);
+    expect(wrapper.get('[data-chatbot-action="send"]').classes()).toContain("chatbot-chat-send");
+    expect(wrapper.find('[data-chatbot-action="open-chat-deep"]').exists()).toBe(false);
     await wrapper.get('[data-download-id="memory-recommendation-1"]').trigger("click");
     expect(wrapper.emitted("download")?.[0]).toEqual(["memory-recommendation-1"]);
     await wrapper.get('[data-chatbot-starter-question]').trigger("click");
     expect(wrapper.emitted("starter-prompt")?.[0]).toEqual(["Analyze this report"]);
+  });
 
-    await wrapper.get('[data-chatbot-action="open-chat-deep"]').trigger("click");
-    expect(wrapper.emitted("open-deep")).toHaveLength(1);
+  it("keeps the user's question inside the Chat Mode user bubble", () => {
+    const wrapper = mount(ChatbotChatView, {
+      props: {
+        language: "zh",
+        messages: [{ id: "user-1", role: "user", content: "近期 Shokz 怎么样" }],
+        memory: [],
+        input: "",
+        loading: false,
+        error: ""
+      }
+    });
+
+    expect(wrapper.get('.chatbot-chat-log .message.user .chat-stream-text').text()).toBe("近期 Shokz 怎么样");
+    expect(wrapper.get('[data-chatbot-action="send"]').classes()).toContain("chatbot-chat-send");
   });
 
   it("renders Legacy answer HTML as a summary card instead of literal markup", () => {

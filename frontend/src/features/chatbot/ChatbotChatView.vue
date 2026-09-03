@@ -34,7 +34,6 @@ const props = defineProps<{
   readonly starterCards?: readonly LegacyChatStarterCard[];
   readonly currentResult?: LegacyChatViewResult | null;
   readonly utility?: LegacyChatUtilityState;
-  readonly openDeepAvailable?: boolean;
   readonly feedbackForAnswer?: (answerId: string) => LegacyFeedbackBridge | null;
   readonly dropHighlighted?: boolean;
   readonly supplementalHtml?: string;
@@ -46,7 +45,6 @@ const emit = defineEmits<{
   (event: "stop"): void;
   (event: "remove-memory", id: string): void;
   (event: "starter-prompt", value: string): void;
-  (event: "open-deep"): void;
   (event: "open-answer", answerId: string): void;
   (event: "context-interact", action: string, value?: string): void;
   (event: "download", downloadId: string): void;
@@ -76,7 +74,6 @@ const copy = computed(() => props.language === "zh" ? {
   error: "回答暂时不可用，请重试。",
   starter: "继续追问",
   starterToggle: "切换提问示例",
-  openDeep: "转为 View",
   chatReminderKicker: "Chat Mode",
   chatReminderTitle: "把报告放进记忆栏，再开始对话",
   chatReminderBody: "Chat Mode 可以根据记忆内容做解释、归纳、横向比较和行动建议",
@@ -100,7 +97,6 @@ const copy = computed(() => props.language === "zh" ? {
   error: "The response is temporarily unavailable. Try again.",
   starter: "Continue asking",
   starterToggle: "Toggle question examples",
-  openDeep: "Open as View",
   chatReminderKicker: "Chat Mode",
   chatReminderTitle: "Bring a report into memory, then start the conversation",
   chatReminderBody: "Chat Mode can explain, summarize, compare side by side, and suggest actions based on memory content.",
@@ -290,14 +286,6 @@ function handleReminderInteraction(event: MouseEvent): void {
         v-html="currentResult.recommendationHtml"
       ></div>
 
-      <button
-        v-if="openDeepAvailable && currentResult?.ok"
-        type="button"
-        class="chatbot-chat-open-deep"
-        data-chatbot-action="open-chat-deep"
-        @click="emit('open-deep')"
-      >{{ copy.openDeep }}</button>
-
       <FeedbackForm
         v-if="!hasPerAnswerFeedback"
         :language="language"
@@ -317,8 +305,8 @@ function handleReminderInteraction(event: MouseEvent): void {
             @keydown.enter.exact.prevent="emit('submit')"
           >
         </div>
-        <button v-if="loading" type="button" data-chatbot-action="stop" @click="emit('stop')">{{ copy.stop }}</button>
-        <button v-else type="submit" data-chatbot-action="send">{{ copy.send }}</button>
+        <button v-if="loading" type="button" class="chatbot-chat-send is-stopping" data-chatbot-action="stop" @click="emit('stop')">{{ copy.stop }}</button>
+        <button v-else type="submit" class="chatbot-chat-send" data-chatbot-action="send">{{ copy.send }}</button>
       </form>
     </section>
     </div>
