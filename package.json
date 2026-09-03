@@ -1,0 +1,20 @@
+{
+  "name": "offer-intelligence-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:copilotkit": "node --test scripts/test_copilotkit_runtime.mjs"
+  },
+  "dependencies": {
+    "@ag-ui/client": "0.0.59",
+    "@copilotkit/runtime": "1.70.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

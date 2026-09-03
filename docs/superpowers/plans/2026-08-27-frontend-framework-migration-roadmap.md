@@ -8,7 +8,7 @@
 
 **技术栈：** Vue 3、TypeScript、Vite、Vitest、Vue Test Utils、`happy-dom`、现有 Python 3.12 服务、现有 Vercel Python Functions、现有 Node 22 CI、现有原生 JavaScript 回归脚本；运行时不引入 Pinia、Vue Router、组件库或 CSS 框架，除非后续独立 ADR 证明必要。
 
-> **最近更新：** 2026-09-02；M6 Chatbot/Agent 已恢复为 `dual` / Legacy-first，Modern 仅在显式 true 时用于逐页对照，并已复用原版结构与样式类；代码级回归完成，最终浏览器视觉与真实接口验收待用户执行。同时保留 M5 Tier Move 生产边界、移动交互、Tier 1 additions 预加载一致性和公开 Sites version 14 记录；`test_chatbot_intent_flow.mjs` 的历史性超时继续单独记录。
+> **最近更新：** 2026-09-03；在 `ec979ea` / PR #184 最新 Agent/Chatbot 外观基线上，独立 Vue Agent 已接入按需 `@copilotkit/vue`、真实 `/api/copilotkit` Runtime 与 Python `/api/chat/agui`，生产默认使用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 保留紧急回退。Python registry、plan proof、批次、replan 和 synthesis 仍为唯一权威；Chatbot/Deep Window 未在本次切换。
 
 ## 全局约束
 
@@ -992,7 +992,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
 | M4 Shell 与低风险页面 | 已验证 | M4 的功能、视觉和交互验收由用户于 2026-09-01 确认完成；Payments、Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 均已由 Vue modern root 接管并完成 `dual → modern` 安全放行；本轮新增共享 `AppShell` 导航状态、主题持久化和页面标题同步，保留 legacy 侧边栏、移动端导航和各页 legacy fallback；自动化测试、typecheck、build、页面契约和 diff check 通过 |
 | M5 Targets/Category/Tier | 已验证 | M5 的固定 fixture、桌面/移动、关键控件、导出及其余验收由用户于 2026-09-01 确认完成；Targets、Category、Tier 已完成 `dual → modern` 安全放行并接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；公开 Sites version 14 的 Tier Move API 边界、共享保存 busy/aria-busy、移动弹窗、Tier 1 additions 预加载和页面回归均通过，legacy fallback 继续保留 |
-| M6 Chatbot/Agent | 代码已验证，视觉待用户验收 | Chatbot/Agent modern roots、factory、完整 Legacy 路由 bridge、共享 SSE/Markdown、来源刷新、Deep Window、Memory recommendation、反馈/日志/onboarding、时间线/停止和结构化记忆隐私边界继续保留；当前页面为 `dual` / Legacy-first，只有显式设置 parity 开关为 true 才进入复用原版结构类的 Modern 对照页。最终真实浏览器登录、数据、视觉、操作和 SSE 验收由用户执行；`test_chatbot_intent_flow.mjs` 历史性超时仍单独记录 |
+| M6 Chatbot/Agent | Agent Runtime 已切换；Chatbot 后续继续 | Agent 保留 PR #184 最新 YeahPromos Vue 外观，通过独立按需 bundle 使用 CopilotKit `useAgent`；Node Runtime 验证 `oi_session` 后用内部 token 转发到 Python AG-UI。Python registry/proof 是唯一权威，legacy 可由 `OI_AGENT_RUNTIME_MODE=legacy` 回退。Chatbot Report/Chat、Deep Window 与完整真实生产验收仍按后续 M6 任务推进。 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
 | M8 部署切换 | 未开始 | Vercel 仍无前端 build command |
 
@@ -1174,3 +1174,11 @@ Roadmap 获确认后，从 M0 开始执行；当前 M0–M5 的既有实现与�
 - Agent：Vue 工作区接收 planning/tool/synthesis 受控时间线、partial/omitted、可见流式回答、停止、失败状态和结构化记忆；服务端工具执行、Agent v2 校验、问题日志与 Trace 继续通过窄 Legacy bridge 保持既有协议和隐私边界。
 - 自动化验证：本次原版结构对齐通过 12 个相关 Vitest 文件/52 项、Vite build、`node --check public/app.js`、M6 parity/mount/cutover、Chat Agent 33 场景及关键 Chatbot/Agent Legacy 回归；完整 typecheck 仅被任务开始前已有的未跟踪 M7 session 文件阻断。
 - 未完成项：最终真实浏览器登录、数据、视觉、交互和 SSE 网络验收由用户执行；`test_chatbot_intent_flow.mjs` 仍存在历史性超时，不能作为通过证据。验收前不恢复 Modern-first，也不进入 Chatbot/Agent legacy 删除。
+
+**M6 CopilotKit Runtime 切换记录（2026-09-03）：**
+
+- 基线：先同步 `ec979ea`（PR #184），AgentPage、AgentTimeline 和 `agent.css` 的冲突全部采用最新视觉实现，再在外层接入无默认 UI 的 Provider。
+- 前端：`@copilotkit/vue@1.70.0` 单独生成 `oi-agent-runtime.js`，只有进入 Agent 页面才加载；主 `oi-modern.js` 不包含 CopilotKit。
+- Runtime：`@copilotkit/runtime@1.70.0` + `@ag-ui/client@0.0.59` 提供真实 `/api/copilotkit` multi-route，使用现有会话 HMAC 鉴权，禁止转发 Cookie、Authorization 与 `x-*` 头。
+- Python：`/api/chat/agui` 只接受 `OI_COPILOT_INTERNAL_TOKEN`（未设置时延续 `OI_SESSION_SECRET`），发出标准 AG-UI SSE，不使用 `[DONE]`；registry、proof、每批 4/总计 6、一次 replan 与 proof-bound synthesis 保持不变。
+- 默认与回退：认证 bootstrap 默认返回 `agentRuntime.enabled=true`；`OI_AGENT_RUNTIME_MODE=legacy` 或 `OI_AGENT_ENABLED=0` 可回退/关闭，不需要更换现有 DeepSeek/Anthropic 密钥接口。

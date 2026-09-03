@@ -1,4 +1,6 @@
-import { createApp, h } from "vue";
+import * as VueRuntime from "vue";
+import { createApp, defineAsyncComponent, defineComponent, h } from "vue";
+import type { Component } from "vue";
 
 import "./shared/styles/modern-root.css";
 import "./features/offer-tracker/offerTracker.css";
@@ -76,12 +78,52 @@ import ChatbotPage from "./features/chatbot/ChatbotPage.vue";
 import type { ChatbotChatRunner } from "./features/chatbot/chatbotViewTypes";
 import AgentPage, { type AgentRunner } from "./features/agent/AgentPage.vue";
 import type { AgentMemoryEvent } from "./features/agent/agentModel";
+import { normalizeAgentResultViews } from "./shared/contracts/agentResult";
 import AppShell from "./shell/AppShell.vue";
 import type { AppShellController } from "./shell/appShellContracts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+window.OI_VUE_RUNTIME = VueRuntime;
+
+let copilotKitComponentPromise: Promise<Component> | null = null;
+
+function loadCopilotKitAgentComponent(): Promise<Component> {
+  if (window.OI_COPILOTKIT_AGENT_COMPONENT) return Promise.resolve(window.OI_COPILOTKIT_AGENT_COMPONENT);
+  if (copilotKitComponentPromise) return copilotKitComponentPromise;
+  copilotKitComponentPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "./assets/modern/oi-agent-runtime.js?v=20260903-copilotkit";
+    script.async = true;
+    script.onload = () => window.OI_COPILOTKIT_AGENT_COMPONENT
+      ? resolve(window.OI_COPILOTKIT_AGENT_COMPONENT)
+      : reject(new Error("CopilotKit Agent bundle did not register its component"));
+    script.onerror = () => reject(new Error("CopilotKit Agent bundle could not be loaded"));
+    document.head.appendChild(script);
+  });
+  return copilotKitComponentPromise;
+}
+
+const CopilotKitAgentHost = defineAsyncComponent({
+  loader: loadCopilotKitAgentComponent,
+  delay: 0,
+  timeout: 20_000,
+  errorComponent: defineComponent({
+    name: "CopilotKitAgentFallback",
+    inheritAttrs: false,
+    setup(_, { attrs }) {
+      return () => h(AgentPage, {
+        language: attrs.language,
+        run: attrs.fallbackRun,
+        session: attrs.fallbackSession,
+        storage: attrs.storage,
+        autoFocus: false
+      } as never);
+    }
+  })
+});
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : String(value ?? "").trim();
@@ -888,7 +930,8 @@ const modernAgentRunner: AgentRunner = async (request) => {
   }
   return {
     ...result,
-    memoryEvents: modernAgentMemoryEvents(result.memoryEvents)
+    memoryEvents: modernAgentMemoryEvents(result.memoryEvents),
+    resultViews: normalizeAgentResultViews(result.resultViews)
   };
 };
 
@@ -923,15 +966,18 @@ const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
 const agentFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
+  const runtime = window.OI_COPILOTKIT_RUNTIME;
+  const copilotKitEnabled = runtime?.enabled === true && runtime.authority === "python-registry";
   const app = createApp({
     name: "ModernAgentMount",
     setup() {
-      return () => h(AgentPage, {
+      return () => h(CopilotKitAgentHost, {
         language: i18n.language.value,
-        run: modernAgentRunner,
-        session: window.OI_LEGACY_BRIDGE?.agentSession,
+        endpoint: runtime?.endpoint || "/api/copilotkit",
+        enabled: copilotKitEnabled,
+        fallbackRun: modernAgentRunner,
+        fallbackSession: window.OI_LEGACY_BRIDGE?.agentSession,
         storage: browserStorage(),
-        autoFocus: false
       });
     }
   });

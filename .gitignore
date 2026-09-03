@@ -19,7 +19,8 @@ output/playwright/
 .pytest_cache
 .agents/
 skills-lock.json
-package-lock.json
+node_modules/
+!package-lock.json
 !frontend/package-lock.json
 frontend/node_modules/
 public/assets/modern/

@@ -321,6 +321,12 @@
       const session = await fetchJson("/api/auth/session");
       window.__OI_LLM_ENABLED = session.llmEnabled !== false;
       window.__OI_AGENT_ENABLED = session.agentEnabled !== false;
+      window.OI_COPILOTKIT_RUNTIME = session.agentRuntime || {
+        enabled: false,
+        endpoint: "/api/copilotkit",
+        authority: "python-registry",
+        fallback: "legacy"
+      };
       await unlockDashboard();
     } catch (error) {
       if (error.status === 503) {
@@ -350,6 +356,12 @@
       });
       window.__OI_LLM_ENABLED = loginResult.llmEnabled !== false;
       window.__OI_AGENT_ENABLED = loginResult.agentEnabled !== false;
+      window.OI_COPILOTKIT_RUNTIME = loginResult.agentRuntime || {
+        enabled: false,
+        endpoint: "/api/copilotkit",
+        authority: "python-registry",
+        fallback: "legacy"
+      };
       if (password) password.value = "";
       await unlockDashboard();
     } catch (error) {

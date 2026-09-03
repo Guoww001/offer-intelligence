@@ -5,7 +5,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_HOBBY_FUNCTIONS = 12
-TARGET_FUNCTIONS = 6
+TARGET_FUNCTIONS = 7
 FUNCTION_EXTENSIONS = {
     ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts",
     ".py", ".go", ".rs", ".rb", ".wasm",
@@ -45,6 +45,7 @@ def main():
         "api/auth/index.py",
         "api/chat/actions.py",
         "api/chat/stream.py",
+        "api/copilotkit/[...path].js",
         "api/db/index.py",
         "api/levanta/payments.py",
         "api/tier_moves.py",
@@ -84,6 +85,8 @@ def main():
         "^/api/auth/session/?$": ("/api/auth/index", "x-oi-auth-route", "session"),
         "^/api/chat/classify/?$": ("/api/chat/actions", "x-oi-chat-route", "classify"),
         "^/api/chat/analyze/?$": ("/api/chat/actions", "x-oi-chat-route", "analyze"),
+        "^/api/chat/agent/?$": ("/api/chat/actions", "x-oi-chat-route", "agent"),
+        "^/api/chat/agui/?$": ("/api/chat/actions", "x-oi-chat-route", "agui"),
     }
     configured_routes = config.get("routes", [])
     for source, (destination, header_name, route_name) in expected_routes.items():
@@ -126,6 +129,7 @@ def main():
         "api/auth/index.py": dict(common_config),
         "api/chat/actions.py": dict(common_config),
         "api/chat/stream.py": dict(common_config),
+        "api/copilotkit/[...path].js": {"maxDuration": 60},
         "api/db/index.py": {
             "excludeFiles": common_excludes,
             "maxDuration": 60,

@@ -14419,6 +14419,99 @@ var _NUMERIC_COL_PATTERNS = [
     };
   }
 
+  // Build a bounded, text-only UI projection locally. This adds no model turn
+  // and keeps the Python-bound payload and the rendered component independent.
+  function agentResultViewFromToolItem(item) {
+    item = item && typeof item === "object" ? item : {};
+    var result = item.result && typeof item.result === "object" ? item.result : {};
+    var toolName = String(item.name || "unknown").trim().slice(0, 64);
+    var callId = String(item.id || toolName).trim().slice(0, 120);
+    var meta = agentTraceDataMeta(result);
+    var data = result.ok === true ? agentToolPromptData(toolName, result.data) : {};
+    function text(value, limit) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/<[^>]*>/g, "").trim().slice(0, limit || 120);
+    }
+    function scalar(value) {
+      if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+      if (typeof value === "string" || typeof value === "boolean") return text(value, 80);
+      return "";
+    }
+    function metrics(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      return Object.keys(value).slice(0, 8).map(function (key) {
+        var metric = scalar(value[key]);
+        return metric ? { label: text(key, 80), value: metric } : null;
+      }).filter(Boolean);
+    }
+    var view = {
+      id: callId,
+      toolName: toolName,
+      kind: result.ok === true ? "summary" : "status",
+      status: result.ok === true ? "done" : "error",
+      title: text(data.headline || agentToolLabel(toolName, state.language || "zh"), 180),
+      source: meta.dataSource,
+      dataAsOf: meta.dataAsOf ? text(meta.dataAsOf, 48) : null,
+      estimated: meta.estimated === true,
+      partial: false,
+      metrics: [],
+      columns: [],
+      rows: [],
+      message: result.ok === true ? "" : text(result.error || result.errorCode || "Tool execution failed", 800)
+    };
+    if (result.ok !== true) return view;
+
+    var metricSource = data.metrics || data.aggregates || data.summary;
+    view.metrics = metrics(metricSource);
+    if (view.metrics.length) view.kind = "metric";
+
+    var rows = [];
+    if (toolName === "trend" && Array.isArray(data.months)) {
+      var trendMetrics = Array.isArray(data.metrics) ? data.metrics.slice(0, 4).map(function (key) { return text(key, 80); }) : [];
+      view.kind = "table";
+      view.columns = trendMetrics;
+      rows = data.months.slice(0, 16).map(function (row) {
+        return {
+          label: text(row && row.month, 120),
+          values: trendMetrics.map(function (key) { return scalar(row && row[key]); })
+        };
+      });
+    } else if (toolName === "payment_status" && Array.isArray(data.rows)) {
+      view.kind = "table";
+      view.columns = ["Tier", "Month", "Status", "Remaining"];
+      rows = data.rows.slice(0, 16).map(function (row) {
+        return {
+          label: text(row && row.merchant, 120),
+          values: [row && row.tier, row && row.month, row && row.status, row && row.remaining].map(scalar)
+        };
+      });
+    } else if (toolName === "tier_analysis" && Array.isArray(data.merchants)) {
+      view.kind = "table";
+      view.columns = ["Tier", "Category", "EPC", "Revenue"];
+      rows = data.merchants.slice(0, 16).map(function (row) {
+        return {
+          label: text(row && row.merchant, 120),
+          values: [row && row.tier, row && row.category, row && row.epc, row && row.revenue].map(scalar)
+        };
+      });
+      view.partial = !!(data.merchantList && data.merchantList.hasMore);
+      if (view.partial) view.status = "partial";
+    } else if ((toolName === "merchant_comparison" || toolName === "category_comparison") && Array.isArray(data.entities)) {
+      var group = toolName === "merchant_comparison" ? "metrics" : "averages";
+      var first = data.entities[0] && data.entities[0][group];
+      var columns = first && typeof first === "object" ? Object.keys(first).slice(0, 6) : [];
+      view.kind = "table";
+      view.columns = columns.map(function (key) { return text(key, 80); });
+      rows = data.entities.slice(0, 8).map(function (row) {
+        var values = row && row[group] && typeof row[group] === "object" ? row[group] : {};
+        return { label: text(row && row.name, 120), values: columns.map(function (key) { return scalar(values[key]); }) };
+      });
+    }
+    view.rows = rows.filter(function (row) { return row.label && row.values.some(Boolean); });
+    if (view.kind === "table" && !view.rows.length) view.kind = view.metrics.length ? "metric" : "summary";
+    return view;
+  }
+
   function buildAgentSynthesisRequest(prompt, language, memoryText, history, toolResults, run, traceContext) {
     run = run || {};
     var request = {
@@ -31949,6 +32042,19 @@ var _NUMERIC_COL_PATTERNS = [
     return window.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true && modernChatbotAgentBridgeAvailable();
   }
 
+  function modernAgentRuntimeEnabled() {
+    var config = window.OI_COPILOTKIT_RUNTIME;
+    var bridge = window.OI_LEGACY_BRIDGE;
+    return Boolean(
+      config
+      && config.enabled === true
+      && config.authority === "python-registry"
+      && bridge
+      && typeof bridge.executeAgentTool === "function"
+      && modernChatbotAgentBridgeAvailable()
+    );
+  }
+
   function switchPage(page) {
     const previousPage = state.page;
     if (previousPage === "dashboard" && page !== "dashboard") {
@@ -32230,7 +32336,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (isDashboard && !modernChatbotAgentParityEnabled()) {
       renderAll();
     }
-    if (isAgent && modernChatbotAgentParityEnabled()) {
+    if (isAgent && (modernAgentRuntimeEnabled() || modernChatbotAgentParityEnabled())) {
       const modernRoot = document.getElementById("agentModernRoot");
       const modernApp = window.OI_MODERN_APP;
       let modernMounted = false;
@@ -32282,7 +32388,7 @@ var _NUMERIC_COL_PATTERNS = [
         renderAgentPageWelcomeIfIdle();
       }
     }
-    if (isAgent && !modernChatbotAgentParityEnabled()) {
+    if (isAgent && !modernAgentRuntimeEnabled() && !modernChatbotAgentParityEnabled()) {
       renderAgentPageWelcomeIfIdle();
     }
     if (isPayments) {
@@ -35672,6 +35778,31 @@ var _NUMERIC_COL_PATTERNS = [
     deepWindows: legacyDeepWindows,
     runChat: (request) => runModernChat(request),
     runAgent: (request) => runModernAgent(request),
+    executeAgentTool: async (request) => {
+      request = request && typeof request === "object" ? request : {};
+      var toolName = String(request.toolName || "").trim().slice(0, 64);
+      var args = request.arguments && typeof request.arguments === "object" ? request.arguments : {};
+      var callId = String(request.callId || "").trim().slice(0, 128);
+      var result;
+      try {
+        result = await agentExecuteTool(toolName, args, {
+          prompt: String(request.prompt || "").slice(0, AGENT_PROMPT_CHARS),
+          signal: request.signal || null
+        });
+      } catch (error) {
+        result = {
+          ok: false,
+          errorCode: request.signal && request.signal.aborted ? "stopped_by_user" : "tool_error",
+          error: error && error.message ? String(error.message).slice(0, 240) : "Tool execution failed"
+        };
+      }
+      var item = { id: callId, name: toolName, arguments: args, result: result };
+      return {
+        toolResult: projectAgentToolResultForServer(item),
+        memoryEvent: agentMemoryEventFromToolItem(item, request.prompt || "", { partial: false }),
+        resultView: agentResultViewFromToolItem(item)
+      };
+    },
     download: (type, payload) => (
       type === "offer-tracker"
         ? downloadModernOfferTracker(payload)
@@ -35692,6 +35823,7 @@ var _NUMERIC_COL_PATTERNS = [
       agentEnabledToolNames,
       buildAgentPlanningRequest,
       projectAgentToolResultForServer,
+      agentResultViewFromToolItem,
       buildAgentSynthesisRequest,
       agentExecuteTool,
       renderAgentTrendChartHtml,

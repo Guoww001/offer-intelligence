@@ -32,10 +32,9 @@ assert(
   /isDashboard\s*&&\s*modernChatbotAgentParityEnabled\s*\(\)/.test(appSource),
   "Dashboard 未通过 parity 闸门时必须继续使用 Legacy 页面"
 );
-assert(
-  /isAgent\s*&&\s*modernChatbotAgentParityEnabled\s*\(\)/.test(appSource),
-  "Agent 未通过 parity 闸门时必须继续使用 Legacy 页面"
-);
+assert(/function\s+modernAgentRuntimeEnabled\s*\(/.test(appSource), "生产 Agent 必须有独立 CopilotKit Runtime 闸门");
+assert(/config\.enabled\s*===\s*true/.test(appSource) && /config\.authority\s*===\s*"python-registry"/.test(appSource), "生产 Agent 只允许 Python registry 权威的 Runtime");
+assert(/isAgent\s*&&\s*\(modernAgentRuntimeEnabled\(\)\s*\|\|\s*modernChatbotAgentParityEnabled\(\)\)/.test(appSource), "生产 Agent 必须默认挂载 Modern CopilotKit 页面");
 assert(
   /runChatAgent\(/.test(appSource) && /streamAssistantReply\(/.test(appSource),
   "Legacy Chatbot/Agent 核心执行链不能被迁移切片删除"
@@ -78,4 +77,4 @@ assert(/renderMarkdownToHtml/.test(agentPageSource), "Agent 回答必须复用�
 
 assert(/downloadRecommendation/.test(contractsSource + chatbotPageSource + appSource), "Report/Deep Window 下载必须继续调用 Legacy recommendation export");
 
-console.log("PASS: Chatbot/Agent behavior parity gate keeps Legacy-first with explicit Modern preview");
+console.log("PASS: Chatbot stays parity-gated while Agent defaults to Python-authoritative CopilotKit");

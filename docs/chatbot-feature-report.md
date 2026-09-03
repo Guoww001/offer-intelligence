@@ -1,6 +1,6 @@
 # Chatbot 完整档案
 
-> 更新日期：2026-09-02 · 分支：`frontend-vue-migration`
+> 更新日期：2026-09-03 · 分支：`FRONTEND-VUE-MIGRATION`
 
 ## 1. 概述
 
@@ -28,15 +28,15 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 >
 > Chat Mode 面对商户、品类、Tier、趋势和媒体等不同分析类型的内容与边界，见 [Chat Mode 不同分析类型说明](chat-mode-analysis-types.md)。
 
-> M6 状态修正（2026-09-02）：`#chatbotModernRoot` 与 `#agentModernRoot` 继续由 `frontend/src/entry.ts` 注册，但 `public/app.js:switchPage()` 已恢复 Legacy-first。只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且 factory/bridge 可用时，才挂载 Modern 对照页；否则使用 Legacy 页面。Modern Chatbot/Agent 已改为复用原版结构、类名与样式体系，服务端执行、完整 Report 路由、来源刷新、SSE、问题日志、反馈、Trace、下载和 Deep Window 交互仍通过受控 bridge 复用既有 Legacy 链路。当前 `dashboard`/`agent` 状态为 `dual`，自动化验证不替代最终浏览器视觉与真实接口验收；`test_chatbot_intent_flow.mjs` 的历史性超时继续单独记录。
+> M6 Runtime 切换（2026-09-03）：独立 Vue Agent 沿用 PR #184 的 YeahPromos 双栏工作区与执行摘要外观，默认通过按需加载的 `@copilotkit/vue` Provider 连接真实 `/api/copilotkit` 多路由 Runtime；Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，并通过内部 token 调用 Python `/api/chat/agui`。Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。`OI_AGENT_RUNTIME_MODE=legacy` 可恢复旧 session bridge；Chatbot Report/Chat 与 Deep Window 本次不切换。
 
-### M6 Legacy-first 与 Modern 对照边界（2026-09-02）
+### M6 CopilotKit Agent 与 Legacy 回退边界（2026-09-03）
 
 - Report Mode 通过 `applyPrompt()` 和 `loadLiveChatbotData()` 复用 merchant、ASIN、category、Tier、recommendation、payment、analysis/trend、keyword、publisher 和 publisher profile 路由；来源状态只暴露 `cache`、`db` 或不可用。
 - Chat Mode 复用 Legacy 的 Report Memory、Memory recommendation、`/api/chat/stream` 逐 token/fallback/停止链路、反馈、问题日志、帮助、指南和 onboarding；成功回答才进入历史，停止/失败本轮不进入正式历史。
 - Deep Window 通过受控操作保留 quick/deep、多窗口、拖动、置顶、最小化/恢复、关闭/取消、图表指标/分类/列控制、clone、overlay、导出和加入对话；完成的 Legacy panel 不因 Modern 页面卸载而误删。
-- Agent 通过 session bridge 复用 `runChatAgent()` 的 planning、tool batch、retry、partial/omitted、synthesis 和 Trace；Vue 接收 token 与安全 timeline metadata，Memory event 和 snapshot 经过字段白名单处理，不暴露 `planProof`、工具 payload 或 Trace 内容。
-- 当前证据边界：组件测试、静态契约、类型检查、构建和 Legacy/bridge 回归用于证明结构与代码行为；真实登录数据、视觉几何、实际 SSE 网络和完整交互的最终验收由用户执行。Modern 对照页不作为默认生产视图。
+- Agent 默认由 CopilotKit `useAgent` 管理运行与停止；Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
+- CopilotKit bundle 与主 `oi-modern.js` 分离，只在进入 Agent 页面时加载；CopilotKit 默认 Sidebar 与全局样式不作为页面 UI。真实登录数据、视觉几何与生产网络仍需在部署后验收。
 
 ### 2026-09-03 Chatbot Legacy-first 对齐落地
 
@@ -402,13 +402,16 @@ Agent 规划入口使用 `v2` 请求协议，服务端从 `agent_tool_registry.p
 | `/api/chat/classify` | POST | `handle_llm_classify()` | body ≤2KB，调用 `classify_intent()` |
 | `/api/chat/analyze` | POST | `handle_llm_analyze()` | body ≤8KB，调用 `generate_analysis_text()` |
 | `/api/chat/agent` | POST | `handle_agent_request()` | v2 规划请求；服务端注册表、参数校验和 HMAC 计划证明 |
+| `/api/chat/agui` | POST | `handle_agui_request()` | 仅 Runtime 内部 token；AG-UI 规划、工具 continuation 与 proof-bound synthesis |
 | `/api/chat/stream` | POST | `handle_chat_stream()` | 普通 Chat 使用 `prompt/history`；Agent 综合使用 v2 结构化结果 |
+| `/api/copilotkit/*` | GET/POST | Node `CopilotRuntime` | `oi_session` 鉴权；默认 Agent 连接 Python AG-UI，不接收 LLM 密钥 |
 
 ### 8.4 api/chat/ — Vercel Serverless
 
 ```
-api/chat/actions.py   -> class handler: trusted route header -> classify/analyze/agent
+api/chat/actions.py   -> class handler: trusted route header -> classify/analyze/agent/agui
 api/chat/stream.py    -> class handler: SSE stream (50s graceful deadline)
+api/copilotkit/[...path].js -> Node CopilotKit multi-route handler
 ```
 
 `api/chat/actions.py` 的 Agent 路由与本地 `/api/chat/agent` 共同调用 `chat_agent_http.handle_agent_request()`；两个综合入口共同调用 `agent_contract.validate_synthesis_request()`、`validate_bound_tool_results()` 和 `build_synthesis_messages()`。`llm_provider.stream_chat(messages=...)` 的 `messages` 参数仅接收服务端已经组装的内部消息。
@@ -436,6 +439,9 @@ api/chat/stream.py    -> class handler: SSE stream (50s graceful deadline)
 |------|------|
 | `OI_LLM_ENABLED` | `0` → 禁用 LLM，全正则 |
 | `OI_AUTH_ENABLED` | `0` → 跳过登录 |
+| `OI_AGENT_RUNTIME_MODE` | `copilotkit`（默认）或 `legacy` 紧急回退 |
+| `OI_COPILOT_INTERNAL_TOKEN` | Node Runtime 调用 Python AG-UI 的专用 token；未设置时沿用 `OI_SESSION_SECRET` |
+| `OI_AGENT_AGUI_URL` | 可选的 Python AG-UI 内部 URL；默认同部署 `/api/chat/agui` |
 | `OI_SESSION_SECRET` | Session Cookie 签名密钥 |
 | `OI_ADMIN_USERNAME` | 管理员用户名 |
 | `OI_ADMIN_PASSWORD_HASH` | 管理员密码哈希 |
@@ -575,8 +581,9 @@ llm_classify.py               ← 意图分类 + 分析文字生成编排层
 server.py                     ← 本地服务器（/api/chat/* 路由）
 auth.py                       ← 认证 + llmEnabled 状态
 api/chat/
-|-- actions.py                -> /api/chat/classify + /api/chat/analyze + /api/chat/agent Vercel handler
+|-- actions.py                -> /api/chat/classify + /api/chat/analyze + /api/chat/agent + /api/chat/agui
 `-- stream.py                 -> /api/chat/stream Vercel SSE handler
+api/copilotkit/[...path].js   -> /api/copilotkit authenticated Node Runtime
 skills/
 ├── __init__.py               ← Skill 自动注册
 ├── base.py                   ← IntentSkill / AnalysisSkill 基类 + SkillRegistry

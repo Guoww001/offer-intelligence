@@ -4,8 +4,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import type { UiLanguage } from "../../shared/i18n";
 import type { LegacyAgentSessionBridge, LegacyAgentViewState } from "../../legacy/contracts";
 import { renderMarkdownToHtml } from "../../shared/markdown/markdown";
+import type { AgentResultView as AgentResultViewModel } from "../../shared/contracts/agentResult";
+import { normalizeAgentResultViews } from "../../shared/contracts/agentResult";
 import FeedbackForm from "../chatbot/FeedbackForm.vue";
 import AgentTimeline from "./AgentTimeline.vue";
+import AgentResultView from "./AgentResultView.vue";
 import {
   agentMemoryDisplayText,
   agentMemoryPromptText,
@@ -32,6 +35,7 @@ export interface AgentRunRequest {
   readonly signal: AbortSignal;
   readonly onToken?: (token: string) => void;
   readonly onTimeline?: (step: AgentTimelineStep) => void;
+  readonly onResultView?: (view: AgentResultViewModel) => void;
 }
 
 export interface AgentRunResult {
@@ -42,6 +46,8 @@ export interface AgentRunResult {
   readonly partial?: boolean;
   readonly omittedTargets?: readonly string[];
   readonly memoryEvents?: readonly AgentMemoryEvent[];
+  readonly resultViews?: readonly AgentResultViewModel[];
+  readonly errorCode?: string | null;
 }
 
 export type AgentRunner = (request: AgentRunRequest) => Promise<AgentRunResult>;
@@ -65,6 +71,7 @@ const runStatus = ref<AgentRunStatus>("idle");
 const response = ref("");
 const partial = ref(false);
 const omittedTargets = ref<string[]>([]);
+const resultViews = ref<AgentResultViewModel[]>([]);
 const memory = ref<AgentMemoryState>(emptyAgentMemory());
 const error = ref("");
 const feedbackRefreshKey = ref(0);
@@ -140,12 +147,22 @@ function downloadLogs(kind: "questions" | "feedback", format: "csv" | "jsonl"): 
   props.session?.downloadLogs?.(kind, format);
 }
 
+function upsertResultView(view: unknown): void {
+  const normalized = normalizeAgentResultViews([view])[0];
+  if (!normalized) return;
+  const index = resultViews.value.findIndex((item) => item.id === normalized.id);
+  resultViews.value = index < 0
+    ? [...resultViews.value, normalized].slice(0, 8)
+    : resultViews.value.map((item, itemIndex) => itemIndex === index ? normalized : item);
+}
+
 function syncSessionState(next: LegacyAgentViewState = props.session!.getState()): void {
   runStatus.value = next.status;
   timeline.value = next.steps.map(normalizeAgentTimelineStep);
   response.value = next.response || "";
   partial.value = next.partial;
   omittedTargets.value = next.omittedTargets.slice(0, 20);
+  if (Array.isArray(next.resultViews)) resultViews.value = normalizeAgentResultViews(next.resultViews);
   error.value = next.status === "error" ? copy.value.failed : "";
   const sessionMessages = next.messages || next.history;
   messages.value = sessionMessages.map((message, index) => ({
@@ -174,6 +191,7 @@ async function submit(): Promise<void> {
     error.value = "";
     partial.value = false;
     omittedTargets.value = [];
+    resultViews.value = [];
     timeline.value = [];
     runStatus.value = "running";
     feedbackRefreshKey.value += 1;
@@ -195,8 +213,10 @@ async function submit(): Promise<void> {
           const existing = timeline.value.findIndex((item) => item.id === normalized.id);
           if (existing >= 0) timeline.value[existing] = normalized;
           else timeline.value = [...timeline.value, normalized];
-        }
+        },
+        onResultView: upsertResultView
       });
+      if (result.resultViews?.length) resultViews.value = normalizeAgentResultViews(result.resultViews);
       if (result.status === "error" && !result.response) error.value = copy.value.failed;
       feedbackRefreshKey.value += 1;
       syncSessionState();
@@ -220,6 +240,7 @@ async function submit(): Promise<void> {
   error.value = "";
   partial.value = false;
   omittedTargets.value = [];
+  resultViews.value = [];
   timeline.value = [];
   runStatus.value = "running";
   feedbackRefreshKey.value += 1;
@@ -231,13 +252,22 @@ async function submit(): Promise<void> {
       history: currentHistory,
       memory: memory.value,
       memoryText: agentMemoryPromptText(memory.value, props.language),
-      signal: abortController.signal
+      signal: abortController.signal,
+      onToken: (token) => { response.value += token; },
+      onTimeline: (step) => {
+        const normalized = normalizeAgentTimelineStep(step);
+        const existing = timeline.value.findIndex((item) => item.id === normalized.id);
+        if (existing >= 0) timeline.value[existing] = normalized;
+        else timeline.value = [...timeline.value, normalized];
+      },
+      onResultView: upsertResultView
     });
     timeline.value = result.steps.map(normalizeAgentTimelineStep);
     partial.value = result.partial === true;
     omittedTargets.value = (result.omittedTargets || []).map(String).filter(Boolean).slice(0, 20);
     runStatus.value = result.status;
     response.value = result.response || (result.status === "stopped" ? copy.value.stopped : "");
+    if (result.resultViews?.length) resultViews.value = normalizeAgentResultViews(result.resultViews);
     if (result.status === "done" && result.ok && result.response) {
       messages.value = [...messages.value, { id: nextId("assistant"), role: "assistant", content: result.response }];
     }
@@ -283,6 +313,7 @@ function newConversation(): void {
   error.value = "";
   partial.value = false;
   omittedTargets.value = [];
+  resultViews.value = [];
   feedbackRefreshKey.value += 1;
   memory.value = emptyAgentMemory();
   clearAgentMemory(props.storage);
@@ -412,6 +443,15 @@ onBeforeUnmount(() => {
           >
             <div class="chat-stream-text" v-html="renderAssistant(response)"></div>
           </article>
+
+          <section v-if="resultViews.length" class="agent-modern-results" aria-label="Structured tool results">
+            <AgentResultView
+              v-for="view in resultViews"
+              :key="view.id"
+              :language="language"
+              :view="view"
+            />
+          </section>
 
           <AgentTimeline
             v-if="timeline.length || runStatus !== 'idle'"

@@ -1,11 +1,14 @@
 # Vercel Function Budget
 
-The production project uses six Python Function entrypoints, leaving six slots
-under the Vercel Hobby limit of twelve:
+The production project uses six Python Function entrypoints plus one Node
+Function, leaving five slots under the Vercel Hobby limit of twelve:
 
 - `api/auth/index.py` serves login, logout, and session routes.
-- `api/chat/actions.py` serves classify and analyze; streaming stays isolated in
+- `api/chat/actions.py` serves classify, analyze, Agent planning, and the
+  internal-token-protected Python AG-UI adapter; streaming stays isolated in
   `api/chat/stream.py`.
+- `api/copilotkit/[...path].js` serves the authenticated CopilotKit multi-route
+  Runtime and forwards only to the Python-authoritative AG-UI adapter.
 - `api/db/index.py` serves internal token-protected DB routes and session-protected
   UI DB routes without mixing their authorization models.
 - `api/levanta/payments.py` imports the lightweight `levanta_payments.py` module.
@@ -26,9 +29,9 @@ an unknown or missing route header return `404`.
   `output/`, `public/`, test scripts, workflow files, and `server.py`; static
   assets in `public/` are still emitted separately by `outputDirectory`.
 
-Run `python scripts/test_vercel_function_budget.py` to enforce the exact six-file
-layout, route transforms, packaging boundaries, and the Python 3.12 runtime
-required by the current Vercel Python builder.
+Run `python scripts/test_vercel_function_budget.py` to enforce the exact
+seven-file layout, route transforms, packaging boundaries, Node Runtime config,
+and the Python 3.12 runtime required by the current Vercel Python builder.
 
 After `vercel build --prod`, run
 `python scripts/test_vercel_build_output.py` to inspect the generated

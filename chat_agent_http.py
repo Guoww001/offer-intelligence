@@ -80,6 +80,79 @@ def agent_synthesis_system_prompt(language: str) -> str:
     return SYNTHESIS_PROMPT_EN if language == "en" else SYNTHESIS_PROMPT_ZH
 
 
+def plan_agent_request(body: object, request_bytes: int = 0) -> tuple[int, dict]:
+    """Run the canonical planning contract without coupling it to an HTTP writer."""
+    validated, error = validate_planning_request(body)
+    if error:
+        return int(error.get("status") or 400), public_agent_error_payload(error)
+
+    language = validated["language"]
+    retry = validated.get("retry")
+    if retry:
+        agent_run_id = retry["agentRunId"]
+        previous_proof = verify_plan_proof(retry["previousPlanProof"], agent_run_id, validated["question"])
+        if previous_proof is None:
+            return 409, public_agent_error_payload({
+                "errorCode": "run_binding_failed",
+                "field": "retry.previousPlanProof",
+            })
+        round_number = int(previous_proof.get("round") or 1) + 1
+        if round_number > 2:
+            return 409, public_agent_error_payload({
+                "errorCode": "run_binding_failed",
+                "field": "retry",
+            })
+    else:
+        agent_run_id = create_agent_run_id()
+        round_number = 1
+
+    request_messages = [{"role": "system", "content": agent_planning_system_prompt(language)}]
+    request_messages.extend(build_planning_messages(validated, retry))
+    try:
+        canonical_tools = get_agent_tool_definitions(language, validated["enabledTools"])
+    except ValueError:
+        return 400, public_agent_error_payload({
+            "errorCode": "unsupported_tool",
+            "field": "enabledTools",
+        })
+
+    result = call_llm_tools(
+        request_messages,
+        canonical_tools,
+        max_tokens=400,
+        timeout=AGENT_PLAN_TIMEOUT_SECONDS,
+        temperature=0.1,
+        return_metadata=True,
+    )
+    if result is None:
+        return 200, {
+            "ok": False,
+            "errorCode": "agent_planning_unavailable",
+            "telemetry": {"inputBytes": request_bytes},
+        }
+    telemetry = {
+        "provider": result.get("provider"),
+        "model": result.get("model"),
+        "usageAvailable": bool(result.get("usageAvailable")),
+        "inputTokens": result.get("inputTokens"),
+        "outputTokens": result.get("outputTokens"),
+        "totalTokens": result.get("totalTokens"),
+        "inputBytes": request_bytes,
+        "errorCode": result.get("errorCode"),
+    }
+    if result.get("ok") is False:
+        return 200, {
+            "ok": False,
+            "errorCode": "agent_planning_unavailable",
+            "telemetry": telemetry,
+        }
+    normalized, normalize_error = normalize_planning_result(result, validated, agent_run_id, round_number)
+    if normalize_error:
+        return int(normalize_error.get("status") or 400), public_agent_error_payload(normalize_error)
+    normalized["telemetry"] = telemetry
+    return 200, normalized
+
+
 def handle_agent_request(target) -> None:
     length = int(target.headers.get("Content-Length") or 0)
     if length <= 0 or length > AGENT_MAX_REQUEST_BYTES:
@@ -93,88 +166,5 @@ def handle_agent_request(target) -> None:
     if not isinstance(body, dict):
         send_json(target, 400, {"ok": False, "error": "JSON body must be an object"})
         return
-
-    validated, error = validate_planning_request(body)
-    if error:
-        send_json(target, int(error.get("status") or 400), public_agent_error_payload(error))
-        return
-
-    language = validated["language"]
-    retry = validated.get("retry")
-    if retry:
-        agent_run_id = retry["agentRunId"]
-        previous_proof = verify_plan_proof(retry["previousPlanProof"], agent_run_id, validated["question"])
-        if previous_proof is None:
-            send_json(target, 409, public_agent_error_payload({
-                "errorCode": "run_binding_failed",
-                "field": "retry.previousPlanProof",
-            }))
-            return
-        round_number = int(previous_proof.get("round") or 1) + 1
-        if round_number > 2:
-            send_json(target, 409, public_agent_error_payload({
-                "errorCode": "run_binding_failed",
-                "field": "retry",
-            }))
-            return
-    else:
-        agent_run_id = create_agent_run_id()
-        round_number = 1
-
-    request_messages = [{"role": "system", "content": agent_planning_system_prompt(language)}]
-    request_messages.extend(build_planning_messages(validated, retry))
-    try:
-        canonical_tools = get_agent_tool_definitions(language, validated["enabledTools"])
-    except ValueError:
-        send_json(target, 400, public_agent_error_payload({
-            "errorCode": "unsupported_tool",
-            "field": "enabledTools",
-        }))
-        return
-
-    result = call_llm_tools(
-        request_messages,
-        canonical_tools,
-        max_tokens=400,
-        timeout=AGENT_PLAN_TIMEOUT_SECONDS,
-        temperature=0.1,
-        return_metadata=True,
-    )
-    if result is None:
-        send_json(target, 200, {
-            "ok": False,
-            "errorCode": "agent_planning_unavailable",
-            "telemetry": {"inputBytes": length},
-        })
-        return
-    telemetry = {
-        "provider": result.get("provider"),
-        "model": result.get("model"),
-        "usageAvailable": bool(result.get("usageAvailable")),
-        "inputTokens": result.get("inputTokens"),
-        "outputTokens": result.get("outputTokens"),
-        "totalTokens": result.get("totalTokens"),
-        "inputBytes": length,
-        "errorCode": result.get("errorCode"),
-    }
-    if result.get("ok") is False:
-        send_json(
-            target,
-            200,
-            {
-                "ok": False,
-                "errorCode": "agent_planning_unavailable",
-                "telemetry": telemetry,
-            },
-        )
-        return
-    normalized, normalize_error = normalize_planning_result(result, validated, agent_run_id, round_number)
-    if normalize_error:
-        send_json(target, int(normalize_error.get("status") or 400), public_agent_error_payload(normalize_error))
-        return
-    normalized["telemetry"] = telemetry
-    send_json(
-        target,
-        200,
-        normalized,
-    )
+    status, payload = plan_agent_request(body, length)
+    send_json(target, status, payload)
