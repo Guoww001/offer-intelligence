@@ -258,7 +258,7 @@ function handleReportSummaryKeydown(event: KeyboardEvent): void {
               @keydown="handleCommandKeydown"
             >
           </div>
-          <button type="submit" aria-label="Send" :disabled="loading" data-chatbot-action="report-submit">
+          <button type="submit" class="chatbot-report-send" aria-label="Send" :disabled="loading" data-chatbot-action="report-submit">
             <span>{{ copy.ask }}</span>
           </button>
         </form>

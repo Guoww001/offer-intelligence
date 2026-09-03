@@ -4,6 +4,20 @@ import { describe, expect, it } from "vitest";
 import ChatbotReportView from "./ChatbotReportView.vue";
 
 describe("ChatbotReportView Context", () => {
+  it("exposes a dedicated report send control for the shared button treatment", () => {
+    const wrapper = mount(ChatbotReportView, {
+      props: {
+        language: "zh",
+        prompt: "",
+        result: null,
+        loading: false,
+        error: ""
+      }
+    });
+
+    expect(wrapper.get('[data-chatbot-action="report-submit"]').classes()).toContain("chatbot-report-send");
+  });
+
   it("forwards Legacy trend, column, payment-month, and context actions", async () => {
     const wrapper = mount(ChatbotReportView, {
       props: {
