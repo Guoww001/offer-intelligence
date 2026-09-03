@@ -3,6 +3,7 @@
 > 日期：2026-09-01
 > 目标：在不改变现有数据口径、服务端 Agent 协议、隐私边界和 legacy 回退能力的前提下，将 Chatbot Report/Chat Mode 与独立 Chat Agent 迁移到 Vue/TypeScript modern runtime。
 > 权威依据：`docs/chatbot-feature-report.md`、`docs/superpowers/plans/2026-08-27-frontend-framework-migration-roadmap.md`、当前 `public/app.js`、现有 Node/Python/Vitest 回归。
+> 状态修正（2026-09-02）：用户反馈 Modern 与原版视觉和交互差异较大，当前已撤回 Modern-first 放行。Chatbot/Agent 恢复为 `dual` 与 Legacy-first；只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才进入 Modern 逐页对照，最终视觉验收待用户完成。
 
 ## 现状与边界
 
@@ -36,14 +37,14 @@
 - [x] 任务 6：Deep Window 生命周期（报告/Chat 快速结果、拖动、置顶、最小化/恢复、关闭/取消、图表控制、clone/overlay、导出、加入对话和卸载边界已接入）。
 - [x] 任务 7：Agent modern page（现代工作区、可见流式回答、受控 planning/tool/synthesis 时间线、停止、失败状态、Trace bridge 和结构化记忆已接入；工具执行继续由 Legacy bridge 承担）。
 - [x] 任务 8：onboarding、help、反馈和日志。
-- [x] 任务 9：M6 modern-first 收口与文档（factory、根节点、完整 bridge contract、卸载回退和 Legacy-safe parity 闸门已接入；用户浏览器验收完成后，Chatbot/Agent 已从 `dual` 放行到 `modern`）。
+- [x] 任务 9：M6 dual runtime 收口与文档（factory、根节点、完整 bridge contract、卸载回退和 Legacy-safe parity 闸门已接入；当前保持 `dual` / Legacy-first，Modern 仅用于显式逐页对照）。
 
 ### 当前实现状态（2026-09-02）
 
-- `#chatbotModernRoot` 与 `#agentModernRoot` 已由 `frontend/src/entry.ts` 注册；`public/app.js:switchPage()` 默认尝试现代 factory，成功后显示 Modern 页面，Modern factory 或 bridge 不可用时恢复 Legacy 页面；显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 仅作为回滚开关。
+- `#chatbotModernRoot` 与 `#agentModernRoot` 已由 `frontend/src/entry.ts` 注册；`public/app.js:switchPage()` 默认显示 Legacy 页面。仅当 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true` 且 Modern factory/bridge 可用时显示 Modern 对照页，挂载失败时仍恢复 Legacy。
 - Chatbot 已通过受控 bridge 复用 `applyPrompt()`、`loadLiveChatbotData()`、完整 Report 路由、来源刷新、共享 Markdown/SSE、逐 token、停止、报告记忆、Memory recommendation、反馈/日志/onboarding 和 Deep Window 全部交互；Agent 已接入可见流式回答、planning/tool/synthesis 摘要时间线、partial/omitted、停止、Trace bridge 和结构化记忆。
 - 为保持现有协议，Chat Mode/Agent 的服务端调用、问题日志和 Agent Trace 继续通过受控 `OI_LEGACY_BRIDGE` 复用既有 `runChatAgent()` 与 SSE 链路；Vue 层不复制 `planProof`、工具参数校验或 Trace 敏感字段，Memory snapshot/event 经过字段白名单。
-- 自动化已覆盖现代组件、挂载/卸载、完整 bridge contract、Legacy fallback 和行为 parity；用户已确认真实浏览器登录、数据、视觉、SSE 网络和操作验收，因此 `dashboard`/`agent` 已标记为 `modern`。`test_chatbot_intent_flow.mjs` 仍为历史性超时，不能计为通过。
+- 自动化覆盖现代组件、原版结构类、挂载/卸载、完整 bridge contract、Legacy fallback 和行为 parity；当前 `dashboard`/`agent` 标记为 `dual`，真实浏览器登录、数据、视觉、SSE 网络和完整操作由用户最终验收。`test_chatbot_intent_flow.mjs` 仍为历史性超时，不能计为通过。
 
 ### 任务 0：迁移基线和 modern 挂载边界
 
@@ -301,13 +302,13 @@ git status --short
 
 ## M6 退出门槛
 
-- [x] Chatbot 与 Agent 的 modern factory 已注册且默认挂载成功，失败可回退 legacy；显式 parity 开关仅保留为回滚开关。
+- [x] Chatbot 与 Agent 的 Modern factory 已注册；默认使用 Legacy，显式 parity 开关设为 true 时可挂载 Modern 对照页，失败可回退 Legacy。
 - [x] Chatbot Report/Chat、Deep Window 和 Agent 的核心路径有 Vitest/Node 回归；服务端 Agent/Trace/Python 回归保持通过。
-- [x] `public/app.js` 不再是默认问答、工具、分析或流式渲染执行入口；默认由 Modern 页面承载，Legacy 仅作为 bridge/fallback 保留。
+- [x] `public/app.js` 保持 Legacy 默认执行入口；Modern 对照页通过受控 bridge 复用问答、工具、分析和流式渲染链路。
 - [x] SSE parser 覆盖 chunk、UTF-8、usage、done、abort、timeout、retry 和非 2xx 的代码级边界。
 - [x] memory、Trace、日志和反馈没有扩大隐私或敏感数据边界。
 - [x] `docs/chatbot-feature-report.md`、`docs/frontend-migration-inventory.md`、Roadmap 与实际代码已同步当前状态。
-- [x] 构建、类型检查、差异检查和浏览器真实验收通过；`test_chatbot_intent_flow.mjs` 的历史性超时继续单独记录。
+- [ ] 本次 Legacy-first 对齐的相关 Vitest、构建和差异检查已通过；完整 typecheck 仅被任务开始前已有的未跟踪 M7 session 文件阻断。浏览器真实验收由用户完成；`test_chatbot_intent_flow.mjs` 的历史性超时继续单独记录。
 
 ## 本轮执行记录
 
@@ -319,4 +320,4 @@ git status --short
 - `test_chatbot_answer_feedback_frontend.mjs` 与 `test_chatbot_intent_picker.mjs` 仍受现有 `styles.css` cache-version 断言影响（测试要求旧版本号，当前入口使用 `20260901`）；该基线断言未改生产版本，也未将其计入通过项。
 - `test_chatbot_intent_flow.mjs` 本轮运行超过 60 秒无输出并留下高 CPU Node 进程；已确认是该测试进程并停止。该脚本仍记为未完成验证，不能作为 M6 通过证据。
 - Agent timeline/stop 两个旧测试的失败根因是 Windows CRLF 与只匹配 LF 的测试正则；已在测试读取源码时统一换行，未修改生产 CSS 或 Agent 行为。
-- 用户已完成浏览器登录、真实数据、视觉几何、SSE 实际网络和完整 Chatbot/Agent 操作验收；本轮完成 Modern-first 放行，Legacy fallback 仍保留。
+- 当前已撤回 Modern-first 放行并恢复 Legacy-first；Modern 复用原版结构与样式类作为显式对照页保留。浏览器登录、真实数据、视觉几何、SSE 实际网络和完整 Chatbot/Agent 操作由用户重新验收。

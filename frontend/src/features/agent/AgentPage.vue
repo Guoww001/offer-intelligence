@@ -68,7 +68,7 @@ const omittedTargets = ref<string[]>([]);
 const memory = ref<AgentMemoryState>(emptyAgentMemory());
 const error = ref("");
 const feedbackRefreshKey = ref(0);
-const inputRef = ref<HTMLTextAreaElement | null>(null);
+const inputRef = ref<HTMLInputElement | null>(null);
 let abortController: AbortController | null = null;
 let stopSessionSubscription: (() => void) | null = null;
 let idCounter = 0;
@@ -86,6 +86,14 @@ const copy = computed(() => props.language === "zh" ? {
   welcomeTitle: "你想查询什么？",
   welcomeBody: "可以询问商户分析、品类对比、付款状态或多月趋势。",
   example: "查询 Tapo（ID398679）的 EPC 和 conversion",
+  exampleLabel: "示例问题",
+  capabilities: "能力",
+  dataAgent: "数据 Agent",
+  merchantAnalysis: "商户分析",
+  categoryTier: "品类与 Tier",
+  comparisons: "对比分析",
+  paymentTrends: "付款与趋势",
+  railNote: "仅进行只读分析。原始 Report Mode 流程与 Deep Window 报告请使用 Chatbot。",
   restored: agentMemoryDisplayText(memory.value, "zh"),
   stopped: "本次 Agent 执行已停止。",
   failed: "Agent 暂时不可用，请稍后重试。"
@@ -102,6 +110,14 @@ const copy = computed(() => props.language === "zh" ? {
   welcomeTitle: "What would you like to query?",
   welcomeBody: "Ask for a merchant analysis, category comparison, payment status, or a multi-month trend.",
   example: "Look up EPC and conversion for Tapo (ID398679)",
+  exampleLabel: "Example prompt",
+  capabilities: "Capabilities",
+  dataAgent: "Data Agent",
+  merchantAnalysis: "Merchant analysis",
+  categoryTier: "Category and tier",
+  comparisons: "Comparisons",
+  paymentTrends: "Payments and trends",
+  railNote: "Read-only analysis. Use Chatbot for the original Report Mode workflow and Deep Window reports.",
   restored: agentMemoryDisplayText(memory.value, "en"),
   stopped: "This Agent run was stopped.",
   failed: "The Agent is temporarily unavailable. Please try again."
@@ -296,15 +312,23 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="oi-modern-page agent-modern-page" data-page="agent">
-    <header class="agent-modern-header">
-      <div class="agent-modern-heading">
-        <span class="agent-modern-eyebrow">{{ copy.eyebrow }}</span>
-        <h1>{{ copy.title }}</h1>
+  <main class="agent-modern-page" data-page="agent">
+    <header class="agent-page-header">
+      <div class="agent-page-heading">
+        <div class="agent-page-title-row">
+          <span class="agent-page-title-mark" aria-hidden="true"><span></span></span>
+          <div>
+            <span class="agent-page-kicker">{{ copy.eyebrow }}</span>
+            <h2>{{ copy.title }}</h2>
+          </div>
+          <span class="agent-page-status-chip">
+            <span class="agent-page-status-dot" aria-hidden="true"></span>
+            <span>{{ copy.readOnly }}</span>
+          </span>
+        </div>
         <p>{{ copy.subtitle }}</p>
       </div>
-      <div class="agent-modern-header-actions">
-        <span class="agent-modern-readonly"><span aria-hidden="true"></span>{{ copy.readOnly }}</span>
+      <div class="agent-page-actions">
         <details v-if="session?.downloadLogs" class="agent-modern-logs" data-agent-logs>
           <summary data-agent-action="logs">Logs</summary>
           <div class="agent-modern-logs-menu">
@@ -316,73 +340,104 @@ onBeforeUnmount(() => {
             <button type="button" data-agent-log="feedback-jsonl" @click="downloadLogs('feedback', 'jsonl')">JSONL</button>
           </div>
         </details>
-        <button type="button" data-agent-action="new" :disabled="runStatus === 'running'" @click="newConversation">{{ copy.newConversation }}</button>
+        <button class="secondary-button agent-new-button" type="button" data-agent-action="new" :disabled="runStatus === 'running'" @click="newConversation">{{ copy.newConversation }}</button>
+        <button v-if="runStatus === 'running'" class="secondary-button agent-stop-button" type="button" data-agent-action="stop" @click="stop">{{ copy.stop }}</button>
       </div>
     </header>
 
-    <section class="agent-modern-workspace">
-      <aside class="agent-modern-rail">
-        <span class="agent-modern-rail-label">CAPABILITIES</span>
-        <strong>01 / DATA AGENT</strong>
-        <p>{{ copy.subtitle }}</p>
-        <div class="agent-modern-capabilities">
-          <span>01 <b>Merchant analysis</b></span>
-          <span>02 <b>Category and tier</b></span>
-          <span>03 <b>Comparisons</b></span>
-          <span>04 <b>Payments and trends</b></span>
+    <section class="agent-page-layout">
+      <aside class="agent-page-rail panel" :aria-label="copy.capabilities">
+        <span class="agent-page-rail-eyebrow">{{ copy.capabilities }}</span>
+        <div class="agent-page-rail-heading">
+          <span class="agent-page-rail-index">01</span>
+          <div>
+            <strong>{{ copy.dataAgent }}</strong>
+            <p>{{ copy.subtitle }}</p>
+          </div>
         </div>
+        <div class="agent-capability-list">
+          <div class="agent-capability-item"><span>01</span><strong>{{ copy.merchantAnalysis }}</strong></div>
+          <div class="agent-capability-item"><span>02</span><strong>{{ copy.categoryTier }}</strong></div>
+          <div class="agent-capability-item"><span>03</span><strong>{{ copy.comparisons }}</strong></div>
+          <div class="agent-capability-item"><span>04</span><strong>{{ copy.paymentTrends }}</strong></div>
+        </div>
+        <p class="agent-page-rail-note">{{ copy.railNote }}</p>
       </aside>
 
-      <section class="agent-modern-chat" aria-label="Chat Agent chat">
-        <div v-if="!messages.length" class="agent-modern-welcome" data-agent-welcome>
-          <span class="agent-modern-welcome-mark" aria-hidden="true">Y</span>
-          <span class="agent-modern-eyebrow">{{ copy.welcomeKicker }}</span>
-          <h2>{{ copy.welcomeTitle }}</h2>
-          <p>{{ copy.welcomeBody }}</p>
-          <p v-if="copy.restored" class="agent-modern-restored" role="status">{{ copy.restored }}</p>
-          <button type="button" data-agent-action="example" @click="handleExample">↗ <span>{{ copy.example }}</span></button>
+      <section class="chat-panel agent-page-chat-panel" data-agent-surface="workspace" aria-label="Chat Agent chat">
+        <div class="agent-chat-context" aria-label="Agent workspace context">
+          <span class="agent-chat-context-mark" aria-hidden="true"></span>
+          <span>{{ copy.readOnly }}</span>
         </div>
+        <div
+          class="chat-log agent-chat-log"
+          :class="{ 'agent-chat-log-has-messages': messages.length || runStatus !== 'idle' }"
+          aria-live="polite"
+        >
+          <div v-if="!messages.length && runStatus === 'idle'" class="agent-page-welcome" data-agent-welcome>
+            <span class="agent-page-welcome-logo" role="img" aria-label="YeahPromos">
+              <span class="agent-page-welcome-logo-wordmark"><span class="agent-page-welcome-logo-base">YEAH</span><span class="agent-page-welcome-logo-accent">P</span><span class="agent-page-welcome-logo-tail">ROMOS</span></span>
+            </span>
+            <div>
+              <span class="agent-page-welcome-kicker">{{ copy.welcomeKicker }}</span>
+              <h3>{{ copy.welcomeTitle }}</h3>
+              <p>{{ copy.welcomeBody }}</p>
+              <p v-if="copy.restored" class="agent-page-memory-status" role="status">{{ copy.restored }}</p>
+              <button class="agent-example-prompt" type="button" data-agent-action="example" @click="handleExample">
+                <span class="agent-example-prompt-icon" aria-hidden="true">↗</span>
+                <span class="agent-example-prompt-content">
+                  <span class="agent-example-prompt-label">{{ copy.exampleLabel }}</span>
+                  <span class="agent-example-prompt-text">{{ copy.example }}</span>
+                </span>
+                <span class="agent-example-prompt-arrow" aria-hidden="true">→</span>
+              </button>
+            </div>
+          </div>
 
-        <div v-else class="agent-modern-message-list" aria-live="polite">
-          <article v-for="message in messages" :key="message.id" class="agent-modern-message" :class="`is-${message.role}`">
-            <span>{{ message.role === "user" ? "YOU" : "AGENT" }}</span>
+          <article v-for="message in messages" :key="message.id" class="message" :class="message.role">
             <div
               v-if="message.role === 'assistant'"
-              class="agent-modern-message-content"
+              class="chat-stream-text"
               data-agent-response
               v-html="renderAssistant(message.content)"
             ></div>
-            <p v-else>{{ message.content }}</p>
+            <div v-else class="chat-stream-text"><p>{{ message.content }}</p></div>
           </article>
+
+          <article
+            v-if="runStatus === 'running' && response"
+            class="message assistant"
+            data-agent-streaming-response
+            aria-live="polite"
+          >
+            <div class="chat-stream-text" v-html="renderAssistant(response)"></div>
+          </article>
+
+          <AgentTimeline
+            v-if="timeline.length || runStatus !== 'idle'"
+            :language="language"
+            :status="runStatus"
+            :steps="timeline"
+            :partial="partial"
+            :omitted-targets="omittedTargets"
+          />
+
+          <FeedbackForm
+            :language="language"
+            :feedback="session?.feedback"
+            :refresh-key="feedbackRefreshKey"
+          />
+
+          <p v-if="error" class="agent-modern-error" role="alert">{{ error }}</p>
         </div>
-
-        <p
-          v-if="runStatus === 'running' && response"
-          class="agent-modern-streaming"
-          data-agent-streaming-response
-          aria-live="polite"
-        >{{ response }}</p>
-
-        <AgentTimeline
-          v-if="timeline.length || runStatus !== 'idle'"
-          :language="language"
-          :status="runStatus"
-          :steps="timeline"
-          :partial="partial"
-          :omitted-targets="omittedTargets"
-        />
-
-        <FeedbackForm
-          :language="language"
-          :feedback="session?.feedback"
-          :refresh-key="feedbackRefreshKey"
-        />
-
-        <p v-if="error" class="agent-modern-error" role="alert">{{ error }}</p>
-        <form class="agent-modern-composer" data-agent-form @submit.prevent="submit">
-          <textarea ref="inputRef" v-model="input" :placeholder="copy.placeholder" rows="1" :disabled="runStatus === 'running'" data-agent-input></textarea>
-          <button v-if="runStatus === 'running'" type="button" data-agent-action="stop" @click="stop">{{ copy.stop }}</button>
-          <button v-else type="submit" data-agent-action="send">{{ copy.send }}</button>
+        <form class="chat-input agent-page-input" data-agent-form @submit.prevent="submit">
+          <div class="chat-input-field">
+            <input ref="inputRef" v-model="input" autocomplete="off" :placeholder="copy.placeholder" :disabled="runStatus === 'running'" data-agent-input />
+          </div>
+          <button type="submit" data-agent-action="send" :disabled="runStatus === 'running'">
+            <span class="agent-send-label">{{ copy.send }}</span>
+            <span class="agent-send-icon" aria-hidden="true">↑</span>
+          </button>
         </form>
       </section>
     </section>

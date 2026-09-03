@@ -4,7 +4,9 @@
 
 **目标：** 在保留 Vue/TypeScript modern 页面承载能力的同时，使 Chatbot Report、数据来源、Deep Window、Chat Mode 和独立 Agent 的用户可见行为与当前 Legacy 版本等价。
 
-**架构：** `public/app.js` 当前实现是行为基准，Vue 页面不再复制一套缩减版查询、分析、记忆或工具逻辑。Modern 页面通过受控 bridge 消费 Legacy 的同一会话状态、查询管道、SSE、Deep Window、反馈/日志和 Agent 工具执行结果；只有 Modern 视图挂载成功且兼容性测试通过时才允许 Modern-first，否则继续使用 Legacy 页面。
+**架构：** `public/app.js` 当前实现是行为基准，Vue 页面不再复制一套缩减版查询、分析、记忆或工具逻辑。Modern 页面通过受控 bridge 消费 Legacy 的同一会话状态、查询管道、SSE、Deep Window、反馈/日志和 Agent 工具执行结果；当前默认 Legacy-first，只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 逐页对照。
+
+> 状态修正（2026-09-02）：此前 Modern-first 放行因原版视觉和交互未对齐而撤回。当前 `dashboard`/`agent` 为 `dual`，Modern 已改为复用原版结构和样式类，最终浏览器视觉验收待用户完成。
 
 **技术栈：** Vue 3、TypeScript、Vite、现有 `public/app.js` Legacy runtime、`/api/chat/*`、`/api/ui/db/*`、Vitest、Node `.mjs` 回归测试。
 
@@ -256,7 +258,7 @@ npm --prefix frontend run test -- --run frontend/src/features/agent
 
 - [x] **步骤 1：在 parity 未通过前保持 `dashboard`/`agent` 的 `dual` 和 Legacy-safe fallback；Modern factory 失败、bridge 不可用或行为 contract 不完整时不得隐藏 Legacy 页面。
 - [x] **步骤 2：增加挂载/卸载测试。** 断言不会重复绑定 chat submit、不会遗留 AbortController、不会丢失导航返回后的 session、不会留下 Deep Window overlay。
-- [x] **步骤 3：所有 parity 测试通过后才允许 Modern-first；更新清单状态和 M6 文档，逐项列出已通过与仍待浏览器验收的内容。
+- [x] **步骤 3：保持 Legacy-first；更新清单状态和 M6 文档，Modern 只在显式 true 时用于逐页对照，并列出自动化覆盖与浏览器验收边界。
 - [x] **步骤 4：运行完整验证。**
 
 ```powershell
@@ -271,16 +273,16 @@ node scripts/test_modern_page_cutover.mjs
 git diff --check
 ```
 
-- [x] **步骤 5：由用户执行浏览器验收。** 用户于 2026-09-02 确认完成 Report 全路由、来源刷新、Deep Window 全交互、Chat Mode 流式/Memory/反馈/日志、Agent 流式/工具时间线/停止/导航返回/Memory 验收，允许将 `dual` 改为 `modern`。
+- [ ] **步骤 5：由用户执行浏览器验收。** 需要重新核对 Report 全路由、来源刷新、Deep Window 全交互、Chat Mode 流式/Memory/反馈/日志、Agent 流式/工具时间线/停止/导航返回/Memory，以及与原版的视觉和交互一致性；验收前保持 `dual`。
 
 ## 本轮执行记录（2026-09-02）
 
 - 已完成 Chatbot Report/Chat/Deep Window 与独立 Agent 的受控 Legacy session bridge；Modern 只接收状态、可见 token、时间线元数据和白名单操作，不复制查询、Agent 工具协议、`planProof` 或 Trace 内容。
 - Report 继续经 `applyPrompt()` 与 `loadLiveChatbotData()` 处理完整路由和来源刷新；Chat Mode 保留 Report Memory、Memory recommendation、SSE/fallback/停止、反馈、日志、帮助、指南和 onboarding；Deep Window 保留多窗口、拖动、置顶、最小化/恢复、关闭/取消、图表控制、clone/overlay、导出和加入对话；Agent 保留 planning/tool/synthesis、partial/omitted、可见流式回答、停止、失败状态、Trace 和结构化 Memory。
 - 按 TDD 完成 bridge 字段白名单、Memory recommendation、Deep Window 图表代理、Chat/Agent 卸载中止和“只标记当前 assistant 流式状态”等 RED → GREEN 回归；Memory snapshot/event 不再透传 `planProof`、工具 payload 或 Trace 字段。
-- 自动化验证通过：前端 Vitest 51 个测试文件/229 项、typecheck、Vite build、`node --check public/app.js`/`public/auth.js`、`test_m6_chatbot_agent_behavior_parity.mjs`、`test_m6_modern_mount.mjs`、`test_modern_page_cutover.mjs`、Chatbot/Agent Node 回归和 Agent v2/Trace/Python 回归。
-- 安全边界：`dashboard`/`agent` 已完成 `dual → modern` 放行，默认 Modern-first；`modernChatbotAgentBridgeAvailable()` 仍是挂载前置条件，Modern factory 或 bridge 不可用时继续回退 Legacy，并保留显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 回滚开关。本轮未删除 Legacy bridge、Legacy DOM 或旧业务逻辑。
-- 未完成项：`test_chatbot_intent_flow.mjs` 仍为历史性超时，不能计为通过；`test_chatbot_answer_feedback_frontend.mjs`、`test_chatbot_intent_picker.mjs` 的旧 cache-version 断言与当前 `public/index.html` 版本不一致，未修改生产版本。用户已完成真实浏览器登录、数据、视觉、SSE 网络和用户操作验收。
+- 本次 Legacy-first 与原版结构对齐已通过 12 个相关 Vitest 文件/52 项、Vite build、M6 parity/mount/cutover、关键 Chatbot/Agent Node 回归及 Chat Agent 33 场景；完整 typecheck 仅被任务开始前已有的未跟踪 M7 session 文件阻断，本次模板自身类型错误已清零。
+- 安全边界：`dashboard`/`agent` 当前保持 `dual` 与 Legacy-first；`modernChatbotAgentBridgeAvailable()` 仍是挂载前置条件，只有显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才启用 Modern 对照页。本轮未删除 Legacy bridge、Legacy DOM 或旧业务逻辑。
+- 未完成项：真实浏览器登录、数据、视觉、SSE 网络和完整用户操作由用户最终验收；`test_chatbot_intent_flow.mjs` 的历史性超时继续单独记录。
 
 ## 完成判定
 
@@ -292,4 +294,4 @@ M6 只有同时满足以下条件才算完成：
 4. `test_chatbot_intent_flow.mjs` 若仍超时，必须继续单独标记为历史性未通过，不能用其他测试替代。
 5. 浏览器视觉和真实接口验收由用户完成并明确确认。
 
-当前判定：上述条件已满足，M6 Chatbot/Agent 已完成 `dual → modern` 安全放行；Legacy fallback 和 bridge 继续保留，后续 legacy 删除属于独立 M7 工作。
+当前判定：行为迁移和 Modern 对照能力保留，但生产视图未完成 Modern 放行；M6 Chatbot/Agent 当前为 `dual` / Legacy-first，待用户完成最终视觉与真实接口验收后再决定是否放行。

@@ -823,14 +823,6 @@
   display: none !important;
 }
 
-.topbar.dashboard-page.is-modern > div:first-child {
-  display: none !important;
-}
-
-.topbar.dashboard-page.is-modern {
-  justify-content: flex-end;
-}
-
 .main-grid.dashboard-page:not(.is-modern) > #chatbotModernRoot,
 #dashboardAgentPage:not(.is-modern) > #agentModernRoot {
   display: none !important;
@@ -838,7 +830,12 @@
 
 .main-grid.dashboard-page.is-modern > #chatbotModernRoot,
 #dashboardAgentPage.is-modern > #agentModernRoot {
-  display: block;
+  display: flex;
+}
+
+.main-grid.dashboard-page.is-modern > #chatbotModernRoot {
+  height: clamp(620px, calc(100vh - 150px), 820px);
+  min-height: clamp(620px, calc(100vh - 150px), 820px);
 }
 
 .main-grid.dashboard-page > #chatbotModernRoot,
@@ -867,6 +864,13 @@
 
 #dashboardAgentPage.is-modern > :not(#agentModernRoot) {
   display: none !important;
+}
+
+@media (max-width: 1120px) {
+  .main-grid.dashboard-page.is-modern > #chatbotModernRoot {
+    height: auto;
+    min-height: 0;
+  }
 }
 
 .offer-tracker-page {

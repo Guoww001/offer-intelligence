@@ -28,15 +28,15 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 >
 > Chat Mode 面对商户、品类、Tier、趋势和媒体等不同分析类型的内容与边界，见 [Chat Mode 不同分析类型说明](chat-mode-analysis-types.md)。
 
-> M6 行为等价实现与现代放行（2026-09-02）：`#chatbotModernRoot` 与 `#agentModernRoot` 已由 `frontend/src/entry.ts` 注册；`public/app.js:switchPage()` 默认尝试 Modern factory，成功后以 Modern-first 承载 Chatbot Report/Chat/Deep Window 与 Agent 工作区，factory 或 bridge 不可用时回退 Legacy，显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 仅作为回滚开关。服务端执行、完整 Report 路由、来源刷新、SSE、问题日志、反馈、Trace、下载和 Deep Window 交互均通过受控 bridge 复用既有 Legacy 链路，Vue 不复制 `planProof`、工具校验或完整 Trace。代码级 parity、自动化回归和用户浏览器验收已完成，`dashboard`/`agent` 已从 `dual` 放行到 `modern`；`test_chatbot_intent_flow.mjs` 仍为历史性超时，不能计为通过。
+> M6 状态修正（2026-09-02）：`#chatbotModernRoot` 与 `#agentModernRoot` 继续由 `frontend/src/entry.ts` 注册，但 `public/app.js:switchPage()` 已恢复 Legacy-first。只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且 factory/bridge 可用时，才挂载 Modern 对照页；否则使用 Legacy 页面。Modern Chatbot/Agent 已改为复用原版结构、类名与样式体系，服务端执行、完整 Report 路由、来源刷新、SSE、问题日志、反馈、Trace、下载和 Deep Window 交互仍通过受控 bridge 复用既有 Legacy 链路。当前 `dashboard`/`agent` 状态为 `dual`，自动化验证不替代最终浏览器视觉与真实接口验收；`test_chatbot_intent_flow.mjs` 的历史性超时继续单独记录。
 
-### M6 Modern bridge 当前边界（2026-09-02）
+### M6 Legacy-first 与 Modern 对照边界（2026-09-02）
 
 - Report Mode 通过 `applyPrompt()` 和 `loadLiveChatbotData()` 复用 merchant、ASIN、category、Tier、recommendation、payment、analysis/trend、keyword、publisher 和 publisher profile 路由；来源状态只暴露 `cache`、`db` 或不可用。
 - Chat Mode 复用 Legacy 的 Report Memory、Memory recommendation、`/api/chat/stream` 逐 token/fallback/停止链路、反馈、问题日志、帮助、指南和 onboarding；成功回答才进入历史，停止/失败本轮不进入正式历史。
 - Deep Window 通过受控操作保留 quick/deep、多窗口、拖动、置顶、最小化/恢复、关闭/取消、图表指标/分类/列控制、clone、overlay、导出和加入对话；完成的 Legacy panel 不因 Modern 页面卸载而误删。
 - Agent 通过 session bridge 复用 `runChatAgent()` 的 planning、tool batch、retry、partial/omitted、synthesis 和 Trace；Vue 接收 token 与安全 timeline metadata，Memory event 和 snapshot 经过字段白名单处理，不暴露 `planProof`、工具 payload 或 Trace 内容。
-- 自动化证据：前端 Vitest 51 个文件/229 项、typecheck、Vite build、M6 parity/mount/cutover、Chat Agent 33 场景、Agent v2/Trace/Python 与既有 Chatbot 回归通过；用户已完成浏览器验收，M6 已关闭并进入 Modern-first。
+- 当前证据边界：组件测试、静态契约、类型检查、构建和 Legacy/bridge 回归用于证明结构与代码行为；真实登录数据、视觉几何、实际 SSE 网络和完整交互的最终验收由用户执行。Modern 对照页不作为默认生产视图。
 
 ---
 

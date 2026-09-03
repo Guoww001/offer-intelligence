@@ -1,10 +1,11 @@
 # Offer Intelligence M6：CopilotKit / AG-UI Agent 迁移方案
 
-> 状态：可执行设计稿  
+> 状态：候选设计稿（尚未实施 CopilotKit / AG-UI）
 > 基线分支：`FRONTEND-VUE-MIGRATION`  
 > 基线提交：`0b623e34b4cadb1f938ba902db1ec4e467fa420c`（2026-09-01）  
 > 调研日期：2026-09-02  
 > 建议仓库落点：`docs/superpowers/plans/2026-09-02-m6-copilotkit-agent-migration-plan.md`
+> 当前落地状态（2026-09-02）：仓库中的 Chatbot/Agent Modern 页面仍通过 `OI_LEGACY_BRIDGE` 复用既有运行链路，并未引入 CopilotKit 或 AG-UI 依赖。当前页面状态为 `dual` / Legacy-first；只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 原版对照页，最终视觉与真实接口验收由用户完成。本设计稿不得作为“CopilotKit 迁移已完成”的证据。
 
 ## 1. 结论
 

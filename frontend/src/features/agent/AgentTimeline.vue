@@ -62,33 +62,47 @@ function elapsed(step: AgentTimelineStep): string {
 </script>
 
 <template>
-  <section class="agent-modern-timeline" data-agent-timeline :data-status="status" :aria-label="copy.title">
-    <header class="agent-modern-timeline-header">
-      <div>
-        <span class="agent-modern-eyebrow">AGENT TRACE</span>
-        <strong>{{ copy.title }}</strong>
-      </div>
-      <span class="agent-modern-timeline-status" :data-agent-status="status">{{ statusText(status) }}</span>
-    </header>
-    <ol v-if="steps.length" class="agent-modern-timeline-steps">
-      <li v-for="step in steps" :key="step.id" data-agent-timeline-step :data-step-status="step.status">
-        <span class="agent-modern-timeline-icon" aria-hidden="true">{{ stepStatusIcon(step.status) }}</span>
-        <div>
-          <span class="agent-modern-timeline-phase">{{ phaseText(step.phase) }}</span>
-          <strong>{{ step.label }}</strong>
-          <p v-if="step.detail">{{ step.detail }}</p>
-          <small v-if="step.dataSource || step.dataAsOf || step.estimated || elapsed(step)">
+  <details
+    class="agent-run-timeline"
+    :class="'agent-run-timeline-' + status"
+    :open="status !== 'done'"
+    data-agent-timeline
+    :data-status="status"
+    :aria-label="copy.title"
+    :aria-busy="status === 'running'"
+  >
+    <summary class="agent-run-summary">
+      <span class="agent-run-status-icon" aria-hidden="true">{{ status === "done" ? "✓" : status === "stopped" ? "■" : status === "error" ? "✗" : "⋯" }}</span>
+      <span class="agent-run-title">{{ copy.title }}</span>
+      <span class="agent-run-status" :data-agent-status="status">{{ statusText(status) }}</span>
+      <span class="agent-run-meta" aria-hidden="true">{{ steps.length }} {{ language === "zh" ? "步" : "steps" }}</span>
+    </summary>
+    <div v-if="steps.length" class="agent-run-steps" role="list">
+      <div
+        v-for="step in steps"
+        :key="step.id"
+        class="agent-run-step"
+        :class="'agent-run-step-' + step.status"
+        role="listitem"
+        data-agent-timeline-step
+        :data-step-status="step.status"
+      >
+        <span class="agent-run-step-icon" aria-hidden="true">{{ stepStatusIcon(step.status) }}</span>
+        <div class="agent-run-step-body">
+          <strong class="agent-run-step-label">{{ phaseText(step.phase) }} · {{ step.label }}</strong>
+          <span v-if="step.detail" class="agent-run-step-detail">{{ step.detail }}</span>
+          <span v-if="step.dataSource || step.dataAsOf || step.estimated" class="agent-run-step-detail">
             <span v-if="step.dataSource">{{ copy.source }}: {{ step.dataSource }}</span>
             <span v-if="step.dataAsOf"> {{ dataAsOfLabel }}: {{ step.dataAsOf }}</span>
             <span v-if="step.estimated"> · {{ copy.estimated }}</span>
-            <span v-if="elapsed(step)"> · {{ elapsed(step) }}</span>
-          </small>
+          </span>
         </div>
-      </li>
-    </ol>
-    <div v-if="partial" class="agent-modern-timeline-partial" data-agent-partial role="status">
+        <span v-if="elapsed(step)" class="agent-run-step-meta" aria-hidden="true">{{ elapsed(step) }}</span>
+      </div>
+    </div>
+    <div v-if="partial" class="agent-run-partial" data-agent-partial role="status">
       <strong>{{ copy.partial }}</strong>
       <span v-if="omittedTargets?.length">{{ copy.omitted }}：{{ omittedTargets.join(language === 'zh' ? '、' : ', ') }}</span>
     </div>
-  </section>
+  </details>
 </template>
