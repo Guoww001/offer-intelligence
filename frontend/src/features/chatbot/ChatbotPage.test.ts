@@ -120,9 +120,23 @@ describe("ChatbotPage", () => {
     expect(session.submit).toHaveBeenCalledWith("show payment status", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(wrapper.find(".chatbot-report-output-head").text()).toContain("DB");
     expect(wrapper.find('[data-chatbot-result-source]').text()).toContain("DB");
-    expect(wrapper.find('[data-legacy-report]').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-report-summary]').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-report-summary]').text()).toContain("show payment status");
+    expect(wrapper.find('[data-legacy-report]').exists()).toBe(false);
     expect(wrapper.find('[data-chatbot-context-html] [data-legacy-context]').exists()).toBe(true);
-    expect(wrapper.text()).toContain("付款状态已从实时数据返回");
+    expect(wrapper.find('[data-chatbot-report-log]').text()).not.toContain("付款状态已从实时数据返回");
+
+    state = {
+      ...state,
+      currentResult: {
+        ...result,
+        response: '<div class="merchant-card">Shokz Official</div>'
+      }
+    };
+    listeners.forEach((listener) => listener(state));
+    await nextTick();
+    expect(wrapper.get('[data-chatbot-mode="report"] .message.user').text()).toBe("show payment status");
+
     await wrapper.get('[data-chatbot-action="download-overview"]').trigger("click");
     expect(downloadOverview).toHaveBeenCalledTimes(1);
   });
@@ -179,6 +193,10 @@ describe("ChatbotPage", () => {
     };
     const wrapper = mount(ChatbotPage, { props: { language: "en", offers, session, autoFocus: false } });
 
+    const reportToggle = wrapper.get('[data-chatbot-mode="report"] .chat-mode-toggle');
+    expect(reportToggle.get('[data-chatbot-mode-button="chat"]').element.nextElementSibling?.classList.contains("chatbot-utility-panels")).toBe(true);
+    expect(reportToggle.find(':scope > [data-chatbot-action="onboarding"]').exists()).toBe(false);
+
     await wrapper.get('[data-chatbot-report-input]').setValue("show report");
     await wrapper.get('[data-chatbot-report-form]').trigger("submit");
     await flushPromises();
@@ -193,14 +211,19 @@ describe("ChatbotPage", () => {
 
     await wrapper.get('[data-chatbot-action="help"]').trigger("click");
     await wrapper.get('[data-chatbot-action="guide"]').trigger("click");
+    await wrapper.get('[data-chatbot-action="logs"]').trigger("click");
     await wrapper.get('[data-chatbot-log="questions-csv"]').trigger("click");
     await wrapper.get('[data-chatbot-log="feedback-jsonl"]').trigger("click");
     expect(session.toggleHelp).toHaveBeenCalledTimes(1);
     expect(session.toggleGuide).toHaveBeenCalledTimes(1);
     expect(session.downloadLogs).toHaveBeenNthCalledWith(1, "questions", "csv");
     expect(session.downloadLogs).toHaveBeenNthCalledWith(2, "feedback", "jsonl");
-    expect(wrapper.find('[data-chatbot-action="onboarding"]').exists()).toBe(false);
-    expect(wrapper.find('[data-chatbot-action="clear"]').exists()).toBe(false);
+    expect(wrapper.find('[data-chatbot-action="onboarding"]').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-action="clear"]').exists()).toBe(true);
+    await wrapper.get('[data-chatbot-action="onboarding"]').trigger("click");
+    await wrapper.get('[data-chatbot-action="clear"]').trigger("click");
+    expect(session.startOnboarding).toHaveBeenCalledTimes(1);
+    expect(session.clearConversation).toHaveBeenCalledTimes(1);
   });
 
   it("delegates mode switching and memory removal to the shared session", async () => {

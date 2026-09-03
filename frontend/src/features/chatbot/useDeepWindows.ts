@@ -1,17 +1,30 @@
 import { ref, type Ref } from "vue";
 
+import type { LegacyAnswerFeedbackState, LegacyDeepWindowSkeletonStep } from "../../legacy/contracts";
 import type { ChatbotReportViewResult } from "./chatbotViewTypes";
 
 export interface DeepWindowState {
   readonly id: string;
+  readonly mode?: "report" | "chat";
   readonly result: ChatbotReportViewResult;
+  readonly title?: string;
+  readonly summary?: string;
+  readonly contentHtml?: string;
+  readonly errorMessage?: string;
+  readonly skeletonSteps?: readonly LegacyDeepWindowSkeletonStep[];
+  readonly zIndex?: number;
   readonly minimized: boolean;
   readonly pinned: boolean;
   readonly overlay: boolean;
   readonly status: "loading" | "ready" | "cancelled" | "error";
   readonly position: { readonly x: number; readonly y: number };
+  readonly canCancel?: boolean;
   readonly canAddMemory?: boolean;
   readonly addedToMemory?: boolean;
+  readonly canExport?: boolean;
+  readonly canMinimize?: boolean;
+  readonly canClose?: boolean;
+  readonly feedbackState?: LegacyAnswerFeedbackState;
 }
 
 export interface DeepWindowController {
@@ -62,6 +75,7 @@ export function useDeepWindows(): DeepWindowController {
     const id = `deep-${idCounter}`;
     windows.value = [...windows.value, {
       id,
+      mode: result.bridgeResult?.mode || "report",
       result,
       minimized: false,
       pinned: false,

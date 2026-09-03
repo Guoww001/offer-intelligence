@@ -3,8 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
 import type {
+  LegacyChatAnswerMessage,
   LegacyChatViewResult,
   LegacyChatViewState,
+  LegacyChatUtilityState,
   LegacyChatStarterCard,
   LegacyDeepWindowInteraction,
   LegacyDeepWindowView,
@@ -12,7 +14,9 @@ import type {
   LegacyDeepWindowsViewState
 } from "../../legacy/contracts";
 import ChatbotChatView from "./ChatbotChatView.vue";
+import ChatbotOnboarding from "./ChatbotOnboarding.vue";
 import ChatbotReportView from "./ChatbotReportView.vue";
+import ChatbotUtilityPanels from "./ChatbotUtilityPanels.vue";
 import DeepWindow from "./DeepWindow.vue";
 import { streamChatbotReply } from "./useChatbotChat";
 import { useChatbotReport } from "./useChatbotReport";
@@ -50,13 +54,27 @@ const reportLoading = report.loading;
 const contextTitle = ref("");
 const contextSubtitle = ref("");
 const contextHtml = ref("");
+const supplementalHtml = ref("");
 const chatInput = ref("");
 const chatLoading = ref(false);
 const chatError = ref("");
-const chatMessages = ref<Array<ChatbotHistoryMessage & { readonly id: string; readonly streaming?: boolean }>>([]);
+const chatMessages = ref<Array<ChatbotHistoryMessage & Partial<LegacyChatAnswerMessage> & { readonly id: string; readonly streaming?: boolean }>>([]);
 const chatCurrentResult = ref<LegacyChatViewResult | null>(null);
 const starterCards = ref<readonly LegacyChatStarterCard[]>([]);
 const memory = ref<ChatbotMemoryItem[]>([]);
+const memoryDropHighlighted = ref(false);
+const utilityState = ref<LegacyChatUtilityState>({
+  helpOpen: false,
+  guideOpen: false,
+  helpHtml: "",
+  guideHtml: "",
+  guideLoading: false,
+  onboardingOpen: false,
+  onboardingStep: 0,
+  onboardingTotal: 0,
+  reminderVisible: false,
+  reminderCollapsed: false
+});
 const feedbackRefreshKey = ref(0);
 const {
   deepWindow: localDeepWindow,
@@ -94,6 +112,8 @@ const copy = computed(() => props.language === "zh" ? {
 });
 
 const reportError = computed(() => report.hasError.value ? copy.value.reportError : "");
+const reportAnswerId = computed(() => reportResult.value?.bridgeResult?.answerId || null);
+const reportAnswerFeedback = computed(() => reportAnswerId.value ? feedbackForAnswer(reportAnswerId.value) : null);
 
 const utilityCopy = computed(() => props.language === "zh" ? {
   help: "使用说明",
@@ -136,6 +156,26 @@ function toggleHelp(): void {
 
 function toggleGuide(): void {
   props.session?.toggleGuide?.();
+}
+
+function startOnboarding(): void {
+  props.session?.startOnboarding?.();
+}
+
+function clearConversation(): void {
+  props.session?.clearConversation();
+}
+
+function interactContext(action: string, value?: string): void {
+  props.session?.interactContext?.(action, value);
+}
+
+function feedbackForAnswer(answerId: string): ReturnType<NonNullable<ChatbotSession["feedbackForAnswer"]>> {
+  return props.session?.feedbackForAnswer?.(answerId) || null;
+}
+
+function feedbackForDeepWindow(windowId: string): ReturnType<NonNullable<ChatbotSession["feedbackForDeepWindow"]>> {
+  return props.session?.feedbackForDeepWindow?.(windowId) || null;
 }
 
 function bridgeResultToView(result: LegacyChatViewResult, query: string): ChatbotReportViewResult {
@@ -187,14 +227,26 @@ function deepWindowResult(view: LegacyDeepWindowView): ChatbotReportViewResult {
 function deepWindowState(view: LegacyDeepWindowView): DeepWindowState {
   return {
     id: view.id,
+    mode: view.mode,
     result: deepWindowResult(view),
+    title: view.title,
+    summary: view.summary,
+    contentHtml: view.contentHtml,
+    errorMessage: view.errorMessage,
+    skeletonSteps: view.skeletonSteps,
+    zIndex: view.zIndex,
+    canCancel: view.canCancel,
     minimized: view.minimized,
     pinned: view.pinned,
     overlay: view.overlay,
     status: view.status === "loading" ? "loading" : view.status === "error" ? "error" : "ready",
     position: view.position,
     canAddMemory: view.canAddMemory,
-    addedToMemory: view.addedToMemory
+    addedToMemory: view.addedToMemory,
+    canExport: view.canExport,
+    canMinimize: view.canMinimize,
+    canClose: view.canClose,
+    feedbackState: view.feedbackState
   };
 }
 
@@ -228,6 +280,8 @@ function syncSessionState(next: LegacyChatViewState = props.session!.getState())
   contextHtml.value = next.contextHtml || (next.currentResult?.mode === "report"
     ? next.currentResult.recommendationHtml || ""
     : "");
+  supplementalHtml.value = next.supplementalHtml || "";
+  utilityState.value = next.utility || utilityState.value;
   chatLoading.value = next.status === "running";
   chatError.value = next.status === "error" ? copy.value.reportError : "";
   memory.value = sessionMemoryToLocal(next);
@@ -238,16 +292,24 @@ function syncSessionState(next: LegacyChatViewState = props.session!.getState())
     -1
   );
   chatMessages.value = next.messages.map((message, messageIndex) => ({
-    id: nextId(message.role === "user" ? "user" : "assistant"),
+    id: message.id || message.answerId || nextId(message.role === "user" ? "user" : "assistant"),
     role: message.role,
     content: message.content,
+    ...(message.answerId ? { answerId: message.answerId } : {}),
+    ...(message.contentHtml ? { contentHtml: message.contentHtml } : {}),
+    ...(message.deepWindowId ? { deepWindowId: message.deepWindowId } : {}),
+    ...(message.canOpenDeep !== undefined ? { canOpenDeep: message.canOpenDeep } : {}),
+    ...(message.feedbackState ? { feedbackState: message.feedbackState } : {}),
     ...(next.status === "running" && message.role === "assistant" && messageIndex === lastAssistantIndex
       ? { streaming: true }
       : {})
   }));
   if (next.currentResult && next.currentResult.mode === "report") {
-    reportResult.value = bridgeResultToView(next.currentResult, next.currentResult.response || reportPrompt.value);
+    reportResult.value = bridgeResultToView(next.currentResult, reportPrompt.value || reportResult.value?.query || "");
     report.hasError.value = next.currentResult.ok === false;
+  } else if (!next.currentResult) {
+    reportResult.value = null;
+    report.hasError.value = false;
   }
 }
 
@@ -292,6 +354,15 @@ function openDeep(): void {
 function openChatDeep(): void {
   const id = props.session?.openDeepWindow?.();
   if (id && props.deepWindows) props.deepWindows.activate(id);
+}
+
+function openChatAnswer(answerId: string): void {
+  const id = props.session?.openChatAnswer?.(answerId) || null;
+  if (id && props.deepWindows) props.deepWindows.activate(id);
+}
+
+function setMemoryDropHighlight(active: boolean): void {
+  memoryDropHighlighted.value = active;
 }
 
 function setStarterPrompt(prompt: string): void {
@@ -492,6 +563,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="chatbot-modern-page" data-page="chatbot">
+    <ChatbotOnboarding
+      v-if="session"
+      class="chatbot-page-onboarding"
+      :language="language"
+      :utility="utilityState"
+      :available="Boolean(session.startOnboarding)"
+      @start="startOnboarding"
+    />
     <ChatbotReportView
       v-if="mode === 'report'"
       :language="language"
@@ -505,9 +584,15 @@ onBeforeUnmount(() => {
       :auto-focus="autoFocus"
       :feedback="session?.feedback"
       :feedback-refresh-key="feedbackRefreshKey"
+      :answer-id="reportAnswerId"
+      :feedback-state="reportResult?.bridgeResult?.feedbackState"
+      :answer-feedback="reportAnswerFeedback"
+      :supplemental-html="supplementalHtml"
       @update:prompt="reportPrompt = $event"
       @submit="submitReport"
       @open-deep="openDeep"
+      @open-answer="openChatAnswer"
+      @context-interact="interactContext"
       @add-memory="addReportToMemory()"
       @download-overview="downloadOverview"
       @download="downloadRecommendation"
@@ -531,17 +616,28 @@ onBeforeUnmount(() => {
           @click="setMode('chat')"
         >
           <span class="mode-indicator"></span>
-          <span>{{ copy.chat }}</span>
-        </button>
-        <button v-if="session?.toggleHelp" type="button" class="mode-btn mode-help" data-chatbot-action="help" @click="toggleHelp">
+           <span>{{ copy.chat }}</span>
+         </button>
+        <ChatbotUtilityPanels
+          v-if="session"
+          :language="language"
+          :utility="utilityState"
+          :logs-available="Boolean(session.downloadLogs)"
+          :clear-available="Boolean(session.clearConversation)"
+          @help="toggleHelp"
+          @guide="toggleGuide"
+          @logs="downloadLogs"
+          @clear="clearConversation"
+        />
+        <button v-if="false && session?.toggleHelp" type="button" class="mode-btn mode-help" data-chatbot-action="help" @click="toggleHelp">
           <span class="mode-help-icon">📖</span>
           <span>{{ utilityCopy.help }}</span>
         </button>
-        <button v-if="session?.toggleGuide" type="button" class="mode-btn mode-user-guide" data-chatbot-action="guide" @click="toggleGuide">
+        <button v-if="false && session?.toggleGuide" type="button" class="mode-btn mode-user-guide" data-chatbot-action="guide" @click="toggleGuide">
           <span class="mode-help-icon" aria-hidden="true">i</span>
           <span>{{ utilityCopy.guide }}</span>
         </button>
-        <div v-if="session?.downloadLogs" class="chat-logs-control">
+        <div v-if="false && session?.downloadLogs" class="chat-logs-control">
           <details class="chatbot-modern-logs" data-chatbot-logs>
             <summary class="mode-btn mode-logs" data-chatbot-action="logs">
               <span class="mode-logs-icon" aria-hidden="true">↓</span>
@@ -575,12 +671,16 @@ onBeforeUnmount(() => {
       :context-title="contextTitle"
       :context-subtitle="contextSubtitle"
       :context-html="contextHtml"
+      :utility="utilityState"
       :memory="memory"
       :input="chatInput"
       :loading="chatLoading"
       :error="chatError"
       :feedback="session?.feedback"
       :feedback-refresh-key="feedbackRefreshKey"
+      :feedback-for-answer="feedbackForAnswer"
+      :drop-highlighted="memoryDropHighlighted"
+      :supplemental-html="supplementalHtml"
       :starter-cards="starterCards"
       :current-result="chatCurrentResult"
       :open-deep-available="Boolean(session?.openDeepWindow && chatCurrentResult?.ok)"
@@ -590,6 +690,8 @@ onBeforeUnmount(() => {
       @remove-memory="removeMemory"
       @starter-prompt="setStarterPrompt"
       @open-deep="openChatDeep"
+      @open-answer="openChatAnswer"
+      @context-interact="interactContext"
       @download="downloadRecommendation"
     >
       <template #mode-controls>
@@ -611,17 +713,28 @@ onBeforeUnmount(() => {
           @click="setMode('chat')"
         >
           <span class="mode-indicator"></span>
-          <span>{{ copy.chat }}</span>
-        </button>
-        <button v-if="session?.toggleHelp" type="button" class="mode-btn mode-help" data-chatbot-action="help" @click="toggleHelp">
+           <span>{{ copy.chat }}</span>
+         </button>
+        <ChatbotUtilityPanels
+          v-if="session"
+          :language="language"
+          :utility="utilityState"
+          :logs-available="Boolean(session.downloadLogs)"
+          :clear-available="Boolean(session.clearConversation)"
+          @help="toggleHelp"
+          @guide="toggleGuide"
+          @logs="downloadLogs"
+          @clear="clearConversation"
+        />
+        <button v-if="false && session?.toggleHelp" type="button" class="mode-btn mode-help" data-chatbot-action="help" @click="toggleHelp">
           <span class="mode-help-icon">📖</span>
           <span>{{ utilityCopy.help }}</span>
         </button>
-        <button v-if="session?.toggleGuide" type="button" class="mode-btn mode-user-guide" data-chatbot-action="guide" @click="toggleGuide">
+        <button v-if="false && session?.toggleGuide" type="button" class="mode-btn mode-user-guide" data-chatbot-action="guide" @click="toggleGuide">
           <span class="mode-help-icon" aria-hidden="true">i</span>
           <span>{{ utilityCopy.guide }}</span>
         </button>
-        <div v-if="session?.downloadLogs" class="chat-logs-control">
+        <div v-if="false && session?.downloadLogs" class="chat-logs-control">
           <details class="chatbot-modern-logs" data-chatbot-logs>
             <summary class="mode-btn mode-logs" data-chatbot-action="logs">
               <span class="mode-logs-icon" aria-hidden="true">↓</span>
@@ -652,6 +765,7 @@ onBeforeUnmount(() => {
       v-for="window in displayedDeepWindows"
       :key="window.id"
       :id="window.id"
+      :mode="window.mode"
       :language="language"
       :result="window.result"
       :minimized="window.minimized"
@@ -659,9 +773,22 @@ onBeforeUnmount(() => {
       :overlay="window.overlay"
       :status="window.status"
       :position="window.position"
+      :title="window.title"
+      :summary="window.summary"
+      :content-html="window.contentHtml"
+      :error-message="window.errorMessage"
+      :skeleton-steps="window.skeletonSteps"
+      :z-index="window.zIndex"
+      :can-cancel="window.canCancel"
       :can-add-memory="window.canAddMemory"
       :added-to-memory="window.addedToMemory"
+      :can-export="window.canExport"
+      :can-minimize="window.canMinimize"
+      :can-close="window.canClose"
+      :feedback-state="window.feedbackState"
+      :feedback="feedbackForDeepWindow(window.id)"
       :absolute-position="Boolean(props.deepWindows)"
+      @activate="props.deepWindows ? props.deepWindows.activate(window.id) : undefined"
       @minimize="props.deepWindows ? props.deepWindows.minimize(window.id) : minimizeLocalDeepWindow(window.id)"
       @restore="props.deepWindows ? props.deepWindows.restore(window.id) : restoreLocalDeepWindow(window.id)"
       @close="props.deepWindows ? props.deepWindows.close(window.id) : closeLocalDeepWindow(window.id)"
@@ -676,6 +803,7 @@ onBeforeUnmount(() => {
       @trend-interact="(action, value) => interactDeepWindowById(window.id, action, value)"
       @trend-columns="(columns) => setDeepWindowTrendColumns(window.id, columns)"
       @drop-memory="addDeepWindowToMemory(window.id)"
+      @drop-highlight="setMemoryDropHighlight"
     />
   </main>
 </template>

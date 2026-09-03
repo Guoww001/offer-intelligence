@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type { LegacyFeedbackBridge } from "../../legacy/contracts";
+import type { LegacyAnswerFeedbackState, LegacyFeedbackBridge } from "../../legacy/contracts";
+import ChatAnswerActions from "./ChatAnswerActions.vue";
+import ChatbotCommandMenu from "./ChatbotCommandMenu.vue";
 import ChatbotResultView from "./ChatbotResultView.vue";
 import FeedbackForm from "./FeedbackForm.vue";
 import type { ChatbotReportViewResult } from "./chatbotViewTypes";
@@ -12,6 +14,8 @@ const emit = defineEmits<{
   (event: "submit"): void;
   (event: "open-deep"): void;
   (event: "add-memory"): void;
+  (event: "open-answer", answerId: string): void;
+  (event: "context-interact", action: string, value?: string): void;
   (event: "download-overview"): void;
   (event: "download", downloadId: string): void;
 }>();
@@ -28,6 +32,10 @@ const props = defineProps<{
   readonly autoFocus?: boolean;
   readonly feedback?: LegacyFeedbackBridge;
   readonly feedbackRefreshKey?: number;
+  readonly answerId?: string | null;
+  readonly feedbackState?: LegacyAnswerFeedbackState;
+  readonly answerFeedback?: LegacyFeedbackBridge | null;
+  readonly supplementalHtml?: string;
 }>();
 
 const copy = computed(() => props.language === "zh" ? {
@@ -41,6 +49,8 @@ const copy = computed(() => props.language === "zh" ? {
   contextTitle: "上下文概览",
   contextSubtitle: "整体 offer 快照",
   responseTitle: "报告响应",
+  summaryPrefix: "📊 深度分析：",
+  summaryClick: "点击查看完整分析",
   generating: "正在生成报告…",
   source: "数据来源",
   openDeep: "打开 Deep Window",
@@ -56,6 +66,8 @@ const copy = computed(() => props.language === "zh" ? {
   contextTitle: "Context Overview",
   contextSubtitle: "General offer snapshot",
   responseTitle: "Report response",
+  summaryPrefix: "📊 Deep Analysis: ",
+  summaryClick: "Click to view full analysis",
   generating: "Generating report…",
   source: "Data source",
   openDeep: "Open Deep Window",
@@ -76,6 +88,55 @@ const displayContextTitle = computed(() => props.contextTitle?.trim() || props.r
 const displayContextSubtitle = computed(() => props.contextSubtitle?.trim()
   || (props.result ? sourceLabel.value : copy.value.contextSubtitle));
 const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.result?.recommendationHtml?.trim() || "");
+const reportHasAnswerActions = computed(() => Boolean(props.answerId && props.answerFeedback));
+const commandMenu = ref<InstanceType<typeof ChatbotCommandMenu> | null>(null);
+
+function handleContextInteraction(event: Event): void {
+  const target = event.target instanceof HTMLElement
+    ? event.target.closest<HTMLElement>("[data-trend-metric], [data-trend-category-select], [data-trend-column-toggle], [data-trend-column-core], [data-trend-column-all], [data-payment-month], [data-context-action]")
+    : null;
+  if (!target) return;
+  if (target.matches("[data-trend-metric]")) {
+    const metric = target.getAttribute("data-trend-metric");
+    if (metric) emit("context-interact", "trend-metric", metric);
+  } else if (target.matches("[data-trend-category-select]")) {
+    emit("context-interact", "trend-category", (target as HTMLSelectElement).value);
+  } else if (target.matches("[data-trend-column-toggle]")) {
+    emit("context-interact", "trend-column-toggle");
+  } else if (target.matches("[data-trend-column-core]")) {
+    emit("context-interact", "trend-column-core");
+  } else if (target.matches("[data-trend-column-all]")) {
+    emit("context-interact", "trend-column-all");
+  } else if (target.matches("[data-payment-month]")) {
+    emit("context-interact", "payment-month", target.getAttribute("data-payment-month") || undefined);
+  } else {
+    emit("context-interact", target.getAttribute("data-context-action") || "open", target.getAttribute("data-value") || undefined);
+  }
+}
+
+function handleCommandKeydown(event: KeyboardEvent): void {
+  commandMenu.value?.handleKeydown(event);
+}
+
+function commandLabel(key: string): string {
+  if (key === "categorytier") return props.language === "zh" ? "品类 + Tier" : "Category & Tier";
+  return key;
+}
+
+function selectCommand(key: string): void {
+  emit("update:prompt", commandLabel(key) + ": ");
+}
+
+function openReportSummary(): void {
+  emit("open-deep");
+}
+
+function handleReportSummaryKeydown(event: KeyboardEvent): void {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    openReportSummary();
+  }
+}
 </script>
 
 <template>
@@ -95,7 +156,7 @@ const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.resu
             @click="emit('download-overview')"
           >{{ copy.download }}</button>
         </div>
-        <div class="recommendation-box context-panel" aria-live="polite">
+        <div class="recommendation-box context-panel" aria-live="polite" @click="handleContextInteraction" @change="handleContextInteraction">
           <div v-if="result" class="chatbot-report-output-head">
             <span data-chatbot-report-source data-chatbot-result-source>{{ sourceLabel }}</span>
             <div>
@@ -105,7 +166,23 @@ const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.resu
           </div>
           <div v-if="legacyContextHtml" class="chatbot-legacy-context" data-chatbot-context-html v-html="legacyContextHtml"></div>
           <ChatbotResultView v-else-if="result" :language="language" :result="result" @download="emit('download', $event)" />
+          <div v-else class="chatbot-report-empty" data-chatbot-report-empty>
+            <span class="chatbot-report-empty-mark" aria-hidden="true">□</span>
+            <strong>{{ language === 'zh' ? '还没有报告' : 'No report yet' }}</strong>
+            <p>{{ language === 'zh' ? '输入一个商户、品类、Tier 或推荐问题，结果会显示在这里。' : 'Ask about a merchant, category, tier, or recommendation to see the result here.' }}</p>
+          </div>
+          <ChatAnswerActions
+            v-if="reportHasAnswerActions"
+            :language="language"
+            :answer-id="answerId || ''"
+            :can-open-deep="false"
+            :feedback-state="feedbackState"
+            :feedback="answerFeedback"
+            :refresh-key="feedbackRefreshKey"
+            @open="emit('open-answer', answerId || '')"
+          />
           <FeedbackForm
+            v-if="!reportHasAnswerActions"
             :language="language"
             :feedback="feedback"
             :refresh-key="feedbackRefreshKey"
@@ -131,8 +208,23 @@ const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.resu
             <div class="chat-stream-text"><p>{{ result.query }}</p></div>
           </article>
           <article v-if="result" class="message assistant">
-            <div v-if="result.legacyHtml" class="chat-stream-text" v-html="result.legacyHtml"></div>
-            <div v-else class="chat-stream-text"><p>{{ result.message || copy.responseTitle }}</p></div>
+            <div class="chat-stream-text">
+              <div
+                class="deep-summary-card"
+                data-chatbot-report-summary
+                role="button"
+                tabindex="0"
+                @click="openReportSummary"
+                @keydown="handleReportSummaryKeydown"
+              >
+                <h4>{{ copy.summaryPrefix }}{{ result.query }}</h4>
+                <p>{{ result.query }}</p>
+                <small>{{ copy.summaryClick }}</small>
+              </div>
+            </div>
+          </article>
+          <article v-if="supplementalHtml" class="message assistant">
+            <div class="chat-stream-text" data-chatbot-report-supplemental-chat v-html="supplementalHtml"></div>
           </article>
           <article v-if="loading" class="message assistant loading-indicator">
             <div class="chat-stream-text"><p>{{ copy.generating }}</p></div>
@@ -147,6 +239,14 @@ const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.resu
         <form class="chat-input" data-chatbot-report-form @submit.prevent="emit('submit')">
           <div class="chat-input-field">
             <label class="sr-only" for="chatbotReportInput">{{ copy.reportTitle }}</label>
+            <ChatbotCommandMenu
+              ref="commandMenu"
+              :language="language"
+              :input="prompt"
+              mode="report"
+              @select="selectCommand"
+              @close="emit('update:prompt', prompt)"
+            />
             <input
               id="chatbotReportInput"
               :value="prompt"
@@ -155,6 +255,7 @@ const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.resu
               autocomplete="off"
               data-chatbot-report-input
               @input="emit('update:prompt', ($event.target as HTMLInputElement).value)"
+              @keydown="handleCommandKeydown"
             >
           </div>
           <button type="submit" aria-label="Send" :disabled="loading" data-chatbot-action="report-submit">

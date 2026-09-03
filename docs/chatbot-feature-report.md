@@ -38,6 +38,14 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 - Agent 通过 session bridge 复用 `runChatAgent()` 的 planning、tool batch、retry、partial/omitted、synthesis 和 Trace；Vue 接收 token 与安全 timeline metadata，Memory event 和 snapshot 经过字段白名单处理，不暴露 `planProof`、工具 payload 或 Trace 内容。
 - 当前证据边界：组件测试、静态契约、类型检查、构建和 Legacy/bridge 回归用于证明结构与代码行为；真实登录数据、视觉几何、实际 SSE 网络和完整交互的最终验收由用户执行。Modern 对照页不作为默认生产视图。
 
+### 2026-09-03 Chatbot Legacy-first 对齐落地
+
+- 默认入口继续由 `public/app.js:switchPage()` 使用 Legacy；Modern Chatbot 只在 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且 bridge 可用时作为逐页对照页挂载。
+- `frontend/src/legacy/contracts.ts` 与 `frontend/src/legacy/bridge.ts` 现在保留回答 ID、回答 HTML、Deep Window 关联、反馈状态、工具面板状态、补充异步内容和 Deep Window skeleton/capability 字段；bridge 仍只投影页面安全字段。
+- Vue Chatbot 已补齐原版交互表面：Deep Window loading/content/error 生命周期、多窗口操作、拖拽至 Memory、逐答案 View/反馈、帮助/指南/Logs/Clear/onboarding、slash intent 菜单、Context 指标/分类交互和异步 DB 补充结果。
+- 原始 `contentHtml`、下载标记、趋势/列控件和数据来源继续通过 Legacy HTML 与受控事件渲染；Vue 层不重新计算 Legacy 报告公式，也不把模型文本当作数据事实。
+- 自动化证据入口为 `scripts/test_chatbot_legacy_first_parity_gap.mjs`、`frontend/src/features/chatbot/*test.ts` 和 `frontend/src/legacy/bridge.test.ts`；组件与静态契约不能替代真实登录、视觉几何、SSE 网络和最终浏览器验收。
+
 ---
 
 ## 2. 完整请求流程

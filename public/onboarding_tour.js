@@ -91,12 +91,12 @@
     },
     {
       id: "report-ask",
-      target: "#chatInput",
+      target: ["#chatbotModernRoot [data-chatbot-report-input]", "#chatInput"],
       copyKey: "step1",
       mask: "block",
       autoFill: "Shokz",
       // 用户点击「帮我填入示例」后，高光从输入框转移到发送按钮，引导点击发送
-      autoFillFocus: '#chatForm button[type="submit"]',
+      autoFillFocus: ['#chatbotModernRoot [data-chatbot-report-form] button[type="submit"]', '#chatForm button[type="submit"]'],
       // 点击发送（chatForm submit）后自动进入下一步
       autoNext: "sent"
     },
@@ -125,7 +125,7 @@
           var list = document.querySelectorAll(".deep-window");
           if (!list || !list.length) return null;
           var last = list[list.length - 1];
-          return last.querySelector ? last.querySelector(".deep-window-chat-add") : null;
+          return last.querySelector ? firstTarget([".deep-window-chat-add", '[data-deep-window-action="add-memory"]'], last) : null;
         } catch (e) { return null; }
       },
       copyKey: "step3",
@@ -137,14 +137,14 @@
     },
     {
       id: "chat-ask",
-      target: "#chatInput",
+      target: ["#chatbotModernRoot [data-chatbot-input]", "#chatInput"],
       copyKey: "step4",
       mask: "block",
       autoFill: "根据刚才的报告，给我分析建议",
       // 英文模式下填入英文示例（autoFillEn）
       autoFillEn: "Based on the report, give me some analysis suggestions",
       // 填示例后高光转移到发送按钮，点击发送后自动结束引导
-      autoFillFocus: '#chatForm button[type="submit"]',
+      autoFillFocus: ['#chatbotModernRoot [data-chatbot-composer] button[type="submit"]', '#chatForm button[type="submit"]'],
       autoNext: "sent",
       final: true
     }
@@ -199,11 +199,24 @@
   }
 
   // ── 纯逻辑（可测试）──
+  function firstTarget(selectors, root) {
+    var list = Array.isArray(selectors) ? selectors : [selectors];
+    var scope = root && root.querySelector ? root : document;
+    for (var i = 0; i < list.length; i++) {
+      var selector = list[i];
+      if (typeof selector !== "string" || !selector.trim()) continue;
+      try {
+        var target = scope.querySelector(selector);
+        if (target) return target;
+      } catch (e) {}
+    }
+    return null;
+  }
   function resolveTarget(step) {
     var selector = _focusSelector || (typeof step.target === "function" ? step.target() : step.target);
     // 动态 target 函数可返回元素本身（如"最后一个已完成面板"），直接使用
     if (selector && typeof selector === "object" && selector.nodeType === 1) return selector;
-    try { return document.querySelector(selector); } catch (e) { return null; }
+    return firstTarget(selector);
   }
   function isFinalStep(index) { return !!TOUR_STEPS[index] && !!TOUR_STEPS[index].final; }
   // requireMinimized 守卫（第 4 步）：最后一个（最新创建）面板必须已最小化才能推进。
@@ -271,9 +284,10 @@
       }
       var fillBtn = e.target.closest(".onboarding-fill-btn");
       if (fillBtn && TOUR_STEPS[_stepIndex] && TOUR_STEPS[_stepIndex].autoFill) {
-        var input = document.querySelector("#chatInput");
+        var input = firstTarget(["#chatbotModernRoot [data-chatbot-report-input]", "#chatbotModernRoot [data-chatbot-input]", "#chatInput"]);
         if (input) {
           input.value = autoFillFor(TOUR_STEPS[_stepIndex]);
+          try { input.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {}
           input.focus();
         }
         // 步骤配置了 autoFillFocus → 高光转移到该元素（如发送按钮），引导用户发送。
@@ -402,9 +416,9 @@
         if (_focusSelector === ".deep-window-minimize") {
           var panels = document.querySelectorAll(".deep-window");
           var lastPanel = panels && panels.length ? panels[panels.length - 1] : null;
-          el = lastPanel && lastPanel.querySelector ? lastPanel.querySelector(_focusSelector) : null;
+          el = lastPanel && lastPanel.querySelector ? firstTarget(_focusSelector, lastPanel) : null;
         } else {
-          el = document.querySelector(_focusSelector);
+          el = firstTarget(_focusSelector);
         }
       } catch (e) {}
     }
@@ -433,15 +447,15 @@
   function _revealMemoryPhase() {
     if (!_active || _stepIndex !== 3 || _tourPhase !== "await-minimize") return;
     _tourPhase = "memory-revealed";
-    _focusSelector = "#chatMemoryBar";
+    _focusSelector = ["#chatbotModernRoot [data-chatbot-memory-bar]", "#chatMemoryBar"];
     _bodyKeyOverride = "step3MemoryBody";
     var bar = null;
     var chip = null;
     try {
-      bar = document.querySelector("#chatMemoryBar");
+      bar = firstTarget(["#chatbotModernRoot [data-chatbot-memory-bar]", "#chatMemoryBar"]);
       if (bar && bar.classList) bar.classList.add("onboarding-memory-reveal");
       if (bar && bar.querySelector) {
-        chip = bar.querySelector(".chat-memory-chip:last-child");
+        chip = bar.querySelector(".chat-memory-chip:last-child, [data-chatbot-memory-item]:last-child");
         if (chip && chip.classList) chip.classList.add("onboarding-memory-chip-reveal");
       }
     } catch (e) {}
@@ -723,10 +737,12 @@
   // 同步更新），比手动改状态安全。首次自动弹出时默认就是 Report Mode，判断不命中、无动作。
   function _ensureReportMode() {
     try {
-      var fastBtn = document.querySelector('[data-mode="fast"]');
-      if (!fastBtn || !fastBtn.classList || !fastBtn.classList.contains("active")) return;
-      var deepBtn = document.querySelector('[data-mode="deep"]');
-      if (deepBtn && deepBtn.click) deepBtn.click();
+      var chatBtn = firstTarget(['#chatbotModernRoot [data-chatbot-mode-button="chat"]', '[data-mode="fast"]']);
+      var chatActive = chatBtn && chatBtn.classList && chatBtn.classList.contains("active");
+      if (chatBtn && typeof chatBtn.getAttribute === "function" && chatBtn.getAttribute("aria-selected") === "true") chatActive = true;
+      if (!chatActive) return;
+      var reportBtn = firstTarget(['#chatbotModernRoot [data-chatbot-mode-button="report"]', '[data-mode="deep"]']);
+      if (reportBtn && reportBtn.click) reportBtn.click();
     } catch (e) {}
   }
 
@@ -807,14 +823,15 @@
   // notify() 内部校验 isAutoNextStep，非当前自动步骤的事件一律忽略
   try {
     document.addEventListener("submit", function (e) {
-      if (e.target && e.target.id === "chatForm") notify("sent");
+      if (!e.target) return;
+      if (e.target.id === "chatForm" || (e.target.matches && e.target.matches("#chatbotModernRoot [data-chatbot-report-form], #chatbotModernRoot [data-chatbot-composer]"))) notify("sent");
     });
     document.addEventListener("click", function (e) {
       if (e.target && e.target.closest && e.target.closest(".welcome-float-dot")) {
         notify("assistant-opened");
         return;
       }
-      if (e.target && e.target.closest && e.target.closest(".deep-window-chat-add")) notify("chat-add");
+      if (e.target && e.target.closest && e.target.closest('.deep-window-chat-add, [data-deep-window-action="add-memory"]')) notify("chat-add");
     });
   } catch (e) {}
 

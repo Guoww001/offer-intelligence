@@ -61,4 +61,65 @@ describe("ChatbotChatView", () => {
     await wrapper.get('[data-chatbot-action="open-chat-deep"]').trigger("click");
     expect(wrapper.emitted("open-deep")).toHaveLength(1);
   });
+
+  it("renders Legacy answer HTML as a summary card instead of literal markup", () => {
+    const wrapper = mount(ChatbotChatView, {
+      props: {
+        language: "zh",
+        messages: [{
+          id: "answer-raw-html",
+          role: "assistant",
+          content: '<div class="merchant-card">Shokz Official</div>',
+          contentHtml: '<div class="deep-summary-card"><h4>📊 深度分析：merchant: shokz</h4><p>merchant: shokz</p><small>点击查看完整分析</small></div>'
+        }],
+        memory: [],
+        input: "",
+        loading: false,
+        error: ""
+      }
+    });
+
+    expect(wrapper.find(".deep-summary-card").exists()).toBe(true);
+    expect(wrapper.find(".deep-summary-card").text()).toContain("merchant: shokz");
+    expect(wrapper.find(".message.assistant").text()).not.toContain("<div class=\"merchant-card\">");
+  });
+
+  it("keeps the legacy reminder actions and per-answer actions wired", async () => {
+    const feedback = {
+      isAvailable: () => true,
+      submit: async () => ({ ok: true as const })
+    };
+    const wrapper = mount(ChatbotChatView, {
+      props: {
+        language: "en",
+        messages: [{ id: "answer-1", answerId: "answer-1", role: "assistant", content: "Answer", canOpenDeep: true, feedbackState: "available" }],
+        memory: [],
+        input: "",
+        loading: false,
+        error: "",
+        utility: {
+          helpOpen: false,
+          guideOpen: false,
+          helpHtml: "",
+          guideHtml: "",
+          guideLoading: false,
+          onboardingOpen: false,
+          onboardingStep: 0,
+          onboardingTotal: 0,
+          reminderVisible: true,
+          reminderCollapsed: false
+        },
+        feedbackForAnswer: () => feedback
+      }
+    });
+
+    expect(wrapper.find('[data-chatbot-reminder]').exists()).toBe(true);
+    expect(wrapper.find('[data-chat-answer-actions]').exists()).toBe(true);
+    await wrapper.get('[data-chatbot-action="go-report"]').trigger("click");
+    await wrapper.get('[data-chatbot-action="reminder-toggle"]').trigger("click");
+    await wrapper.get('[data-chatbot-action="open-chat-deep"]').trigger("click");
+
+    expect(wrapper.emitted("context-interact")).toEqual([["go-report"], ["reminder-toggle"]]);
+    expect(wrapper.emitted("open-answer")).toEqual([["answer-1"]]);
+  });
 });
