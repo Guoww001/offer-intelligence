@@ -555,6 +555,8 @@
       currentResult: null,
       errorCode: null,
       feedbackContext: null,
+      answerContexts: new Map(),
+      activeAnswerId: null,
       chatDeepContext: null,
       chatDeepWindowId: null,
       abortController: null
@@ -3676,6 +3678,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     enhanceUserFlowGuideImages(content);
     content.dataset.rendered = "1";
     if (els.userFlowGuideStatus) els.userFlowGuideStatus.textContent = "";
+    if (typeof notifyLegacyChatSession === "function") notifyLegacyChatSession();
   }
 
   function loadUserFlowGuide() {
@@ -3702,6 +3705,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
             : "Unable to load the user guide. Please refresh and try again.";
         }
         console.warn("[user-flow-guide] load failed:", error);
+        if (typeof notifyLegacyChatSession === "function") notifyLegacyChatSession();
       })
       .finally(function () {
         if (userFlowGuideRequestUrl === guideUrl) {
@@ -11744,7 +11748,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       }
     }
 
-    return `<section class="db-chat-card">
+    return `<section class="db-chat-card" data-db-chat-state="ready">
       <div class="db-chat-card-head">
         <strong>Live DB details</strong>
         <span>${escapeHtml(title)}</span>
@@ -11757,16 +11761,39 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     </section>`;
   }
 
-  async function loadDbMerchantInsight(offer) {
+  function updateLegacyChatSupplemental(html, answerKey) {
+    var runtime = state.chatSession || {};
+    var key = String(answerKey || "").trim();
+    if (key && runtime.activeAnswerId && key !== runtime.activeAnswerId) return;
+    var value = String(html || "").trim().slice(0, 160000);
+    if (!value) return;
+    runtime.supplementalHtml = value;
+    if (typeof notifyLegacyChatSession === "function") notifyLegacyChatSession();
+  }
+
+  function dbInsightLoadingHtml(kind) {
+    var zh = state.language !== "en";
+    var title = kind === "merchant"
+      ? (zh ? "正在加载实时商户详情" : "Loading live merchant details")
+      : (zh ? "正在加载实时商户匹配" : "Loading live merchant matches");
+    var body = zh ? "静态回答已显示，数据库详情返回后会自动补充。" : "The static answer is visible; database details will appear when ready.";
+    return `<section class="db-chat-card db-chat-card-loading" data-db-chat-state="loading"><strong>${escapeHtml(title)}</strong><p>${escapeHtml(body)}</p></section>`;
+  }
+
+  async function loadDbMerchantInsight(offer, answerKey) {
     if (!offer || typeof fetch !== "function") return;
     const merchantId = String(offer.merchantId || "").trim();
     if (!merchantId || dbMerchantLoading.has(merchantId)) return;
     if (dbMerchantCache.has(merchantId)) {
       const cached = dbMerchantInsightHtml(dbMerchantCache.get(merchantId), offer);
-      if (cached) addMessage("assistant", cached);
+      if (cached) {
+        addMessage("assistant", cached);
+        updateLegacyChatSupplemental(cached, answerKey);
+      }
       return;
     }
     dbMerchantLoading.add(merchantId);
+    updateLegacyChatSupplemental(dbInsightLoadingHtml("merchant"), answerKey);
     try {
       const response = await fetch(`${DB_MERCHANT_UI_API}?merchantId=${encodeURIComponent(merchantId)}&limit=12&months=6`, { cache: "no-store" });
       let payload = null;
@@ -11780,9 +11807,14 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       }
       dbMerchantCache.set(merchantId, payload);
       const html = dbMerchantInsightHtml(payload, offer);
-      if (html) addMessage("assistant", html);
+      if (html) {
+        addMessage("assistant", html);
+        updateLegacyChatSupplemental(html, answerKey);
+      }
     } catch (error) {
-      addMessage("assistant", `<section class="db-chat-card db-chat-card-muted"><strong>Live DB details unavailable</strong><p>The static merchant answer is still loaded. DB detail requires the server-side Offer DB environment.</p></section>`);
+      var unavailable = `<section class="db-chat-card db-chat-card-muted" data-db-chat-state="error"><strong>Live DB details unavailable</strong><p>The static merchant answer is still loaded. DB detail requires the server-side Offer DB environment.</p></section>`;
+      addMessage("assistant", unavailable);
+      updateLegacyChatSupplemental(unavailable, answerKey);
     } finally {
       dbMerchantLoading.delete(merchantId);
     }
@@ -11840,7 +11872,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (!payload || payload.ok === false) return "";
     const rows = Array.isArray(payload.results) ? payload.results : [];
     const title = `Live DB search: ${payload.query || ""}`.trim();
-    return `<section class="db-chat-card">
+    return `<section class="db-chat-card" data-db-chat-state="ready">
       <div class="db-chat-card-head">
         <strong>${escapeHtml(title)}</strong>
         <span>${escapeHtml(rows.length ? `${rows.length} public matches` : "No public matches")}</span>
@@ -11849,7 +11881,7 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     </section>`;
   }
 
-  async function loadDbSearchInsight(prompt) {
+  async function loadDbSearchInsight(prompt, answerKey) {
     if (typeof fetch !== "function" || dbLookupSkipPrompt(prompt)) return;
     const query = dbSearchQueryForPrompt(prompt);
     if (query.length < 2) return;
@@ -11857,10 +11889,14 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
     if (!cacheKey || dbSearchLoading.has(cacheKey)) return;
     if (dbSearchCache.has(cacheKey)) {
       const cached = dbSearchInsightHtml(dbSearchCache.get(cacheKey));
-      if (cached) addMessage("assistant", cached);
+      if (cached) {
+        addMessage("assistant", cached);
+        updateLegacyChatSupplemental(cached, answerKey);
+      }
       return;
     }
     dbSearchLoading.add(cacheKey);
+    updateLegacyChatSupplemental(dbInsightLoadingHtml("search"), answerKey);
     try {
       const response = await fetch(`${DB_SEARCH_UI_API}?q=${encodeURIComponent(query)}&limit=6`, { cache: "no-store" });
       let payload = null;
@@ -11874,9 +11910,15 @@ Chat Mode is a read-only data analysis Agent for multi-turn questions and follow
       }
       dbSearchCache.set(cacheKey, payload);
       const html = dbSearchInsightHtml(payload);
-      if (html) addMessage("assistant", html);
+      if (html) {
+        addMessage("assistant", html);
+        updateLegacyChatSupplemental(html, answerKey);
+      }
     } catch (error) {
       dbSearchCache.delete(cacheKey);
+      var unavailable = `<section class="db-chat-card db-chat-card-muted" data-db-chat-state="error"><strong>Live DB search unavailable</strong><p>The static answer is still loaded. Live DB detail requires the server-side Offer DB environment.</p></section>`;
+      addMessage("assistant", unavailable);
+      updateLegacyChatSupplemental(unavailable, answerKey);
     } finally {
       dbSearchLoading.delete(cacheKey);
     }
@@ -17362,8 +17404,8 @@ var _NUMERIC_COL_PATTERNS = [
       attachAnswerFeedbackButton(panel.feedbackEl, reportFeedbackContext);
       notifyBridgeFeedback(reportFeedbackContext);
     }
-    if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer);
-    else loadDbSearchInsight(effectivePrompt);
+    if (dbMerchantOffer) loadDbMerchantInsight(dbMerchantOffer, bridgeOptions.supplementalKey);
+    else loadDbSearchInsight(effectivePrompt, bridgeOptions.supplementalKey);
     state.chatIntentOverride = null;
     var reportMemory = reportSucceeded && panel ? _extractPanelMemory(panel) : null;
     return {
@@ -34569,6 +34611,153 @@ var _NUMERIC_COL_PATTERNS = [
   var legacyAgentSessionListeners = new Set();
   var legacyDeepWindowListeners = new Set();
 
+  function legacyBridgeText(value, limit) {
+    return String(value == null ? "" : value).trim().slice(0, limit || 240);
+  }
+
+  function legacyFeedbackStateFor(context) {
+    if (!context || !legacyBridgeText(context.answerSnapshot || context.answer || (context.getAnswer && context.getAnswer()), 120000)) {
+      return "unavailable";
+    }
+    return context._feedbackSubmitted === true ? "submitted" : "available";
+  }
+
+  function legacyChatAnswerContext(answerId) {
+    var runtime = state.chatSession || {};
+    var contexts = runtime.answerContexts;
+    if (!(contexts instanceof Map)) return null;
+    return contexts.get(legacyBridgeText(answerId, 120)) || null;
+  }
+
+  function registerLegacyChatAnswerContext(context, answerId) {
+    if (!context) return "";
+    var runtime = state.chatSession || {};
+    if (!(runtime.answerContexts instanceof Map)) runtime.answerContexts = new Map();
+    var id = legacyBridgeText(answerId || context.answerId, 120);
+    if (!id) id = "chat-answer-" + (++answerFeedbackContextCounter);
+    try { context.answerId = id; } catch (_error) { /* provider context remains private */ }
+    runtime.answerContexts.set(id, context);
+    while (runtime.answerContexts.size > 50) {
+      var oldest = runtime.answerContexts.keys().next();
+      if (oldest.done) break;
+      runtime.answerContexts.delete(oldest.value);
+    }
+    return id;
+  }
+
+  function legacyChatAnswerMessage(message, index) {
+    message = message && typeof message === "object" ? message : {};
+    var role = message.role === "assistant" ? "assistant" : "user";
+    var id = legacyBridgeText(message.answerId || message.id, 120) ||
+      (role === "assistant" ? "chat-answer-" : "chat-user-") + (index + 1);
+    var deepWindowId = legacyBridgeText(message.deepWindowId, 120);
+    var contentHtml = role === "assistant" ? legacyBridgeText(message.contentHtml, 160000) : "";
+    var answerContext = role === "assistant" ? legacyChatAnswerContext(id) : null;
+    return {
+      id: id,
+      answerId: role === "assistant" ? id : null,
+      role: role,
+      content: legacyBridgeText(message.content, 120000),
+      contentHtml: contentHtml,
+      deepWindowId: deepWindowId || null,
+      canOpenDeep: role === "assistant" && (message.canOpenDeep === true || !!deepWindowId || !!answerContext),
+      feedbackState: role === "assistant" ? legacyFeedbackStateFor(answerContext) : "unavailable"
+    };
+  }
+
+  function legacyChatHistoryMessages(history, runtimeMessages, activeAnswerId) {
+    var entries = Array.isArray(history) ? history : [];
+    var source = Array.isArray(runtimeMessages) ? runtimeMessages : [];
+    var used = new Set();
+    return entries.map(function (message, index) {
+      message = message && typeof message === "object" ? message : {};
+      var role = message.role === "assistant" ? "assistant" : "user";
+      var content = legacyBridgeText(message.content, 120000);
+      var sourceItem = null;
+      for (var i = 0; i < source.length; i += 1) {
+        if (used.has(i)) continue;
+        var candidate = source[i];
+        var candidateRole = candidate && candidate.role === "assistant" ? "assistant" : "user";
+        if (candidateRole !== role) continue;
+        if (legacyBridgeText(candidate.content, 120000) !== content) continue;
+        used.add(i);
+        sourceItem = candidate;
+        break;
+      }
+      if (!sourceItem) {
+        for (var fallbackIndex = 0; fallbackIndex < source.length; fallbackIndex += 1) {
+          if (used.has(fallbackIndex)) continue;
+          var fallback = source[fallbackIndex];
+          var fallbackRole = fallback && fallback.role === "assistant" ? "assistant" : "user";
+          if (fallbackRole !== role) continue;
+          used.add(fallbackIndex);
+          sourceItem = fallback;
+          break;
+        }
+      }
+      var item = Object.assign({}, sourceItem || {}, { role: role, content: content });
+      var id = legacyBridgeText(item.answerId || item.id, 120);
+      if (role === "assistant") {
+        if (index === entries.length - 1 && activeAnswerId) id = legacyBridgeText(activeAnswerId, 120);
+        item.id = id || "chat-answer-" + (index + 1);
+        item.answerId = id || item.id;
+      } else {
+        item.id = id || "chat-user-" + (index + 1);
+      }
+      return item;
+    });
+  }
+
+  function legacyChatUtilityState() {
+    var helpPanel = els.reportHelpPanel;
+    var guidePanel = els.userFlowGuidePanel;
+    var helpContent = els.reportHelpContent;
+    var guideContent = els.userFlowGuideContent;
+    var reminder = null;
+    try {
+      reminder = (els.chatLogChat || document).querySelector(".chat-reminder");
+    } catch (_error) { reminder = null; }
+    var tour = window.ONBOARDING_TOUR;
+    var tourTest = tour && tour._test;
+    var step = tourTest && typeof tourTest.currentStepIndex === "function"
+      ? Number(tourTest.currentStepIndex()) : -1;
+    var total = tourTest && typeof tourTest.stepCount === "function"
+      ? Number(tourTest.stepCount()) : 0;
+    return {
+      helpOpen: !!(helpPanel && !helpPanel.classList.contains("hidden")),
+      guideOpen: !!(guidePanel && !guidePanel.classList.contains("hidden")),
+      helpHtml: legacyBridgeText(helpContent && helpContent.innerHTML, 160000),
+      guideHtml: legacyBridgeText(guideContent && guideContent.innerHTML, 160000),
+      guideLoading: !!(els.userFlowGuideStatus && legacyBridgeText(els.userFlowGuideStatus.textContent, 240)),
+      onboardingOpen: !!(tour && typeof tour.isActive === "function" && tour.isActive()),
+      onboardingStep: Number.isFinite(step) && step >= 0 ? Math.floor(step) : 0,
+      onboardingTotal: Number.isFinite(total) && total > 0 ? Math.floor(total) : 0,
+      reminderVisible: !!reminder && !reminder.classList.contains("hidden"),
+      reminderCollapsed: !!reminder && reminder.classList.contains("collapsed")
+    };
+  }
+
+  function legacyPanelFeedbackContext(panel) {
+    if (!panel) return null;
+    if (panel._feedbackContext) return panel._feedbackContext;
+    var button = panel.feedbackEl && panel.feedbackEl.querySelector
+      ? panel.feedbackEl.querySelector("[data-answer-feedback-context]") : null;
+    var key = button && button.dataset ? button.dataset.answerFeedbackContext : "";
+    return key && answerFeedbackContexts instanceof Map ? answerFeedbackContexts.get(key) || null : null;
+  }
+
+  function legacyPanelSkeletonSteps(panel) {
+    var elements = panel && panel.skeletonEl && panel.skeletonEl.querySelectorAll
+      ? Array.from(panel.skeletonEl.querySelectorAll(".deep-skeleton-step")) : [];
+    return elements.map(function (element, index) {
+      return {
+        id: legacyBridgeText(element.getAttribute("data-step-id"), 80) || "step-" + (index + 1),
+        label: legacyBridgeText(element.textContent, 240),
+        state: element.classList.contains("done") ? "done" : element.classList.contains("active") ? "active" : "pending"
+      };
+    }).filter(function (step) { return step.label; }).slice(0, 12);
+  }
+
   function legacyDeepWindowViewState() {
     var windows = _deepPanels.filter(function (panel) {
       return panel && panel.el && !panel._hidden;
@@ -34591,10 +34780,17 @@ var _NUMERIC_COL_PATTERNS = [
           x: Number.isFinite(left) ? left : 0,
           y: Number.isFinite(top) ? top : 0
         },
-        canCancel: panel.state === "loading" && !!panel.abortController,
-        canAddMemory: panel.state === "content" && panel._addedToMemory !== true,
-        addedToMemory: panel._addedToMemory === true
-      };
+         canCancel: panel.state === "loading" && !!panel.abortController,
+         canAddMemory: panel.state === "content" && panel._addedToMemory !== true,
+         addedToMemory: panel._addedToMemory === true,
+         skeletonSteps: legacyPanelSkeletonSteps(panel),
+         errorMessage: legacyBridgeText(panel.errorEl && panel.errorEl.textContent, 8000),
+         zIndex: Number(panel.zIndex) || Number(panel.el.style.zIndex) || 0,
+         canExport: panel.state === "content",
+         canMinimize: true,
+         canClose: true,
+         feedbackState: legacyFeedbackStateFor(legacyPanelFeedbackContext(panel))
+       };
     }).filter(function (panel) { return panel.id; });
     var active = windows.find(function (panel) { return panel.id === legacyDeepWindowActiveId; });
     return {
@@ -34830,6 +35026,9 @@ var _NUMERIC_COL_PATTERNS = [
         var reason = allowed.indexOf(String(reasonCode || "")) >= 0 ? String(reasonCode) : "other";
         var detail = String(reasonDetail || "").slice(0, 4000);
         return Promise.resolve(sendAnswerFeedback(context, reason, detail)).then(function (payload) {
+          context._feedbackSubmitted = true;
+          if (typeof notifyLegacyChatSession === "function") notifyLegacyChatSession();
+          if (typeof notifyLegacyDeepWindows === "function") notifyLegacyDeepWindows();
           return { ok: true, alreadyExists: !!(payload && payload.alreadyExists) };
         }).catch(function () {
           return { ok: false, errorCode: "feedback_submit_failed" };
@@ -34852,6 +35051,119 @@ var _NUMERIC_COL_PATTERNS = [
     if (_liveChatbotDataLoaded && Array.isArray(_liveChatbotOffers) && _liveChatbotOffers.length) return "db";
     if (mode === "db" || mode === "database" || mode === "live") return "db";
     return offers.length ? "cache" : "unavailable";
+  }
+
+  function legacyChatFeedbackForAnswer(answerId) {
+    var target = legacyBridgeText(answerId, 120);
+    var context = target ? legacyChatAnswerContext(target) : null;
+    return context ? legacyFeedbackBridgeFor(function () { return legacyChatAnswerContext(target); }) : null;
+  }
+
+  function legacyChatFeedbackForDeepWindow(windowId) {
+    var panel = legacyDeepWindowById(legacyBridgeText(windowId, 120));
+    var context = legacyPanelFeedbackContext(panel);
+    return context ? legacyFeedbackBridgeFor(function () { return legacyPanelFeedbackContext(panel); }) : null;
+  }
+
+  function openLegacyChatAnswer(answerId) {
+    var target = legacyBridgeText(answerId, 120);
+    var runtime = state.chatSession || {};
+    var context = target ? legacyChatAnswerContext(target) : null;
+    if (!context) return null;
+    var existing = null;
+    var panels = Array.isArray(_deepPanels) ? _deepPanels : [];
+    for (var i = 0; i < panels.length; i += 1) {
+      if (panels[i] && panels[i]._chatAnswerId === target) { existing = panels[i]; break; }
+    }
+    if (existing) {
+      if (existing._hidden) _showDeepPanel(existing.id);
+      else _bringPanelToFront(existing);
+      return existing.id;
+    }
+    var prompt = legacyBridgeText(context.prompt, 20000);
+    var answer = context.getAnswer && context.getAnswer();
+    if (!prompt || !legacyBridgeText(answer, 120000)) return null;
+    var panel = _createDeepPanel(prompt);
+    panel._mode = "chat";
+    panel._chatAnswerId = target;
+    panel._feedbackContext = context;
+    panel.el.classList.add("source-chat");
+    var responseHtml = '<div class="chat-stream-text">' + (markdownToHtml(String(answer)) || escapeHtml(String(answer))) + "</div>";
+    _showQuickResultInDeepPanel(panel, responseHtml, prompt, {
+      recommendationResult: context.recommendationResult,
+      language: state.language === "en" ? "en" : "zh"
+    });
+    panel._modernBridgeHidden = true;
+    panel.el.style.display = "none";
+    var messages = Array.isArray(runtime.messages) ? runtime.messages.slice() : [];
+    runtime.messages = messages.map(function (message) {
+      return message && (message.answerId === target || message.id === target)
+        ? Object.assign({}, message, { id: target, answerId: target, deepWindowId: panel.id, canOpenDeep: true })
+        : message;
+    });
+    if (runtime.activeAnswerId === target) runtime.chatDeepWindowId = panel.id;
+    runtime.currentResult = runtime.currentResult && runtime.currentResult.answerId === target
+      ? Object.assign({}, runtime.currentResult, { deepWindowId: panel.id }) : runtime.currentResult;
+    legacyDeepWindowActiveId = panel.id;
+    notifyLegacyChatSession();
+    notifyLegacyDeepWindows();
+    return panel.id;
+  }
+
+  function interactLegacyChatContext(action, value) {
+    if (action === "go-report") {
+      _switchToReportMode();
+      notifyLegacyChatSession();
+      return true;
+    }
+    if (action === "reminder-toggle") {
+      var reminderRoot = els.chatLogChat || document;
+      var reminderToggle = reminderRoot && reminderRoot.querySelector
+        ? reminderRoot.querySelector(".chat-reminder-toggle") : null;
+      if (!reminderToggle || typeof reminderToggle.click !== "function") return false;
+      reminderToggle.click();
+      notifyLegacyChatSession();
+      return true;
+    }
+    var root = els.recBox;
+    if (!root || !root.querySelector) return false;
+    var target = null;
+    if (action === "trend-metric") {
+      var metricButtons = root.querySelectorAll("[data-trend-metric]");
+      var metricValue = String(value || "");
+      for (var metricIndex = 0; metricIndex < metricButtons.length; metricIndex += 1) {
+        if (metricButtons[metricIndex].getAttribute("data-trend-metric") === metricValue) {
+          target = metricButtons[metricIndex];
+          break;
+        }
+      }
+    }
+    else if (action === "trend-category") target = root.querySelector("[data-trend-category-select]");
+    else if (action === "trend-column-toggle") target = root.querySelector("[data-trend-column-toggle]");
+    else if (action === "trend-column-core") target = root.querySelector("[data-trend-column-core]");
+    else if (action === "trend-column-all") target = root.querySelector("[data-trend-column-all]");
+    else if (action === "payment-month") {
+      var monthTargets = root.querySelectorAll("[data-payment-month]");
+      var monthValue = String(value || "");
+      for (var monthIndex = 0; monthIndex < monthTargets.length; monthIndex += 1) {
+        if (monthTargets[monthIndex].getAttribute("data-payment-month") === monthValue) {
+          target = monthTargets[monthIndex];
+          break;
+        }
+      }
+      if (!target && els.paymentMonth && monthValue) target = els.paymentMonth;
+    }
+    else if (action === "download") target = root.querySelector("[data-download-id]");
+    else if (action === "open") target = root.querySelector("[data-context-action], [data-trend-metric], [data-trend-column-toggle], [data-download-id]");
+    if (!target || typeof target.click !== "function") return false;
+    if ((action === "trend-category" || action === "payment-month") && value != null && "value" in target) {
+      target.value = String(value);
+      if (typeof target.dispatchEvent === "function") target.dispatchEvent(new Event("change", { bubbles: true }));
+    } else {
+      target.click();
+    }
+    notifyLegacyChatSession();
+    return true;
   }
 
   function legacyChatMemoryItems() {
@@ -34892,6 +35204,15 @@ var _NUMERIC_COL_PATTERNS = [
     var history = Array.isArray(state.chatHistory) ? state.chatHistory.slice() : [];
     var messages = Array.isArray(runtime.messages) && runtime.messages.length
       ? runtime.messages.slice() : history.slice();
+    var normalizedHistory = history.map(legacyChatAnswerMessage);
+    var normalizedMessages = messages.map(legacyChatAnswerMessage);
+    var currentResult = runtime.currentResult && typeof runtime.currentResult === "object"
+      ? Object.assign({}, runtime.currentResult) : null;
+    var activeContext = runtime.activeAnswerId ? legacyChatAnswerContext(runtime.activeAnswerId) : runtime.feedbackContext;
+    if (currentResult && activeContext) {
+      currentResult.answerId = legacyBridgeText(currentResult.answerId || runtime.activeAnswerId, 120) || null;
+      currentResult.feedbackState = legacyFeedbackStateFor(activeContext);
+    }
     return {
       mode: state.deepMode ? "report" : "chat",
       language: state.language === "en" ? "en" : "zh",
@@ -34902,11 +35223,13 @@ var _NUMERIC_COL_PATTERNS = [
       source: legacyChatDataSource(),
       status: runtime.status === "running" || runtime.status === "success" || runtime.status === "stopped" || runtime.status === "error"
         ? runtime.status : "idle",
-      history: history,
-      messages: messages,
+      history: normalizedHistory,
+      messages: normalizedMessages,
       memory: legacyChatMemoryItems(),
       starterCards: legacyChatStarterCards(),
-      currentResult: runtime.currentResult || null,
+      currentResult: currentResult,
+      utility: legacyChatUtilityState(),
+      supplementalHtml: legacyBridgeText(runtime.supplementalHtml, 160000),
       errorCode: runtime.errorCode || null
     };
   }
@@ -34925,6 +35248,7 @@ var _NUMERIC_COL_PATTERNS = [
     var runtime = state.chatSession || {};
     runtime.status = "running";
     runtime.currentResult = null;
+    runtime.supplementalHtml = "";
     runtime.errorCode = null;
     notifyLegacyChatSession();
     return Promise.resolve(applyPrompt(prompt)).then(function (result) {
@@ -35014,6 +35338,10 @@ var _NUMERIC_COL_PATTERNS = [
 
   function openLegacyChatDeepWindow() {
     var runtime = state.chatSession || {};
+    if (runtime.activeAnswerId && legacyChatAnswerContext(runtime.activeAnswerId)) {
+      var answerPanelId = openLegacyChatAnswer(runtime.activeAnswerId);
+      if (answerPanelId) return answerPanelId;
+    }
     var result = runtime.currentResult;
     if (!result || result.mode !== "chat" || result.status !== "success" || !String(result.response || "").trim()) return null;
     var existing = runtime.chatDeepWindowId ? legacyDeepWindowById(runtime.chatDeepWindowId) : null;
@@ -35083,14 +35411,17 @@ var _NUMERIC_COL_PATTERNS = [
     runtime.errorCode = null;
     runtime.currentResult = null;
     runtime.feedbackContext = null;
+    runtime.supplementalHtml = "";
+    runtime.activeAnswerId = "chat-answer-" + (++answerFeedbackContextCounter);
     runtime.chatDeepContext = null;
     runtime.chatDeepWindowId = null;
     if (mode === "chat") {
       var previousMessages = Array.isArray(runtime.messages) && runtime.messages.length
         ? runtime.messages.slice() : state.chatHistory.slice();
+      var userAnswerId = "chat-user-" + (++answerFeedbackContextCounter);
       runtime.messages = previousMessages.concat([
-        { role: "user", content: query },
-        { role: "assistant", content: "" }
+        { id: userAnswerId, role: "user", content: query },
+        { id: runtime.activeAnswerId, answerId: runtime.activeAnswerId, role: "assistant", content: "" }
       ]);
     }
     notifyLegacyChatSession(callbacks.onChange);
@@ -35099,11 +35430,19 @@ var _NUMERIC_COL_PATTERNS = [
         signal: sessionSignal,
         controller: controller,
         modernBridge: true,
+        supplementalKey: runtime.activeAnswerId,
         onFeedbackContext: function (context) {
           runtime.feedbackContext = context;
+          registerLegacyChatAnswerContext(context, runtime.activeAnswerId);
+          notifyLegacyChatSession(callbacks.onChange);
         },
         onChatDeepContext: function (context) {
           runtime.chatDeepContext = context;
+          var answerContext = legacyChatAnswerContext(runtime.activeAnswerId);
+          if (answerContext && context && context.recommendationResult) {
+            answerContext.recommendationResult = context.recommendationResult;
+          }
+          notifyLegacyChatSession(callbacks.onChange);
         },
         onToken: function (token) {
           var value = String(token || "");
@@ -35111,7 +35450,12 @@ var _NUMERIC_COL_PATTERNS = [
             var messages = Array.isArray(runtime.messages) ? runtime.messages.slice() : [];
             var last = messages.length - 1;
             if (last >= 0 && messages[last].role === "assistant") {
-              messages[last] = { role: "assistant", content: String(messages[last].content || "") + value };
+              messages[last] = Object.assign({}, messages[last], {
+                id: runtime.activeAnswerId,
+                answerId: runtime.activeAnswerId,
+                role: "assistant",
+                content: String(messages[last].content || "") + value
+              });
               runtime.messages = messages;
             }
           }
@@ -35128,6 +35472,17 @@ var _NUMERIC_COL_PATTERNS = [
         errorCode: "legacy_chat_bridge_error"
       };
       result = legacyReportResultWithContext(result);
+      if (result && typeof result === "object" && result.ok && runtime.activeAnswerId) {
+        result = Object.assign({}, result, {
+          answerId: runtime.activeAnswerId,
+          feedbackState: legacyFeedbackStateFor(runtime.feedbackContext)
+        });
+        if (result.deepWindowId) {
+          var resultPanel = legacyDeepWindowById(result.deepWindowId);
+          if (resultPanel) resultPanel._feedbackContext = runtime.feedbackContext;
+          if (runtime.feedbackContext) runtime.feedbackContext.deepWindowId = result.deepWindowId;
+        }
+      }
       if (mode === "chat" && result.status === "success") {
         var recommendationHtml = renderMemoryRecommendationDownloadCard(
           runtime.chatDeepContext && runtime.chatDeepContext.recommendationResult,
@@ -35137,7 +35492,8 @@ var _NUMERIC_COL_PATTERNS = [
       }
       if (mode === "chat") {
         if (result.ok && result.status === "success") {
-          runtime.messages = state.chatHistory.slice();
+          var completedHistory = Array.isArray(state.chatHistory) ? state.chatHistory.slice() : [];
+          runtime.messages = legacyChatHistoryMessages(completedHistory, runtime.messages, runtime.activeAnswerId);
         } else {
           runtime.messages = (runtime.messages || []).slice(0, Math.max(0, runtime.messages.length - 2));
         }
@@ -35156,6 +35512,7 @@ var _NUMERIC_COL_PATTERNS = [
         mode: mode,
         source: legacyChatDataSource(),
         response: "",
+        answerId: runtime.activeAnswerId,
         errorCode: runtime.errorCode
       };
       if (mode === "chat") runtime.messages = (runtime.messages || []).slice(0, Math.max(0, runtime.messages.length - 2));
@@ -35312,7 +35669,10 @@ var _NUMERIC_COL_PATTERNS = [
       state.chatSession.messages = [];
       state.chatSession.currentResult = null;
       state.chatSession.errorCode = null;
+      state.chatSession.supplementalHtml = "";
       state.chatSession.feedbackContext = null;
+      state.chatSession.answerContexts = new Map();
+      state.chatSession.activeAnswerId = null;
       state.chatSession.chatDeepContext = null;
       state.chatSession.chatDeepWindowId = null;
       if (els.chatLog) els.chatLog.innerHTML = "";
@@ -35322,21 +35682,28 @@ var _NUMERIC_COL_PATTERNS = [
     },
     openDeepWindow: openLegacyChatDeepWindow,
     feedback: legacyFeedbackBridgeFor(function () { return state.chatSession.feedbackContext; }),
+    feedbackForAnswer: legacyChatFeedbackForAnswer,
+    feedbackForDeepWindow: legacyChatFeedbackForDeepWindow,
+    openChatAnswer: openLegacyChatAnswer,
+    interactContext: interactLegacyChatContext,
     downloadLogs: function (kind, format) {
       downloadChatLogs(kind, format);
       return true;
     },
     toggleHelp: function () {
       toggleReportHelp();
+      notifyLegacyChatSession();
       return true;
     },
     toggleGuide: function () {
       toggleUserFlowGuide();
+      notifyLegacyChatSession();
       return true;
     },
     startOnboarding: function () {
       if (!window.ONBOARDING_TOUR || typeof window.ONBOARDING_TOUR.startTour !== "function") return false;
       window.ONBOARDING_TOUR.startTour();
+      notifyLegacyChatSession();
       return true;
     },
     onChange: function (listener) {

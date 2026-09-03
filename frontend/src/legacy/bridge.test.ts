@@ -41,6 +41,55 @@ function agentState(overrides: Partial<LegacyAgentViewState> = {}): LegacyAgentV
 }
 
 describe("Legacy session bridge contracts", () => {
+  it("preserves answer-level metadata and utility state in the screen-safe snapshot", () => {
+    const bridge = createLegacyChatSessionBridge({
+      getState: () => chatState({
+        messages: [{
+          role: "assistant",
+          content: "Tapo report",
+          id: "answer-1",
+          answerId: "answer-1",
+          contentHtml: "<p>Tapo report</p>",
+          deepWindowId: "deep-1",
+          canOpenDeep: true,
+          feedbackState: "available"
+        }],
+        utility: {
+          helpOpen: true,
+          guideOpen: false,
+          helpHtml: "<p>Help</p>",
+          guideHtml: "",
+          guideLoading: false,
+          onboardingOpen: false,
+          onboardingStep: 0,
+          onboardingTotal: 3,
+          reminderVisible: true,
+          reminderCollapsed: false
+        }
+      } as unknown as Partial<LegacyChatViewState>),
+      setMode: vi.fn(),
+      submit: vi.fn(),
+      removeMemory: vi.fn(),
+      clearConversation: vi.fn()
+    });
+
+    expect(bridge.getState()).toMatchObject({
+      messages: [{
+        id: "answer-1",
+        answerId: "answer-1",
+        contentHtml: "<p>Tapo report</p>",
+        deepWindowId: "deep-1",
+        canOpenDeep: true,
+        feedbackState: "available"
+      }],
+      utility: {
+        helpOpen: true,
+        onboardingTotal: 3,
+        reminderVisible: true
+      }
+    });
+  });
+
   it("normalizes Deep Window state and forwards controlled panel actions", () => {
     const state: LegacyDeepWindowsViewState = {
       activeId: "legacy-1",
@@ -155,6 +204,7 @@ describe("Legacy session bridge contracts", () => {
   });
 
   it("exposes the rendered Legacy context panel for Modern parity", () => {
+    const addMemory = vi.fn(() => true);
     const bridge = createLegacyChatSessionBridge({
       getState: () => chatState({
         contextTitle: "上下文概览",
@@ -164,8 +214,18 @@ describe("Legacy session bridge contracts", () => {
       setMode: vi.fn(),
       submit: vi.fn(),
       removeMemory: vi.fn(),
-      clearConversation: vi.fn()
+      clearConversation: vi.fn(),
+      addMemory
     });
+
+    expect(bridge.addMemory?.({
+      ok: true,
+      status: "success",
+      mode: "report",
+      source: "cache",
+      response: "报告"
+    })).toBe(true);
+    expect(addMemory).toHaveBeenCalledWith(expect.objectContaining({ response: "报告" }));
 
     expect(bridge.getState()).toMatchObject({
       contextTitle: "上下文概览",

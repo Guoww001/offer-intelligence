@@ -124,7 +124,8 @@ for (const s of t.steps) {
 assertEqual(t.steps[0].id, "intro", "step0 should be the layout intro");
 assertEqual(t.steps[0].target, ".welcome-float-dot", "intro should first highlight the assistant icon");
 assertEqual(t.steps[0].autoNext, "assistant-opened", "opening the assistant panel should advance intro");
-assertEqual(t.steps[1].autoFillFocus, '#chatForm button[type="submit"]', "report-ask should focus send button after autofill");
+assertEqual(t.steps[1].target[0], "#chatbotModernRoot [data-chatbot-report-input]", "report-ask should prefer the Modern input");
+assertEqual(t.steps[1].autoFillFocus[1], '#chatForm button[type="submit"]', "report-ask should keep the Legacy send fallback after autofill");
 assertEqual(t.steps[1].autoNext, "sent", "report-ask should autoNext on sent");
 assertEqual(t.steps[2].id, "deep-window", "step2 should wait for report");
 assertEqual(typeof t.steps[2].target, "function", "deep-window target should be a dynamic function");
@@ -135,7 +136,8 @@ assertEqual(t.steps[3].autoNextFocus, ".deep-window-minimize", "chat-add should 
 assertEqual(t.steps[3].nextPhaseOn, "panel-minimized", "add-to-chat should reveal memory after minimization");
 assertEqual(typeof t.steps[3].target, "function", "add-to-chat target should be a dynamic function");
 assertEqual(t.steps[4].id, "chat-ask", "step4 should be chat-ask");
-assertEqual(t.steps[4].autoFillFocus, '#chatForm button[type="submit"]', "chat-ask should focus send button after autofill");
+assertEqual(t.steps[4].target[0], "#chatbotModernRoot [data-chatbot-input]", "chat-ask should prefer the Modern input");
+assertEqual(t.steps[4].autoFillFocus[1], '#chatForm button[type="submit"]', "chat-ask should keep the Legacy send fallback after autofill");
 assertEqual(t.steps[4].autoNext, "sent", "chat-ask should autoNext on sent");
 assertEqual(t.steps[4].final, true, "chat-ask should be final");
 assertEqual(t.steps.filter((s) => s.autoNext).length, 3, "3 steps should have autoNext (assistant-opened/sent/sent)");

@@ -38,6 +38,14 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 - Agent 默认由 CopilotKit `useAgent` 管理运行与停止；Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
 - CopilotKit bundle 与主 `oi-modern.js` 分离，只在进入 Agent 页面时加载；CopilotKit 默认 Sidebar 与全局样式不作为页面 UI。真实登录数据、视觉几何与生产网络仍需在部署后验收。
 
+### 2026-09-03 Chatbot Legacy-first 对齐落地
+
+- 默认入口继续由 `public/app.js:switchPage()` 使用 Legacy；Modern Chatbot 只在 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且 bridge 可用时作为逐页对照页挂载。
+- `frontend/src/legacy/contracts.ts` 与 `frontend/src/legacy/bridge.ts` 现在保留回答 ID、回答 HTML、Deep Window 关联、反馈状态、工具面板状态、补充异步内容和 Deep Window skeleton/capability 字段；bridge 仍只投影页面安全字段。
+- Vue Chatbot 已补齐原版交互表面：Deep Window loading/content/error 生命周期、多窗口操作、拖拽至 Memory、逐答案 View/反馈、帮助/指南/Logs/Clear/onboarding、slash intent 菜单、Context 指标/分类交互和异步 DB 补充结果。
+- 原始 `contentHtml`、下载标记、趋势/列控件和数据来源继续通过 Legacy HTML 与受控事件渲染；Vue 层不重新计算 Legacy 报告公式，也不把模型文本当作数据事实。
+- 自动化证据入口为 `scripts/test_chatbot_legacy_first_parity_gap.mjs`、`frontend/src/features/chatbot/*test.ts` 和 `frontend/src/legacy/bridge.test.ts`；组件与静态契约不能替代真实登录、视觉几何、SSE 网络和最终浏览器验收。
+
 ---
 
 ## 2. 完整请求流程

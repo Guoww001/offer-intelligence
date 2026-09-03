@@ -51,6 +51,7 @@ export type ChatbotChatRunner = (
 
 export type ChatbotReportViewResult = ChatbotModelReportResult & {
   readonly title?: string;
+  readonly contentHtml?: string;
   readonly legacyHtml?: string;
   readonly recommendationHtml?: string;
   readonly bridgeResult?: LegacyChatViewResult;

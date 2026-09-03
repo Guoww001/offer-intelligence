@@ -10,12 +10,16 @@ import type {
   LegacyAgentViewState,
   LegacyBootstrapData,
   LegacyChatRunCallbacks,
+  LegacyChatAnswerMessage,
+  LegacyChatUtilityState,
   LegacySessionMessage,
   LegacyChatSessionBridge,
   LegacyChatStarterCard,
   LegacyChatViewResult,
   LegacyChatViewState,
   LegacyDeepWindowView,
+  LegacyDeepWindowSkeletonStep,
+  LegacyAnswerFeedbackState,
   LegacyDeepWindowInteraction,
   LegacyDeepWindowsBridge,
   LegacyDeepWindowsViewState,
@@ -34,8 +38,18 @@ export interface LegacyChatSessionBridgeOptions {
   readonly submit: (prompt: string, callbacks: LegacyChatRunCallbacks) => Promise<LegacyChatViewResult>;
   readonly removeMemory: (memoryId: string) => void;
   readonly clearConversation: () => void;
+  readonly addMemory?: (result: import("./contracts").LegacyChatViewResult) => boolean;
   readonly downloadOverview?: () => boolean;
   readonly downloadRecommendation?: (downloadId: string) => boolean;
+  readonly feedback?: import("./contracts").LegacyFeedbackBridge;
+  readonly downloadLogs?: (kind: "questions" | "feedback", format: "csv" | "jsonl") => boolean;
+  readonly toggleHelp?: () => boolean;
+  readonly toggleGuide?: () => boolean;
+  readonly startOnboarding?: () => boolean;
+  readonly feedbackForAnswer?: (answerId: string) => import("./contracts").LegacyFeedbackBridge | null;
+  readonly feedbackForDeepWindow?: (windowId: string) => import("./contracts").LegacyFeedbackBridge | null;
+  readonly openChatAnswer?: (answerId: string) => string | null;
+  readonly interactContext?: (action: string, value?: string) => boolean;
 }
 
 export interface LegacyAgentSessionBridgeOptions {
@@ -107,6 +121,72 @@ function safeDataSource(value: unknown): LegacyChatViewState["source"] {
   return value === "db" || value === "cache" ? value : "unavailable";
 }
 
+function safeFeedbackState(value: unknown): LegacyAnswerFeedbackState {
+  return value === "available" || value === "submitted" ? value : "unavailable";
+}
+
+function normalizeAnswerMessage(value: LegacyChatAnswerMessage, index: number): LegacyChatAnswerMessage {
+  const message = value || {} as LegacyChatAnswerMessage;
+  const role = message.role === "assistant" ? "assistant" : "user";
+  const messageId = safeText(message.id, 120);
+  const answerId = role === "assistant"
+    ? safeText(message.answerId || message.id, 120) || `assistant-${index + 1}`
+    : "";
+  const deepWindowId = safeText(message.deepWindowId, 120);
+  const contentHtml = safeText(message.contentHtml, 160_000);
+  return {
+    id: messageId || answerId || `${role}-${index + 1}`,
+    ...(role === "assistant" ? { answerId } : {}),
+    role,
+    content: safeText(message.content, 120_000),
+    ...(role === "assistant" && contentHtml ? { contentHtml } : {}),
+    ...(role === "assistant" && deepWindowId ? { deepWindowId } : {}),
+    ...(role === "assistant" ? {
+      canOpenDeep: message.canOpenDeep === true || Boolean(deepWindowId),
+      feedbackState: safeFeedbackState(message.feedbackState)
+    } : {})
+  };
+}
+
+const EMPTY_CHAT_UTILITY: LegacyChatUtilityState = Object.freeze({
+  helpOpen: false,
+  guideOpen: false,
+  helpHtml: "",
+  guideHtml: "",
+  guideLoading: false,
+  onboardingOpen: false,
+  onboardingStep: 0,
+  onboardingTotal: 0,
+  reminderVisible: false,
+  reminderCollapsed: false
+});
+
+function normalizeUtilityState(value: LegacyChatUtilityState | undefined): LegacyChatUtilityState {
+  const utility = value || EMPTY_CHAT_UTILITY;
+  const step = Number(utility.onboardingStep);
+  const total = Number(utility.onboardingTotal);
+  return {
+    helpOpen: utility.helpOpen === true,
+    guideOpen: utility.guideOpen === true,
+    helpHtml: safeText(utility.helpHtml, 160_000),
+    guideHtml: safeText(utility.guideHtml, 160_000),
+    guideLoading: utility.guideLoading === true,
+    onboardingOpen: utility.onboardingOpen === true,
+    onboardingStep: Number.isFinite(step) ? Math.max(0, Math.min(Math.floor(step), 100)) : 0,
+    onboardingTotal: Number.isFinite(total) ? Math.max(0, Math.min(Math.floor(total), 100)) : 0,
+    reminderVisible: utility.reminderVisible === true,
+    reminderCollapsed: utility.reminderCollapsed === true
+  };
+}
+
+function normalizeSkeletonStep(value: LegacyDeepWindowSkeletonStep, index: number): LegacyDeepWindowSkeletonStep | null {
+  const step = value || {} as LegacyDeepWindowSkeletonStep;
+  const id = safeText(step.id, 80) || `step-${index + 1}`;
+  const state = step.state === "active" || step.state === "done" ? step.state : "pending";
+  const label = safeText(step.label, 240);
+  return label ? { id, label, state } : null;
+}
+
 function normalizeChatResult(value: LegacyChatViewResult, fallbackMode: "report" | "chat", fallbackSource: LegacyChatViewState["source"]): LegacyChatViewResult {
   const source = safeDataSource(value?.source || fallbackSource);
   const status = value?.status === "success" || value?.status === "stopped" ? value.status : "error";
@@ -126,6 +206,10 @@ function normalizeChatResult(value: LegacyChatViewResult, fallbackMode: "report"
       ? { reportSnapshot: value.reportSnapshot }
       : {}),
     ...(safeText(value?.deepWindowId, 120) ? { deepWindowId: safeText(value.deepWindowId, 120) } : {}),
+    ...(safeText(value?.answerId, 120) ? { answerId: safeText(value.answerId, 120) } : {}),
+    ...(value?.feedbackState === "available" || value?.feedbackState === "submitted"
+      ? { feedbackState: value.feedbackState }
+      : {}),
     ...(safeText(value?.errorCode, 80) ? { errorCode: safeText(value.errorCode, 80) } : {})
   };
 }
@@ -136,6 +220,11 @@ function normalizeDeepWindow(value: LegacyDeepWindowView): LegacyDeepWindowView 
   const status = view.status === "loading" || view.status === "error" ? view.status : "content";
   const x = Number(view.position?.x);
   const y = Number(view.position?.y);
+  const zIndex = Number(view.zIndex);
+  const skeletonSteps = Array.isArray(view.skeletonSteps)
+    ? view.skeletonSteps.map(normalizeSkeletonStep).filter((item): item is LegacyDeepWindowSkeletonStep => Boolean(item)).slice(0, 12)
+    : [];
+  const errorMessage = safeText(view.errorMessage, 8_000);
   return {
     id: safeText(view.id, 120),
     mode,
@@ -154,7 +243,14 @@ function normalizeDeepWindow(value: LegacyDeepWindowView): LegacyDeepWindowView 
     },
     canCancel: view.canCancel === true,
     canAddMemory: view.canAddMemory === true,
-    addedToMemory: view.addedToMemory === true
+    addedToMemory: view.addedToMemory === true,
+    skeletonSteps,
+    ...(errorMessage ? { errorMessage } : {}),
+    ...(Number.isFinite(zIndex) ? { zIndex: Math.max(0, Math.min(Math.floor(zIndex), 100_000)) } : {}),
+    canExport: view.canExport !== false && status === "content",
+    canMinimize: view.canMinimize !== false,
+    canClose: view.canClose !== false,
+    feedbackState: safeFeedbackState(view.feedbackState)
   };
 }
 
@@ -174,17 +270,11 @@ function normalizeChatState(value: LegacyChatViewState): LegacyChatViewState {
   const state = value || {} as LegacyChatViewState;
   const mode = state.mode === "chat" ? "chat" : "report";
   const language = state.language === "en" ? "en" : "zh";
-  const messages: LegacySessionMessage[] = Array.isArray(state.messages)
-    ? state.messages.filter(Boolean).map((message): LegacySessionMessage => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: safeText(message.content, 120_000)
-      }))
+  const messages: LegacyChatAnswerMessage[] = Array.isArray(state.messages)
+    ? state.messages.filter(Boolean).map(normalizeAnswerMessage)
     : [];
-  const history: LegacySessionMessage[] = Array.isArray(state.history)
-    ? state.history.filter(Boolean).map((message): LegacySessionMessage => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: safeText(message.content, 120_000)
-      }))
+  const history: LegacyChatAnswerMessage[] = Array.isArray(state.history)
+    ? state.history.filter(Boolean).map(normalizeAnswerMessage)
     : [];
   const memory = Array.isArray(state.memory)
     ? state.memory.filter(Boolean).map((item) => ({
@@ -208,6 +298,7 @@ function normalizeChatState(value: LegacyChatViewState): LegacyChatViewState {
   const contextTitle = safeText(state.contextTitle, 240);
   const contextSubtitle = safeText(state.contextSubtitle, 240);
   const contextHtml = safeText(state.contextHtml, 160_000);
+  const supplementalHtml = safeText(state.supplementalHtml, 160_000);
   return {
     mode,
     language,
@@ -222,6 +313,8 @@ function normalizeChatState(value: LegacyChatViewState): LegacyChatViewState {
     messages,
     memory,
     starterCards,
+    utility: normalizeUtilityState(state.utility),
+    ...(supplementalHtml ? { supplementalHtml } : {}),
     currentResult: state.currentResult
       ? normalizeChatResult(state.currentResult, mode, safeDataSource(state.source))
       : null,
@@ -502,6 +595,39 @@ export function createLegacyChatSessionBridge(options: LegacyChatSessionBridgeOp
     },
     downloadRecommendation(downloadId) {
       return options.downloadRecommendation?.(safeText(downloadId, 120)) || false;
+    },
+    addMemory(result) {
+      const state = normalizeChatState(options.getState());
+      return options.addMemory?.(normalizeChatResult(result, state.mode, state.source)) || false;
+    },
+    feedback: options.feedback,
+    downloadLogs(kind, format) {
+      return options.downloadLogs?.(kind, format) || false;
+    },
+    toggleHelp() {
+      return options.toggleHelp?.() || false;
+    },
+    toggleGuide() {
+      return options.toggleGuide?.() || false;
+    },
+    startOnboarding() {
+      return options.startOnboarding?.() || false;
+    },
+    feedbackForAnswer(answerId) {
+      const target = safeText(answerId, 120);
+      return target ? options.feedbackForAnswer?.(target) || null : null;
+    },
+    feedbackForDeepWindow(windowId) {
+      const target = safeText(windowId, 120);
+      return target ? options.feedbackForDeepWindow?.(target) || null : null;
+    },
+    openChatAnswer(answerId) {
+      const target = safeText(answerId, 120);
+      return target ? options.openChatAnswer?.(target) || null : null;
+    },
+    interactContext(action, value) {
+      const target = safeText(action, 120);
+      return target ? options.interactContext?.(target, safeText(value, 200)) || false : false;
     },
     onChange(listener) {
       if (typeof listener !== "function") throw new TypeError("Legacy Chat listener 必须是函数");

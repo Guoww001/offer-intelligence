@@ -62,6 +62,17 @@ export interface LegacySessionMessage {
   readonly content: string;
 }
 
+export type LegacyAnswerFeedbackState = "available" | "submitted" | "unavailable";
+
+export interface LegacyChatAnswerMessage extends LegacySessionMessage {
+  readonly id?: string;
+  readonly answerId?: string;
+  readonly contentHtml?: string;
+  readonly deepWindowId?: string | null;
+  readonly canOpenDeep?: boolean;
+  readonly feedbackState?: LegacyAnswerFeedbackState;
+}
+
 export interface LegacyChatMemoryItem {
   readonly id: string;
   readonly title: string;
@@ -88,7 +99,22 @@ export interface LegacyChatViewResult {
   readonly recommendationHtml?: string;
   readonly reportSnapshot?: unknown;
   readonly deepWindowId?: string | null;
+  readonly answerId?: string | null;
+  readonly feedbackState?: LegacyAnswerFeedbackState;
   readonly errorCode?: string | null;
+}
+
+export interface LegacyChatUtilityState {
+  readonly helpOpen: boolean;
+  readonly guideOpen: boolean;
+  readonly helpHtml: string;
+  readonly guideHtml: string;
+  readonly guideLoading: boolean;
+  readonly onboardingOpen: boolean;
+  readonly onboardingStep: number;
+  readonly onboardingTotal: number;
+  readonly reminderVisible: boolean;
+  readonly reminderCollapsed: boolean;
 }
 
 export interface LegacyChatViewState {
@@ -100,11 +126,13 @@ export interface LegacyChatViewState {
   readonly hasMemory: boolean;
   readonly source: LegacyDataSource;
   readonly status: LegacySessionStatus;
-  readonly history: readonly LegacySessionMessage[];
-  readonly messages: readonly LegacySessionMessage[];
+  readonly history: readonly LegacyChatAnswerMessage[];
+  readonly messages: readonly LegacyChatAnswerMessage[];
   readonly memory: readonly LegacyChatMemoryItem[];
   readonly starterCards?: readonly LegacyChatStarterCard[];
   readonly currentResult: LegacyChatViewResult | null;
+  readonly utility?: LegacyChatUtilityState;
+  readonly supplementalHtml?: string;
   readonly errorCode?: string | null;
 }
 
@@ -130,6 +158,10 @@ export interface LegacyChatSessionBridge {
   toggleHelp?: () => boolean;
   toggleGuide?: () => boolean;
   startOnboarding?: () => boolean;
+  feedbackForAnswer?(answerId: string): LegacyFeedbackBridge | null;
+  feedbackForDeepWindow?(windowId: string): LegacyFeedbackBridge | null;
+  openChatAnswer?(answerId: string): string | null;
+  interactContext?(action: string, value?: string): boolean;
 }
 
 export interface LegacyFeedbackResult {
@@ -161,6 +193,19 @@ export interface LegacyDeepWindowView {
   readonly canCancel: boolean;
   readonly canAddMemory: boolean;
   readonly addedToMemory: boolean;
+  readonly skeletonSteps?: readonly LegacyDeepWindowSkeletonStep[];
+  readonly errorMessage?: string;
+  readonly zIndex?: number;
+  readonly canExport?: boolean;
+  readonly canMinimize?: boolean;
+  readonly canClose?: boolean;
+  readonly feedbackState?: LegacyAnswerFeedbackState;
+}
+
+export interface LegacyDeepWindowSkeletonStep {
+  readonly id: string;
+  readonly label: string;
+  readonly state: "pending" | "active" | "done";
 }
 
 export interface LegacyDeepWindowsViewState {

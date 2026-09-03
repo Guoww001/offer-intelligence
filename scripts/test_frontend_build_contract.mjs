@@ -130,7 +130,7 @@ assert(brandMediaSwitchSource.includes("renderBrandMediaPage()"), "Brand Media �
 assert(paymentsSwitchSource.includes("modernApp.setLanguage(state.language)"), "Payments 挂载前必须同步现代页面语言");
 
 const vercel = JSON.parse(read("vercel.json"));
-assert(vercel.installCommand === "npm --prefix frontend ci", "Vercel installCommand 不正确");
+assert(vercel.installCommand === "npm ci && npm --prefix frontend ci", "Vercel installCommand 不正确");
 assert(vercel.buildCommand === "npm --prefix frontend run build", "Vercel buildCommand 不正确");
 assert(vercel.outputDirectory === "public", "Vercel outputDirectory 必须保持 public");
 assert(Array.isArray(vercel.routes) && vercel.routes.length > 0, "Vercel API routes 不得被构建配置覆盖");

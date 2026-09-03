@@ -52,6 +52,8 @@ const sourceLabel = computed(() => {
   return `${copy.value.source}: ${source}`;
 });
 
+const isLegacyResult = computed(() => Boolean(props.result.bridgeResult));
+
 const stats = computed(() => [
   { key: "offers", label: copy.value.offers, value: formatCount(props.result.summary.offerCount) },
   { key: "clicks", label: copy.value.clicks, value: formatCount(props.result.summary.clicks) },
@@ -124,7 +126,7 @@ function handleDownload(event: MouseEvent): void {
       {{ result.status }}
     </div>
 
-    <div v-if="!result.legacyHtml && result.rows.length" class="chatbot-result-stats" aria-label="Chatbot summary">
+    <div v-if="!isLegacyResult && !result.legacyHtml && result.rows.length" class="chatbot-result-stats" aria-label="Chatbot summary">
       <article v-for="stat in stats" :key="stat.key" data-chatbot-stat class="chatbot-result-stat">
         <span>{{ stat.label }}</span>
         <strong>{{ stat.value }}</strong>
@@ -133,7 +135,7 @@ function handleDownload(event: MouseEvent): void {
 
     <div v-if="result.legacyHtml" class="chatbot-result-legacy-html" data-chatbot-legacy-result v-html="result.legacyHtml"></div>
 
-    <p v-else-if="!result.rows.length" data-chatbot-empty class="chatbot-result-empty">
+    <p v-else-if="isLegacyResult || !result.rows.length" data-chatbot-empty data-chatbot-explicit-state="empty-or-legacy" class="chatbot-result-empty">
       {{ result.message || copy.empty }}
     </p>
 

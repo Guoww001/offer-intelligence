@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import DeepWindow from "./DeepWindow.vue";
 import type { ChatbotReportViewResult } from "./chatbotViewTypes";
+import {
+  deepWindowReport,
+  errorDeepWindow,
+  loadingDeepWindow,
+  readyDeepWindow
+} from "./deepWindowTestFixtures";
 
 const report: ChatbotReportViewResult = {
   intent: "merchant",
@@ -15,31 +21,43 @@ const report: ChatbotReportViewResult = {
 };
 
 describe("DeepWindow", () => {
-  it("exposes drag, pin, export, clone, overlay, cancel and memory controls", async () => {
-    const wrapper = mount(DeepWindow, {
-      props: { language: "zh", result: report, minimized: false, pinned: false, overlay: false, status: "loading" }
-    });
+  it("renders the Legacy skeleton while a report is loading", () => {
+    const wrapper = mount(DeepWindow, { props: loadingDeepWindow() });
 
+    expect(wrapper.find(".deep-window").exists()).toBe(true);
+    expect(wrapper.find(".deep-window-skeleton").exists()).toBe(true);
+    expect(wrapper.findAll("[data-deep-window-step]")).toHaveLength(3);
+    expect(wrapper.find('[data-deep-window-action="add-memory"]').exists()).toBe(false);
+    expect(wrapper.find('[data-deep-window-action="stop"]').exists()).toBe(true);
+  });
+
+  it("keeps only the Legacy Deep Window actions when content is ready", async () => {
+    const wrapper = mount(DeepWindow, { props: readyDeepWindow() });
+
+    expect(wrapper.find(".deep-report-title").exists()).toBe(true);
+    expect(wrapper.find(".deep-report-summary").exists()).toBe(true);
+    expect(wrapper.find(".deep-report-sections").exists()).toBe(true);
+    expect(wrapper.find(".deep-window-feedback").exists()).toBe(true);
+    expect(wrapper.find('[data-deep-window-action="add-memory"]').exists()).toBe(true);
     expect(wrapper.find('[data-deep-window-action="export"]').exists()).toBe(true);
-    expect(wrapper.find('[data-deep-window-action="clone"]').exists()).toBe(true);
-    expect(wrapper.find('[data-deep-window-action="overlay"]').exists()).toBe(true);
-    expect(wrapper.find('[data-deep-window-action="cancel"]').exists()).toBe(true);
-    expect(wrapper.find('[data-deep-window-action="pin"]').exists()).toBe(true);
+    expect(wrapper.find('[data-deep-window-action="minimize"]').exists()).toBe(true);
+    expect(wrapper.find('[data-deep-window-action="close"]').exists()).toBe(true);
+    expect(wrapper.find('[data-deep-window-action="pin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-deep-window-action="clone"]').exists()).toBe(false);
+    expect(wrapper.find('[data-deep-window-action="overlay"]').exists()).toBe(false);
     expect(wrapper.get('[data-deep-window-header]').attributes("data-draggable")).toBe("true");
 
-    await wrapper.get('[data-deep-window-action="pin"]').trigger("click");
     await wrapper.get('[data-deep-window-action="export"]').trigger("click");
-    await wrapper.get('[data-deep-window-action="clone"]').trigger("click");
-    await wrapper.get('[data-deep-window-action="overlay"]').trigger("click");
-    await wrapper.get('[data-deep-window-action="cancel"]').trigger("click");
     await wrapper.get('[data-deep-window-action="add-memory"]').trigger("click");
 
-    expect(wrapper.emitted("pin")).toHaveLength(1);
     expect(wrapper.emitted("export")).toHaveLength(1);
-    expect(wrapper.emitted("clone")).toHaveLength(1);
-    expect(wrapper.emitted("overlay")).toHaveLength(1);
-    expect(wrapper.emitted("cancel")).toHaveLength(1);
     expect(wrapper.emitted("add-memory")).toHaveLength(1);
+  });
+
+  it("shows the error card and keeps the panel closable", () => {
+    const wrapper = mount(DeepWindow, { props: errorDeepWindow() });
+    expect(wrapper.find(".deep-window-error").text()).toContain("error");
+    expect(wrapper.find('[data-deep-window-action="close"]').exists()).toBe(true);
   });
 
   it("delegates legacy trend-chart controls through explicit events", async () => {
@@ -47,7 +65,7 @@ describe("DeepWindow", () => {
       props: {
         language: "en",
         result: {
-          ...report,
+          ...deepWindowReport,
           legacyHtml: `<div class="trend-context-wrap">
             <button type="button" data-trend-metric="revenue">Revenue</button>
             <label><input type="checkbox" value="orders" data-trend-column-check></label>
@@ -72,7 +90,7 @@ describe("DeepWindow", () => {
     document.body.appendChild(memoryBar);
     vi.spyOn(document, "elementFromPoint").mockReturnValue(memoryBar);
     const wrapper = mount(DeepWindow, {
-      props: { language: "en", result: report, minimized: false }
+      props: { language: "en", result: deepWindowReport, minimized: true }
     });
 
     await wrapper.get('[data-deep-window-header]').trigger("pointerdown", { button: 0, clientX: 10, clientY: 10 });
@@ -87,7 +105,7 @@ describe("DeepWindow", () => {
     const wrapper = mount(DeepWindow, {
       props: {
         language: "en",
-        result: report,
+        result: deepWindowReport,
         minimized: false,
         canAddMemory: false,
         addedToMemory: true
