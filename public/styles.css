@@ -4741,6 +4741,13 @@ body.dashboard-mode .workspace {
   overflow: hidden;
 }
 
+body.dashboard-agent-mode .workspace {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
 body.tier-scroll-mode {
   overflow: hidden;
 }

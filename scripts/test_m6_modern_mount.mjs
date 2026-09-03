@@ -39,6 +39,11 @@ assert.match(
   /\.main-grid\.dashboard-page\.is-modern\s*>\s*#chatbotModernRoot\s*\{[\s\S]*?min-height:\s*clamp\(620px,\s*calc\(100vh\s*-\s*150px\),\s*820px\)/,
   "Modern Chatbot 根节点必须继承 Legacy Dashboard 的视口高度"
 );
+assert.match(
+  styles,
+  /body\.dashboard-agent-mode\s+\.workspace\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/,
+  "Agent 页面工作区必须保留桌面端垂直滚动"
+);
 assert.match(chatbotStyles, /@media\s*\(max-width:\s*1120px\)/, "Modern Chatbot 必须复用 Legacy Dashboard 的单栏断点");
 assert(
   !/\.chatbot-(?:report|chat)-layout\s*>\s*\.insight-panel\s*\{[^}]*display:\s*none/s.test(chatbotStyles),
