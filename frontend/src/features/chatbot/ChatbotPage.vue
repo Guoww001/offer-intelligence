@@ -47,6 +47,9 @@ const report = useChatbotReport(() => props.offers, () => props.language);
 const reportPrompt = report.prompt;
 const reportResult = report.result;
 const reportLoading = report.loading;
+const contextTitle = ref("");
+const contextSubtitle = ref("");
+const contextHtml = ref("");
 const chatInput = ref("");
 const chatLoading = ref(false);
 const chatError = ref("");
@@ -79,8 +82,8 @@ let idCounter = 0;
 const copy = computed(() => props.language === "zh" ? {
   title: "Chatbot",
   subtitle: "用 Report Mode 查数据，用 Chat Mode 继续追问。",
-  report: "Report Mode",
-  chat: "Chat Mode",
+  report: "报告模式",
+  chat: "聊天模式",
   reportError: "报告暂时无法生成，请重试。"
 } : {
   title: "Chatbot",
@@ -93,21 +96,17 @@ const copy = computed(() => props.language === "zh" ? {
 const reportError = computed(() => report.hasError.value ? copy.value.reportError : "");
 
 const utilityCopy = computed(() => props.language === "zh" ? {
-  onboarding: "新手引导",
-  help: "帮助",
-  guide: "使用指南",
+  help: "使用说明",
+  guide: "使用流程",
   logs: "日志",
   questions: "提问记录",
-  feedback: "反馈记录",
-  clear: "清空对话"
+  feedback: "反馈记录"
 } : {
-  onboarding: "Onboarding",
   help: "Help",
   guide: "User guide",
   logs: "Logs",
   questions: "Questions",
-  feedback: "Feedback",
-  clear: "Clear conversation"
+  feedback: "Feedback"
 });
 
 function nextId(prefix: string): string {
@@ -127,30 +126,16 @@ function downloadRecommendation(downloadId: string): void {
   props.session?.downloadRecommendation?.(downloadId);
 }
 
+function downloadOverview(): void {
+  props.session?.downloadOverview?.();
+}
+
 function toggleHelp(): void {
   props.session?.toggleHelp?.();
 }
 
 function toggleGuide(): void {
   props.session?.toggleGuide?.();
-}
-
-function startOnboarding(): void {
-  props.session?.startOnboarding?.();
-}
-
-function clearConversation(): void {
-  if (!props.session || chatLoading.value) return;
-  props.session.clearConversation();
-  report.reset();
-  reportPrompt.value = "";
-  reportResult.value = null;
-  chatMessages.value = [];
-  chatCurrentResult.value = null;
-  starterCards.value = [];
-  memory.value = [];
-  chatError.value = "";
-  feedbackRefreshKey.value += 1;
 }
 
 function bridgeResultToView(result: LegacyChatViewResult, query: string): ChatbotReportViewResult {
@@ -238,6 +223,11 @@ function sessionMemoryToLocal(state: LegacyChatViewState): ChatbotMemoryItem[] {
 
 function syncSessionState(next: LegacyChatViewState = props.session!.getState()): void {
   mode.value = next.mode;
+  contextTitle.value = next.contextTitle || "";
+  contextSubtitle.value = next.contextSubtitle || "";
+  contextHtml.value = next.contextHtml || (next.currentResult?.mode === "report"
+    ? next.currentResult.recommendationHtml || ""
+    : "");
   chatLoading.value = next.status === "running";
   chatError.value = next.status === "error" ? copy.value.reportError : "";
   memory.value = sessionMemoryToLocal(next);
@@ -501,54 +491,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="oi-modern-page chatbot-modern-page" data-page="chatbot">
-    <header class="chatbot-modern-header">
-      <div>
-        <span class="chatbot-modern-eyebrow">CHATBOT</span>
-        <h1>{{ copy.title }}</h1>
-        <p>{{ copy.subtitle }}</p>
-      </div>
-      <div class="chatbot-mode-switch" role="tablist" :aria-label="copy.title">
-        <button
-          type="button"
-          data-chatbot-mode-button="report"
-          :class="{ active: mode === 'report' }"
-          :aria-selected="mode === 'report'"
-          @click="setMode('report')"
-        >{{ copy.report }}</button>
-        <button
-          type="button"
-          data-chatbot-mode-button="chat"
-          :class="{ active: mode === 'chat' }"
-          :aria-selected="mode === 'chat'"
-          @click="setMode('chat')"
-        >{{ copy.chat }}</button>
-      </div>
-    </header>
-
-    <nav v-if="session" class="chatbot-modern-tools" aria-label="Chatbot tools">
-      <button v-if="session.startOnboarding" type="button" data-chatbot-action="onboarding" @click="startOnboarding">{{ utilityCopy.onboarding }}</button>
-      <button v-if="session.toggleHelp" type="button" data-chatbot-action="help" @click="toggleHelp">{{ utilityCopy.help }}</button>
-      <button v-if="session.toggleGuide" type="button" data-chatbot-action="guide" @click="toggleGuide">{{ utilityCopy.guide }}</button>
-      <details v-if="session.downloadLogs" class="chatbot-modern-logs" data-chatbot-logs>
-        <summary data-chatbot-action="logs">{{ utilityCopy.logs }}</summary>
-        <div class="chatbot-modern-logs-menu">
-          <span>{{ utilityCopy.questions }}</span>
-          <button type="button" data-chatbot-log="questions-csv" @click="downloadLogs('questions', 'csv')">CSV</button>
-          <button type="button" data-chatbot-log="questions-jsonl" @click="downloadLogs('questions', 'jsonl')">JSONL</button>
-          <span>{{ utilityCopy.feedback }}</span>
-          <button type="button" data-chatbot-log="feedback-csv" @click="downloadLogs('feedback', 'csv')">CSV</button>
-          <button type="button" data-chatbot-log="feedback-jsonl" @click="downloadLogs('feedback', 'jsonl')">JSONL</button>
-        </div>
-      </details>
-      <button type="button" data-chatbot-action="clear" :disabled="chatLoading" @click="clearConversation">{{ utilityCopy.clear }}</button>
-    </nav>
-
+  <main class="chatbot-modern-page" data-page="chatbot">
     <ChatbotReportView
       v-if="mode === 'report'"
       :language="language"
       :prompt="reportPrompt"
       :result="reportResult"
+      :context-title="contextTitle"
+      :context-subtitle="contextSubtitle"
+      :context-html="contextHtml"
       :loading="reportLoading"
       :error="reportError"
       :auto-focus="autoFocus"
@@ -558,13 +509,72 @@ onBeforeUnmount(() => {
       @submit="submitReport"
       @open-deep="openDeep"
       @add-memory="addReportToMemory()"
+      @download-overview="downloadOverview"
       @download="downloadRecommendation"
-    />
+    >
+      <template #mode-controls>
+        <button
+          type="button"
+          class="mode-btn mode-deep active"
+          data-chatbot-mode-button="report"
+          aria-selected="true"
+          @click="setMode('report')"
+        >
+          <span class="mode-indicator"></span>
+          <span>{{ copy.report }}</span>
+        </button>
+        <button
+          type="button"
+          class="mode-btn mode-fast"
+          data-chatbot-mode-button="chat"
+          aria-selected="false"
+          @click="setMode('chat')"
+        >
+          <span class="mode-indicator"></span>
+          <span>{{ copy.chat }}</span>
+        </button>
+        <button v-if="session?.toggleHelp" type="button" class="mode-btn mode-help" data-chatbot-action="help" @click="toggleHelp">
+          <span class="mode-help-icon">📖</span>
+          <span>{{ utilityCopy.help }}</span>
+        </button>
+        <button v-if="session?.toggleGuide" type="button" class="mode-btn mode-user-guide" data-chatbot-action="guide" @click="toggleGuide">
+          <span class="mode-help-icon" aria-hidden="true">i</span>
+          <span>{{ utilityCopy.guide }}</span>
+        </button>
+        <div v-if="session?.downloadLogs" class="chat-logs-control">
+          <details class="chatbot-modern-logs" data-chatbot-logs>
+            <summary class="mode-btn mode-logs" data-chatbot-action="logs">
+              <span class="mode-logs-icon" aria-hidden="true">↓</span>
+              <span>{{ utilityCopy.logs }}</span>
+            </summary>
+            <div class="chat-logs-menu chatbot-modern-logs-menu">
+              <div class="chat-log-group" role="group">
+                <span class="chat-log-group-title">{{ utilityCopy.questions }}</span>
+                <div class="chat-log-group-actions">
+                  <button type="button" data-chatbot-log="questions-csv" @click="downloadLogs('questions', 'csv')">CSV</button>
+                  <button type="button" data-chatbot-log="questions-jsonl" @click="downloadLogs('questions', 'jsonl')">JSONL</button>
+                </div>
+              </div>
+              <div class="chat-log-group" role="group">
+                <span class="chat-log-group-title">{{ utilityCopy.feedback }}</span>
+                <div class="chat-log-group-actions">
+                  <button type="button" data-chatbot-log="feedback-csv" @click="downloadLogs('feedback', 'csv')">CSV</button>
+                  <button type="button" data-chatbot-log="feedback-jsonl" @click="downloadLogs('feedback', 'jsonl')">JSONL</button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </template>
+    </ChatbotReportView>
 
     <ChatbotChatView
       v-else
       :language="language"
       :messages="chatMessages"
+      :context-title="contextTitle"
+      :context-subtitle="contextSubtitle"
+      :context-html="contextHtml"
       :memory="memory"
       :input="chatInput"
       :loading="chatLoading"
@@ -581,7 +591,62 @@ onBeforeUnmount(() => {
       @starter-prompt="setStarterPrompt"
       @open-deep="openChatDeep"
       @download="downloadRecommendation"
-    />
+    >
+      <template #mode-controls>
+        <button
+          type="button"
+          class="mode-btn mode-deep"
+          data-chatbot-mode-button="report"
+          aria-selected="false"
+          @click="setMode('report')"
+        >
+          <span class="mode-indicator"></span>
+          <span>{{ copy.report }}</span>
+        </button>
+        <button
+          type="button"
+          class="mode-btn mode-fast active"
+          data-chatbot-mode-button="chat"
+          aria-selected="true"
+          @click="setMode('chat')"
+        >
+          <span class="mode-indicator"></span>
+          <span>{{ copy.chat }}</span>
+        </button>
+        <button v-if="session?.toggleHelp" type="button" class="mode-btn mode-help" data-chatbot-action="help" @click="toggleHelp">
+          <span class="mode-help-icon">📖</span>
+          <span>{{ utilityCopy.help }}</span>
+        </button>
+        <button v-if="session?.toggleGuide" type="button" class="mode-btn mode-user-guide" data-chatbot-action="guide" @click="toggleGuide">
+          <span class="mode-help-icon" aria-hidden="true">i</span>
+          <span>{{ utilityCopy.guide }}</span>
+        </button>
+        <div v-if="session?.downloadLogs" class="chat-logs-control">
+          <details class="chatbot-modern-logs" data-chatbot-logs>
+            <summary class="mode-btn mode-logs" data-chatbot-action="logs">
+              <span class="mode-logs-icon" aria-hidden="true">↓</span>
+              <span>{{ utilityCopy.logs }}</span>
+            </summary>
+            <div class="chat-logs-menu chatbot-modern-logs-menu">
+              <div class="chat-log-group" role="group">
+                <span class="chat-log-group-title">{{ utilityCopy.questions }}</span>
+                <div class="chat-log-group-actions">
+                  <button type="button" data-chatbot-log="questions-csv" @click="downloadLogs('questions', 'csv')">CSV</button>
+                  <button type="button" data-chatbot-log="questions-jsonl" @click="downloadLogs('questions', 'jsonl')">JSONL</button>
+                </div>
+              </div>
+              <div class="chat-log-group" role="group">
+                <span class="chat-log-group-title">{{ utilityCopy.feedback }}</span>
+                <div class="chat-log-group-actions">
+                  <button type="button" data-chatbot-log="feedback-csv" @click="downloadLogs('feedback', 'csv')">CSV</button>
+                  <button type="button" data-chatbot-log="feedback-jsonl" @click="downloadLogs('feedback', 'jsonl')">JSONL</button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </template>
+    </ChatbotChatView>
 
     <DeepWindow
       v-for="window in displayedDeepWindows"

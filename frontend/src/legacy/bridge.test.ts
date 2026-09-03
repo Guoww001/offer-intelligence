@@ -154,6 +154,26 @@ describe("Legacy session bridge contracts", () => {
     });
   });
 
+  it("exposes the rendered Legacy context panel for Modern parity", () => {
+    const bridge = createLegacyChatSessionBridge({
+      getState: () => chatState({
+        contextTitle: "上下文概览",
+        contextSubtitle: "整体 offer 快照",
+        contextHtml: "<div data-legacy-context>5 offers</div>"
+      }),
+      setMode: vi.fn(),
+      submit: vi.fn(),
+      removeMemory: vi.fn(),
+      clearConversation: vi.fn()
+    });
+
+    expect(bridge.getState()).toMatchObject({
+      contextTitle: "上下文概览",
+      contextSubtitle: "整体 offer 快照",
+      contextHtml: "<div data-legacy-context>5 offers</div>"
+    });
+  });
+
   it("does not leak provider payloads or stack traces through an error fallback", async () => {
     const bridge = createLegacyChatSessionBridge({
       getState: () => chatState(),

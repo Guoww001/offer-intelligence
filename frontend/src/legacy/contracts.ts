@@ -93,6 +93,9 @@ export interface LegacyChatViewResult {
 export interface LegacyChatViewState {
   readonly mode: "report" | "chat";
   readonly language: UiLanguage;
+  readonly contextTitle?: string;
+  readonly contextSubtitle?: string;
+  readonly contextHtml?: string;
   readonly hasMemory: boolean;
   readonly source: LegacyDataSource;
   readonly status: LegacySessionStatus;
@@ -117,6 +120,7 @@ export interface LegacyChatSessionBridge {
   addMemory?(result: LegacyChatViewResult): boolean;
   removeMemory(memoryId: string): void;
   clearConversation(): void;
+  downloadOverview?(): boolean;
   downloadRecommendation?(downloadId: string): boolean;
   openDeepWindow?: () => string | null;
   onChange(listener: (state: LegacyChatViewState) => void): () => void;

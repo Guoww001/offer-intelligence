@@ -20,6 +20,9 @@ describe("AgentTimeline", () => {
     });
 
     expect(wrapper.find('[data-agent-timeline]').attributes("data-status")).toBe("done");
+    expect(wrapper.find('[data-agent-timeline]').classes()).toContain("agent-run-timeline");
+    expect(wrapper.find(".agent-run-steps").exists()).toBe(true);
+    expect(wrapper.find(".agent-run-step.agent-run-step-done").exists()).toBe(true);
     expect(wrapper.findAll('[data-agent-timeline-step]')).toHaveLength(3);
     expect(wrapper.find('[data-agent-partial]').exists()).toBe(true);
     expect(wrapper.text()).toContain("Tier 2");

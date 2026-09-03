@@ -31862,6 +31862,7 @@ var _NUMERIC_COL_PATTERNS = [
       && typeof chat.removeMemory === "function"
       && typeof chat.clearConversation === "function"
       && typeof chat.addMemory === "function"
+      && typeof chat.downloadOverview === "function"
       && typeof chat.downloadRecommendation === "function"
       && typeof chat.downloadLogs === "function"
       && typeof chat.toggleHelp === "function"
@@ -31902,8 +31903,8 @@ var _NUMERIC_COL_PATTERNS = [
   }
 
   function modernChatbotAgentParityEnabled() {
-    // M6 行为等价和浏览器验收已完成；默认使用 Modern，保留显式 false 作为回滚开关。
-    return window.__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false && modernChatbotAgentBridgeAvailable();
+    // 视觉等价由用户最终验收；验收完成前默认使用 Legacy，仅显式开启 Modern 进行逐页对照。
+    return window.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true && modernChatbotAgentBridgeAvailable();
   }
 
   function switchPage(page) {
@@ -32886,7 +32887,7 @@ var _NUMERIC_COL_PATTERNS = [
       button.dataset.promptKey = key;
       button.dataset.prompt = prompt;
       button.textContent = t(key, prompt);
-      button.addEventListener("click", () => applyPrompt(prompt));
+      button.addEventListener("click", () => runLegacyNativeChatPrompt(prompt));
       els.quickActions.appendChild(button);
     });
 
@@ -33909,7 +33910,7 @@ var _NUMERIC_COL_PATTERNS = [
           mode: state.deepMode ? "report" : "chat"
         });
       }
-      applyPrompt(prompt);
+      runLegacyNativeChatPrompt(prompt);
     });
     els.agentChatForm?.addEventListener("submit", handleAgentPageSubmit);
     els.agentChatLog?.addEventListener("click", handleAgentExamplePromptClick);
@@ -34788,6 +34789,9 @@ var _NUMERIC_COL_PATTERNS = [
     return {
       mode: state.deepMode ? "report" : "chat",
       language: state.language === "en" ? "en" : "zh",
+      contextTitle: els.contextTitle ? String(els.contextTitle.textContent || "").trim().slice(0, 240) : "",
+      contextSubtitle: els.contextSubtitle ? String(els.contextSubtitle.textContent || "").trim().slice(0, 240) : "",
+      contextHtml: els.recBox ? String(els.recBox.innerHTML || "").slice(0, 160000) : "",
       hasMemory: legacyChatMemoryItems().length > 0,
       source: legacyChatDataSource(),
       status: runtime.status === "running" || runtime.status === "success" || runtime.status === "stopped" || runtime.status === "error"
@@ -34799,6 +34803,53 @@ var _NUMERIC_COL_PATTERNS = [
       currentResult: runtime.currentResult || null,
       errorCode: runtime.errorCode || null
     };
+  }
+
+  function legacyReportContextHtml() {
+    return els.recBox ? String(els.recBox.innerHTML || "").slice(0, 160000) : "";
+  }
+
+  function legacyReportResultWithContext(result) {
+    if (!result || typeof result !== "object" || result.mode !== "report") return result;
+    var contextHtml = legacyReportContextHtml();
+    return contextHtml ? Object.assign({}, result, { recommendationHtml: contextHtml }) : result;
+  }
+
+  function runLegacyNativeChatPrompt(prompt) {
+    var runtime = state.chatSession || {};
+    runtime.status = "running";
+    runtime.currentResult = null;
+    runtime.errorCode = null;
+    notifyLegacyChatSession();
+    return Promise.resolve(applyPrompt(prompt)).then(function (result) {
+      result = result && typeof result === "object" ? result : {
+        ok: false,
+        status: "error",
+        mode: state.deepMode ? "report" : "chat",
+        source: legacyChatDataSource(),
+        response: "",
+        errorCode: "legacy_chat_bridge_error"
+      };
+      result = legacyReportResultWithContext(result);
+      runtime.currentResult = result;
+      runtime.status = result.status === "success" ? "success" : (result.status === "stopped" ? "stopped" : "error");
+      runtime.errorCode = result.errorCode || null;
+      notifyLegacyChatSession();
+      return result;
+    }).catch(function () {
+      runtime.status = "error";
+      runtime.errorCode = "legacy_chat_bridge_error";
+      runtime.currentResult = {
+        ok: false,
+        status: "error",
+        mode: state.deepMode ? "report" : "chat",
+        source: legacyChatDataSource(),
+        response: "",
+        errorCode: runtime.errorCode
+      };
+      notifyLegacyChatSession();
+      return runtime.currentResult;
+    });
   }
 
   function legacyAgentViewState() {
@@ -34970,6 +35021,7 @@ var _NUMERIC_COL_PATTERNS = [
         response: "",
         errorCode: "legacy_chat_bridge_error"
       };
+      result = legacyReportResultWithContext(result);
       if (mode === "chat" && result.status === "success") {
         var recommendationHtml = renderMemoryRecommendationDownloadCard(
           runtime.chatDeepContext && runtime.chatDeepContext.recommendationResult,
@@ -35135,6 +35187,10 @@ var _NUMERIC_COL_PATTERNS = [
       notifyLegacyChatSession();
     },
     submit: legacyChatSessionSubmit,
+    downloadOverview: function () {
+      downloadFilteredXlsx();
+      return true;
+    },
     downloadRecommendation: downloadLegacyRecommendation,
     addMemory: legacyChatSessionAddMemory,
     removeMemory: function (memoryId) {

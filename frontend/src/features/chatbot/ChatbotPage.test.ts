@@ -32,6 +32,42 @@ const offers = [
 ];
 
 describe("ChatbotPage", () => {
+  it("uses the Legacy Report Mode copy and keeps the original control row", () => {
+    const wrapper = mount(ChatbotPage, {
+      props: { language: "zh", offers, autoFocus: false }
+    });
+
+    expect(wrapper.get('[data-chatbot-mode-button="report"]').text()).toContain("报告模式");
+    expect(wrapper.get('[data-chatbot-mode-button="chat"]').text()).toContain("聊天模式");
+    expect(wrapper.get('[data-chatbot-report-input]').attributes("placeholder")).toBe("询问 EPC、分层、AOV、转化率、未付款 offer...");
+    expect(wrapper.get('[data-chatbot-action="report-submit"]').text()).toContain("发送");
+    expect(wrapper.get('[data-chatbot-action="download-overview"]').text()).toContain("下载");
+    expect(wrapper.get(".report-mode-guide").text()).toContain("先获取数据报告");
+    expect(wrapper.get(".report-mode-guide").text()).toContain("具体要求请转至聊天模式");
+    expect(wrapper.find('[data-chatbot-action="onboarding"]').exists()).toBe(false);
+    expect(wrapper.find('[data-chatbot-action="clear"]').exists()).toBe(false);
+  });
+
+  it("reuses the Legacy Chatbot two-panel shell for both modes", async () => {
+    const wrapper = mount(ChatbotPage, {
+      props: { language: "zh", offers, autoFocus: false }
+    });
+
+    expect(wrapper.find('[data-chatbot-mode="report"] .insight-panel').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="report"] .chat-panel').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="report"] .context-panel').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="report"] .chat-mode-toggle').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="report"] .chat-input input[data-chatbot-report-input]').exists()).toBe(true);
+
+    await wrapper.get('[data-chatbot-mode-button="chat"]').trigger("click");
+
+    expect(wrapper.find('[data-chatbot-mode="chat"] .insight-panel').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="chat"] .chat-panel').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="chat"] .chat-log').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="chat"] .chat-mode-toggle').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-mode="chat"] .chat-input .chat-input-field input[data-chatbot-input]').exists()).toBe(true);
+  });
+
   it("uses the Legacy session bridge for Report routes and renders its controlled result", async () => {
     let state: LegacyChatViewState = {
       mode: "report",
@@ -52,8 +88,10 @@ describe("ChatbotPage", () => {
       source: "db",
       intent: "payment",
       response: "付款状态已从实时数据返回",
-      contentHtml: "<p data-legacy-report>付款状态已从实时数据返回</p>"
+      contentHtml: "<p data-legacy-report>付款状态已从实时数据返回</p>",
+      recommendationHtml: "<div data-legacy-context>5 offers</div>"
     };
+    const downloadOverview = vi.fn(() => true);
     const session = {
       getState: () => state,
       setMode: vi.fn(),
@@ -65,6 +103,7 @@ describe("ChatbotPage", () => {
       addMemory: vi.fn(),
       removeMemory: vi.fn(),
       clearConversation: vi.fn(),
+      downloadOverview,
       onChange: vi.fn((listener: (next: LegacyChatViewState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -82,7 +121,10 @@ describe("ChatbotPage", () => {
     expect(wrapper.find(".chatbot-report-output-head").text()).toContain("DB");
     expect(wrapper.find('[data-chatbot-result-source]').text()).toContain("DB");
     expect(wrapper.find('[data-legacy-report]').exists()).toBe(true);
+    expect(wrapper.find('[data-chatbot-context-html] [data-legacy-context]').exists()).toBe(true);
     expect(wrapper.text()).toContain("付款状态已从实时数据返回");
+    await wrapper.get('[data-chatbot-action="download-overview"]').trigger("click");
+    expect(downloadOverview).toHaveBeenCalledTimes(1);
   });
 
   it("keeps feedback, logs, help, guide, onboarding, and clear actions on the shared session", async () => {
@@ -151,16 +193,14 @@ describe("ChatbotPage", () => {
 
     await wrapper.get('[data-chatbot-action="help"]').trigger("click");
     await wrapper.get('[data-chatbot-action="guide"]').trigger("click");
-    await wrapper.get('[data-chatbot-action="onboarding"]').trigger("click");
     await wrapper.get('[data-chatbot-log="questions-csv"]').trigger("click");
     await wrapper.get('[data-chatbot-log="feedback-jsonl"]').trigger("click");
-    await wrapper.get('[data-chatbot-action="clear"]').trigger("click");
     expect(session.toggleHelp).toHaveBeenCalledTimes(1);
     expect(session.toggleGuide).toHaveBeenCalledTimes(1);
-    expect(session.startOnboarding).toHaveBeenCalledTimes(1);
     expect(session.downloadLogs).toHaveBeenNthCalledWith(1, "questions", "csv");
     expect(session.downloadLogs).toHaveBeenNthCalledWith(2, "feedback", "jsonl");
-    expect(session.clearConversation).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-chatbot-action="onboarding"]').exists()).toBe(false);
+    expect(wrapper.find('[data-chatbot-action="clear"]').exists()).toBe(false);
   });
 
   it("delegates mode switching and memory removal to the shared session", async () => {

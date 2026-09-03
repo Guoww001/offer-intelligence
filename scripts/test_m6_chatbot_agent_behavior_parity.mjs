@@ -24,9 +24,9 @@ const parityGate = appSource.match(/function\s+modernChatbotAgentParityEnabled\s
 assert(parityGate, "Chatbot/Agent Modern-first 闸门实现缺失");
 assert(
   parityGate[1].includes("modernChatbotAgentBridgeAvailable()")
-    && parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false")
-    && !parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ === true"),
-  "M6 放行后必须默认启用 Modern，并保留显式 false 回滚开关"
+    && parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ === true")
+    && !parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false"),
+  "视觉等价完成前必须保持 Legacy-first，仅允许显式 true 开启 Modern 对照"
 );
 assert(
   /isDashboard\s*&&\s*modernChatbotAgentParityEnabled\s*\(\)/.test(appSource),
@@ -46,6 +46,8 @@ assert(/LegacyChatSessionBridge/.test(contractsSource) && /LegacyAgentSessionBri
 assert(/createLegacyChatSessionBridge/.test(bridgeSource) && /createLegacyAgentSessionBridge/.test(bridgeSource), "必须存在可测试的 session bridge 适配器");
 assert(/chatSession/.test(entrySource) && /agentSession/.test(entrySource), "Modern factory 必须消费共享 Legacy session");
 assert(/applyPrompt\(/.test(appSource) && /chatSession/.test(appSource), "Report/Chat submit 必须回到 Legacy applyPrompt 路由");
+assert(/contextHtml:\s*els\.recBox/.test(appSource) && /contextTitle:\s*els\.contextTitle/.test(appSource), "Modern 对照必须读取 Legacy 实际渲染的上下文面板");
+assert(/downloadOverview/.test(contractsSource + bridgeSource + appSource + chatbotPageSource), "Modern 报告必须保留原版概览下载入口");
 assert(/data-deep-window-action=\"export\"/.test(deepWindowSource) || /deepWindow.*export/.test(appSource), "Deep Window 必须保留导出入口");
 assert(/memory-recommendation|prepareChatMemoryRecommendation/.test(chatSource + appSource), "Chat Mode 必须保留 Memory recommendation");
 assert(/recommendationHtml/.test(contractsSource + chatbotPageSource + appSource), "Chat Mode 必须把 Memory recommendation 结果传给 Modern 视图");
@@ -67,6 +69,7 @@ assert(/function\s+modernChatbotAgentBridgeAvailable\s*\(/.test(appSource)
   && /modernChatbotAgentBridgeAvailable\(\)/.test(appSource),
   "Chatbot/Agent bridge 缺失时必须继续使用 Legacy 页面");
 assert(/typeof chat\.addMemory\s*===\s*"function"/.test(appSource)
+  && /typeof chat\.downloadOverview\s*===\s*"function"/.test(appSource)
   && /typeof chat\.downloadLogs\s*===\s*"function"/.test(appSource)
   && /typeof agent\.downloadLogs\s*===\s*"function"/.test(appSource),
   "Modern-first 闸门必须确认记忆、日志和 Agent 辅助能力可用");
@@ -75,4 +78,4 @@ assert(/renderMarkdownToHtml/.test(agentPageSource), "Agent 回答必须复用�
 
 assert(/downloadRecommendation/.test(contractsSource + chatbotPageSource + appSource), "Report/Deep Window 下载必须继续调用 Legacy recommendation export");
 
-console.log("PASS: Chatbot/Agent behavior parity gate enables Modern-first with Legacy fallback");
+console.log("PASS: Chatbot/Agent behavior parity gate keeps Legacy-first with explicit Modern preview");

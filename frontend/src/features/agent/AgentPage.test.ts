@@ -6,6 +6,19 @@ import AgentPage, { type AgentRunResult, type AgentRunner } from "./AgentPage.vu
 import type { LegacyAgentViewState, LegacyAgentRunResult } from "../../legacy/contracts";
 
 describe("AgentPage", () => {
+  it("reuses the Legacy Agent layout and interaction surfaces for visual parity", () => {
+    const wrapper = mount(AgentPage, {
+      props: { language: "zh", run: vi.fn(), autoFocus: false }
+    });
+
+    expect(wrapper.find(".agent-page-header").exists()).toBe(true);
+    expect(wrapper.find(".agent-page-layout").exists()).toBe(true);
+    expect(wrapper.find(".agent-page-rail.panel").exists()).toBe(true);
+    expect(wrapper.find(".chat-panel.agent-page-chat-panel").exists()).toBe(true);
+    expect(wrapper.find(".chat-log.agent-chat-log").exists()).toBe(true);
+    expect(wrapper.find(".chat-input.agent-page-input .chat-input-field input[data-agent-input]").exists()).toBe(true);
+  });
+
   it("renders the streamed response while the shared Agent session is still running", async () => {
     let release: (() => void) | undefined;
     let state: LegacyAgentViewState = {

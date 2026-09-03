@@ -33,6 +33,7 @@ export interface LegacyChatSessionBridgeOptions {
   readonly submit: (prompt: string, callbacks: LegacyChatRunCallbacks) => Promise<LegacyChatViewResult>;
   readonly removeMemory: (memoryId: string) => void;
   readonly clearConversation: () => void;
+  readonly downloadOverview?: () => boolean;
   readonly downloadRecommendation?: (downloadId: string) => boolean;
 }
 
@@ -203,9 +204,15 @@ function normalizeChatState(value: LegacyChatViewState): LegacyChatViewState {
           : []
       })).filter((card) => card.id && card.questions.length)
     : [];
+  const contextTitle = safeText(state.contextTitle, 240);
+  const contextSubtitle = safeText(state.contextSubtitle, 240);
+  const contextHtml = safeText(state.contextHtml, 160_000);
   return {
     mode,
     language,
+    ...(contextTitle ? { contextTitle } : {}),
+    ...(contextSubtitle ? { contextSubtitle } : {}),
+    ...(contextHtml ? { contextHtml } : {}),
     hasMemory: state.hasMemory === true || memory.length > 0,
     source: safeDataSource(state.source),
     status: state.status === "running" || state.status === "success" || state.status === "stopped" || state.status === "error"
@@ -486,6 +493,9 @@ export function createLegacyChatSessionBridge(options: LegacyChatSessionBridgeOp
     clearConversation() {
       options.clearConversation();
       emit();
+    },
+    downloadOverview() {
+      return options.downloadOverview?.() || false;
     },
     downloadRecommendation(downloadId) {
       return options.downloadRecommendation?.(safeText(downloadId, 120)) || false;
