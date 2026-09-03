@@ -32055,6 +32055,11 @@ var _NUMERIC_COL_PATTERNS = [
     );
   }
 
+  function modernAgentParityEnabled() {
+    // CopilotKit Runtime 仅作为显式 Modern 对照能力，默认页面继续使用 Legacy。
+    return modernChatbotAgentParityEnabled() && modernAgentRuntimeEnabled();
+  }
+
   function switchPage(page) {
     const previousPage = state.page;
     if (previousPage === "dashboard" && page !== "dashboard") {
@@ -32336,7 +32341,7 @@ var _NUMERIC_COL_PATTERNS = [
     if (isDashboard && !modernChatbotAgentParityEnabled()) {
       renderAll();
     }
-    if (isAgent && (modernAgentRuntimeEnabled() || modernChatbotAgentParityEnabled())) {
+    if (isAgent && modernAgentParityEnabled()) {
       const modernRoot = document.getElementById("agentModernRoot");
       const modernApp = window.OI_MODERN_APP;
       let modernMounted = false;
@@ -32388,7 +32393,7 @@ var _NUMERIC_COL_PATTERNS = [
         renderAgentPageWelcomeIfIdle();
       }
     }
-    if (isAgent && !modernAgentRuntimeEnabled() && !modernChatbotAgentParityEnabled()) {
+    if (isAgent && !modernAgentParityEnabled()) {
       renderAgentPageWelcomeIfIdle();
     }
     if (isPayments) {
