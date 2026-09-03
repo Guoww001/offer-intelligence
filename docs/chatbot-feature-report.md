@@ -38,6 +38,22 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 - Agent 的 Modern 对照页由 CopilotKit `useAgent` 管理运行与停止；默认 Legacy 页面继续复用既有 Agent 执行链。Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
 - CopilotKit bundle 与主 `oi-modern.js` 分离，仅在显式启用 Agent Modern 对照且 Runtime 可用时使用；CopilotKit 默认 Sidebar 与全局样式不作为页面 UI。真实登录数据、视觉几何与生产网络验收由用户完成。
 
+### 2026-09-03 Agent 回答行为与趋势组件兼容
+
+#### Agent 工作台、命令与回测
+
+- 新工作台继续挂在 `agentModernRoot`，外部 `primarySidebar` 导航不替换；桌面保留右侧查询详情，窄屏可展开。输入栏在浏览旧内容且没有草稿时收起，点击恢复，尊重 reduced-motion。
+- `/` 菜单复用 `ChatbotCommandMenu.vue`，Agent 提供 14 个可筛选的命令，支持方向键、Enter、Escape 和中文输入法。商户/品类/Tier/对比/付款/趋势命令补充原有 Agent 查询；`/publisher`、`/publisherprofile` 使用现有媒体数据和 Report renderer，等待数据完成后通过 `ChatbotResultView` 显示，不向 Python 注册虚构工具。
+- CopilotKit 页通过 `createAgentActivity()` 保留原问题日志及反馈机制。原 SVG 趋势图、12 指标切换、结果 registry、停止及成功后历史/记忆规则保持。
+- 用户可从“日志 → 对话日志与回测”或错误后的日志面板下载/导入 JSON、主动上传、选择某一轮重新运行并对照原回答。最近最多 10 轮、512 KB；记录问题、原历史与结构化记忆、回答、受控错误码和时间线，不导出 HTML、cookie、plan proof 或原始工具载荷。回测使用原语言/历史/记忆和**当前数据/模型**，不是旧数据快照重放，也不会自动修改代码。
+- 本地和 Vercel 共用 `agent_debug_http.py`，在 `/api/chat/stream?operation=agent_debug` 提供认证后的 POST 写入与 GET `id` 读取；不新增 Vercel function。上传显式写入 `cnpscy_oi_agent_debug_cases`，首写按现有 DB 模式建表；无 DDL 权限时可预先使用 `docs/agent-debug-cases.sql`。存储不可用返回 502，前端保留下载入口。未向真实 DB 写入测试日志。
+- 验证包括 `AgentPage.test.ts`、`agentDiagnostics.test.ts`、`scripts/test_agent_debug_http.py` 和完整外壳的固定数据浏览器预览。真实登录、LLM/SSE、数据库上传仍需部署环境验收。
+
+- CopilotKit 保留数据查询的 AG-UI transport；`createCopilotAgentSession()` 复用 Legacy 分流规则，原本跳过规划的问题继续走 `/api/chat/stream`，沿用直接回答提示词、历史和 Memory。无工具/规划不可用通过 `oi.planning_fallback` 交给同一来源校验与回退规则处理，不直接把规划文本当作数据事实。
+- 每次运行单独保留本地工具结果，复用月度、Tier 商户和付款明细补齐函数；综合失败仍返回工具结果。停止和 plan proof 校验失败不会作为成功回答提交。工具结果、图表和回答只保存在当前会话内存，不写入结构化 Memory。
+- `AgentTrendResult.vue` 调用现有 `renderAgentTrendChartHtml()`，保留 SVG、数据来源标识、月份与指标切换；指标/表格/状态/摘要组件继续由本地 registry 渲染。表格保留空列位置并支持最多 100 行，已完成的结果组件绑定到对应回答，追问后仍可查看和切换图表。
+- 验证入口：`scripts/test_chat_agent.mjs`、`scripts/test_agent_agui.py`、`CopilotKitAgentRuntime.test.ts`、`AgentTrendResult.test.ts`、`AgentPage.test.ts`。浏览器使用本地固定数据验证交互；生产登录、真实 LLM 和 Vercel SSE 仍需部署后验收。
+
 ### 2026-09-03 Chatbot Legacy-first 对齐落地
 
 - 默认入口继续由 `public/app.js:switchPage()` 使用 Legacy；Modern Chatbot/Agent 只在 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且对应 bridge/Runtime 可用时作为逐页对照页挂载。

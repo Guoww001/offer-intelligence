@@ -15,6 +15,7 @@ import "./features/category-report/categoryReport.css";
 import "./features/tier-sheet/tierSheet.css";
 import "./features/chatbot/chatbot.css";
 import "./features/agent/agent.css";
+import "./features/agent/agentWorkspace.css";
 import "./shell/shell.css";
 
 import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";

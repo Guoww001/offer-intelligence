@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, useId, watch } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
 
@@ -28,6 +28,7 @@ const props = withDefaults(defineProps<{
   readonly language: UiLanguage;
   readonly input: string;
   readonly mode?: "report" | "chat";
+  readonly options?: readonly Omit<CommandOption, "intent">[];
 }>(), { mode: "report" });
 
 const emit = defineEmits<{
@@ -36,7 +37,10 @@ const emit = defineEmits<{
 }>();
 
 const activeIndex = ref(0);
-const open = computed(() => props.mode === "report" && /^\s*\/\w*$/.test(props.input));
+const menuId = useId();
+const menuRef = ref<HTMLElement>();
+const options = computed(() => (props.options || OPTIONS).filter((option) => !props.options || `${option.key} ${option.zh} ${option.en}`.toLowerCase().includes(props.input.trim().slice(1).toLowerCase())));
+const open = computed(() => props.mode === "report" && /^\s*\/[^\s/]*$/.test(props.input));
 const dismissed = ref(false);
 const visible = computed(() => open.value && !dismissed.value);
 
@@ -48,30 +52,32 @@ watch(open, (isOpen) => {
 });
 
 watch(() => props.input, (next, previous) => {
-  if (next !== previous) dismissed.value = false;
+  if (next !== previous) { dismissed.value = false; activeIndex.value = 0; }
 });
 
-function optionLabel(option: CommandOption): string {
+function optionLabel(option: Omit<CommandOption, "intent">): string {
   return props.language === "zh" ? option.zh : option.en;
 }
 
-function optionHint(option: CommandOption): string {
+function optionHint(option: Omit<CommandOption, "intent">): string {
   return props.language === "zh" ? option.zhHint : option.enHint;
 }
 
-function select(option: CommandOption): void {
+function select(option: Omit<CommandOption, "intent">): void {
   emit("select", option.key);
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (!visible.value) return;
+  if (!visible.value || event.isComposing || event.keyCode === 229) return;
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
     const direction = event.key === "ArrowDown" ? 1 : -1;
-    activeIndex.value = (activeIndex.value + direction + OPTIONS.length) % OPTIONS.length;
+    activeIndex.value = options.value.length ? (activeIndex.value + direction + options.value.length) % options.value.length : 0;
+    nextTick(() => menuRef.value?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" }));
   } else if (event.key === "Enter") {
     event.preventDefault();
-    select(OPTIONS[activeIndex.value] || OPTIONS[0]!);
+    const option = options.value[activeIndex.value];
+    if (option) select(option);
   } else if (event.key === "Escape") {
     event.preventDefault();
     dismissed.value = true;
@@ -79,31 +85,33 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
-defineExpose({ handleKeydown });
+defineExpose({ handleKeydown, visible, menuId, activeId: computed(() => visible.value && options.value.length ? `${menuId}-${activeIndex.value}` : undefined) });
 </script>
 
 <template>
-  <div v-if="visible" class="chatbot-command-menu chat-intent-menu" data-chatbot-command-menu role="listbox" aria-label="Choose question type">
+  <div v-if="visible" :id="menuId" ref="menuRef" class="chatbot-command-menu chat-intent-menu" data-chatbot-command-menu role="listbox" :aria-label="language === 'zh' ? '选择命令' : 'Choose command'">
     <div class="chat-intent-menu-title" role="presentation">
       <span>{{ language === "zh" ? "提问类型" : "Question type" }}</span>
       <kbd>/</kbd>
     </div>
     <button
-      v-for="(option, index) in OPTIONS"
+      v-for="(option, index) in options"
+      :id="`${menuId}-${index}`"
       :key="option.key"
       type="button"
       class="chatbot-command-option chat-intent-option"
       :class="{ active: index === activeIndex }"
       :data-chat-intent="option.key"
-      :data-command-intent="option.intent"
+      :data-command-intent="'intent' in option ? option.intent : option.key"
       :aria-selected="index === activeIndex"
       role="option"
       @mousedown.prevent
       @click="select(option)"
     >
-      <span class="chat-intent-option-prefix chatbot-command-slash" aria-hidden="true">:</span>
+      <span class="chat-intent-option-prefix chatbot-command-slash" aria-hidden="true">{{ props.options ? '/' + option.key : ':' }}</span>
       <span class="chat-intent-option-label">{{ optionLabel(option) }}</span>
       <span class="chat-intent-option-hint">{{ optionHint(option) }}</span>
     </button>
+    <p v-if="!options.length" class="aw-command-empty">{{ language === 'zh' ? '没有匹配的命令' : 'No matching commands' }}</p>
   </div>
 </template>

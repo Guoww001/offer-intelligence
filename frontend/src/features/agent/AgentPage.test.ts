@@ -4,19 +4,121 @@ import { describe, expect, it, vi } from "vitest";
 
 import AgentPage, { type AgentRunResult, type AgentRunner } from "./AgentPage.vue";
 import type { LegacyAgentViewState, LegacyAgentRunResult } from "../../legacy/contracts";
+import { normalizeAgentResultView } from "../../shared/contracts/agentResult";
 
 describe("AgentPage", () => {
-  it("reuses the Legacy Agent layout and interaction surfaces for visual parity", () => {
+  it("keeps result components with their answer after a follow-up and clears them on new conversation", async () => {
+    const view = normalizeAgentResultView({ id: "result-1", toolName: "merchant_analysis", kind: "metric", status: "done", title: "Merchant metrics", metrics: [{ label: "EPC", value: "1.2" }] })!;
+    const run = vi.fn<AgentRunner>()
+      .mockResolvedValueOnce({ ok: true, status: "done", response: "First answer", steps: [], resultViews: [view] })
+      .mockResolvedValueOnce({ ok: true, status: "done", response: "Follow-up answer", steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: "en", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("Show merchant metrics");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+    await wrapper.get('[data-agent-input]').setValue("Why?");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+    expect(wrapper.findAll('[data-result-id="result-1"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain("Follow-up answer");
+    expect(run.mock.calls[1]![0].history).toEqual([{ role: "user", content: "Show merchant metrics" }, { role: "assistant", content: "First answer" }]);
+    await wrapper.get('[data-agent-action="new"]').trigger("click");
+    expect(wrapper.find('[data-result-id="result-1"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("keeps the details rail and result workspace in the new layout", () => {
     const wrapper = mount(AgentPage, {
       props: { language: "zh", run: vi.fn(), autoFocus: false }
     });
 
-    expect(wrapper.find(".agent-page-header").exists()).toBe(true);
-    expect(wrapper.find(".agent-page-layout").exists()).toBe(true);
-    expect(wrapper.find(".agent-page-rail.panel").exists()).toBe(true);
-    expect(wrapper.find(".chat-panel.agent-page-chat-panel").exists()).toBe(true);
-    expect(wrapper.find(".chat-log.agent-chat-log").exists()).toBe(true);
-    expect(wrapper.find(".chat-input.agent-page-input .chat-input-field input[data-agent-input]").exists()).toBe(true);
+    expect(wrapper.find(".aw-header").exists()).toBe(true);
+    expect(wrapper.find('[data-agent-details]').exists()).toBe(true);
+    expect(wrapper.find('[data-agent-surface="workspace"]').exists()).toBe(true);
+    expect(wrapper.find('textarea[data-agent-input]').exists()).toBe(true);
+    expect(wrapper.find('.aw-composer-note').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("filters all slash commands, keeps IME Enter safe, and runs the selected command", async () => {
+    const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: "done", response: "Answer", steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: "en", run, autoFocus: false } });
+    const field = wrapper.get('[data-agent-input]');
+    await field.setValue('/');
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(14);
+    await field.setValue('/pub');
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(2);
+    await field.trigger('keydown', { key: 'Enter', isComposing: true });
+    expect(run).not.toHaveBeenCalled();
+    await field.setValue('/merch');
+    await field.trigger('keydown', { key: 'Enter' });
+    expect((field.element as HTMLTextAreaElement).value).toBe('/merchant ');
+    await field.trigger('keydown', { key: 'Enter' });
+    expect(run).not.toHaveBeenCalled();
+    await field.setValue('/merchant Tapo');
+    await field.trigger('keydown', { key: 'Enter', shiftKey: true });
+    expect(run).not.toHaveBeenCalled();
+    await field.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Analyze merchant Tapo' }));
+    wrapper.unmount();
+  });
+
+  it("uses the existing publisher renderer without asking the model to invent a publisher tool", async () => {
+    const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: 'done', response: 'Publisher follow-up', steps: [] });
+    const bridge = vi.fn(async () => ({ html: '<table><tr><td>Publisher fixture</td></tr></table>', text: 'Publisher fixture', source: 'db' as const }));
+    const previous = window.OI_LEGACY_BRIDGE;
+    window.OI_LEGACY_BRIDGE = { ...previous!, runAgentPublisher: bridge };
+    const session = { getState: () => ({ status: 'idle' as const, history: [], steps: [], response: '', partial: false, omittedTargets: [], hasMemory: false }), submit: vi.fn(), stop: vi.fn(), newConversation: vi.fn(), onChange: () => () => undefined };
+    const wrapper = mount(AgentPage, { props: { language: 'en', run, session, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue('/publisher 1022');
+    await wrapper.get('[data-agent-form]').trigger('submit');
+    await flushPromises();
+    expect(bridge).toHaveBeenCalledWith(expect.objectContaining({ kind: 'publisher', query: '1022' }));
+    expect(run).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-chatbot-legacy-result] td').text()).toBe('Publisher fixture');
+    await wrapper.get('[data-agent-input]').setValue('Explain that publisher');
+    await wrapper.get('[data-agent-form]').trigger('submit'); await flushPromises();
+    expect(run.mock.calls[0]![0].history).toEqual([{ role: 'user', content: '/publisher 1022' }, { role: 'assistant', content: 'Publisher fixture' }]);
+    expect(session.submit).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-chatbot-legacy-result] td').text()).toBe('Publisher fixture');
+    wrapper.unmount(); window.OI_LEGACY_BRIDGE = previous;
+  });
+
+  it("captures a failed prompt for replay, restoring its original history", async () => {
+    const run = vi.fn<AgentRunner>()
+      .mockResolvedValueOnce({ ok: true, status: 'done', response: 'First answer', steps: [] })
+      .mockResolvedValueOnce({ ok: false, status: 'error', response: '', steps: [], errorCode: 'agent_synthesis_unavailable' })
+      .mockResolvedValueOnce({ ok: true, status: 'done', response: 'Fixed answer', steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: 'en', run, autoFocus: false } });
+    for (const prompt of ['Show Tapo', 'And its trend?']) {
+      await wrapper.get('[data-agent-input]').setValue(prompt);
+      await wrapper.get('[data-agent-form]').trigger('submit'); await flushPromises();
+    }
+    expect(wrapper.find('[data-agent-diagnostics]').exists()).toBe(true);
+    await wrapper.get('[data-agent-log-replay]').trigger('click'); await flushPromises();
+    expect(run.mock.calls[2]![0].history).toEqual(run.mock.calls[1]![0].history);
+    expect(run.mock.calls[2]![0].prompt).toBe('And its trend?');
+    expect(wrapper.get('[data-agent-replay-comparison]').text()).toContain('Fixed answer');
+    wrapper.unmount();
+  });
+
+  it("collapses the empty composer while reading older content and preserves drafts", async () => {
+    const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: 'done', response: 'Answer', steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: 'en', run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue('Tapo');
+    await wrapper.get('[data-agent-form]').trigger('submit'); await flushPromises();
+    const log = wrapper.get('[data-agent-log]').element;
+    Object.defineProperties(log, { scrollHeight: { value: 2000, configurable: true }, clientHeight: { value: 500, configurable: true }, scrollTop: { value: 120, writable: true, configurable: true } });
+    await wrapper.get('[data-agent-log]').trigger('scroll');
+    expect(wrapper.get('[data-agent-composer]').classes()).toContain('aw-composer-collapsed');
+    await wrapper.get('[data-agent-action="expand-composer"]').trigger('click');
+    await wrapper.get('[data-agent-input]').setValue('Draft question');
+    log.scrollTop = 200;
+    await wrapper.get('[data-agent-log]').trigger('scroll');
+    expect(wrapper.get('[data-agent-composer]').classes()).not.toContain('aw-composer-collapsed');
+    expect((wrapper.get('[data-agent-input]').element as HTMLTextAreaElement).value).toBe('Draft question');
+    wrapper.unmount();
   });
 
   it("renders the streamed response while the shared Agent session is still running", async () => {

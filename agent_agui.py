@@ -119,6 +119,15 @@ def _history(messages: list[dict], question: str) -> list[dict]:
     return list(reversed(clean))
 
 
+def _planning_fallback(body: dict, planning: dict) -> Iterable[dict]:
+    # The shared browser policy chooses missing-data, direct text, or the
+    # existing /api/chat/stream fallback using its original history/context.
+    yield _event("CUSTOM", name="oi.planning_fallback", value={
+        "content": _text(planning.get("content"), 8000),
+    })
+    yield _run_finished(body, {"status": "direct", "authority": "python-registry"})
+
+
 def _requires_verifiable_data(question: str) -> bool:
     if not question:
         return False
@@ -176,6 +185,7 @@ def _public_state(
     calls: list[dict] | None = None,
     round_number: int = 1,
     status: str = "tools",
+    legacy_parity: bool = False,
 ) -> dict:
     return {
         "version": AGUI_STATE_VERSION,
@@ -188,6 +198,7 @@ def _public_state(
         "planProofs": list(proofs or ([planning.get("planProof")] if planning.get("planProof") else []))[:2],
         "calls": list(calls or planning.get("toolCalls") or [])[:AGENT_MAX_TOOL_CALLS],
         "round": round_number,
+        "legacyParity": legacy_parity,
     }
 
 
@@ -247,7 +258,13 @@ def _planning_events(body: dict, request_bytes: int, state_seed: dict) -> Iterab
     question = _last_user_question(_messages(body))
     language = "en" if state_seed.get("language") == "en" else "zh"
     memory = _text(state_seed.get("memory"), 8000)
-    history = _history(_messages(body), question)
+    history = state_seed.get("history")
+    if not isinstance(history, list):
+        history = _history(_messages(body), question)
+    history = [
+        {"role": item["role"], "content": _text(item.get("content"), 1200)}
+        for item in history if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
+    ][-4:]
     yield _timeline("planning", "planning", "running", "Planning", "Python registry is selecting read-only tools")
     status, planning = plan_agent_request({
         "contractVersion": AGENT_CONTRACT_VERSION,
@@ -258,11 +275,17 @@ def _planning_events(body: dict, request_bytes: int, state_seed: dict) -> Iterab
     if status != 200 or planning.get("ok") is not True:
         code = _text(planning.get("errorCode"), 80) or "agent_planning_unavailable"
         yield _timeline("planning", "planning", "error", "Planning failed", code)
+        if state_seed.get("legacyParity") and code == "agent_planning_unavailable":
+            yield from _planning_fallback(body, planning)
+            return
         yield _event("RUN_ERROR", message="Agent planning is unavailable.", code=code)
         return
     yield _timeline("planning", "planning", "done", "Plan ready")
     calls = planning.get("toolCalls") if isinstance(planning.get("toolCalls"), list) else []
     if not calls:
+        if state_seed.get("legacyParity"):
+            yield from _planning_fallback(body, planning)
+            return
         answer = _text(planning.get("content"), 8000)
         if _requires_verifiable_data(question):
             answer = _missing_data_text(language)
@@ -276,6 +299,7 @@ def _planning_events(body: dict, request_bytes: int, state_seed: dict) -> Iterab
         memory=memory,
         history=history,
         planning=planning,
+        legacy_parity=state_seed.get("legacyParity") is True,
     )
     yield _snapshot(state)
     yield from _emit_tool_batch(calls)
@@ -320,7 +344,8 @@ def _continuation_events(
     failed = [item for item in results if item.get("result", {}).get("ok") is not True]
     round_number = int(state.get("round") or 1)
     proofs = [item for item in state.get("planProofs", []) if isinstance(item, str)][:2]
-    if failed and round_number < 2 and proofs:
+    omitted_targets = list(state.get("omittedTargets") or [])[:20]
+    if failed and round_number < 2 and proofs and len(calls) < AGENT_MAX_TOOL_CALLS:
         yield _timeline("replan", "planning", "running", "Replanning", "Retrying failed calls with canonical error codes")
         status, planning = plan_agent_request({
             "contractVersion": AGENT_CONTRACT_VERSION,
@@ -339,6 +364,10 @@ def _continuation_events(
         if status == 200 and planning.get("ok") is True and planning.get("toolCalls"):
             remaining = max(0, AGENT_MAX_TOOL_CALLS - len(calls))
             retry_calls = list(planning.get("toolCalls") or [])[:remaining]
+            omitted_targets.extend(
+                _text((call.get("arguments") or {}).get("merchant") or (call.get("arguments") or {}).get("tier") or call.get("name"), 120)
+                for call in list(planning.get("toolCalls") or [])[remaining:]
+            )
             next_calls = calls + retry_calls
             next_proofs = (proofs + [planning.get("planProof")])[:2]
             next_state = _public_state(
@@ -350,13 +379,22 @@ def _continuation_events(
                 proofs=next_proofs,
                 calls=next_calls,
                 round_number=2,
+                legacy_parity=state.get("legacyParity") is True,
             )
+            next_state["omittedTargets"] = omitted_targets[:20]
             yield _timeline("replan", "planning", "done", "Replan ready")
             yield _snapshot(next_state)
             yield from _emit_tool_batch(retry_calls)
             yield _run_finished(body, {"status": "tools", "authority": "python-registry"})
             return
         yield _timeline("replan", "planning", "error", "Replan unavailable")
+        if state.get("legacyParity"):
+            yield from _planning_fallback(body, planning)
+            return
+
+    yield _event("CUSTOM", name="oi.execution", value={
+        "partial": bool(omitted_targets), "omittedTargets": omitted_targets,
+    })
 
     synthesis_body = {
         "contractVersion": AGENT_CONTRACT_VERSION,

@@ -5,7 +5,7 @@
  * plan proofs, and arbitrary HTML.  A backend action may project its result
  * into this shape; Vue then chooses a local component from the registry.
  */
-export type AgentResultViewKind = "metric" | "table" | "status" | "summary";
+export type AgentResultViewKind = "metric" | "table" | "status" | "summary" | "trend";
 export type AgentResultViewStatus = "running" | "done" | "partial" | "error";
 export type AgentResultDataSource = "cache" | "database" | "mixed" | "unavailable" | "unknown";
 
@@ -18,6 +18,15 @@ export interface AgentResultMetric {
 export interface AgentResultRow {
   readonly label: string;
   readonly values: readonly string[];
+}
+
+export interface AgentTrendData {
+  readonly target: string;
+  readonly metric: string;
+  readonly metrics: readonly string[];
+  readonly months: readonly Record<string, string | number | null>[];
+  readonly summary: Readonly<Record<string, { readonly pct: number | null }>>;
+  readonly estimated: boolean;
 }
 
 export interface AgentResultView {
@@ -34,9 +43,10 @@ export interface AgentResultView {
   readonly columns: readonly string[];
   readonly rows: readonly AgentResultRow[];
   readonly message: string;
+  readonly trend?: AgentTrendData;
 }
 
-const KINDS = new Set<AgentResultViewKind>(["metric", "table", "status", "summary"]);
+const KINDS = new Set<AgentResultViewKind>(["metric", "table", "status", "summary", "trend"]);
 const STATUSES = new Set<AgentResultViewStatus>(["running", "done", "partial", "error"]);
 const SOURCES = new Set<AgentResultDataSource>(["cache", "database", "mixed", "unavailable", "unknown"]);
 
@@ -61,7 +71,6 @@ function safeList(value: unknown, limit: number, max: number): string[] {
 function boundedValues(value: unknown, limit: number, max: number): string[] {
   return (Array.isArray(value) ? value : [])
     .map((item) => text(item, max))
-    .filter(Boolean)
     .slice(0, limit);
 }
 
@@ -87,10 +96,34 @@ function normalizeRows(value: unknown): AgentResultRow[] {
     const label = text(record.label || record.name, 120);
     // Preserve positional duplicates: values map one-to-one to columns.
     const values = boundedValues(record.values, 8, 120);
-    if (!label || !values.length || result.length >= 16) continue;
+    if (!label || !values.length || result.length >= 100) continue;
     result.push({ label, values });
   }
   return result;
+}
+
+export function normalizeAgentTrend(value: unknown): AgentTrendData | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const allowed = new Set(["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate", "payout", "directSales", "haloSales"]);
+  const metrics = safeList([raw.metric, ...(Array.isArray(raw.metrics) ? raw.metrics : [])], 12, 40).filter((key) => allowed.has(key));
+  if (!metrics.length) return undefined;
+  const months = (Array.isArray(raw.months) ? raw.months : []).slice(0, 24).flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const source = item as Record<string, unknown>;
+    const month = text(source.month, 10);
+    if (!/^\d{4}-\d{2}$/.test(month)) return [];
+    const row: Record<string, string | number | null> = { month };
+    for (const key of metrics) row[key] = typeof source[key] === "number" && Number.isFinite(source[key]) ? source[key] as number : null;
+    return [row];
+  });
+  const summary: Record<string, { pct: number | null }> = {};
+  const rawSummary = raw.summary && typeof raw.summary === "object" ? raw.summary as Record<string, { pct?: unknown }> : {};
+  for (const key of metrics) {
+    const pct = rawSummary[key]?.pct;
+    summary[key] = { pct: typeof pct === "number" && Number.isFinite(pct) ? pct : null };
+  }
+  return { target: text(raw.target, 180), metric: metrics[0]!, metrics, months, summary, estimated: raw.estimated === true };
 }
 
 /**
@@ -126,7 +159,8 @@ export function normalizeAgentResultView(value: unknown): AgentResultView | null
     metrics,
     columns,
     rows,
-    message
+    message,
+    ...(kind === "trend" ? { trend: normalizeAgentTrend(record.trend) } : {})
   };
 }
 

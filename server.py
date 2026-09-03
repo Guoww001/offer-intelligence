@@ -37,6 +37,7 @@ from auth import handle_auth_login, handle_auth_logout, handle_auth_options, han
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
 from agent_trace_http import handle_agent_trace
+from agent_debug_http import handle_agent_debug
 from agent_contract import (
     AGENT_CONTRACT_VERSION,
     build_synthesis_messages,
@@ -173,6 +174,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/chat/stream" and operation == "questions":
             handle_chatbot_question_logs(self, "GET")
             return
+        if parsed.path == "/api/chat/stream" and operation == "agent_debug":
+            handle_agent_debug(self, "GET")
+            return
         if parsed.path == "/api/chat/stream" and operation == "agent_trace":
             handle_agent_trace(self, "GET")
             return
@@ -259,6 +263,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if operation == "questions":
                 handle_chatbot_question_logs(self, "POST")
+                return
+            if operation == "agent_debug":
+                handle_agent_debug(self, "POST")
                 return
             if operation == "agent_trace":
                 handle_agent_trace(self, "POST")

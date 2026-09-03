@@ -1300,4 +1300,74 @@ const chatLogStub = { nodes: [], appendChild(node) { this.nodes.push(node); }, s
     "synthesis result must not carry the raw error field");
 }
 
-console.log("OK 33 scenarios");
+// CopilotKit must use the same direct-answer request and source gate.
+{
+  sandbox.document.body = createTestElement();
+  fetchCalls = [];
+  mockFetchImpl = () => sseResponse('data: {"token":"Use prior context"}\n\ndata: [DONE]\n\n');
+  const request = {
+    prompt: "为什么这样推荐", language: "zh", memoryText: "Tier 2", signal: new AbortController().signal,
+    history: [{ role: "user", content: "推荐哪些商户" }, { role: "assistant", content: "根据 EPC 和转化率排序" }]
+  };
+  const session = sandbox.window.OI_LEGACY_BRIDGE.createAgentToolSession(request);
+  assertEqual(session.bypassPlanning, true, "methodology must still bypass planning");
+  const direct = await session.direct();
+  assertEqual(direct.status, "done", "direct answer succeeds");
+  assertEqual(fetchCalls.length, 1, "direct answer must not add a planning/model request");
+  assertEqual(fetchCalls[0].url, "/api/chat/stream", "reuse the original direct endpoint");
+  assertEqual(fetchCalls[0].body.memory, "Tier 2", "direct answer preserves memory");
+  assertIncludes(JSON.stringify(fetchCalls[0].body.history), "转化率", "direct answer preserves history");
+  session.dispose();
+
+  const dataSession = sandbox.window.OI_LEGACY_BRIDGE.createAgentToolSession({ ...request, prompt: "查询商户收入", memoryText: "", history: [] });
+  const missing = await dataSession.direct({ content: "收入 999999" });
+  assertIncludes(missing.response, "可验证", "unverified planner text must not become a data answer");
+  dataSession.dispose();
+  const contextSession = sandbox.window.OI_LEGACY_BRIDGE.createAgentToolSession({ ...request, prompt: "分析收入", memoryText: "Revenue: 123" });
+  const context = await contextSession.direct({ content: "已提供 Revenue: 123" });
+  assertIncludes(context.response, "123", "provided data must retain the legacy source gate");
+  contextSession.dispose();
+}
+
+// Full local data survives both successful synthesis and provider failure.
+{
+  const offer = sandbox.window.CHATBOT_DATA.offers[0];
+  hooks.resetAgentTrendCache();
+  mockFetchImpl = () => ({ ok: true, json: async () => ({ ok: true, merchantId: offer.merchantId,
+    monthlyAmazonMetrics: [
+      { month: "2026-08", revenue: 1400, orders: 28, clicks: 140, payout: 280, affiliatePayout: 140, aov: 50, conversionRate: 0.2 },
+      { month: "2026-07", revenue: 1000, orders: 20, clicks: 100, payout: 200, affiliatePayout: 100, aov: 50, conversionRate: 0.2 }
+    ] }) });
+  const views = [];
+  const session = sandbox.window.OI_LEGACY_BRIDGE.createAgentToolSession({
+    prompt: "展示月度数据", language: "zh", memoryText: "", history: [], signal: new AbortController().signal,
+    onResultView: (view) => views.push(view)
+  });
+  const call = { callId: "parity-merchant", toolName: "merchant_analysis", arguments: { merchant: firstOffer } };
+  await Promise.all([session.execute(call), session.execute(call)]);
+  assertEqual(views.length, 1, "continuation must not execute a completed tool twice");
+  const success = session.complete("只展示 2026-08", {});
+  assertIncludes(success.response, "2026-07", "restore complete monthly supplements");
+  const failure = session.complete("interrupted provider text", { synthesisFailed: true });
+  assertEqual(failure.fallbackDelivered, true, "provider failure retains deterministic tool answer");
+  assertIncludes(failure.response, "2026-07", "fallback retains monthly tool data");
+  assertTruthy(failure.memoryEvents.length, "successful fallback retains safe memory events");
+  session.dispose();
+}
+
+// Trend is the existing interactive SVG, not a truncated table.
+{
+  const view = hooks.agentResultViewFromToolItem({ id: "chart-1", name: "trend", result: { ok: true, data: {
+    target: "Fixture merchant", metric: "revenue", metrics: ["revenue", "orders"],
+    months: [{ month: "2026-07", revenue: 100, orders: 10 }, { month: "2026-08", revenue: 200, orders: 12 }],
+    summary: { revenue: { pct: 100 }, orders: { pct: 20 } }
+  } } }, "en");
+  assertEqual(view.kind, "trend", "trend should select the SVG component");
+  const html = sandbox.window.OI_LEGACY_BRIDGE.renderAgentTrend(view.trend, "en");
+  assertIncludes(html, "<svg", "reuse the existing SVG renderer");
+  assertIncludes(html, 'data-agent-trend-metric="orders"', "preserve metric switching");
+  const switched = sandbox.window.OI_LEGACY_BRIDGE.renderAgentTrend({ ...view.trend, metric: "orders" }, "en");
+  assertIncludes(switched, "+20.0%", "switching metrics updates the corresponding summary");
+}
+
+console.log("OK 36 scenarios");

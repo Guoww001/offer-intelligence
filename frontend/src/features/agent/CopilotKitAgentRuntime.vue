@@ -2,14 +2,17 @@
 import { useAgent, useCopilotKit } from "@copilotkit/vue/v2";
 
 import type { UiLanguage } from "../../shared/i18n";
+import type { LegacyAgentToolSession } from "../../legacy/contracts";
 import type { AgentResultView } from "../../shared/contracts/agentResult";
 import { normalizeAgentResultView, normalizeAgentResultViews } from "../../shared/contracts/agentResult";
 import type { AgentMemoryEvent, AgentTimelineStep } from "./agentModel";
+import { normalizeAgentTimelineStep } from "./agentModel";
 import AgentPage, { type AgentRunRequest, type AgentRunResult, type AgentRunner } from "./AgentPage.vue";
 
-defineProps<{
+const props = defineProps<{
   readonly language: UiLanguage;
   readonly storage?: Storage;
+  readonly beginRun: (request: AgentRunRequest) => LegacyAgentToolSession;
 }>();
 
 const { agent } = useAgent({ agentId: "default", throttleMs: 40 });
@@ -33,6 +36,7 @@ function timelineStep(value: unknown): AgentTimelineStep | null {
   const status = ["running", "done", "error", "stopped", "timeout"].includes(String(raw.status))
     ? raw.status as AgentTimelineStep["status"] : "running";
   return {
+    ...normalizeAgentTimelineStep(raw),
     id: text(raw.id, 128) || `step-${Date.now()}`,
     phase,
     status,
@@ -47,21 +51,22 @@ function memoryEvent(value: unknown): AgentMemoryEvent | null {
   return raw as unknown as AgentMemoryEvent;
 }
 
-function messageContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.flatMap((part) => {
-    const value = record(part);
-    return typeof value?.text === "string" ? [value.text] : [];
-  }).join("\n");
-}
-
 const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResult> => {
+  if (request.signal.aborted) return { ok: false, status: "stopped", response: "", steps: [] };
+  const session = props.beginRun({ ...request, onResultView: (view) => upsertResultView(view) });
+  if (session.bypassPlanning) {
+    try {
+      const direct = await session.direct();
+      return { ...direct, steps: [], memoryEvents: [] };
+    }
+    finally { session.dispose(); }
+  }
   const activeAgent = agent.value;
   if (!activeAgent) {
+    session.dispose();
     return { ok: false, status: "error", response: "", steps: [], memoryEvents: [] };
   }
-  const messages = [...request.history, { role: "user" as const, content: request.prompt }]
+  const messages = [...session.history, { role: "user" as const, content: request.prompt }]
     .slice(-40)
     .map((message, index) => ({
       id: `oi-${Date.now()}-${index}`,
@@ -73,14 +78,20 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
     offerIntelligence: {
       version: 1,
       status: "planning",
-      language: request.language,
-      memory: text(request.memoryText, 8000)
+      language: session.language,
+      memory: text(request.memoryText, 8000),
+      history: session.history,
+      legacyParity: true
     }
   });
 
   let response = "";
   let errorCode = "";
   let stopped = false;
+  let synthesisStarted = false;
+  let planningFallback: { content?: string } | undefined;
+  let partial = false;
+  let omittedTargets: string[] = [];
   const steps: AgentTimelineStep[] = [];
   const memoryEvents: AgentMemoryEvent[] = [];
   const resultViews: AgentResultView[] = [];
@@ -100,19 +111,29 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
   };
   const subscription = activeAgent.subscribe({
     onTextMessageContentEvent: ({ event }) => {
-      if (!event.delta) return;
+      if (!event.delta || request.signal.aborted) return;
       response += event.delta;
       request.onToken?.(event.delta);
     },
     onCustomEvent: ({ event }) => {
+      if (request.signal.aborted) return;
       if (event.name === "oi.timeline") {
         const step = timelineStep(event.value);
-        if (step) upsertStep(step);
+        if (step) {
+          if (step.phase === "synthesis") synthesisStarted = true;
+          upsertStep(step);
+        }
       } else if (event.name === "oi.memory") {
         const next = memoryEvent(event.value);
         if (next) memoryEvents.push(next);
       } else if (event.name === "oi.result_view") {
         upsertResultView(event.value);
+      } else if (event.name === "oi.planning_fallback") {
+        planningFallback = { content: text(record(event.value)?.content, 8000) };
+      } else if (event.name === "oi.execution") {
+        const meta = record(event.value);
+        partial = meta?.partial === true;
+        omittedTargets = Array.isArray(meta?.omittedTargets) ? meta.omittedTargets.map(String).slice(0, 20) : [];
       }
     },
     onRunErrorEvent: ({ event }) => {
@@ -126,21 +147,38 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
   request.signal.addEventListener("abort", stop, { once: true });
   try {
     await copilotkit.value.runAgent({ agent: activeAgent });
-    if (!response) {
-      const assistant = [...activeAgent.messages].reverse().find((message) => message.role === "assistant");
-      response = messageContent(assistant?.content);
+    if (planningFallback && !stopped && !errorCode) {
+      const direct = await session.direct(planningFallback);
+      return { ...direct, steps,
+        memoryEvents: (direct.memoryEvents || []).map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
     }
+    const completed = !stopped && (!errorCode || synthesisStarted)
+      ? session.complete(response, { synthesisFailed: Boolean(errorCode) || !response.trim(), partial, omittedTargets })
+      : null;
+    if (completed?.fallbackDelivered) errorCode = "";
     return {
-      ok: !stopped && !errorCode,
-      status: stopped ? "stopped" : errorCode ? "error" : "done",
-      response,
+      ok: !stopped && !errorCode && Boolean((completed?.response || response).trim()),
+      status: stopped ? "stopped" : errorCode || !(completed?.response || response).trim() ? "error" : "done",
+      response: completed?.response || response,
       steps,
-      memoryEvents,
-      resultViews: normalizeAgentResultViews(resultViews),
+      partial,
+      omittedTargets,
+      memoryEvents: completed ? completed.memoryEvents.map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) : memoryEvents,
+      resultViews: normalizeAgentResultViews(completed?.resultViews || resultViews),
       ...(errorCode ? { errorCode } : {})
     } as AgentRunResult;
   } catch (error) {
     const aborted = stopped || request.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
+    if (!aborted && !errorCode && !synthesisStarted && !steps.some((step) => step.phase === "tool")) {
+      const direct = await session.direct({});
+      return { ...direct, steps,
+        memoryEvents: (direct.memoryEvents || []).map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
+    }
+    if (!aborted && synthesisStarted) {
+      const completed = session.complete(response, { synthesisFailed: true, partial, omittedTargets });
+      if (completed.fallbackDelivered) return { ...completed, ok: true, status: "done", steps,
+        memoryEvents: completed.memoryEvents.map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
+    }
     return {
       ok: false,
       status: aborted ? "stopped" : "error",
@@ -153,6 +191,7 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
   } finally {
     request.signal.removeEventListener("abort", stop);
     subscription.unsubscribe();
+    session.dispose();
   }
 };
 </script>

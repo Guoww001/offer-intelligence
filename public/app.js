@@ -14421,13 +14421,14 @@ var _NUMERIC_COL_PATTERNS = [
 
   // Build a bounded, text-only UI projection locally. This adds no model turn
   // and keeps the Python-bound payload and the rendered component independent.
-  function agentResultViewFromToolItem(item) {
+  function agentResultViewFromToolItem(item, language) {
     item = item && typeof item === "object" ? item : {};
     var result = item.result && typeof item.result === "object" ? item.result : {};
     var toolName = String(item.name || "unknown").trim().slice(0, 64);
     var callId = String(item.id || toolName).trim().slice(0, 120);
     var meta = agentTraceDataMeta(result);
     var data = result.ok === true ? agentToolPromptData(toolName, result.data) : {};
+    language = language || state.language || "zh";
     function text(value, limit) {
       return String(value === null || value === undefined ? "" : value)
         .replace(/<[^>]*>/g, "").trim().slice(0, limit || 120);
@@ -14449,7 +14450,7 @@ var _NUMERIC_COL_PATTERNS = [
       toolName: toolName,
       kind: result.ok === true ? "summary" : "status",
       status: result.ok === true ? "done" : "error",
-      title: text(data.headline || agentToolLabel(toolName, state.language || "zh"), 180),
+      title: text(data.headline || agentToolLabel(toolName, language), 180),
       source: meta.dataSource,
       dataAsOf: meta.dataAsOf ? text(meta.dataAsOf, 48) : null,
       estimated: meta.estimated === true,
@@ -14467,19 +14468,14 @@ var _NUMERIC_COL_PATTERNS = [
 
     var rows = [];
     if (toolName === "trend" && Array.isArray(data.months)) {
-      var trendMetrics = Array.isArray(data.metrics) ? data.metrics.slice(0, 4).map(function (key) { return text(key, 80); }) : [];
-      view.kind = "table";
-      view.columns = trendMetrics;
-      rows = data.months.slice(0, 16).map(function (row) {
-        return {
-          label: text(row && row.month, 120),
-          values: trendMetrics.map(function (key) { return scalar(row && row[key]); })
-        };
-      });
+      view.kind = "trend";
+      // Retain all supported metrics/months; Vue calls the existing SVG renderer.
+      view.trend = agentToolPromptData(toolName, result.data);
+      return view;
     } else if (toolName === "payment_status" && Array.isArray(data.rows)) {
       view.kind = "table";
       view.columns = ["Tier", "Month", "Status", "Remaining"];
-      rows = data.rows.slice(0, 16).map(function (row) {
+      rows = data.rows.slice(0, 100).map(function (row) {
         return {
           label: text(row && row.merchant, 120),
           values: [row && row.tier, row && row.month, row && row.status, row && row.remaining].map(scalar)
@@ -14488,7 +14484,7 @@ var _NUMERIC_COL_PATTERNS = [
     } else if (toolName === "tier_analysis" && Array.isArray(data.merchants)) {
       view.kind = "table";
       view.columns = ["Tier", "Category", "EPC", "Revenue"];
-      rows = data.merchants.slice(0, 16).map(function (row) {
+      rows = data.merchants.slice(0, 100).map(function (row) {
         return {
           label: text(row && row.merchant, 120),
           values: [row && row.tier, row && row.category, row && row.epc, row && row.revenue].map(scalar)
@@ -16820,6 +16816,165 @@ var _NUMERIC_COL_PATTERNS = [
       executedToolCalls: executionMeta.executedToolCalls,
       plannedToolCalls: executionMeta.plannedToolCalls,
       memoryEvents: memoryEventsForOutcome()
+    };
+  }
+
+  // A run-local adapter for CopilotKit. Business decisions, full local results,
+  // and deterministic answer supplements remain shared with runChatAgent.
+  // Explicit slash commands use the same publisher renderers as Report Mode.
+  // Await their data here so detached placeholder updates cannot lose results.
+  async function runAgentPublisher(request) {
+    function checkStopped() { if (request.signal.aborted) throw new DOMException("Stopped", "AbortError"); }
+    function waitForData(promise) {
+      checkStopped();
+      return new Promise(function (resolve, reject) {
+        function stopped() { reject(new DOMException("Stopped", "AbortError")); }
+        request.signal.addEventListener("abort", stopped, { once: true });
+        Promise.resolve(promise).then(resolve, reject).finally(function () { request.signal.removeEventListener("abort", stopped); });
+      });
+    }
+    checkStopped();
+    await waitForData(loadPublishersData());
+    checkStopped();
+    var prompt = request.kind + ": " + request.query;
+    var html;
+    if (request.kind === "publisher") html = renderPublisherRecordsHtml(prompt, _publishersCache, request.language);
+    else if (request.kind === "publisherprofile") {
+      var parsed = parsePublisherProfileQuery(prompt, _publishersCache);
+      if (parsed.mode === "empty") html = renderPublisherProfileUsageHtml(request.language);
+      else if (parsed.mode === "none") html = renderPublisherProfileNotFoundHtml(parsed.queryText, request.language);
+      else if (!parsed.publisher) html = renderPublisherProfileCandidatesHtml(parsed.candidates, parsed.queryText, request.language);
+      else {
+        var portfolio = await waitForData(loadPublisherPortfolioData(parsed.publisher.userId));
+        checkStopped();
+        html = renderPublisherProfileHtml(prompt, parsed.publisher, (portfolio && portfolio.merchants) || [], request.language);
+      }
+    } else throw new Error("Unsupported publisher command");
+    checkStopped();
+    var textHost = document.createElement("div");
+    textHost.innerHTML = html;
+    return { html: html, text: String(textHost.textContent || "").slice(0, 24000), source: "db" };
+  }
+
+  function createAgentActivity() {
+    var active = null;
+    var feedbackContext = null;
+    return {
+      begin: function (prompt, language) {
+        feedbackContext = null;
+        active = { prompt: prompt, language: language, log: modernQuestionRun(prompt, "agent", language, false) };
+      },
+      finish: function (result) {
+        if (!active) return;
+        var current = active;
+        active = null;
+        var success = result.ok && result.status === "done";
+        completeQuestionLog(current.log.questionLogPromise, success ? "success" : "failed", current.log.questionIntent);
+        if (success && result.response) feedbackContext = {
+          questionPromise: current.log.questionLogPromise, questionEventId: current.log.questionEventId,
+          mode: "agent", prompt: current.prompt, language: current.language, intent: current.log.questionIntent,
+          getAnswer: function () { return result.response; }
+        };
+      },
+      clear: function () { active = null; feedbackContext = null; },
+      feedback: legacyFeedbackBridgeFor(function () { return feedbackContext; }),
+      downloadLogs: function (kind, format) { downloadChatLogs(kind, format); return true; }
+    };
+  }
+
+  function createCopilotAgentSession(request) {
+    var prompt = String(request.prompt || "").trim();
+    var language = modernResponseLanguage(prompt, request.language);
+    var memoryText = String(request.memoryText || "");
+    var history = agentFallbackHistory(request.history);
+    var toolResults = [];
+    var disposed = false;
+    var inflight = new Map();
+    var callOrder = [];
+    return {
+      language: language,
+      history: history,
+      bypassPlanning: agentShouldBypassPlanning(prompt),
+      async direct(planning) {
+        if (disposed || request.signal.aborted) return { ok: false, status: "stopped", response: "" };
+        if (planning) {
+          var response = agentPromptRequiresVerifiableData(prompt)
+            && !agentHasVerifiableSource(prompt, memoryText, history, toolResults)
+            ? agentMissingDataResponse(language) : String(planning.content || "").trim();
+          if (response) return { ok: true, status: "done", response: response,
+            memoryEvents: agentMemoryEventsFromToolResults(toolResults, prompt, { partial: false }),
+            resultViews: toolResults.map(function (item) { return agentResultViewFromToolItem(item, language); }) };
+        }
+        var host = modernRuntimeHost("copilot-agent-direct-buffer");
+        try {
+          var reply = await streamAssistantReply(
+            { prompt: prompt, memory: memoryText, language: language, history: history },
+            { chatLogEl: host, language: language, signal: request.signal, onToken: request.onToken }
+          );
+          var stopped = disposed || request.signal.aborted || reply.stopped;
+          return { ok: !stopped && reply.ok, status: stopped ? "stopped" : reply.ok ? "done" : "error", response: reply.fullResponse || "" };
+        } finally { host.remove(); }
+      },
+      execute(call) {
+        if (inflight.has(call.callId)) return inflight.get(call.callId);
+        callOrder.push(call.callId);
+        var execution = executeCopilotAgentTool(Object.assign({}, call, {
+          prompt: prompt, signal: request.signal, language: language
+        }), function (item) {
+          if (disposed || request.signal.aborted) return;
+          toolResults.push(item);
+          toolResults.sort(function (a, b) { return callOrder.indexOf(a.id) - callOrder.indexOf(b.id); });
+          if (request.onResultView) request.onResultView(agentResultViewFromToolItem(item, language));
+        });
+        inflight.set(call.callId, execution);
+        return execution;
+      },
+      complete(response, options) {
+        options = options || {};
+        var meta = { partial: options.partial === true, omittedTargets: options.omittedTargets || [] };
+        var fallback = options.synthesisFailed === true && toolResults.length > 0;
+        var answer = fallback ? agentFallbackText(toolResults, language) : String(response || "");
+        if (!fallback) {
+          answer = ensureAgentMonthlyDataVisible(answer, toolResults, language);
+          answer = ensureAgentTierMerchantDataVisible(answer, toolResults, language, prompt);
+          answer = ensureAgentPaymentDataVisible(answer, toolResults, language);
+        }
+        var notice = agentPartialExecutionNotice(meta, language);
+        if (notice) answer = answer.trimEnd() + "\n\n" + notice;
+        return {
+          response: answer, fallbackDelivered: fallback,
+          partial: meta.partial, omittedTargets: meta.omittedTargets,
+          resultViews: toolResults.map(function (item) { return agentResultViewFromToolItem(item, language); }),
+          memoryEvents: agentMemoryEventsFromToolResults(toolResults, prompt, meta)
+        };
+      },
+      dispose() { disposed = true; toolResults = []; callOrder = []; inflight.clear(); }
+    };
+  }
+
+  async function executeCopilotAgentTool(request, onItem) {
+    request = request && typeof request === "object" ? request : {};
+    var toolName = String(request.toolName || "").trim().slice(0, 64);
+    var args = request.arguments && typeof request.arguments === "object" ? request.arguments : {};
+    var callId = String(request.callId || "").trim().slice(0, 128);
+    var result;
+    try {
+      if (request.signal && request.signal.aborted) throw new DOMException("Stopped", "AbortError");
+      result = await agentExecuteTool(toolName, args, {
+        prompt: String(request.prompt || "").slice(0, AGENT_PROMPT_CHARS), signal: request.signal || null
+      });
+    } catch (error) {
+      result = {
+        ok: false, errorCode: request.signal && request.signal.aborted ? "stopped_by_user" : "tool_error",
+        error: error && error.message ? String(error.message).slice(0, 240) : "Tool execution failed"
+      };
+    }
+    var item = { id: callId, name: toolName, arguments: args, result: result };
+    if (onItem) onItem(item);
+    return {
+      toolResult: projectAgentToolResultForServer(item),
+      memoryEvent: agentMemoryEventFromToolItem(item, request.prompt || "", { partial: false }),
+      resultView: agentResultViewFromToolItem(item, request.language)
     };
   }
 
@@ -35780,34 +35935,14 @@ var _NUMERIC_COL_PATTERNS = [
     setLanguage: (language) => setLegacyLanguage(language),
     chatSession: legacyChatSession,
     agentSession: legacyAgentSession,
+    createAgentActivity: createAgentActivity,
+    runAgentPublisher: runAgentPublisher,
     deepWindows: legacyDeepWindows,
     runChat: (request) => runModernChat(request),
     runAgent: (request) => runModernAgent(request),
-    executeAgentTool: async (request) => {
-      request = request && typeof request === "object" ? request : {};
-      var toolName = String(request.toolName || "").trim().slice(0, 64);
-      var args = request.arguments && typeof request.arguments === "object" ? request.arguments : {};
-      var callId = String(request.callId || "").trim().slice(0, 128);
-      var result;
-      try {
-        result = await agentExecuteTool(toolName, args, {
-          prompt: String(request.prompt || "").slice(0, AGENT_PROMPT_CHARS),
-          signal: request.signal || null
-        });
-      } catch (error) {
-        result = {
-          ok: false,
-          errorCode: request.signal && request.signal.aborted ? "stopped_by_user" : "tool_error",
-          error: error && error.message ? String(error.message).slice(0, 240) : "Tool execution failed"
-        };
-      }
-      var item = { id: callId, name: toolName, arguments: args, result: result };
-      return {
-        toolResult: projectAgentToolResultForServer(item),
-        memoryEvent: agentMemoryEventFromToolItem(item, request.prompt || "", { partial: false }),
-        resultView: agentResultViewFromToolItem(item)
-      };
-    },
+    createAgentToolSession: createCopilotAgentSession,
+    renderAgentTrend: (data, language) => renderAgentTrendChartHtml(data, language),
+    executeAgentTool: executeCopilotAgentTool,
     download: (type, payload) => (
       type === "offer-tracker"
         ? downloadModernOfferTracker(payload)

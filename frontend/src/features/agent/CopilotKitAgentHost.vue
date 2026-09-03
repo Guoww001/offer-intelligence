@@ -3,8 +3,8 @@ import { computed } from "vue";
 import { CopilotKitProvider, type VueFrontendTool } from "@copilotkit/vue/v2";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type { LegacyAgentSessionBridge } from "../../legacy/contracts";
-import AgentPage, { type AgentRunner } from "./AgentPage.vue";
+import type { LegacyAgentSessionBridge, LegacyAgentToolSession } from "../../legacy/contracts";
+import AgentPage, { type AgentRunner, type AgentRunRequest } from "./AgentPage.vue";
 import CopilotKitAgentRuntime from "./CopilotKitAgentRuntime.vue";
 
 const props = defineProps<{
@@ -26,6 +26,15 @@ const toolNames = [
   "trend"
 ] as const;
 
+let toolSession: LegacyAgentToolSession | undefined;
+function beginRun(request: AgentRunRequest): LegacyAgentToolSession {
+  toolSession?.dispose();
+  const session = window.OI_LEGACY_BRIDGE?.createAgentToolSession?.(request);
+  if (!session) throw new Error("Legacy Agent behavior bridge is unavailable");
+  toolSession = session;
+  return session;
+}
+
 function messageText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -41,6 +50,13 @@ const frontendTools = computed<VueFrontendTool[]>(() => toolNames.map((toolName)
   agentId: "default",
   followUp: true,
   handler: async (args, context) => {
+    const session = toolSession;
+    if (session) {
+      const { toolResult } = await session.execute({ callId: context.toolCall.id, toolName, arguments: args, signal: context.signal });
+      // Charts/full UI rows stay local. Only the bounded proof-bound result
+      // travels back to Python, preserving the synthesis request size budget.
+      return { toolResult };
+    }
     const prompt = [...context.agent.messages].reverse().find((message) => message.role === "user");
     const bridge = window.OI_LEGACY_BRIDGE?.executeAgentTool;
     if (!bridge) {
@@ -79,7 +95,7 @@ const frontendTools = computed<VueFrontendTool[]>(() => toolNames.map((toolName)
     :enable-inspector="false"
     :debug="false"
   >
-    <CopilotKitAgentRuntime :language="language" :storage="storage" />
+    <CopilotKitAgentRuntime :language="language" :storage="storage" :begin-run="beginRun" />
   </CopilotKitProvider>
   <AgentPage
     v-else

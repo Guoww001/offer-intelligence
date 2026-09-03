@@ -7,6 +7,7 @@ from auth import _read_json_body, require_auth
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
 from agent_trace_http import handle_agent_trace
+from agent_debug_http import handle_agent_debug
 from agent_contract import (
     AGENT_CONTRACT_VERSION,
     build_synthesis_messages,
@@ -66,6 +67,9 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self._operation() == "agent_debug":
+            handle_agent_debug(self, "GET")
+            return
         if self._operation() == "feedback":
             handle_chatbot_answer_feedback(self, "GET")
             return
@@ -79,6 +83,9 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """SSE streaming endpoint for Chat Mode LLM conversation."""
+        if self._operation() == "agent_debug":
+            handle_agent_debug(self, "POST")
+            return
         if self._operation() == "feedback":
             handle_chatbot_answer_feedback(self, "POST")
             return

@@ -1,5 +1,5 @@
 import type { UiLanguage } from "../shared/i18n";
-import type { AgentResultView } from "../shared/contracts/agentResult";
+import type { AgentResultView, AgentTrendData } from "../shared/contracts/agentResult";
 
 export const MODERN_PAGE_NAMES = [
   "offer-list-tracker",
@@ -305,7 +305,38 @@ export interface LegacyAgentSessionBridge {
   downloadLogs?: (kind: "questions" | "feedback", format: "csv" | "jsonl") => boolean;
 }
 
+export interface LegacyAgentToolSession {
+  readonly language: UiLanguage;
+  readonly history: readonly LegacySessionMessage[];
+  readonly bypassPlanning: boolean;
+  direct(planning?: { readonly content?: string }): Promise<Pick<LegacyAgentRunResult, "ok" | "status" | "response" | "memoryEvents" | "resultViews">>;
+  execute(request: { readonly callId: string; readonly toolName: string; readonly arguments: Record<string, unknown>; readonly signal?: AbortSignal }): Promise<{
+    readonly toolResult: Record<string, unknown>;
+    readonly memoryEvent?: Record<string, unknown> | null;
+    readonly resultView?: AgentResultView | null;
+  }>;
+  complete(response: string, options: { readonly synthesisFailed?: boolean; readonly partial?: boolean; readonly omittedTargets?: readonly string[] }): {
+    readonly response: string;
+    readonly fallbackDelivered: boolean;
+    readonly partial: boolean;
+    readonly omittedTargets: readonly string[];
+    readonly memoryEvents: readonly Record<string, unknown>[];
+    readonly resultViews: readonly AgentResultView[];
+  };
+  dispose(): void;
+}
+
 export interface LegacyBridgeApi {
+  createAgentActivity?(): {
+    begin(prompt: string, language: UiLanguage): void;
+    finish(result: { ok: boolean; status: string; response: string }): void;
+    clear(): void;
+    feedback: LegacyFeedbackBridge;
+    downloadLogs(kind: "questions" | "feedback", format: "csv" | "jsonl"): boolean;
+  };
+  runAgentPublisher?(request: { kind: "publisher" | "publisherprofile"; query: string; language: UiLanguage; signal: AbortSignal }): Promise<{ html: string; text: string; source: LegacyDataSource }>;
+  createAgentToolSession?(request: LegacyAgentRunRequest & LegacyAgentRunCallbacks): LegacyAgentToolSession;
+  renderAgentTrend?(data: AgentTrendData, language: UiLanguage): string;
   navigate(page: ModernPageName): void;
   setLanguage(language: UiLanguage): void;
   download(type: string, payload: unknown): boolean;

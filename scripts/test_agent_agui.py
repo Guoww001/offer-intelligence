@@ -14,6 +14,39 @@ from agent_contract import issue_plan_proof
 
 
 class AgentAguiTests(unittest.TestCase):
+    @patch("agent_agui.plan_agent_request")
+    def test_parity_delegates_no_tool_outcome_to_shared_source_policy(self, planning):
+        planning.return_value = (200, {"ok": True, "content": "Unverified revenue 999", "toolCalls": []})
+        body = self.body()
+        body["state"]["offerIntelligence"]["legacyParity"] = True
+        events = list(agent_agui.generate_agui_events(body))
+        self.assertFalse(any(event["type"] == "TEXT_MESSAGE_CONTENT" for event in events))
+        fallback = next(event for event in events if event.get("name") == "oi.planning_fallback")
+        self.assertEqual(fallback["value"]["content"], "Unverified revenue 999")
+        self.assertEqual(events[-1]["type"], "RUN_FINISHED")
+
+    @patch("agent_agui.plan_agent_request")
+    def test_parity_preserves_unavailable_planner_fallback(self, planning):
+        planning.return_value = (200, {"ok": False, "errorCode": "agent_planning_unavailable"})
+        body = self.body()
+        body["state"]["offerIntelligence"]["legacyParity"] = True
+        events = list(agent_agui.generate_agui_events(body))
+        self.assertTrue(any(event.get("name") == "oi.planning_fallback" for event in events))
+        self.assertEqual(events[-1]["type"], "RUN_FINISHED")
+
+    @patch("agent_agui.plan_agent_request")
+    def test_parity_preserves_prepared_history_in_continuation_state(self, planning):
+        planning.return_value = (200, {"ok": True, "agentRunId": "fixture", "planProof": "proof", "toolCalls": [
+            {"id": "r1c1", "name": "merchant_analysis", "arguments": {"merchant": "Tapo"}}
+        ]})
+        body = self.body()
+        history = [{"role": "assistant", "content": "EPC: 1.2"}]
+        body["state"]["offerIntelligence"].update({"legacyParity": True, "history": history, "memory": "Tier 2"})
+        events = list(agent_agui.generate_agui_events(body))
+        state = next(event["snapshot"]["offerIntelligence"] for event in events if event["type"] == "STATE_SNAPSHOT")
+        self.assertEqual(state["history"], history)
+        self.assertEqual(state["memory"], "Tier 2")
+
     def body(self):
         return {
             "threadId": "thread-1",
