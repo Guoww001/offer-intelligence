@@ -28,19 +28,19 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 >
 > Chat Mode 面对商户、品类、Tier、趋势和媒体等不同分析类型的内容与边界，见 [Chat Mode 不同分析类型说明](chat-mode-analysis-types.md)。
 
-> M6 Runtime 切换（2026-09-03）：独立 Vue Agent 沿用 PR #184 的 YeahPromos 双栏工作区与执行摘要外观，默认通过按需加载的 `@copilotkit/vue` Provider 连接真实 `/api/copilotkit` 多路由 Runtime；Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，并通过内部 token 调用 Python `/api/chat/agui`。Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。`OI_AGENT_RUNTIME_MODE=legacy` 可恢复旧 session bridge；Chatbot Report/Chat 与 Deep Window 本次不切换。
+> M6 Runtime 切换（2026-09-03）：独立 Vue Agent 沿用 PR #184 的 YeahPromos 双栏工作区与执行摘要外观；`@copilotkit/vue` Provider 与真实 `/api/copilotkit` 多路由 Runtime 作为 Modern 对照能力保留，页面默认仍使用 Legacy，只有显式 parity 开关且 Runtime/bridge 可用时才挂载 Modern。Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，并通过内部 token 调用 Python `/api/chat/agui`。Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。`OI_AGENT_RUNTIME_MODE=legacy` 可恢复旧 session bridge；Chatbot Report/Chat 与 Deep Window 本次不切换。
 
 ### M6 CopilotKit Agent 与 Legacy 回退边界（2026-09-03）
 
 - Report Mode 通过 `applyPrompt()` 和 `loadLiveChatbotData()` 复用 merchant、ASIN、category、Tier、recommendation、payment、analysis/trend、keyword、publisher 和 publisher profile 路由；来源状态只暴露 `cache`、`db` 或不可用。
 - Chat Mode 复用 Legacy 的 Report Memory、Memory recommendation、`/api/chat/stream` 逐 token/fallback/停止链路、反馈、问题日志、帮助、指南和 onboarding；成功回答才进入历史，停止/失败本轮不进入正式历史。
 - Deep Window 通过受控操作保留 quick/deep、多窗口、拖动、置顶、最小化/恢复、关闭/取消、图表指标/分类/列控制、clone、overlay、导出和加入对话；完成的 Legacy panel 不因 Modern 页面卸载而误删。
-- Agent 默认由 CopilotKit `useAgent` 管理运行与停止；Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
-- CopilotKit bundle 与主 `oi-modern.js` 分离，只在进入 Agent 页面时加载；CopilotKit 默认 Sidebar 与全局样式不作为页面 UI。真实登录数据、视觉几何与生产网络仍需在部署后验收。
+- Agent 的 Modern 对照页由 CopilotKit `useAgent` 管理运行与停止；默认 Legacy 页面继续复用既有 Agent 执行链。Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
+- CopilotKit bundle 与主 `oi-modern.js` 分离，仅在显式启用 Agent Modern 对照且 Runtime 可用时使用；CopilotKit 默认 Sidebar 与全局样式不作为页面 UI。真实登录数据、视觉几何与生产网络验收由用户完成。
 
 ### 2026-09-03 Chatbot Legacy-first 对齐落地
 
-- 默认入口继续由 `public/app.js:switchPage()` 使用 Legacy；Modern Chatbot 只在 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且 bridge 可用时作为逐页对照页挂载。
+- 默认入口继续由 `public/app.js:switchPage()` 使用 Legacy；Modern Chatbot/Agent 只在 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且对应 bridge/Runtime 可用时作为逐页对照页挂载。
 - `frontend/src/legacy/contracts.ts` 与 `frontend/src/legacy/bridge.ts` 现在保留回答 ID、回答 HTML、Deep Window 关联、反馈状态、工具面板状态、补充异步内容和 Deep Window skeleton/capability 字段；bridge 仍只投影页面安全字段。
 - Vue Chatbot 已补齐原版交互表面：Deep Window loading/content/error 生命周期、多窗口操作、拖拽至 Memory、逐答案 View/反馈、帮助/指南/Logs/Clear/onboarding、slash intent 菜单、Context 指标/分类交互和异步 DB 补充结果。
 - 原始 `contentHtml`、下载标记、趋势/列控件和数据来源继续通过 Legacy HTML 与受控事件渲染；Vue 层不重新计算 Legacy 报告公式，也不把模型文本当作数据事实。

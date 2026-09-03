@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-02（Chatbot/Agent 已恢复为 `dual` 与 Legacy-first；只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 对照页。Modern 继续保留既有 bridge 行为并复用原版结构和样式类；最终浏览器视觉与真实接口验收待用户完成。其他 M4/M5 页面与 M2 Offer Tracker 的迁移状态不变）
+> 最近更新：2026-09-03（Chatbot/Agent 已恢复为 `dual` 与 Legacy-first；只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 对照页。Modern 继续保留既有 bridge 行为并复用原版结构和样式类；最终浏览器视觉、交互、真实数据和 SSE 验收已由用户完成。其他 M4/M5 页面与 M2 Offer Tracker 的迁移状态不变）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -23,7 +23,7 @@
     {
       "pageKey": "agent",
       "label": "Chat Agent",
-      "status": "modern",
+      "status": "dual",
       "roots": ["#dashboardAgentPage", "#agentModernRoot"],
       "legacyEntry": ["switchPage()", "renderAgentPageWelcomeIfIdle()", "handleAgentPageSubmit()", "runChatAgent()"],
       "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/agent/CopilotKitAgentHost.vue", "frontend/src/features/agent/CopilotKitAgentRuntime.vue", "frontend/src/features/agent/AgentPage.vue", "frontend/src/features/agent/AgentTimeline.vue", "frontend/src/features/agent/agentModel.ts", "frontend/src/features/agent/agent.css", "copilotkit_runtime.mjs", "agent_agui.py"],
@@ -33,7 +33,7 @@
       "exports": ["question log download", "answer feedback download", "agent trace download"],
       "overlays": ["agent execution timeline", "#answerFeedbackDialog"],
       "tests": ["scripts/test_dashboard_chat_pages.mjs", "scripts/test_chat_agent.mjs", "scripts/test_agent_memory_state.mjs", "scripts/test_agent_trace.mjs", "scripts/test_agent_stop_button.mjs", "scripts/test_agent_execution_timeline.mjs", "frontend/src/features/agent/agentModel.test.ts", "frontend/src/features/agent/AgentTimeline.test.ts", "frontend/src/features/agent/AgentPage.test.ts", "frontend/src/legacy/bridge.test.ts", "scripts/test_m6_chatbot_agent_behavior_parity.mjs", "scripts/test_m6_modern_mount.mjs", "scripts/test_modern_page_cutover.mjs"],
-      "testGap": "现代组件、原版结构类、挂载/卸载、失败回退、行为 parity、安全字段白名单、Agent 工具执行、时间线、停止、中英文、问题日志/反馈/Trace bridge 由自动化覆盖；真实浏览器登录、数据、视觉、SSE 网络和完整用户操作仍待用户最终验收。工具执行与 Trace 继续由 Legacy bridge 复用，尚未进入 legacy 删除阶段。",
+      "testGap": "现代组件、原版结构类、挂载/卸载、失败回退、行为 parity、安全字段白名单、Agent 工具执行、时间线、停止、中英文、问题日志/反馈/Trace bridge 由自动化覆盖；真实浏览器登录、数据、视觉、SSE 网络和完整用户操作已由用户完成验收。工具执行与 Trace 继续由 Legacy bridge 复用，尚未进入 legacy 删除阶段。",
       "notes": "当前保持 dual / Legacy-first：modernChatbotAgentParityEnabled() 只有在 window.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true 且 bridge 可用时才启用 Modern 对照页；Vue 工作区复用原版 agent-page-*、chat-* 与 agent-run-* 结构，并通过受控 session 消费既有 runChatAgent、SSE、问题日志和 Trace。"
     },
     {
@@ -49,7 +49,7 @@
       "exports": ["downloadRecommendationXlsx()", "question log download", "answer feedback download"],
       "overlays": ["Deep Window stack", "#answerFeedbackDialog", "#userFlowImageLightbox"],
       "tests": ["scripts/test_chatbot_intent_flow.mjs", "scripts/test_zh_chatbot.mjs", "scripts/test_chatbot_mode_navigation.mjs", "scripts/test_report_mode_guide.mjs", "scripts/test_onboarding_tour.mjs", "scripts/test_chatbot_welcome.mjs", "scripts/test_chatbot_answer_feedback_frontend.mjs", "frontend/src/features/chatbot/chatbotModel.test.ts", "frontend/src/features/chatbot/chatbotReportModel.test.ts", "frontend/src/features/chatbot/ChatbotResultView.test.ts", "frontend/src/features/chatbot/ChatbotPage.test.ts", "frontend/src/features/chatbot/ChatbotChatView.test.ts", "frontend/src/features/chatbot/DeepWindow.test.ts", "frontend/src/features/chatbot/useDeepWindows.test.ts", "frontend/src/features/chatbot/FeedbackForm.test.ts", "frontend/src/shared/markdown/markdown.test.ts", "frontend/src/shared/stream/sse.test.ts", "frontend/src/legacy/bridge.test.ts", "scripts/test_m6_chatbot_agent_behavior_parity.mjs", "scripts/test_m6_modern_mount.mjs", "scripts/test_modern_page_cutover.mjs"],
-      "testGap": "现代 Report/Chat/Deep Window 组件、原版双栏与交互类、完整 Legacy 路由委托、实时数据来源刷新、SSE/停止、下载、Memory recommendation、反馈/日志、onboarding、图表控制、卸载清理和 Legacy-safe parity 由自动化覆盖；test_chatbot_intent_flow.mjs 仍有历史性超时，不能计为通过；真实浏览器登录、数据、视觉和 SSE 网络仍待用户最终验收。",
+      "testGap": "现代 Report/Chat/Deep Window 组件、原版双栏与交互类、完整 Legacy 路由委托、实时数据来源刷新、SSE/停止、下载、Memory recommendation、反馈/日志、onboarding、图表控制、卸载清理和 Legacy-safe parity 由自动化覆盖；test_chatbot_intent_flow.mjs 仍有历史性超时，不能计为通过；真实浏览器登录、数据、视觉和 SSE 网络已由用户完成验收。",
       "notes": "当前保持 dual / Legacy-first：modernChatbotAgentParityEnabled() 只有在 window.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true 且 bridge 可用时才启用 Modern 对照页；Modern Report/Chat 复用原版 insight-panel、chat-panel、message、chat-input 与模式切换结构，业务行为继续由 applyPrompt()、loadLiveChatbotData() 和 Legacy bridge 承担。"
     },
     {
@@ -258,6 +258,7 @@
 | 2026-09-02 | M6 Chatbot/Agent 行为等价实现 | `Chatbot/Agent dual` | `Chatbot/Agent dual` | Chatbot Report/Chat/Deep Window 与独立 Agent 均通过受控 Legacy session bridge 复用既有 applyPrompt/runChatAgent/SSE/Trace/日志链路；补齐来源刷新、完整路由委托、Memory recommendation、反馈/日志/onboarding、Deep Window 图表控制/clone/overlay/导出/加入对话、Agent 可见流式时间线、卸载中止和 Memory 字段白名单。Vitest 51 个文件/229 项、typecheck、build、M6 parity/mount/cutover、Legacy Node/Python 回归均通过；`test_chatbot_intent_flow.mjs` 仍历史性超时未通过，真实浏览器验收待用户确认，因此继续保持 `dual`。 |
 | 2026-09-02 | M6 Chatbot/Agent modern 放行 | `Chatbot/Agent dual` | `Chatbot/Agent modern` | 用户已确认完成 Chatbot Report/Chat Mode、Deep Window 与 Agent 的真实浏览器、数据、视觉和 SSE 验收；`test_m6_chatbot_agent_behavior_parity.mjs`、`test_m6_modern_mount.mjs`、`test_modern_page_cutover.mjs` 与既有 Agent/Chatbot 自动化回归用于放行确认。`modernChatbotAgentParityEnabled()` 默认启用 Modern，factory/bridge 失败时回退 Legacy，显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 保留回滚；`test_chatbot_intent_flow.mjs` 历史性超时仍单独记录，legacy 删除延后至 M7。 |
 | 2026-09-02 | Chatbot/Agent 原版对齐与放行撤回 | `Chatbot/Agent modern` | `Chatbot/Agent dual` | 用户反馈 Modern 与原版视觉和交互差异较大，因此恢复 Legacy-first；只有显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 对照页。Modern Chatbot/Agent 改为复用原版双栏、消息、输入、模式切换、Agent 工作区和时间线结构类；代码级回归通过，最终视觉与真实接口验收待用户完成。 |
+| 2026-09-03 | Chatbot/Agent Legacy-first 浏览器验收 | `Chatbot/Agent dual` | `Chatbot/Agent dual` | 用户已完成 Chatbot Report/Chat、Deep Window 与 Agent 的 Legacy-first 浏览器视觉、交互、真实数据和 SSE 验收；PR #186 补齐 Chat/Report 输入区白色文字、发送按钮视觉和 Chat Mode 独立“转为 View”控件收敛。Modern 继续仅作显式对照，legacy 删除不启动。 |
 | 2026-09-01 | M5 Tier Move 生产边界与移动交互 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy` 和 modern 560px Move dialog 边界，前端全量 33 个 Vitest 文件/160 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 10（QA commit `97f93d99ab833fdaf64932c9bd8a216007245393`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；按当时 M5 验收结论保持 `dual`，随后按回滚安全规则完成逐页 `dual → modern` 放行 |
 | 2026-09-01 | M5 Tier Move 生产边界、移动交互与 Tier 1 预加载一致性 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy`、modern 560px Move dialog 边界和 Tier 1 additions 挂载预加载/空响应缓存，前端全量 33 个 Vitest 文件/162 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 14（QA commit `fcb53dcff5873db4341ce6ae86375f854f07e092`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；两侧 Added merchants 均为 1，按既有 M5 验收结论保持 `dual`，后续按回滚安全规则逐页放行 |
 | 2026-09-01 | M4 Brand Media/Revenue Flow/Google Ads modern 放行 | `M4 dual` | `M4 modern` | M4 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过统一放行契约；不修改 API、数据口径、认证或侧边栏视觉 |
