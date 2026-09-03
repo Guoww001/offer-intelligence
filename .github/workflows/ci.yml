@@ -31,6 +31,8 @@ jobs:
 
       - name: Install and validate modern frontend
         run: |
+          npm ci
+          npm run test:copilotkit
           npm --prefix frontend ci
           npm --prefix frontend run typecheck
           npm --prefix frontend run test -- --run
@@ -102,7 +104,10 @@ jobs:
           python scripts/test_agent_contract.py
           python scripts/test_agent_planning_contract.py
           python scripts/test_agent_synthesis_contract.py
+          python scripts/test_agent_agui.py
           node scripts/test_chat_agent.mjs
           node scripts/test_agent_memory_state.mjs
           node scripts/test_agent_trace.mjs
+          node scripts/test_m6_chatbot_agent_behavior_parity.mjs
+          node scripts/test_m6_modern_mount.mjs
           python scripts/test_payment_placeholders.py

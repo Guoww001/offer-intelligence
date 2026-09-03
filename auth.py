@@ -49,6 +49,17 @@ def agent_enabled() -> bool:
     return value not in {"0", "false", "no", "off"}
 
 
+def agent_runtime_config() -> dict[str, Any]:
+    """Public, non-secret runtime bootstrap; CopilotKit is the production default."""
+    mode = os.environ.get("OI_AGENT_RUNTIME_MODE", "copilotkit").strip().lower()
+    return {
+        "enabled": agent_enabled() and mode == "copilotkit",
+        "endpoint": "/api/copilotkit",
+        "authority": "python-registry",
+        "fallback": "legacy",
+    }
+
+
 def admin_username() -> str:
     return os.environ.get("OI_ADMIN_USERNAME", "admin").strip() or "admin"
 
@@ -281,7 +292,7 @@ def handle_auth_options(target) -> None:
 
 def handle_auth_session(target) -> None:
     if not auth_enabled():
-        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "user": {"role": "admin"}, "llmEnabled": llm_enabled(), "agentEnabled": agent_enabled()})
+        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "user": {"role": "admin"}, "llmEnabled": llm_enabled(), "agentEnabled": agent_enabled(), "agentRuntime": agent_runtime_config()})
         return
     status = auth_config_status()
     if not status["configured"]:
@@ -310,6 +321,7 @@ def handle_auth_session(target) -> None:
             "configured": True,
             "llmEnabled": llm_enabled(),
             "agentEnabled": agent_enabled(),
+            "agentRuntime": agent_runtime_config(),
             "user": {
                 "username": payload.get("sub"),
                 "role": payload.get("role"),
@@ -321,7 +333,7 @@ def handle_auth_session(target) -> None:
 
 def handle_auth_login(target) -> None:
     if not auth_enabled():
-        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "llmEnabled": llm_enabled(), "agentEnabled": agent_enabled()})
+        send_json(target, 200, {"ok": True, "authenticated": True, "authDisabled": True, "llmEnabled": llm_enabled(), "agentEnabled": agent_enabled(), "agentRuntime": agent_runtime_config()})
         return
     status = auth_config_status()
     if not status["configured"]:
@@ -356,6 +368,7 @@ def handle_auth_login(target) -> None:
         "authenticated": True,
         "llmEnabled": llm_enabled(),
         "agentEnabled": agent_enabled(),
+        "agentRuntime": agent_runtime_config(),
         "user": {"username": username, "role": "admin", "expiresAt": expires_at},
     }
     body_bytes = _json_bytes(response)

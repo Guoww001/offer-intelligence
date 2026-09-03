@@ -85,7 +85,7 @@ describe("AgentPage", () => {
     const listeners = new Set<(next: LegacyAgentViewState) => void>();
     const result: LegacyAgentRunResult = {
       ok: true,
-      status: "done",
+      status: "done" as const,
       response: "EPC 1.23",
       steps: [{ id: "tool-1", phase: "tool", status: "done", label: "商户分析", dataSource: "database" }],
       memoryEvents: []
@@ -157,6 +157,39 @@ describe("AgentPage", () => {
     expect(wrapper.find('[data-agent-timeline]').exists()).toBe(true);
     expect(wrapper.find('[data-agent-response] h3').exists()).toBe(true);
     expect(wrapper.find('[data-agent-response]').text()).toContain("Tapo");
+  });
+
+  it("renders bounded tool result views through the local component registry", async () => {
+    const run: AgentRunner = vi.fn(async () => ({
+      ok: true as const,
+      status: "done" as const,
+      response: "EPC 已返回。",
+      steps: [],
+      resultViews: [{
+        id: "metric-1",
+        toolName: "merchant_analysis",
+        kind: "metric" as const,
+        status: "done" as const,
+        title: "EPC",
+        source: "database" as const,
+        dataAsOf: "2026-08",
+        estimated: false,
+        partial: false,
+        metrics: [{ label: "EPC", value: "1.23" }],
+        columns: [],
+        rows: [],
+        message: ""
+      }]
+    }));
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+
+    await wrapper.get('[data-agent-input]').setValue("查询 EPC");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find('[data-result-kind="metric"]').exists()).toBe(true);
+    expect(wrapper.find('[data-result-kind="metric"]').text()).toContain("1.23");
+    expect(wrapper.find('[data-result-kind="metric"]').html()).not.toContain("<script");
   });
 
   it("keeps Agent feedback and question-log downloads on the shared session", async () => {

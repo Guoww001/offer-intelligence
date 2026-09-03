@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": "npm --prefix frontend run build",
-  "installCommand": "npm --prefix frontend ci",
+  "installCommand": "npm ci && npm --prefix frontend ci",
   "outputDirectory": "public",
   "routes": [
     {
@@ -234,6 +234,14 @@
       ]
     },
     {
+      "src": "^/api/copilotkit/?$",
+      "dest": "/api/copilotkit/[...path]"
+    },
+    {
+      "src": "^/api/copilotkit/(.*)$",
+      "dest": "/api/copilotkit/[...path]"
+    },
+    {
       "src": "^/api/chat/classify/?$",
       "dest": "/api/chat/actions",
       "transforms": [
@@ -268,6 +276,18 @@
           "args": "agent"
         }
       ]
+    },
+    {
+      "src": "^/api/chat/agui/?$",
+      "dest": "/api/chat/actions",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-oi-chat-route" },
+          "args": "agui"
+        }
+      ]
     }
   ],
   "functions": {
@@ -281,6 +301,9 @@
     },
     "api/chat/stream.py": {
       "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "maxDuration": 60
+    },
+    "api/copilotkit/[...path].js": {
       "maxDuration": 60
     },
     "api/db/index.py": {

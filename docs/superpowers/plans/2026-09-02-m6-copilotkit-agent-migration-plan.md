@@ -1,21 +1,21 @@
 # Offer Intelligence M6：CopilotKit / AG-UI Agent 迁移方案
 
-> 状态：候选设计稿（尚未实施 CopilotKit / AG-UI）
+> 状态：已实施（生产 Agent 默认使用 CopilotKit Runtime；保留 legacy 紧急回退）
 > 基线分支：`FRONTEND-VUE-MIGRATION`  
-> 基线提交：`0b623e34b4cadb1f938ba902db1ec4e467fa420c`（2026-09-01）  
-> 调研日期：2026-09-02  
+> 实施基线：`ec979ea02b5c514b7e150b004832a56c73750a1f`（2026-09-03，包含 PR #184 最新 Agent/Chatbot 外观）
+> 调研日期：2026-09-02；实施更新：2026-09-03
 > 建议仓库落点：`docs/superpowers/plans/2026-09-02-m6-copilotkit-agent-migration-plan.md`
-> 当前落地状态（2026-09-02）：仓库中的 Chatbot/Agent Modern 页面仍通过 `OI_LEGACY_BRIDGE` 复用既有运行链路，并未引入 CopilotKit 或 AG-UI 依赖。当前页面状态为 `dual` / Legacy-first；只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 原版对照页，最终视觉与真实接口验收由用户完成。本设计稿不得作为“CopilotKit 迁移已完成”的证据。
+> 当前落地状态（2026-09-03）：`@copilotkit/vue@1.70.0`、`@copilotkit/runtime@1.70.0`、`@ag-ui/client@0.0.59` 与 Python `ag-ui-protocol==0.1.22` 已接入；真实多路由端点为 `/api/copilotkit`，其默认 Agent 通过同部署 `/api/chat/agui` 回到 Python。生产启动配置默认启用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 可紧急回退。页面继续使用 PR #184 的 YeahPromos Vue 外观，不加载 CopilotKit Sidebar。
 
 ## 1. 结论
 
-当前确实应进入 M6，但 **M6/01 不应直接把独立 Agent 页面整体替换为 CopilotKit**。路线图中的 M6 第一步仍是“无 DOM 的搜索、分类、分析 model 与结果 View”。正确的实施方式是：
+M6/01 已按“业务与安全核心不变、传输层替换”的方式完成。实际实施边界是：
 
-1. 在 M6/01 冻结现有 Agent 契约，抽离可测试的纯业务 model；
-2. 同时建立 CopilotKit + AG-UI 的最小适配层和双栈开关，但默认仍走 legacy；
-3. 依次完成 Report Mode、Chat Mode、Deep Window；
-4. 到 M6/05 再切换独立 Agent 页面；
-5. 只有在协议、Trace、停止、记忆、数据来源和视觉对比全部通过后，才移除 `public/app.js` 中对应实现。
+1. 现有 Python registry、参数/结果白名单和 HMAC plan proof 继续作为唯一权威；
+2. CopilotKit Runtime 只负责同源认证、AG-UI 转发、消息状态与 frontend tool continuation；
+3. 浏览器继续执行现有 7 个只读数据工具，并回传与 Agent v2 相同的受限投影；
+4. Python AG-UI 状态机管理 planning、每批最多 4 个工具、总预算 6、一次 replan、synthesis 与 stop；
+5. 独立 Agent 已默认切换，Report Mode、Chatbot 与 Deep Window 不在本次被替换。
 
 目标不是“用 CopilotKit 重写 Agent”，而是采用绞杀式迁移：
 
@@ -106,7 +106,7 @@ flowchart TD
 
 ### 5.1 浏览器层
 
-- 一个按需加载的 `oi-ai.js`/`oi-ai.css` 包同时注册 `dashboard`（Chatbot）和 `agent` factory。
+- `oi-modern.js` 继续注册所有 Vue 页面；进入独立 Agent 时才按需加载 `oi-agent-runtime.js` 并覆盖 `agent` factory，Chatbot 不加载 CopilotKit。
 - 使用 `CopilotKitProvider` 与 `useAgent` 管理 thread、运行、消息、停止和状态订阅。
 - 页面、消息、输入区、时间线、能力卡、记忆栏继续由 YeahPromos Vue 组件渲染。
 - 如使用 `CopilotChat`，必须覆盖关键 slot；不得把官方默认 CSS 全局注入现有页面。
@@ -129,15 +129,15 @@ flowchart TD
 
 ### 5.4 认证路径
 
-推荐新增专用密钥 `OI_COPILOT_INTERNAL_TOKEN`，不要复用 `OI_SESSION_SECRET`：
+生产推荐配置专用密钥 `OI_COPILOT_INTERNAL_TOKEN`；为延续现有密钥接口，未配置时使用 `OI_SESSION_SECRET`：
 
 1. 浏览器以同源 Cookie 请求 Copilot Runtime；
-2. Runtime `onRequest` 携带原 Cookie 调用现有 `/api/auth/session` 做会话核验；
+2. Runtime `onRequest` 使用 `OI_SESSION_SECRET` 在本地校验现有 `oi_session` 的 HMAC、角色与过期时间；
 3. 通过后，Runtime 仅用服务端持有的 internal token 调用 Python AG-UI 适配器；
 4. Python 使用常量时间比较验证 token，并只接收最小身份上下文；
 5. 原 Cookie 不进入 Agent payload、Trace 或日志。
 
-生产环境使用显式配置的内部 Python URL，不能从请求 `Host` 拼接，避免 SSRF/host-header 问题。若实现阶段证明同部署内部调用不可行，可退回“显式 Cookie 转发 + Python `require_auth`”，但必须有集成测试证明 Cookie 未进入日志。
+如配置 `OI_AGENT_AGUI_URL`，Runtime 只使用该显式内部 URL；否则在 Vercel 使用受平台提供的 `VERCEL_URL` 生成同部署 `/api/chat/agui` 地址，本地开发才回退到经过格式校验的请求 host。Cookie、Authorization 与任意 `x-*` 浏览器头均不转发给 Python。
 
 ## 6. 协议映射
 
@@ -171,7 +171,7 @@ flowchart TD
 | 独立 Agent 页面、thread、时间线、工作区、能力卡 | `frontend/src/features/agent/` | M6/05 |
 | 安全结构化记忆 | `frontend/src/features/agent/memory/` | M6/05 |
 | onboarding、help guide、问题日志、负反馈 | Vue feature + 现有 Python API | M6/06 |
-| 运行时鉴权、AG-UI 适配、协议 reducer | Node Runtime + `api/chat/agui.py` + shared TS | M6/01 起贯穿 |
+| 运行时鉴权、AG-UI 适配、协议 reducer | `copilotkit_runtime.mjs` + `agent_agui.py` + Vue runtime | M6/01 起贯穿 |
 
 ### 7.2 保留并复用
 
@@ -195,9 +195,9 @@ flowchart TD
 
 ## 8. M6 分阶段实施
 
-### M6/01：纯 model + CopilotKit/AG-UI 基础（当前任务）
+### M6/01：CopilotKit/AG-UI 生产基础（已完成）
 
-目标：建立不改变生产默认行为的现代 AI 基础；用固定 fixture 证明纯 model 与协议适配可替换。
+目标：在不改变业务权威与 YeahPromos 外观的前提下，将生产独立 Agent 默认传输切换到 CopilotKit Runtime。
 
 交付物：
 
@@ -207,12 +207,12 @@ flowchart TD
 4. 独立 AI bundle；
 5. Copilot Runtime 与 Python AG-UI 最小连通；
 6. AG-UI event reducer、停止与错误 fixture；
-7. `legacy|dual|modern` 开关，默认 `legacy`；
-8. 旧/新结果与事件序列的双跑比较报告。
+7. 服务端 `copilotkit|legacy` 开关，默认 `copilotkit`；
+8. Runtime 认证、真实 Node→Python SSE、AG-UI 批次和 proof-bound synthesis 回归测试。
 
-明确不包含：生产 Agent 页面默认切换、历史/记忆最终替换、Deep Window、删除旧代码、把工具改为服务端执行。
+明确不包含：Report/Chatbot/Deep Window 替换、删除旧代码、把浏览器数据工具迁到 Node、把 CopilotKit client schema 变成权威。
 
-退出门槛：M6/01 第 10 节全部通过，且 `OI_AGENT_UI_MODE=legacy` 时产物与 M5 基线完全一致。
+退出门槛：Node Runtime 与 Python AG-UI 协议测试、Python 契约测试、Vue 全量 Vitest、typecheck 和 production build 全部通过；`OI_AGENT_RUNTIME_MODE=legacy` 可恢复旧 session bridge。
 
 ### M6/02：Report Mode
 
@@ -294,39 +294,38 @@ flowchart TD
 - 分类器返回 typed intent；LLM 失败路径由调用层明确回退规则模型；
 - legacy 与 TS 结果对同一 fixture 做逐字段 compare。
 
-### 9.3 PR 3：独立 AI bundle
+### 9.3 PR 3：独立 Agent Runtime bundle（已实施）
 
 新增/修改：
 
-- `frontend/src/ai-entry.ts`
-- `frontend/vite.ai.config.ts`
+- `frontend/src/copilotkit-entry.ts`
+- `frontend/vite.copilotkit.config.ts`
 - `frontend/package.json`
 - `public/auth.js` 或现有资源加载器
 - `frontend/src/legacy/contracts.ts`
 
 输出：
 
-- `public/assets/modern/oi-ai.js`
-- `public/assets/modern/oi-ai.css`
+- `public/assets/modern/oi-agent-runtime.js`
 
 原则：
 
 - 保持现有 `oi-modern.js` 不含 CopilotKit；
-- 仅在首次进入 Chatbot/Agent 时加载 AI bundle；
+- 仅在首次进入独立 Agent 时加载 Runtime bundle；
 - bundle 加载失败自动保留/切回 legacy，并显示安全的可重试提示；
 - AI gzip 预算初始上限 250 KB；若超限必须给出依赖构成和批准后的新预算，不得静默放宽。
 
-### 9.4 PR 4：Runtime 与 AG-UI 适配骨架
+### 9.4 PR 4：Runtime 与 AG-UI 适配骨架（已实施）
 
 新增：
 
 - 根 `package.json` 与锁文件（用于 Node Runtime，不替代 `frontend/package.json`）
-- `api/copilotkit/[...path].ts`（最终文件名以 Vercel adapter spike 为准）
-- `api/chat/agui.py`
+- `copilotkit_runtime.mjs`
+- `api/copilotkit/[...path].js`
 - `agent_agui.py`
-- `agent_agui_events.py`
-- `frontend/src/shared/agent/agui-types.ts`
-- `frontend/src/shared/agent/agui-reducer.ts`
+- `api/chat/actions.py` 中受可信路由头保护的 `agui` 分支
+- `frontend/src/features/agent/CopilotKitAgentHost.vue`
+- `frontend/src/features/agent/CopilotKitAgentRuntime.vue`
 
 修改：
 
@@ -344,30 +343,29 @@ flowchart TD
 - AG-UI adapter 调用共享业务模块，不通过 HTTP 回调自己公开 endpoint；
 - 未知 event/state 字段忽略或拒绝策略明确，payload 有大小限制。
 
-### 9.5 PR 5：Vue headless Agent shell（仍不默认上线）
+### 9.5 PR 5：Vue headless Agent shell（已默认上线）
 
 新增：
 
 - `frontend/src/features/agent/AgentPage.vue`
-- `frontend/src/features/agent/AgentProvider.vue`
-- `frontend/src/features/agent/useAgentRun.ts`
+- `frontend/src/features/agent/CopilotKitAgentHost.vue`
+- `frontend/src/features/agent/CopilotKitAgentRuntime.vue`
 - `frontend/src/features/agent/AgentTimeline.vue`
-- `frontend/src/features/agent/AgentWorkspace.vue`
-- `frontend/src/features/agent/AgentCapabilities.vue`
-- `frontend/src/features/agent/AgentComposer.vue`
-- `frontend/src/features/agent/agent-state.ts`
+- `frontend/src/features/agent/AgentResultView.vue`
+- `frontend/src/features/agent/agentResultRegistry.ts`
+- `frontend/src/features/agent/agentRunReducer.ts`
 
 修改：
 
-- `frontend/src/ai-entry.ts` 注册 `agent` factory；
+- `frontend/src/copilotkit-entry.ts` 注册 `agent` factory；
 - `frontend/src/entry.ts`/bridge 允许按需发现 AI factory；
 - `public/app.js` 只增加受控委托与 fallback，不删除旧实现。
 
 开关：
 
-- `OI_AGENT_UI_MODE=legacy|dual|modern`，默认 `legacy`；
-- `dual` 仅运行无副作用的结构化 compare，不向用户展示双回答；
-- `OI_AGENT_ENABLED=false` 时三种 UI mode 都不得绕过总开关。
+- `OI_AGENT_RUNTIME_MODE=copilotkit|legacy`，默认 `copilotkit`；
+- `legacy` 通过已有 session bridge 执行，不产生双回答；
+- `OI_AGENT_ENABLED=0` 时两种 runtime mode 都不得绕过总开关。
 
 ### 9.6 PR 6：Sites / 浏览器证据与退出
 
@@ -415,7 +413,7 @@ flowchart TD
 - [ ] `npm ci`、`npm --prefix frontend ci` 可从空缓存复现。
 - [ ] TypeScript、Vitest、Node contract tests、Python tests 全绿。
 - [ ] Vercel 路由与构建输出测试覆盖 Node/Python 混合 function。
-- [ ] `oi-modern.js` 体积无 CopilotKit 回归；`oi-ai.js` 按需加载并满足预算。
+- [x] `oi-modern.js` 不含 CopilotKit；`oi-agent-runtime.js` 只在 Agent 页面按需加载。
 - [ ] Agent/Chatbot 首次进入、路由切换、登出、网络失败均无白屏。
 - [ ] Sites legacy/modern/compare 的固定状态通过人工视觉复核。
 
@@ -449,16 +447,15 @@ AG-UI state snapshot/delta 只承载 UI 需要的安全字段；不能把完整 
 
 ### 12.1 发布梯度
 
-1. 默认 `legacy`：生产仅加载旧 UI；新 bundle/endpoint 可做认证后的 smoke test。
-2. 内部 `dual`：固定 fixture 和少量内部会话比较结构化输出与事件，不产生双回答。
-3. Agent 页面内部 `modern`：只对 allowlist 用户开放。
-4. 小比例 `modern`：观察完成率、停止率、失败率、首 token、总耗时、partial 率和 fallback 率。
-5. 全量 Agent modern；再按 M6/02–04 的状态逐步切换 Chatbot。
-6. 稳定窗口后才删除 legacy。
+1. 生产默认 `copilotkit`：只在进入 Agent 时加载 Runtime bundle；通过认证后的 `/info` 与 run smoke test 后放量。
+2. 紧急 `legacy`：设置 `OI_AGENT_RUNTIME_MODE=legacy` 即恢复旧 session bridge，不需要重新构建前端。
+3. 观察完成率、停止率、失败率、首 token、总耗时、partial 率和 fallback 率。
+4. Agent 稳定后再按 M6/02–04 的状态逐步切换 Chatbot。
+5. 稳定窗口后才删除 legacy。
 
 ### 12.2 红线与自动/人工回滚
 
-任一条件触发立即把 `OI_AGENT_UI_MODE` 改回 `legacy`：
+任一条件触发立即把 `OI_AGENT_RUNTIME_MODE` 改回 `legacy`：
 
 - 未授权请求能到达 agent adapter；
 - canonical registry/proof/result binding 被绕过；
@@ -489,7 +486,7 @@ AG-UI state snapshot/delta 只承载 UI 需要的安全字段；不能把完整 
 这些是技术验证，不是重新讨论产品方向：
 
 1. **Vue 包形态**：验证 `@copilotkit/vue@1.70.0` 在当前 IIFE/独立 AI build 中可运行；若不行，AI bundle 改为单独 ESM，由 loader 按需加载，不能改坏现有 `oi-modern.js`。
-2. **Vercel Runtime adapter**：确定 `api/copilotkit/[...path].ts` 的 multi-route handler 与 `vercel.json` 规则；用部署 smoke test 验证 `/info` 和 run endpoint。
+2. **Vercel Runtime adapter**：已使用 `api/copilotkit/[...path].js` multi-route handler 与 `vercel.json` 规则；部署后仍需 smoke test 验证 `/info` 和 run endpoint。
 3. **两阶段 continuation**：证明 plan → 浏览器工具 → synth 会形成两个短请求，并保留一个产品 `agentRunId`；不得把最坏 30s + 50s 合并进单个 60s function。
 4. **客户端工具 schema**：若 CopilotKit frontend tool API 必须发送 schema，服务端必须忽略它，只接受 enabled name，并用 canonical registry 生成真实 schema。若无法保证，使用 `useAgent` + 自定义 continuation bridge。
 5. **Cookie 鉴权**：验证 Runtime 的 `onRequest`、session introspection 和 internal token 路径；默认 header forwarding 不视为已鉴权。
@@ -511,9 +508,7 @@ M6 只有在以下条件同时满足时才结束：
 
 ## 15. 推荐执行顺序
 
-从当前基线开始，下一项应创建 **M6/01 PR 1：契约冻结与 fixture**，然后才引入 CopilotKit 依赖。首个有依赖变更的 PR 只能建立按需 AI bundle、Runtime/AG-UI smoke path 和默认关闭的 Vue shell；它不应改变线上 Agent 默认实现。
-
-完成 M6/01 后，按 M6/02 → M6/06 顺序推进。独立 Agent 的真正用户可见切换属于 M6/05；提前到 M6/01 会同时触碰 model、协议、UI、历史、记忆、停止和部署，无法可靠定位回归。
+M6/01 的 Runtime 切换已完成。下一步先在真实 Vercel 环境验证 `/api/copilotkit/info`、`/api/copilotkit/agent/default/run`、内部 `/api/chat/agui` 鉴权、停止与一次 replan，再继续 M6/02 Report Mode。稳定窗口内保留 legacy session bridge；不在同一提交删除回退路径。
 
 ## 16. 主要参考链接
 

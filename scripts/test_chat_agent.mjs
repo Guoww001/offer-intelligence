@@ -123,6 +123,7 @@ assertTruthy(hooks.createAgentExecutionTimeline, "createAgentExecutionTimeline h
 assertTruthy(hooks.agentMemoryMetricKeys, "agentMemoryMetricKeys hook missing");
 assertTruthy(hooks.agentMemoryEventFromToolItem, "agentMemoryEventFromToolItem hook missing");
 assertTruthy(hooks.agentMemoryEventsFromToolResults, "agentMemoryEventsFromToolResults hook missing");
+assertTruthy(hooks.agentResultViewFromToolItem, "agentResultViewFromToolItem hook missing");
 assertTruthy(hooks.commitAgentPageMemory, "commitAgentPageMemory hook missing");
 assertTruthy(hooks.agentPageMemoryText, "agentPageMemoryText hook missing");
 assertTruthy(hooks.agentPageWelcomeHtml, "agentPageWelcomeHtml hook missing");
@@ -156,6 +157,23 @@ assertEqual(memoryEvent.query.endMonth, "2026-08", "memory event should derive t
 assertEqual(memoryEvent.lastTool.dataSource, "mixed", "memory event should retain source metadata");
 assertEqual(JSON.stringify(memoryEvent).includes("1.2"), false, "memory event must not retain metric values");
 assertEqual(JSON.stringify(memoryEvent).includes('"metrics":{'), false, "memory event must not retain metric objects");
+const metricView = hooks.agentResultViewFromToolItem({
+  id: "result-1",
+  name: "merchant_analysis",
+  result: {
+    ok: true,
+    data: {
+      merchant: firstCanonicalName,
+      headline: `<b>${firstCanonicalName}</b> overview`,
+      metrics: { epc: 1.2, conversionRate: 0.03 }
+    },
+    trace: { dataSource: "mixed", dataAsOf: "2026-08-26T07:40:00Z", estimated: false }
+  }
+});
+assertEqual(metricView.kind, "metric", "merchant result should use the local metric component");
+assertEqual(metricView.metrics.length, 2, "metric projection should stay bounded and structured");
+assertEqual(metricView.title.includes("<"), false, "result projection must remove markup before Vue rendering");
+assertEqual(metricView.source, "mixed", "result projection should retain controlled source metadata");
 const ambiguousMemoryEvent = hooks.agentMemoryEventFromToolItem({
   name: "merchant_analysis",
   result: {
