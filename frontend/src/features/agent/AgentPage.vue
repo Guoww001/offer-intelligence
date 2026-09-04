@@ -96,7 +96,7 @@ const commandHint = computed(() => { const parsed = parseAgentCommand(input.valu
 const composerCollapsed = ref(false);
 const localSessionOverride = ref(false);
 let lastScrollTop = 0;
-const activity = window.OI_LEGACY_BRIDGE?.createAgentActivity?.();
+const activity = window.OI_MODERN_RUNTIME?.createAgentActivity?.();
 const feedback = computed(() => !localSessionOverride.value && props.session ? props.session.feedback : activity?.feedback);
 const hasLogDownloads = computed(() => Boolean(props.session?.downloadLogs || activity?.downloadLogs));
 const followingLatest = ref(true);
@@ -266,7 +266,7 @@ function history(): readonly { readonly role: "user" | "assistant"; readonly con
 function downloadLogs(kind: "questions" | "feedback", format: "csv" | "jsonl"): void {
   (props.session?.downloadLogs || activity?.downloadLogs)?.(kind, format);
 }
-function downloadReport(id: string): void { window.OI_LEGACY_BRIDGE?.download('recommendation', id); }
+function downloadReport(id: string): void { window.OI_MODERN_RUNTIME?.download?.("recommendation", id); }
 
 function upsertResultView(view: unknown): void {
   const normalized = normalizeAgentResultViews([view])[0];
@@ -418,7 +418,7 @@ async function submit(): Promise<void> {
     };
     let result: AgentRunResult;
     if (command?.command.route) {
-      const bridge = window.OI_LEGACY_BRIDGE?.runAgentPublisher;
+      const bridge = window.OI_MODERN_RUNTIME?.runAgentPublisher;
       if (!bridge) throw new Error("publisher_unavailable");
       const label = requestLanguage === "zh" ? command.command.zh : command.command.en;
       timeline.value = [{ id: "publisher", phase: "tool", label, status: "running" }];

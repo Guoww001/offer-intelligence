@@ -886,6 +886,7 @@ export function createModernAppApi(
 ): ModernAppApi {
   let activePage: { name: ModernPageName; controller: ModernPageController } | null = null;
   let activeShell: ModernShellController | null = null;
+  let standalonePageHost: HTMLElement | null = null;
 
   function unmountActivePage(): void {
     if (!activePage) return;
@@ -901,19 +902,70 @@ export function createModernAppApi(
     current.unmount();
   }
 
+  function createStandaloneHost(element: HTMLElement): HTMLElement {
+    const layout = document.createElement("div");
+    layout.className = "modern-application";
+    layout.setAttribute("data-modern-application", "true");
+
+    const shellHost = document.createElement("div");
+    shellHost.className = "modern-application-shell";
+    shellHost.setAttribute("data-modern-shell-host", "true");
+
+    const workspace = document.createElement("main");
+    workspace.className = "modern-application-workspace";
+    workspace.setAttribute("data-modern-workspace", "true");
+    workspace.setAttribute("aria-live", "polite");
+
+    const pageHost = document.createElement("div");
+    pageHost.className = "modern-application-page";
+    pageHost.setAttribute("data-modern-page-host", "true");
+    pageHost.setAttribute("data-modern-root", "standalone");
+
+    workspace.appendChild(pageHost);
+    layout.append(shellHost, workspace);
+    element.replaceChildren(layout);
+    return pageHost;
+  }
+
+  function mountPageInternal(page: ModernPageName, element: HTMLElement): boolean {
+    const factory = definitions[page];
+    if (!factory) return false;
+    unmountActivePage();
+    const controller = factory(element);
+    activePage = { name: page, controller };
+    return true;
+  }
+
+  function mountShellInternal(element: HTMLElement): boolean {
+    if (!shellFactory) return false;
+    unmountActiveShell();
+    const controller = shellFactory(element);
+    activeShell = controller;
+    return true;
+  }
+
   return {
     bootstrap(data) {
       assertLegacyBootstrapData(data);
       legacySnapshot.value = Object.freeze({ ...data });
     },
 
-    mountPage(page, element) {
-      const factory = definitions[page];
-      if (!factory) return false;
+    mountApplication(element, initialPage = "agent") {
+      if (!(element instanceof HTMLElement) || !shellFactory || !definitions[initialPage]) return false;
       unmountActivePage();
-      const controller = factory(element);
-      activePage = { name: page, controller };
-      return true;
+      unmountActiveShell();
+      standalonePageHost = createStandaloneHost(element);
+      const shellHost = element.querySelector<HTMLElement>("[data-modern-shell-host]");
+      if (!shellHost || !mountShellInternal(shellHost)) {
+        standalonePageHost = null;
+        element.replaceChildren();
+        return false;
+      }
+      return mountPageInternal(initialPage, standalonePageHost);
+    },
+
+    mountPage(page, element) {
+      return mountPageInternal(page, element);
     },
 
     unmountPage(page) {
@@ -922,11 +974,7 @@ export function createModernAppApi(
     },
 
     mountShell(element) {
-      if (!shellFactory) return false;
-      unmountActiveShell();
-      const controller = shellFactory(element);
-      activeShell = controller;
-      return true;
+      return mountShellInternal(element);
     },
 
     unmountShell() {
@@ -935,6 +983,9 @@ export function createModernAppApi(
 
     setPage(page: ModernPageName) {
       activeShell?.setPage?.(page);
+      if (standalonePageHost && activePage?.name !== page) {
+        mountPageInternal(page, standalonePageHost);
+      }
     },
 
     setLanguage(language: UiLanguage) {

@@ -16,6 +16,60 @@
   gap: 18px;
 }
 
+.agent-trend-result {
+  display: grid;
+  gap: 14px;
+}
+
+.agent-trend-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-trend-metrics button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--agent-line-strong, var(--line));
+  border-radius: 7px;
+  color: var(--agent-ink, var(--ink));
+  background: var(--agent-soft, var(--panel));
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.agent-trend-metrics button:hover,
+.agent-trend-metrics button.active {
+  border-color: var(--agent-teal, var(--accent));
+  color: var(--agent-teal, var(--accent));
+  background: color-mix(in srgb, var(--agent-teal, var(--accent)) 10%, var(--agent-surface, var(--panel)));
+}
+
+.agent-trend-chart-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.agent-trend-chart {
+  display: block;
+  width: 100%;
+  min-width: 420px;
+  height: auto;
+  overflow: visible;
+}
+
+.agent-trend-grid line {
+  stroke: var(--agent-line-strong, var(--line));
+  stroke-dasharray: 3 5;
+  stroke-width: 1;
+}
+
+.agent-trend-area { fill: color-mix(in srgb, var(--agent-teal, var(--accent)) 12%, transparent); }
+.agent-trend-line { stroke: var(--agent-teal, var(--accent)); stroke-linecap: round; stroke-linejoin: round; stroke-width: 3; }
+.agent-trend-points circle { fill: var(--agent-surface, var(--panel)); stroke: var(--agent-teal, var(--accent)); stroke-width: 2.5; }
+.agent-trend-labels text { fill: var(--agent-muted, var(--muted)); font-size: 11px; text-anchor: middle; }
+
 .agent-modern-logs {
   position: relative;
 }

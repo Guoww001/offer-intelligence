@@ -8,6 +8,7 @@ function assertIncludes(source, expected, label) {
 
 const html = fs.readFileSync("public/index.html", "utf8");
 const css = fs.readFileSync("public/styles.css", "utf8");
+const authCss = fs.readFileSync("public/auth.css", "utf8");
 const auth = fs.readFileSync("public/auth.js", "utf8");
 const app = fs.readFileSync("public/app.js", "utf8");
 
@@ -16,6 +17,8 @@ assertIncludes(html, 'aria-valuenow="8"', "loading UI should expose its initial 
 assertIncludes(html, 'id="skeletonLoadingStatus"', "loading UI should expose a live stage label");
 assertIncludes(css, ".skeleton-progress-value", "loading UI should style the progress value");
 assertIncludes(css, "prefers-reduced-motion: reduce", "loading UI should honor reduced motion");
+assertIncludes(authCss, ".skeleton-progress-value", "modern loading UI should style the progress value");
+assertIncludes(authCss, "prefers-reduced-motion: reduce", "modern loading UI should honor reduced motion");
 assertIncludes(auth, "function createLoadingProgress()", "auth bootstrap should own progress state");
 assertIncludes(auth, "driftTo(68", "offer loading should use a capped intermediate stage");
 assertIncludes(auth, "driftTo(94", "dashboard setup should use a capped rendering stage");

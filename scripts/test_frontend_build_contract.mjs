@@ -110,9 +110,14 @@ const modernLoaderStart = auth.indexOf("async function loadModernApp()");
 const modernLoaderEnd = auth.indexOf("\n  let _dataLoading", modernLoaderStart);
 const modernLoaderSource = auth.slice(modernLoaderStart, modernLoaderEnd);
 assert(modernLoaderSource.includes("await loadScript(MODERN_APP_SCRIPT);"), "modern 加载边界未加载本地产物");
-assert(modernLoaderSource.includes("catch (error)"), "modern 加载失败时必须进入受控回退");
-assert(modernLoaderSource.includes("return false;"), "modern 加载失败时必须允许 legacy 继续启动");
-assert(auth.indexOf("await loadModernApp();") < auth.indexOf("await loadScript(APP_SCRIPT);"), "modern bundle 必须在 legacy app.js 前初始化");
+assert(modernLoaderSource.includes("catch (error)"), "modern 加载失败时必须进入受控错误态");
+assert(modernLoaderSource.includes("return false;"), "modern 加载失败时必须返回受控失败状态");
+assert(auth.includes("async function loadLegacyRollbackApp()"), "legacy 回滚必须有独立加载边界");
+assert(auth.includes("if (legacyRollbackEnabled())"), "正常入口必须通过显式开关区分 modern 与 legacy");
+const legacyLoaderStart = auth.indexOf("async function loadLegacyRollbackApp()");
+const legacyLoaderEnd = auth.indexOf("\n  let _dataLoading", legacyLoaderStart);
+const legacyLoaderSource = auth.slice(legacyLoaderStart, legacyLoaderEnd);
+assert(legacyLoaderSource.includes("await loadScript(APP_SCRIPT);"), "legacy 回滚边界必须保留旧 bundle 加载能力");
 
 const legacyApp = read("public/app.js");
 const paymentsSwitchStart = legacyApp.indexOf("if (isPayments) {");

@@ -27,7 +27,8 @@ assertMatch(app, /### 7\. 媒体画像查询/, "中文说明书应提供媒体�
 assertMatch(app, /### 1\.7 Publisher Profile/, "英文说明书应提供 Publisher Profile 小节");
 
 // ── Task 8: 缓存版本 ──
-assertMatch(html, /styles\.css\?v=20260901-m4-shell/, "样式应使用当前缓存版本");
+assertMatch(html, /auth\.css\?v=20260904-m7-entry/, "认证样式应使用当前缓存版本");
+assertMatch(auth, /LEGACY_STYLE_SHEET\s*=\s*"\.\/styles\.css\?v=20260901-m4-shell"/, "legacy 样式应由显式回滚加载");
 assertMatch(html, /auth\.js\?v=20260901-m4-shell/, "认证脚本应使用当前缓存版本");
 assertMatch(auth, /APP_SCRIPT\s*=\s*"\.\/app\.js\?v=20260901-m4-shell"/, "app.js 缓存版本应与 auth.js 一致");
 

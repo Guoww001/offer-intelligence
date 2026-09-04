@@ -110,4 +110,5 @@ jobs:
           node scripts/test_agent_trace.mjs
           node scripts/test_m6_chatbot_agent_behavior_parity.mjs
           node scripts/test_m6_modern_mount.mjs
+          node scripts/test_m7_modern_entry.mjs
           python scripts/test_payment_placeholders.py

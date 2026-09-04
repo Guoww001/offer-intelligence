@@ -4,6 +4,7 @@ import {
   createLegacyAgentSessionBridge,
   createLegacyChatSessionBridge,
   createLegacyDeepWindowsBridge,
+  createModernAppApi,
   getLegacyAgentViewSession
 } from "./bridge";
 import type {
@@ -42,6 +43,34 @@ function agentState(overrides: Partial<LegacyAgentViewState> = {}): LegacyAgentV
 }
 
 describe("Legacy session bridge contracts", () => {
+  it("mounts a standalone modern shell and replaces the active page on navigation", () => {
+    const events: string[] = [];
+    const api = createModernAppApi({
+      agent: (element) => {
+        element.dataset.page = "agent";
+        events.push("agent-mount");
+        return { unmount: () => events.push("agent-unmount") };
+      },
+      dashboard: (element) => {
+        element.dataset.page = "dashboard";
+        events.push("dashboard-mount");
+        return { unmount: () => events.push("dashboard-unmount") };
+      }
+    }, (element) => {
+      element.dataset.shell = "mounted";
+      events.push("shell-mount");
+      return { unmount: () => events.push("shell-unmount") };
+    });
+    api.bootstrap({ chatbotData: {}, sheetReportData: {}, productKeywords: {}, language: "zh", llmEnabled: false, agentEnabled: false });
+    const root = document.createElement("div");
+    expect(api.mountApplication(root, "agent")).toBe(true);
+    expect(root.querySelector<HTMLElement>("[data-modern-shell-host]")?.dataset.shell).toBe("mounted");
+    expect(root.querySelector<HTMLElement>("[data-modern-page-host]")?.dataset.page).toBe("agent");
+    api.setPage("dashboard");
+    expect(root.querySelector<HTMLElement>("[data-modern-page-host]")?.dataset.page).toBe("dashboard");
+    expect(events).toEqual(["shell-mount", "agent-mount", "agent-unmount", "dashboard-mount"]);
+  });
+
   it("preserves answer-level metadata and utility state in the screen-safe snapshot", () => {
     const bridge = createLegacyChatSessionBridge({
       getState: () => chatState({

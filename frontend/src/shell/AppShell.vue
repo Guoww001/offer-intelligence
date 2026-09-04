@@ -166,7 +166,9 @@ function toggleMenu(): void {
 }
 
 function setWorkspaceInert(): void {
-  const workspace = document.querySelector<HTMLElement>("#appShell > .workspace");
+  const workspace = document.querySelector<HTMLElement>(
+    "#appShell > .workspace, [data-modern-workspace]"
+  );
   if (!workspace) return;
   const shouldInert = state.isCompact.value && state.isMenuOpen.value;
   workspace.inert = shouldInert;
@@ -233,7 +235,9 @@ onBeforeUnmount(() => {
     mediaQuery?.removeListener?.(syncViewport);
   }
   document.removeEventListener("keydown", handleShellKeydown);
-  const workspace = document.querySelector<HTMLElement>("#appShell > .workspace");
+  const workspace = document.querySelector<HTMLElement>(
+    "#appShell > .workspace, [data-modern-workspace]"
+  );
   if (workspace) {
     workspace.inert = false;
     workspace.removeAttribute("aria-hidden");

@@ -30,6 +30,8 @@ export interface LegacyBootstrapData {
 
 export interface ModernAppApi {
   bootstrap(data: LegacyBootstrapData): void;
+  /** Mount the complete modern shell and one page into a standalone root. */
+  mountApplication(element: HTMLElement, initialPage?: ModernPageName): boolean;
   mountPage(page: ModernPageName, element: HTMLElement): boolean;
   unmountPage(page: ModernPageName): void;
   mountShell(element: HTMLElement): boolean;

@@ -94,10 +94,11 @@ const redZh = rules.strategyForOffer(
 assertMatch(redZh.action, /新增测试 publisher/, "Chinese Tier 2 recovery copy should be available.");
 
 assert(
-  html.includes("tier2_recommendation_rules.js") &&
-    html.indexOf("tier2_recommendation_rules.js") > html.indexOf("chatbot_i18n.js") &&
-    html.indexOf("tier2_recommendation_rules.js") < html.indexOf("auth.js"),
-  "index.html should load tier2_recommendation_rules.js after i18n and before the auth bootstrap."
+  authBootstrap.includes('"./chatbot_i18n.js?v=20260626-zh1"') &&
+    authBootstrap.includes('"./tier2_recommendation_rules.js?v=20260626-tier2pub1"') &&
+    authBootstrap.includes("for (const script of LEGACY_COMPAT_SCRIPTS)") &&
+    authBootstrap.indexOf("for (const script of LEGACY_COMPAT_SCRIPTS)") < authBootstrap.indexOf("await loadScript(APP_SCRIPT)"),
+  "auth.js should load tier2_recommendation_rules.js after i18n and before app.js in the explicit legacy rollback loader."
 );
 
 assert(

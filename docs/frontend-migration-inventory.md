@@ -1,8 +1,8 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-04（Chatbot/Agent 已完成 Modern-first 运行时切换；默认使用独立 Vue session，Agent 默认通过 CopilotKit Runtime/AG-UI 接入 Python registry。`window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 仍可显式回退 Legacy；旧实现继续保留回滚窗口。其他 M4/M5 页面与 M2 Offer Tracker 的迁移状态不变）
-> 权威路由入口：`public/app.js` 的 `switchPage(page)`  
+> 最近更新：2026-09-04（Chatbot/Agent 已完成 Modern-first 运行时切换；默认使用 standalone modern entry，Agent 默认通过 CopilotKit Runtime/AG-UI 接入 Python registry。`?legacy=1`、`window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 仍可显式回退 Legacy；旧实现继续保留回滚窗口。M7/01–02 已完成入口隔离、modern 启动错误态与认证资源收敛；legacy 页面资源尚未删除）
+> 权威路由入口：modern `ModernAppApi.setPage(page)`；legacy 回滚时为 `public/app.js` 的 `switchPage(page)`
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
 ## 使用规则
@@ -157,8 +157,8 @@
       "exports": ["downloadOfferTrackerWorkbook()", "triggerWorkbookDownload()"],
       "overlays": ["Offer Tracker export dialog", "column panel", "rules panel", "saved views menu"],
       "tests": ["scripts/test_offer_list_tracker_frontend.mjs", "scripts/test_offer_tracker_date_range.py", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/offer-tracker/offerTrackerModel.test.ts", "frontend/src/features/offer-tracker/OfferTrackerPage.test.ts", "frontend/src/shared/api/client.test.ts", "frontend/src/shared/i18n/index.test.ts"],
-      "testGap": "核心路径已完成真实浏览器验收；modern-first 挂载、卸载、fallback 和 CSS boundary 已通过统一放行契约；高级保存视图、列面板、规则面板和导出对话框仍只在 legacy 回退实现，作为后续收尾范围。",
-      "notes": "M2 首个试点已完成 dual → modern 安全放行：核心筛选、排序、选择、分页和导出入口由 Vue 接管；M3 已接入共享 API client、错误类型和 i18n；保存视图、列面板、规则面板和旧导出对话框仍保留在 legacy 回退实现。选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
+      "testGap": "核心路径已完成真实浏览器验收；modern-first 挂载、卸载、fallback 和 CSS boundary 已通过统一放行契约；保存视图、列面板和优先级规则已由 Vue 接管，旧导出设置对话框仍只在 legacy 回退实现，作为后续收尾范围。",
+      "notes": "M2 首个试点已完成 dual → modern 安全放行：核心筛选、排序、选择、分页、保存视图、列设置、优先级规则和导出入口由 Vue 接管；M3 已接入共享 API client、错误类型和 i18n；旧导出设置对话框仍保留在 legacy 回退实现。选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
     },
     {
       "pageKey": "sheets",
@@ -217,22 +217,23 @@
 
 | 依赖 | 当前入口 | 迁移要求 |
 | --- | --- | --- |
-| 认证与数据预载 | `public/auth.js` | M1 保持会话、登录和 `/api/ui/db/offers` 语义；modern bundle 失败时仍可进入旧应用 |
-| 全局导航 | `frontend/src/shell/AppShell.vue`、`public/app.js:switchPage()`、`syncNavigationGroupState()` | legacy 侧边栏继续负责可见展示和交互，AppShell 负责共享导航模型与页面同步；`switchPage()` 仍是唯一页面切换权威入口，禁止新旧两侧各维护一套路由状态 |
+| 认证与数据预载 | `public/auth.js`、`public/auth.css` | M1 保持会话、登录和 `/api/ui/db/offers` 语义；正常入口加载 standalone modern 与认证关键样式，modern 失败显示 `#modernAppError`；完整 legacy CSS/辅助脚本仅由 `?legacy=1` 回滚加载 |
+| 全局导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/legacy/bridge.ts`（M7 过渡） | standalone modern 由 `ModernAppApi.setPage()` 统一切换；`public/app.js:switchPage()` 只属于显式 legacy 回滚，禁止正常入口双重绑定 |
 | 语言 | `state.language`、`offerLanguage`、`chatbot_i18n.js`、`frontend/src/shared/i18n/` | legacy 仍由 `state.language` 管理，通过 `OI_MODERN_APP.setLanguage()` 同步 modern；迁移文案必须中文/英文成对维护 |
 | 共享 API、错误与契约 | `frontend/src/shared/api/`、`frontend/src/shared/contracts/` | M3 的 modern 页面使用统一 JSON/错误/超时边界；契约只保留跨页面稳定字段，不复制完整数据库响应 |
 | 导出 | `frontend/src/shared/export/xlsx.ts`、`downloadWorkbook()`；legacy `downloadRowsAsXlsx()` | M2–M5 逐步复用；Targets/Category/Tier 已以同一 fixture 比较列格式、worksheet XML、styles XML 和 workbook package parts，legacy bridge 继续保留回滚窗口 |
 | Deep Window | `_deepPanels` 与相关渲染函数 | 页面切换、最小化、恢复和请求中止在 Chatbot 阶段统一迁移 |
 | 数据启动对象 | `window.CHATBOT_DATA`、`window.SHEET_REPORT_DATA`、`window.PRODUCT_KEYWORDS` | 只在 `LegacyBootstrapData` 边界读取，Vue feature 不得直接读取任意全局对象 |
-| 主题与移动导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/shell/theme.ts`、`public/app.js` | AppShell 负责主题状态与页面标题同步；可见移动端 sticky bar/drawer 和桌面侧边栏继续由 legacy 外壳提供，避免改变既有视觉；modern 挂载失败时 legacy 外壳和主题事件继续工作 |
+| 主题与移动导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/shell/theme.ts`、`frontend/src/shell/shell.css` | AppShell 与 standalone Shell 负责主题、页面标题、桌面/移动导航和焦点；legacy 样式仅由显式回滚路径加载 |
 
 ## 当前测试缺口优先级
 
-1. P1：Offer Tracker 高级保存视图、列面板、规则面板和导出对话框仍由 legacy 提供，需在回滚窗口内继续迁移或明确保留边界。
+1. P1：Offer Tracker 旧导出设置对话框仍由 legacy 提供，需在回滚窗口内继续迁移或明确保留边界；保存视图、列面板和规则面板已由 Vue 接管。
 2. P1：Brand Media、Revenue Flow、Google Ads、Targets、Category、Tier 已完成当前 M4/M5 验收与 `dual → modern` 安全放行，继续保留 legacy rollback window 并按删除安全规则收尾。
-3. P1：M2 Offer Tracker 仍需旧/新页面逐字段差异报告，并迁移高级保存视图、列面板、规则面板和导出对话框。
+3. P1：M2 Offer Tracker 仍需旧/新页面逐字段差异报告，并决定旧导出设置对话框的迁移或保留边界。
 4. P2：M6 Chatbot/Agent 已完成 Modern-first 运行时与页面切换；独立 Vue session、CopilotKit/AG-UI Agent、Deep Window 控件和显式 Legacy fallback 已纳入自动化回归。关键词候选预筛已修复 `test_chatbot_intent_flow.mjs` 的历史性超时并通过；真实生产登录/SSE 与 legacy 删除继续分别作为验收和 M7 清理边界。
-5. P2：modern 页面仍保留 legacy rollback window；后续阶段再按删除安全规则清理旧渲染与事件代码。
+5. P2：M7/01–02 已将正常认证入口切到 standalone modern，并提供 `?legacy=1` 显式回滚、独立 `auth.css` 与 `#modernAppError` 启动错误态；legacy DOM、旧 CSS、bridge 和 Offer Tracker 旧导出设置对话框仍需迁移或明确保留后才能删除。
+6. P2：modern 页面仍保留 legacy rollback window；后续阶段再按删除安全规则清理旧渲染与事件代码。
 
 ## 状态更新记录
 
@@ -260,6 +261,7 @@
 | 2026-09-02 | Chatbot/Agent 原版对齐与放行撤回 | `Chatbot/Agent modern` | `Chatbot/Agent dual` | 用户反馈 Modern 与原版视觉和交互差异较大，因此恢复 Legacy-first；只有显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 对照页。Modern Chatbot/Agent 改为复用原版双栏、消息、输入、模式切换、Agent 工作区和时间线结构类；代码级回归通过，最终视觉与真实接口验收待用户完成。 |
 | 2026-09-03 | Chatbot/Agent Legacy-first 浏览器验收 | `Chatbot/Agent dual` | `Chatbot/Agent dual` | 用户已完成 Chatbot Report/Chat、Deep Window 与 Agent 的 Legacy-first 浏览器视觉、交互、真实数据和 SSE 验收；PR #186 补齐 Chat/Report 输入区白色文字、发送按钮视觉和 Chat Mode 独立“转为 View”控件收敛。Modern 继续仅作显式对照，legacy 删除不启动。 |
 | 2026-09-04 | M6 Modern-first Runtime 与回退完整性 | `Chatbot/Agent dual` | `Chatbot/Agent modern` | Modern Chatbot/Agent 默认由独立 session 渲染；Agent 默认使用按需 CopilotKit bundle、同源 `/api/copilotkit` 与 Python `/api/chat/agui`。显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 可回退 Legacy；补齐本地 AG-UI 路由、Legacy Agent session 适配、Chat answer ID/反馈/Open as View、Deep Window 趋势控件和关键词候选预筛回归。 |
+| 2026-09-04 | M7/01–02 standalone modern 入口与认证资源收敛 | `M7 未开始` | `M7 进行中` | `public/auth.js` 默认加载并挂载 standalone modern app；旧 `public/app.js` 仅由 `?legacy=1` 显式加载；modern 启动失败显示 `#modernAppError`；新增 `public/auth.css`，legacy CSS 与五个辅助脚本仅由回滚加载器动态载入；`ModernAppApi.mountApplication()`、modern Shell CSS、本地 Agent 趋势 SVG、M7/M4 入口契约和全量前端/Node/Python 回归通过。legacy 页面 DOM、bridge、旧导出设置对话框和旧行为测试仍有真实引用，未满足删除门槛。 |
 | 2026-09-01 | M5 Tier Move 生产边界与移动交互 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy` 和 modern 560px Move dialog 边界，前端全量 33 个 Vitest 文件/160 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 10（QA commit `97f93d99ab833fdaf64932c9bd8a216007245393`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；按当时 M5 验收结论保持 `dual`，随后按回滚安全规则完成逐页 `dual → modern` 放行 |
 | 2026-09-01 | M5 Tier Move 生产边界、移动交互与 Tier 1 预加载一致性 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy`、modern 560px Move dialog 边界和 Tier 1 additions 挂载预加载/空响应缓存，前端全量 33 个 Vitest 文件/162 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 14（QA commit `fcb53dcff5873db4341ce6ae86375f854f07e092`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；两侧 Added merchants 均为 1，按既有 M5 验收结论保持 `dual`，后续按回滚安全规则逐页放行 |
 | 2026-09-01 | M4 Brand Media/Revenue Flow/Google Ads modern 放行 | `M4 dual` | `M4 modern` | M4 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过统一放行契约；不修改 API、数据口径、认证或侧边栏视觉 |

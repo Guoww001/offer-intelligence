@@ -234,9 +234,7 @@ async function loadOfferTrackerRange(range: OfferTrackerDateRange): Promise<read
 }
 
 function downloadOfferTracker(payload: OfferTrackerExportPayload): boolean {
-  const bridge = window.OI_LEGACY_BRIDGE;
-  if (!bridge) return false;
-  return bridge.download("offer-tracker", payload);
+  return downloadModernRows("offer-tracker", payload.rows, "Offers");
 }
 
 async function loadPayments(): Promise<PaymentLivePayload> {
@@ -509,15 +507,11 @@ function revenueFlowInitialState(element: HTMLElement): {
 }
 
 function downloadPayments(payload: PaymentExportPayload): boolean {
-  const bridge = window.OI_LEGACY_BRIDGE;
-  if (!bridge) return false;
-  return bridge.download("payments", payload);
+  return downloadModernRows("payments", payload.rows, "Payments");
 }
 
 function downloadPublishers(payload: PublisherExportPayload): boolean {
-  const bridge = window.OI_LEGACY_BRIDGE;
-  if (!bridge) return false;
-  return bridge.download("publishers", payload);
+  return downloadModernRows("publishers", payload.rows, "Publishers");
 }
 
 function exportDateStamp(): string {
@@ -527,6 +521,18 @@ function exportDateStamp(): string {
 function safeExportPart(value: unknown, fallback = "export"): string {
   const part = String(value || fallback).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return part || fallback;
+}
+
+function downloadModernRows(
+  kind: string,
+  rows: readonly Readonly<Record<string, unknown>>[],
+  sheetName: string
+): boolean {
+  if (!rows.length) return false;
+  return downloadWorkbook(
+    `${safeExportPart(kind)}_${rows.length}_rows_${exportDateStamp()}.xlsx`,
+    { rows, columns: objectExportColumns(rows), sheetName: safeSheetName(sheetName) }
+  );
 }
 
 function downloadCategory(payload: CategoryExportPayload): boolean {
@@ -590,11 +596,11 @@ const shellFactory: ModernShellFactory = (element) => {
         initialPage: "agent",
         language: i18n.language.value,
         navigate(page) {
-          window.OI_LEGACY_BRIDGE?.navigate(page);
+          window.OI_MODERN_APP?.setPage(page);
         },
         setLanguage(language) {
-          if (window.OI_LEGACY_BRIDGE?.setLanguage) {
-            window.OI_LEGACY_BRIDGE.setLanguage(language);
+          if (window.OI_MODERN_APP?.setLanguage) {
+            window.OI_MODERN_APP.setLanguage(language);
           } else {
             i18n.setLanguage(language);
           }
@@ -1037,3 +1043,22 @@ window.OI_MODERN_APP = createModernAppApi({
   dashboard: chatbotFactory,
   agent: agentFactory
 }, shellFactory);
+
+// The modern entry owns exports and navigation.  Keeping this small host
+// object separate from the old bridge lets the normal bundle run without
+// creating or reading OI_LEGACY_BRIDGE; the legacy app can still provide its
+// own compatibility object when an explicit rollback URL is used.
+window.OI_MODERN_RUNTIME = {
+  download(type, payload) {
+    if (type === "offer-tracker" && isRecord(payload) && Array.isArray(payload.rows)) {
+      return downloadModernRows(type, payload.rows.filter(isRecord), "Offers");
+    }
+    if (type === "payments" && isRecord(payload) && Array.isArray(payload.rows)) {
+      return downloadModernRows(type, payload.rows.filter(isRecord), "Payments");
+    }
+    if (type === "publishers" && isRecord(payload) && Array.isArray(payload.rows)) {
+      return downloadModernRows(type, payload.rows.filter(isRecord), "Publishers");
+    }
+    return false;
+  }
+};

@@ -199,10 +199,12 @@ const html = fs.readFileSync("public/index.html", "utf8");
 const auth = fs.readFileSync("public/auth.js", "utf8");
 const app = fs.readFileSync("public/app.js", "utf8");
 const ci = fs.readFileSync(".github/workflows/ci.yml", "utf8");
-assertTruthy(html.includes("agent_memory_state.js?v=20260826-agent-memory1"), "index should load memory module");
-assertTruthy(html.indexOf("agent_memory_state.js") < html.indexOf("auth.js"), "memory module must load before auth bootstrap");
+assertTruthy(!html.includes("agent_memory_state.js?v=20260826-agent-memory1"), "modern index should not eagerly load the legacy memory module");
+assertTruthy(auth.includes('"./agent_memory_state.js?v=20260826-agent-memory1"'), "legacy rollback loader should include the memory module");
+assertTruthy(auth.includes("for (const script of LEGACY_COMPAT_SCRIPTS)"), "legacy compatibility scripts should load before app.js");
 assertTruthy(auth.includes("app.js?v=20260901-m4-shell"), "auth should bust the app cache");
-assertTruthy(auth.includes("AGENT_MEMORY_STATE.clear(localStorage)"), "logout should clear Agent memory");
+assertTruthy(auth.includes("function clearModernSessionState()"), "logout should clear modern session state");
+assertTruthy(auth.includes('"oi_agent_memory_v1"'), "logout should clear modern Agent memory");
 assertTruthy(app.includes("memoryText: agentPageMemoryText(language)"), "Agent page should send structured memory");
 assertTruthy(ci.includes("node scripts/test_agent_memory_state.mjs"), "CI should run Agent memory tests");
 

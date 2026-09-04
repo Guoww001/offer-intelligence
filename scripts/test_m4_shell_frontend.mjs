@@ -45,8 +45,9 @@ for (const marker of ["setPage", "toggleGroup", "handleKeydown", "Escape", "Tab"
 for (const marker of ["oi-dash-theme", "applyTheme", "readStoredTheme", "writeStoredTheme"]) {
   assert(theme.includes(marker), `theme.ts 缺少 ${marker}`);
 }
-assert(shellCss.includes("#modernShellRoot"), "Shell 缺少 legacy 外壳兼容边界");
-assert(shellCss.includes("display: none !important"), "Shell 未保持 headless 挂载");
+assert(shellCss.includes(".modern-application"), "Shell 缺少 standalone modern 布局");
+assert(shellCss.includes("body.modern-only #appShell > :not(#modernAppRoot)"), "Shell 缺少 modern/legacy 隔离边界");
+assert(shellCss.includes("display: none !important"), "Shell 未保持 legacy 内容隔离");
 assert(!shellCss.includes("#appShell.shell-modern-ready > .sidebar"), "Shell 不应隐藏 legacy 侧边栏");
 assert(!shellCss.includes("#appShell.shell-modern-ready > .mobile-shell-bar"), "Shell 不应隐藏 legacy 移动端导航");
 

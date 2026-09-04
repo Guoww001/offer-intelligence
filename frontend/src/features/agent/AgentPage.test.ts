@@ -70,8 +70,8 @@ describe("AgentPage", () => {
   it("uses the existing publisher renderer without asking the model to invent a publisher tool", async () => {
     const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: 'done', response: 'Publisher follow-up', steps: [] });
     const bridge = vi.fn(async () => ({ html: '<table><tr><td>Publisher fixture</td></tr></table>', text: 'Publisher fixture', source: 'db' as const }));
-    const previous = window.OI_LEGACY_BRIDGE;
-    window.OI_LEGACY_BRIDGE = { ...previous!, runAgentPublisher: bridge };
+    const previous = window.OI_MODERN_RUNTIME;
+    window.OI_MODERN_RUNTIME = { ...previous, runAgentPublisher: bridge };
     const session = { getState: () => ({ status: 'idle' as const, history: [], steps: [], response: '', partial: false, omittedTargets: [], hasMemory: false }), submit: vi.fn(), stop: vi.fn(), newConversation: vi.fn(), onChange: () => () => undefined };
     const wrapper = mount(AgentPage, { props: { language: 'en', run, session, autoFocus: false } });
     await wrapper.get('[data-agent-input]').setValue('/publisher 1022');
@@ -85,7 +85,7 @@ describe("AgentPage", () => {
     expect(run.mock.calls[0]![0].history).toEqual([{ role: 'user', content: '/publisher 1022' }, { role: 'assistant', content: 'Publisher fixture' }]);
     expect(session.submit).not.toHaveBeenCalled();
     expect(wrapper.get('[data-chatbot-legacy-result] td').text()).toBe('Publisher fixture');
-    wrapper.unmount(); window.OI_LEGACY_BRIDGE = previous;
+    wrapper.unmount(); window.OI_MODERN_RUNTIME = previous;
   });
 
   it("captures a failed prompt for replay, restoring its original history", async () => {

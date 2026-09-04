@@ -1,11 +1,29 @@
 (function () {
   const APP_SCRIPT = "./app.js?v=20260901-m4-shell";
+  const LEGACY_STYLE_SHEET = "./styles.css?v=20260901-m4-shell";
+  const LEGACY_COMPAT_SCRIPTS = [
+    "./chatbot_i18n.js?v=20260626-zh1",
+    "./onboarding_tour.js?v=20260806-chat-mode-glow3",
+    "./chatbot_welcome.js?v=20260813-chat-reminder-copy1",
+    "./tier2_recommendation_rules.js?v=20260626-tier2pub1",
+    "./agent_memory_state.js?v=20260826-agent-memory1"
+  ];
+  const MODERN_SESSION_STORAGE_KEYS = [
+    "oi_agent_memory_v1",
+    "oi_agent_session_v1",
+    "oi_chat_session_v1",
+    "oiChatbotQuestionSessionId.v1"
+  ];
   const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-m4-shell";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
   const authShell = document.getElementById("authShell");
   const appShell = document.getElementById("appShell");
+  const modernAppRoot = document.getElementById("modernAppRoot");
+  const modernAppError = document.getElementById("modernAppError");
+  const modernAppErrorMessage = document.getElementById("modernAppErrorMessage");
+  const modernAppErrorRetry = document.getElementById("modernAppErrorRetry");
   const form = document.getElementById("authForm");
   const username = document.getElementById("authUsername");
   const password = document.getElementById("authPassword");
@@ -188,6 +206,53 @@
     });
   }
 
+  function loadStyleSheet(href) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`link[data-legacy-rollback-style][href="${href}"]`);
+      if (existing) {
+        resolve(existing);
+        return;
+      }
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      link.dataset.legacyRollbackStyle = "true";
+      link.onload = () => resolve(link);
+      link.onerror = () => reject(new Error(`Could not load ${href}`));
+      (document.head || document.body).appendChild(link);
+    });
+  }
+
+  function clearModernSessionState() {
+    try {
+      const storage = window.localStorage;
+      MODERN_SESSION_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
+      window.AGENT_MEMORY_STATE?.clear?.(storage);
+    } catch (_error) {
+      // A blocked localStorage must not prevent the server-side logout.
+    }
+  }
+
+  function legacyRollbackEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("legacy") === "1";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function showModernError(error) {
+    const detail = error && error.message ? String(error.message).slice(0, 220) : "Unknown startup error";
+    if (modernAppErrorMessage) {
+      modernAppErrorMessage.textContent = `The modern application could not start (${detail}). Refresh the page or contact an administrator.`;
+    }
+    if (modernAppError) modernAppError.classList.remove("hidden");
+    if (appShell) appShell.classList.add("hidden");
+    document.body.classList.remove("app-loading");
+    document.body.classList.add("modern-startup-error");
+    modernAppErrorRetry?.focus?.();
+  }
+
   async function loadModernApp() {
     try {
       await loadScript(MODERN_APP_SCRIPT);
@@ -208,11 +273,29 @@
         llmEnabled: window.__OI_LLM_ENABLED !== false,
         agentEnabled: window.__OI_AGENT_ENABLED !== false
       });
+      if (!modernAppRoot || typeof window.OI_MODERN_APP.mountApplication !== "function") {
+        throw new Error("Modern application root is unavailable");
+      }
+      if (!window.OI_MODERN_APP.mountApplication(modernAppRoot, "agent")) {
+        throw new Error("Modern application mount failed");
+      }
+      document.body.classList.add("modern-only");
+      loadingProgress.finish("Dashboard ready", "Modern workspace is ready");
       return true;
     } catch (error) {
-      console.warn("Modern frontend unavailable; continuing with the legacy dashboard.", error);
+      console.warn("Modern frontend unavailable; showing the startup error state.", error);
+      showModernError(error);
       return false;
     }
+  }
+
+  async function loadLegacyRollbackApp() {
+    await loadStyleSheet(LEGACY_STYLE_SHEET);
+    for (const script of LEGACY_COMPAT_SCRIPTS) {
+      await loadScript(script);
+    }
+    await loadScript(APP_SCRIPT);
+    loadingProgress.finish("Dashboard ready", "Legacy rollback workspace is ready");
   }
 
   let _dataLoading = false;
@@ -262,8 +345,11 @@
     }
     setStatus("", "");
     loadingProgress.driftTo(94, "Building dashboard…", "Applying filters and preparing report views");
-    await loadModernApp();
-    await loadScript(APP_SCRIPT);
+    if (legacyRollbackEnabled()) {
+      await loadLegacyRollbackApp();
+    } else {
+      await loadModernApp();
+    }
 
     // Background: load keyword data after dashboard renders
     // (not awaited — non-blocking)
@@ -277,7 +363,8 @@
       const kwResp = await fetchJson("/api/ui/db/keywords");
       window.PRODUCT_KEYWORDS = kwResp;
       window.__OFFER_KEYWORDS_LOADED = true;
-      // Notify app.js to merge keyword data into offers
+      // Notify the legacy rollback app, when that path is active, to merge
+      // keyword data into its in-memory offers.
       if (typeof window.__onOfferKeywordsLoaded === "function") {
         window.__onOfferKeywordsLoaded(kwResp);
       }
@@ -297,7 +384,7 @@
       } catch (_error) {
         // A failed logout call still gets a clean local reset through reload.
       }
-      if (window.AGENT_MEMORY_STATE) window.AGENT_MEMORY_STATE.clear(localStorage);
+      clearModernSessionState();
       window.location.reload();
     });
   }
@@ -325,7 +412,7 @@
         enabled: false,
         endpoint: "/api/copilotkit",
         authority: "python-registry",
-        fallback: "legacy"
+        fallback: "modern"
       };
       await unlockDashboard();
     } catch (error) {
@@ -360,7 +447,7 @@
         enabled: false,
         endpoint: "/api/copilotkit",
         authority: "python-registry",
-        fallback: "legacy"
+        fallback: "modern"
       };
       if (password) password.value = "";
       await unlockDashboard();
@@ -374,6 +461,7 @@
   }
 
   async function initAuth() {
+    modernAppErrorRetry?.addEventListener("click", () => window.location.reload());
     if (form) form.addEventListener("submit", handleSubmit);
     await waitForGsap(700);
     animateIntro();

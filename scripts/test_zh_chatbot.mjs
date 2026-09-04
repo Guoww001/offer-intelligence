@@ -70,8 +70,13 @@ assertMatch(
   "Chinese chatbot copy should be available.",
 );
 
-if (!html.includes("chatbot_i18n.js") || html.indexOf("chatbot_i18n.js") > html.indexOf("auth.js")) {
-  throw new Error("index.html should load chatbot_i18n.js before auth.js.");
+const legacyLoaderIndex = authBootstrap.indexOf("async function loadLegacyRollbackApp()");
+const legacyAppIndex = authBootstrap.indexOf("await loadScript(APP_SCRIPT)", legacyLoaderIndex);
+if (legacyLoaderIndex < 0 || legacyAppIndex < legacyLoaderIndex ||
+    !authBootstrap.includes("LEGACY_COMPAT_SCRIPTS") ||
+    !authBootstrap.includes('"./chatbot_i18n.js?v=20260626-zh1"') ||
+    !authBootstrap.includes("for (const script of LEGACY_COMPAT_SCRIPTS)")) {
+  throw new Error("auth.js should load chatbot_i18n.js before app.js in the explicit legacy rollback loader.");
 }
 
 if (!authBootstrap.includes("APP_SCRIPT") || !authBootstrap.includes("app.js")) {
