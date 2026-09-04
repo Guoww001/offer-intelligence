@@ -80,12 +80,8 @@ export interface ChatbotSessionResult {
 export type ChatbotReportViewResult = ChatbotModelReportResult & {
   readonly title?: string;
   readonly contentHtml?: string;
-  /** 兼容现有受控结果渲染器的安全 HTML 字段名，不表示依赖 Legacy Runtime。 */
-  readonly legacyHtml?: string;
   readonly recommendationHtml?: string;
   readonly sessionResult?: ChatbotSessionResult;
-  /** @deprecated 仅供旧测试夹具和兼容渲染读取；Modern Runtime 使用 sessionResult。 */
-  readonly bridgeResult?: ChatbotSessionResult;
 };
 
 export interface ChatbotStarterCard {

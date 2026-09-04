@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type { LegacyAnswerFeedbackState, LegacyFeedbackBridge } from "../../legacy/contracts";
+import type { ChatbotAnswerFeedbackState, ChatbotFeedback } from "./chatbotViewTypes";
 import ChatAnswerActions from "./ChatAnswerActions.vue";
 import ChatbotCommandMenu from "./ChatbotCommandMenu.vue";
 import ChatbotResultView from "./ChatbotResultView.vue";
@@ -30,11 +30,11 @@ const props = defineProps<{
   readonly loading: boolean;
   readonly error: string;
   readonly autoFocus?: boolean;
-  readonly feedback?: LegacyFeedbackBridge;
+  readonly feedback?: ChatbotFeedback;
   readonly feedbackRefreshKey?: number;
   readonly answerId?: string | null;
-  readonly feedbackState?: LegacyAnswerFeedbackState;
-  readonly answerFeedback?: LegacyFeedbackBridge | null;
+  readonly feedbackState?: ChatbotAnswerFeedbackState;
+  readonly answerFeedback?: ChatbotFeedback | null;
   readonly supplementalHtml?: string;
 }>();
 
@@ -87,7 +87,7 @@ const sourceLabel = computed(() => {
 const displayContextTitle = computed(() => props.contextTitle?.trim() || props.result?.title || copy.value.contextTitle);
 const displayContextSubtitle = computed(() => props.contextSubtitle?.trim()
   || (props.result ? sourceLabel.value : copy.value.contextSubtitle));
-const legacyContextHtml = computed(() => props.contextHtml?.trim() || props.result?.recommendationHtml?.trim() || "");
+const contextRichHtml = computed(() => props.contextHtml?.trim() || props.result?.recommendationHtml?.trim() || "");
 const reportHasAnswerActions = computed(() => Boolean(props.answerId && props.answerFeedback));
 const commandMenu = ref<InstanceType<typeof ChatbotCommandMenu> | null>(null);
 
@@ -164,7 +164,7 @@ function handleReportSummaryKeydown(event: KeyboardEvent): void {
               <button type="button" data-chatbot-action="add-memory" @click="emit('add-memory')">{{ copy.addMemory }}</button>
             </div>
           </div>
-          <div v-if="legacyContextHtml" class="chatbot-legacy-context" data-chatbot-context-html v-html="legacyContextHtml"></div>
+          <div v-if="contextRichHtml" class="chatbot-rich-context" data-chatbot-context-html v-html="contextRichHtml"></div>
           <ChatbotResultView v-else-if="result" :language="language" :result="result" @download="emit('download', $event)" />
           <div v-else class="chatbot-report-empty" data-chatbot-report-empty>
             <span class="chatbot-report-empty-mark" aria-hidden="true">□</span>

@@ -5,14 +5,15 @@ on:
   push:
     branches:
       - main
+      - FRONTEND-VUE-MIGRATION
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  static-dashboard-tests:
-    name: Static dashboard tests
+  modern-application-tests:
+    name: Modern application tests
     runs-on: ubuntu-latest
 
     steps:
@@ -41,11 +42,6 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check public/auth.js
-          node --check public/app.js
-          node --check public/chatbot_i18n.js
-          node --check public/tier2_recommendation_rules.js
-          node --check public/chatbot_welcome.js
-          node --check public/onboarding_tour.js
 
       - name: Run regression tests
         run: |
@@ -59,20 +55,10 @@ jobs:
           python scripts/test_tier_report_date_range.py
           python scripts/test_merchant_aov_estimates.py
           python scripts/test_publishers_portfolio.py
-           python scripts/test_brand_media_trend.py
-           node scripts/test_brand_media_trend_frontend.mjs
-           node scripts/test_brand_media_frontend.mjs
-           node scripts/test_publisher_manager_tier_frontend.mjs
+          python scripts/test_brand_media_trend.py
           python scripts/test_monthly_new_merchants.py
-          node scripts/test_monthly_new_merchants_frontend.mjs
-          node scripts/test_monthly_new_merchants_modern_cutover.mjs
-          node scripts/test_targets_frontend.mjs
-          node scripts/test_category_frontend.mjs
-          node scripts/test_tier_frontend.mjs
           node scripts/test_shared_xlsx_frontend.mjs
-          node scripts/test_target_month_selection.mjs
           python scripts/test_tier1_agency_sync.py
-          node scripts/test_tier_report_frontend.mjs
           python scripts/test_manual_tier_automation.py
           python scripts/test_tier_visual_status_rules.py
           python scripts/test_offer_network_lookup.py
@@ -81,18 +67,8 @@ jobs:
           node scripts/test_frontend_build_contract.mjs
           node scripts/test_m4_shell_frontend.mjs
           node scripts/test_modern_page_cutover.mjs
-          node scripts/test_payments_frontend.mjs
-          node scripts/test_google_ads_workbench_frontend.mjs
           python scripts/test_google_ads_workbench.py
-          node scripts/test_chatbot_intent_flow.mjs
-          node scripts/test_commission_all_aff.mjs
-          node scripts/test_merchant_monthly.mjs
-          node scripts/test_onboarding_tour.mjs
-          node scripts/test_chatbot_welcome.mjs
-          node scripts/test_tier2_recommendation_rules.mjs
           node scripts/test_sheet_categories.mjs
-          node scripts/test_category_drilldown.mjs
-          node scripts/test_zh_chatbot.mjs
           python scripts/test_llm_agent.py
           python scripts/test_agent_http.py
           python scripts/test_chat_stream_agent_config.py
@@ -105,9 +81,6 @@ jobs:
           python scripts/test_agent_planning_contract.py
           python scripts/test_agent_synthesis_contract.py
           python scripts/test_agent_agui.py
-          node scripts/test_chat_agent.mjs
-          node scripts/test_agent_memory_state.mjs
-          node scripts/test_agent_trace.mjs
           node scripts/test_m6_chatbot_agent_behavior_parity.mjs
           node scripts/test_m6_modern_mount.mjs
           node scripts/test_m7_modern_entry.mjs

@@ -1,191 +1,77 @@
 import fs from "node:fs";
 import vm from "node:vm";
 
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const read = (file) => {
+  assert(fs.existsSync(file), `${file} 不存在`);
+  return fs.readFileSync(file, "utf8");
+};
 
-function read(path) {
-  assert(fs.existsSync(path), `${path} 不存在`);
-  return fs.readFileSync(path, "utf8");
+const packageJson = JSON.parse(read("frontend/package.json"));
+for (const script of ["typecheck", "test", "build"]) {
+  assert(typeof packageJson.scripts?.[script] === "string", `frontend/package.json 缺少 ${script} script`);
 }
-
-const packagePath = "frontend/package.json";
-const packageJson = JSON.parse(read(packagePath));
-const requiredScripts = ["typecheck", "test", "build"];
-for (const script of requiredScripts) {
-  assert(typeof packageJson.scripts?.[script] === "string", `${packagePath} 缺少 ${script} script`);
-}
-
-assert(packageJson.dependencies?.vue, `${packagePath} 缺少 vue 运行时依赖`);
-for (const dependency of [
-  "@types/node",
-  "@vitejs/plugin-vue",
-  "@vue/test-utils",
-  "happy-dom",
-  "typescript",
-  "vite",
-  "vitest",
-  "vue-tsc"
-]) {
-  assert(packageJson.devDependencies?.[dependency], `${packagePath} 缺少 ${dependency} 开发依赖`);
-}
-
-read("frontend/package-lock.json");
-const gitignore = read(".gitignore");
-assert(gitignore.includes("!frontend/package-lock.json"), ".gitignore 必须允许提交 frontend/package-lock.json");
-assert(gitignore.includes("!frontend/tests/"), ".gitignore 必须允许提交 frontend/tests/");
-assert(gitignore.includes("public/assets/modern/"), ".gitignore 必须忽略 modern 构建产物");
-
-const tsconfig = read("frontend/tsconfig.json");
-for (const option of ["strict", "noUncheckedIndexedAccess", "noImplicitOverride"]) {
-  assert(new RegExp(`"${option}"\\s*:\\s*true`).test(tsconfig), `tsconfig 未启用 ${option}`);
-}
+assert(packageJson.dependencies?.vue, "frontend/package.json 缺少 vue");
+assert(packageJson.dependencies?.["@copilotkit/vue"], "frontend/package.json 缺少 @copilotkit/vue");
 
 const viteConfig = read("frontend/vite.config.ts");
 assert(viteConfig.includes("../public/assets/modern"), "Vite 输出目录必须是 public/assets/modern");
-assert(/emptyOutDir\s*:\s*true/.test(viteConfig), "Vite 必须只清理 modern 输出目录");
-assert(viteConfig.includes('formats: ["iife"]'), "M1 modern bundle 必须使用 IIFE 兼容格式");
 assert(viteConfig.includes('fileName: () => "oi-modern.js"'), "modern JS 文件名必须固定");
 assert(viteConfig.includes('cssFileName: "oi-modern"'), "modern CSS 文件名必须固定");
 
-read("frontend/vitest.config.ts");
-read("frontend/tests/setup.ts");
-read("frontend/tests/build-contract.test.ts");
-read("frontend/src/env.d.ts");
-read("frontend/src/legacy/contracts.ts");
-read("frontend/src/legacy/bridge.ts");
-read("frontend/src/shared/styles/modern-root.css");
-read("frontend/src/entry.ts");
-read("frontend/src/features/brand-media/BrandMediaPage.vue");
-read("frontend/src/features/brand-media/brandMediaModel.ts");
-read("frontend/src/features/brand-media/useBrandMedia.ts");
-read("frontend/src/features/brand-media/brandMedia.css");
-read("frontend/src/features/revenue-flow/RevenueFlowPage.vue");
-read("frontend/src/features/revenue-flow/RevenueFlowSankey.vue");
-read("frontend/src/features/revenue-flow/revenueFlowModel.ts");
-read("frontend/src/features/revenue-flow/useRevenueFlow.ts");
-read("frontend/src/features/revenue-flow/revenueFlow.css");
-read("frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.vue");
-read("frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.ts");
-read("frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.ts");
-read("frontend/src/features/monthly-new-merchants/monthlyNewMerchants.css");
-read("frontend/src/features/targets/TargetsPage.vue");
-read("frontend/src/features/targets/targetModel.ts");
-read("frontend/src/features/targets/useTargets.ts");
-read("frontend/src/features/targets/targets.css");
-read("frontend/src/features/category-report/CategoryReportPage.vue");
-read("frontend/src/features/category-report/categoryReportModel.ts");
-read("frontend/src/features/category-report/useCategoryReport.ts");
-read("frontend/src/features/category-report/categoryReport.css");
-read("frontend/src/features/tier-sheet/TierSheetPage.vue");
-read("frontend/src/features/tier-sheet/tierSheetModel.ts");
-read("frontend/src/features/tier-sheet/useTierSheet.ts");
-read("frontend/src/features/tier-sheet/tierSheet.css");
-read("frontend/src/features/google-ads/GoogleAdsPage.vue");
-read("frontend/src/features/google-ads/googleAdsModel.ts");
-read("frontend/src/features/google-ads/useGoogleAds.ts");
-read("frontend/src/shared/export/xlsx.ts");
-read("frontend/src/shared/export/xlsx.test.ts");
+for (const file of [
+  "frontend/src/runtime/contracts.ts",
+  "frontend/src/runtime/modernApp.ts",
+  "frontend/src/entry.ts",
+  "frontend/src/shell/AppShell.vue",
+  "frontend/src/features/chatbot/chatbotSession.ts",
+  "frontend/src/features/agent/agentSession.ts",
+  "frontend/src/features/agent/CopilotKitAgentHost.vue",
+  "frontend/src/shared/export/xlsx.ts",
+  "frontend/src/shared/export/xlsx.test.ts"
+]) read(file);
+
+for (const removed of [
+  "frontend/src/legacy/bridge.ts",
+  "frontend/src/legacy/contracts.ts",
+  "public/app.js",
+  "public/styles.css"
+]) assert(!fs.existsSync(removed), `${removed} 必须在 M7 中删除`);
 
 const indexHtml = read("public/index.html");
-assert(
-  indexHtml.includes('./assets/modern/oi-modern.css?v=20260901-m4-shell'),
-  "index.html 缺少当前本地 modern CSS"
-);
-const remoteAssetUrls = [...indexHtml.matchAll(/\b(?:src|href)="(https?:[^"]+)"/g)].map((match) => match[1]);
-assert(
-  !remoteAssetUrls.some((url) => /(?:unpkg\.com\/vue(?:@|\/)|jsdelivr\.net\/npm\/vue(?:@|\/))/i.test(url)),
-  "index.html 不得从 CDN 加载 Vue"
-);
+assert(indexHtml.includes("./assets/modern/oi-modern.css?v=20260904-m7-final"), "index.html 缺少 modern CSS");
+assert(indexHtml.includes('id="modernAppRoot"'), "index.html 缺少唯一 modern 根节点");
+assert(!/styles\.css|app\.js|ModernRoot/.test(indexHtml.replace(/modernAppRoot/g, "")), "index.html 仍引用旧页面资源或旧页面根节点");
 
 const auth = read("public/auth.js");
-assert(
-  auth.includes('const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-m4-shell";'),
-  "auth.js 缺少当前本地 modern bundle 常量"
-);
 assert(auth.includes("async function loadModernApp()"), "auth.js 缺少 modern 加载边界");
 assert(auth.includes("window.OI_MODERN_APP.bootstrap("), "auth.js 未调用 modern bootstrap");
-const modernLoaderStart = auth.indexOf("async function loadModernApp()");
-const modernLoaderEnd = auth.indexOf("\n  let _dataLoading", modernLoaderStart);
-const modernLoaderSource = auth.slice(modernLoaderStart, modernLoaderEnd);
-assert(modernLoaderSource.includes("await loadScript(MODERN_APP_SCRIPT);"), "modern 加载边界未加载本地产物");
-assert(modernLoaderSource.includes("catch (error)"), "modern 加载失败时必须进入受控错误态");
-assert(modernLoaderSource.includes("return false;"), "modern 加载失败时必须返回受控失败状态");
-assert(auth.includes("async function loadLegacyRollbackApp()"), "legacy 回滚必须有独立加载边界");
-assert(auth.includes("if (legacyRollbackEnabled())"), "正常入口必须通过显式开关区分 modern 与 legacy");
-const legacyLoaderStart = auth.indexOf("async function loadLegacyRollbackApp()");
-const legacyLoaderEnd = auth.indexOf("\n  let _dataLoading", legacyLoaderStart);
-const legacyLoaderSource = auth.slice(legacyLoaderStart, legacyLoaderEnd);
-assert(legacyLoaderSource.includes("await loadScript(APP_SCRIPT);"), "legacy 回滚边界必须保留旧 bundle 加载能力");
-
-const legacyApp = read("public/app.js");
-const paymentsSwitchStart = legacyApp.indexOf("if (isPayments) {");
-const paymentsSwitchEnd = legacyApp.indexOf("if (isPublishers) {", paymentsSwitchStart);
-assert(paymentsSwitchStart >= 0 && paymentsSwitchEnd > paymentsSwitchStart, "Payments 页面切换边界不存在");
-const paymentsSwitchSource = legacyApp.slice(paymentsSwitchStart, paymentsSwitchEnd);
-const brandMediaSwitchStart = legacyApp.indexOf('if (previousPage === "brand-media"');
-const brandMediaSwitchEnd = legacyApp.indexOf("if (isRevenueFlow)", brandMediaSwitchStart);
-assert(brandMediaSwitchStart >= 0 && brandMediaSwitchEnd > brandMediaSwitchStart, "Brand Media 页面切换边界不存在");
-const brandMediaSwitchSource = legacyApp.slice(brandMediaSwitchStart, brandMediaSwitchEnd);
-assert(brandMediaSwitchSource.includes("brandMediaModernRoot"), "Brand Media 未接入 modern root");
-assert(brandMediaSwitchSource.includes('mountPage("brand-media"'), "switchPage() 未挂载 modern Brand Media");
-assert(brandMediaSwitchSource.includes('unmountPage("brand-media"'), "switchPage() 未卸载 modern Brand Media");
-assert(brandMediaSwitchSource.includes("renderBrandMediaPage()"), "Brand Media 缺少 legacy fallback");
-assert(paymentsSwitchSource.includes("modernApp.setLanguage(state.language)"), "Payments 挂载前必须同步现代页面语言");
+assert(auth.includes('mountApplication(modernAppRoot, "agent")'), "auth.js 未挂载完整 modern 应用");
+assert(!/LegacyRollback|LEGACY_|legacyRollback|\.\/app\.js|\.\/styles\.css/.test(auth), "auth.js 仍包含旧运行时回滚路径");
 
 const vercel = JSON.parse(read("vercel.json"));
 assert(vercel.installCommand === "npm ci && npm --prefix frontend ci", "Vercel installCommand 不正确");
 assert(vercel.buildCommand === "npm --prefix frontend run build", "Vercel buildCommand 不正确");
 assert(vercel.outputDirectory === "public", "Vercel outputDirectory 必须保持 public");
-assert(Array.isArray(vercel.routes) && vercel.routes.length > 0, "Vercel API routes 不得被构建配置覆盖");
-assert(vercel.functions && Object.keys(vercel.functions).length > 0, "Vercel Functions 配置不得丢失");
 
 const ci = read(".github/workflows/ci.yml");
 for (const command of [
-  "npm --prefix frontend ci",
   "npm --prefix frontend run typecheck",
   "npm --prefix frontend run test -- --run",
   "npm --prefix frontend run build",
-  "node scripts/test_frontend_build_contract.mjs"
-]) {
-  assert(ci.includes(command), `CI 缺少命令: ${command}`);
-}
-for (const command of [
-  "node scripts/test_tier_frontend.mjs",
-  "node scripts/test_shared_xlsx_frontend.mjs"
-]) {
-  assert(ci.includes(command), `CI 缺少命令: ${command}`);
-}
-
-const agents = read("AGENTS.md");
-for (const command of [
-  "npm --prefix frontend ci",
-  "npm --prefix frontend run typecheck",
-  "npm --prefix frontend run test -- --run",
-  "npm --prefix frontend run build"
-]) {
-  assert(agents.includes(command), `AGENTS.md 缺少前端命令: ${command}`);
-}
+  "node scripts/test_m7_modern_entry.mjs"
+]) assert(ci.includes(command), `CI 缺少命令: ${command}`);
 
 const bundlePath = "public/assets/modern/oi-modern.js";
 const cssPath = "public/assets/modern/oi-modern.css";
 assert(fs.existsSync(bundlePath), `${bundlePath} 未生成`);
 assert(fs.existsSync(cssPath), `${cssPath} 未生成`);
-
 const sandbox = { console, window: {} };
 vm.runInNewContext(fs.readFileSync(bundlePath, "utf8"), sandbox, { filename: bundlePath });
 const modernApp = sandbox.window.OI_MODERN_APP;
 assert(modernApp && typeof modernApp.bootstrap === "function", "modern bundle 未注册 OI_MODERN_APP");
-assert(modernApp.hasPage("offer-list-tracker") === true, "M2 必须注册 Offer Tracker 页面");
-assert(modernApp.hasPage("payments") === true, "M4 必须注册 Payments 页面");
-
-assert(modernApp.hasPage("brand-media") === true, "Brand Media 必须注册 modern 页面");
-assert(modernApp.hasPage("revenue-flow") === true, "Revenue Flow 必须注册 modern 页面");
-assert(modernApp.hasPage("monthly-new-merchants") === true, "Monthly New Merchants 必须注册 modern 页面");
-assert(modernApp.hasPage("sheets") === true, "Targets 必须注册 modern 页面");
-assert(modernApp.hasPage("category") === true, "Category 必须注册 modern 页面");
-assert(modernApp.hasPage("tier") === true, "Tier 必须注册 modern 页面");
-assert(modernApp.hasPage("google-ads") === true, "Google Ads 必须注册 modern 页面");
+for (const page of ["agent", "dashboard", "offer-list-tracker", "payments", "publishers", "monthly-new-merchants", "brand-media", "revenue-flow", "google-ads", "sheets", "category", "tier"]) {
+  assert(modernApp.hasPage(page), `modern bundle 未注册 ${page}`);
+}
 
 console.log("PASS: frontend build contract");

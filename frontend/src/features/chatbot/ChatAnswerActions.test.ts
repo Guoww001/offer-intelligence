@@ -1,13 +1,13 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
-import type { LegacyFeedbackBridge } from "../../legacy/contracts";
 import ChatAnswerActions from "./ChatAnswerActions.vue";
+import type { ChatbotFeedback } from "./chatbotViewTypes";
 
 describe("ChatAnswerActions", () => {
   it("opens a view and submits feedback for one answer", async () => {
     const submit = vi.fn(async () => ({ ok: true as const }));
-    const feedback: LegacyFeedbackBridge = {
+    const feedback: ChatbotFeedback = {
       isAvailable: () => true,
       submit
     };
@@ -38,7 +38,7 @@ describe("ChatAnswerActions", () => {
   });
 
   it("restores focus to the feedback trigger after closing the dialog", async () => {
-    const feedback: LegacyFeedbackBridge = {
+    const feedback: ChatbotFeedback = {
       isAvailable: () => true,
       submit: async () => ({ ok: true as const })
     };

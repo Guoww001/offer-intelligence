@@ -1,4 +1,4 @@
-import type { LegacyDeepWindowSkeletonStep } from "../../legacy/contracts";
+import type { DeepWindowSkeletonStep } from "./deepWindowStore";
 import type { ChatbotReportViewResult } from "./chatbotViewTypes";
 
 export const deepWindowReport: ChatbotReportViewResult = {
@@ -11,7 +11,7 @@ export const deepWindowReport: ChatbotReportViewResult = {
   message: "Tapo report"
 };
 
-export const deepWindowSkeletonSteps: readonly LegacyDeepWindowSkeletonStep[] = [
+export const deepWindowSkeletonSteps: readonly DeepWindowSkeletonStep[] = [
   { id: "fetch", label: "读取数据", state: "active" },
   { id: "analyze", label: "分析结果", state: "pending" },
   { id: "render", label: "整理报告", state: "pending" }

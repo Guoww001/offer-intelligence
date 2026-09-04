@@ -187,7 +187,7 @@ function sessionResultToView(result: ChatbotSessionResult, query: string): Chatb
       conversionRate: null
     },
     message: result.response || (result.status === "stopped" ? copy.value.reportError : copy.value.reportError),
-    ...(result.contentHtml ? { contentHtml: result.contentHtml, legacyHtml: result.contentHtml } : {}),
+    ...(result.contentHtml ? { contentHtml: result.contentHtml } : {}),
     ...(result.recommendationHtml ? { recommendationHtml: result.recommendationHtml } : {}),
     sessionResult: result
   };

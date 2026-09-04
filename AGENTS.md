@@ -44,30 +44,22 @@ python scripts/import_product_name_keywords.py --source "/path/to/brand and asin
 
 ### Run tests (same as CI)
 ```bash
+npm ci
+npm run test:copilotkit
 npm --prefix frontend ci
 npm --prefix frontend run typecheck
 npm --prefix frontend run test -- --run
 npm --prefix frontend run build
 node --check public/auth.js
-node --check public/app.js
-node --check public/chatbot_i18n.js
-node --check public/tier2_recommendation_rules.js
-node scripts/test_payments_frontend.mjs
-node scripts/test_brand_media_frontend.mjs
-node scripts/test_google_ads_workbench_frontend.mjs
-python scripts/test_google_ads_workbench.py
-node scripts/test_monthly_new_merchants_modern_cutover.mjs
+node scripts/test_frontend_migration_inventory.mjs
+node scripts/test_frontend_build_contract.mjs
 node scripts/test_m4_shell_frontend.mjs
 node scripts/test_modern_page_cutover.mjs
-python scripts/test_auth_helpers.py
-node scripts/test_chatbot_intent_flow.mjs
-node scripts/test_tier2_recommendation_rules.mjs
-node scripts/test_sheet_categories.mjs
-node scripts/test_category_drilldown.mjs
-node scripts/test_tier_visual_status.mjs
-node scripts/test_zh_chatbot.mjs
-python -m scripts.test_payment_placeholders
-python -m py_compile auth.py server.py offer_db.py levanta_payments.py api/auth/index.py api/chat/actions.py api/chat/stream.py api/db/index.py api/levanta/payments.py api/tier_moves.py scripts/validate_db_migration.py
+node scripts/test_m6_chatbot_agent_behavior_parity.mjs
+node scripts/test_m6_modern_mount.mjs
+node scripts/test_m7_modern_entry.mjs
+python scripts/test_agent_agui.py
+python scripts/test_payment_placeholders.py
 ```
 
 ## Architecture
@@ -141,41 +133,15 @@ Levanta invoice data is fetched from the Levanta API, normalized into payment re
 
 A GitHub Actions workflow (`.github/workflows/sync-levanta-payments.yml`) runs daily at 02:00 UTC to sync payment data directly to the `cnpscy_oi_payment_records` table.
 
-### `public/app.js` navigation index (~8900 lines)
+### Modern frontend navigation
 
-**CRITICAL — NEVER read the entire file.** Use this index to read only the line ranges relevant to the task. The file is wrapped in an IIFE (`(function () { ... })();`). All functions are `function name(...)` inside the IIFE scope.
-
-**Chatbot work**: the ranges below marked with ★ are chatbot-critical. For the full picture (intent flow, LLM pipeline, analysis engine, i18n), also read `docs/chatbot-feature-report.md` — it has a function-level chatbot index for `app.js`.
-
-| Lines | Section | Key functions / what lives here |
-|-------|---------|--------------------------------|
-| 1–471 | **Init & global state** | `state` object (pages, filters, sort), `offersByMerchantId`, offer prep loop, `PAYMENT_MONTHS`, `TIER_MOVE_OPTIONS`, all `const` configs. Also `mergeProductKeywordsIntoOffers` (line ~700). |
-| 472–719 | **i18n + formatting utils** | `t()`, `labelText()`, `optionText()`, `statusText()`, `chatCopy()`, `chatFormat()`, `applyStaticLanguage()`, `rerenderForLanguage()`, `toggleLanguage()`, `number()`, `money()`, `shortMoney()`, `pct()`, `shortPct()`, `epc()`, `countValue()`, `normalize()` |
-| 720–870 | **Tier overrides & manual moves** | `canonicalTierName()`, `offerKey()`, `loadTierOverrides()`, `saveTierOverrides()`, `applyTierOverrideToOffer()`, `tierMoveOptionsHtml()`, `tierMoveControlHtml()`, `setManualTierMoveFromOffer()`, `moveOfferToTier()` [async], `handleTierMoveClick()` |
-| 871–1120 | **Search/text utilities** | `words()`, `meaningfulTokens()`, `escapeHtml()`, `escapeRegExp()`, `textIncludesAlias()`, `cleanCategoryValue()`, `sheetMainCategory()`, `categoryParts()`, `displayCategory()`, `categorySearchText()`, `uniqueCategoryValues()`, `allCategoryValues()`, `keywordFieldGroups()`, `productTitleValues()`, `qualifiesAsSkincareBrand()`, `searchValueMatches()`, `searchValueExactMatches()`, `keywordAliasEntries()`, `addKeywordAlias()`, `cleanedKeywordPhrase()` |
-| 1121–1376 | **Keyword search engine (chatbot)** ★ | `specificKeywordAliasAllowed()`, `keywordSearchRequest()`, `keywordTokenFuzzyScore()`, `keywordAliasIsPrimary()`, `keywordOfferMatch()`, `hasStrongTier3KeywordSignals()`, `keywordTierPriority()`, `compareKeywordMatches()`, `keywordSearchMatches()`, `hasDirectMerchantKeywordLookup()`, `hasKeywordSearchIntent()` |
-| 1377–1786 | **Payment core** | `dateOnly()`, `localDateKey()`, `isoDate()`, `monthNameFromText()`, `monthKey()`, `addDaysIso()`, `calculatePaymentAvailabilityDate()`, `normalizePaymentCycle()`, `paymentCycleKeys()`, `buildSheetPaymentCycleIndex()`, `sheetPaymentCycleFor()`, `resolveOfferPaymentCycle()`, `inferRegionFromText()`, `normalizeRegion()`, `paymentRegionFor()`, `bestPaymentOffer()`, `isSafeBrandMatch()`, `resolvePaymentCycle()`, `offerForMerchant()`, `paymentDueDate()`, `calculatePaymentStatus()`, `normalizePaymentRecord()`, `offerForPaymentMerchant()`, `createPendingPaymentRecord()`, `withPendingPaymentPlaceholders()` |
-| 1787–1978 | **Payment index, queries, risk** | `rebuildPaymentIndex()`, `getPaymentRecords()`, `hasPaymentRevenueOrCommission()`, `visiblePaymentRecords()`, `hasPayablePaymentAmount()`, `isTrackablePaymentRecord()`, `getPaymentByMerchant()`, `getPaymentByMonth()`, `getPaymentByStatus()`, `getUnpaidPayments()`, `getPendingPayments()`, `isPaymentOverdue()`, `getOverduePayments()`, `updatePaymentSummary()`, `syncLevantaPayments()`, `refreshLevantaPayments()` [async], `maybeAutoSyncLevantaPayments()`, `paymentRecordsForOffer()`, `hasOfferOverduePayment()`, `paymentRiskTextForOffer()`, `hasPaymentRisk()`, `hasPaidSignal()` |
-| 1979–2141 | **Tier grouping & recommendations** | `tierGroup()`, `tierPriority()`, `highlightStatus()`, Tier 2 publisher strategy/optimization functions (`tier2PublisherStrategy()`, `tier2PublisherCountText()`, `tier2PublisherSuccessText()`, `tier2OptimizationIdea()`, `tier2RecommendationDetailsHtml()`, `tier2FieldRows()`), `recommendedAction()`, `caution()`, `bestAngle()` |
-| 2142–2450 | **Data queries & dashboard sort/filter** | `aggregateRows()`, `bestBy()`, `uniqueValues()`, `fillSelect()`, `replaceSelectOptions()`, `parseSheetNumber()`, `isRateColumn()`, `percentageNumberForHeader()`, `formatSheetCell()`, `sortableReportValue()`, `compareReportValues()`, `defaultReportSortDirection()`, `sortReportRows()`, `sortableHeaderHtml()`, `updateReportSort()`, `handleReportSortClick()`, `rowValue()`, `getFiltered()`, `dashboardCategoryGroups()`, `fuzzyScore()`, `findMerchantMatches()`, `findByMerchantId()`, `findByAsin()` |
-| 2451–2900 | **Metric/Cycle filtering & NL parsing** | `metricTermPattern()`, `comparisonTermPattern()`, `numberTokenPattern()`, `metricFilterPattern()`, `metricRangeFilterPattern()`, `metricTrailingComparisonPattern()`, `normalizeMetricName()`, `parseMetricNumber()`, `normalizeMetricThreshold()`, `normalizeComparisonOperator()`, `normalizeCycleComparisonOperator()`, `paymentCycleFilterPattern()`, `extractPaymentCycleFilter()`, `paymentCycleFilterMatches()`, `paymentCycleFilterText()`, `extractMetricFilters()`, `metricFilterMatches()`, `applyMetricFilters()`, `metricSortTermPattern()` and sort extraction utilities |
-| 2901–3377 | **Category matching & intent detection** ★ | `cleanedCategoryPhrase()`, `hasCategoryIntentText()`, `categoryScore()`, `categoryForPrompt()`, `categoryMatches()`, `cleanedMerchantLookupPhrase()`, `merchantLookupForPrompt()`, `hasStrongMerchantLookup()`, `tierFromPrompt()`, `wantsRecommendationList()`, `collectCategories()`, `classifyWithLLM()` [async], `detectQueryIntent()`, `recommendationScore()`, `compareRecommendationOffers()`, `sortedForCategory()`, `rankedRecommendations()`, `topRecommendations()`, `whyRecommended()`, context builder functions (`setContext()`, `build*Context()`), `statCards()`, `miniTable()` |
-| 3378–4385 | **Chatbot rendering (stats, answers, recommendations)** ★ | `renderRecommendationStats()`, `renderMerchantStats()`, `renderASINStats()`, `renderPaymentStats()`, `renderCategoryStats()`, `renderKeywordStats()`, `renderContextPanel()`, `paymentByMonthText()`, `fieldRows()`, `merchantOverviewHtml()`, `resultTable()`, `extractTopMetricRequest()`, `topMetricOfferAnswer()`, `keywordSearchAnswer()`, `findPaymentMerchantMatches()`, `requestedRecommendationCount()`, `parseTierOfferRequest()`, `rebuildRecommendationBundle()`, `recommendationBundleAnswer()`, `matchedOffersFromPrompt()`, `recommendationHtml()`, `paymentCycleOfferAnswer()` |
-| 4386–4700 | **Chat message handling & prompt routing** ★ | `addMessage()` (line ~4862), functions for handling user prompts: routing to merchant/category/ASIN/payment/keyword search answer functions. Scroll management, download button injection for chatbot recommendations. |
-| 4701–5540 | **DB lookup + Dashboard category report** | `dbMerchantProductRows()`, `dbMerchantInsightHtml()`, `dbLookupSkipPrompt()`, `dbSearchQueryForPrompt()`, `dbMerchantOfferForPrompt()`, `dbSearchRowsHtml()`, `dbSearchInsightHtml()`, `renderMetrics()`, `dashboardOfferPreviewLimit()`, `dashboardCategoryHeaderRow()`, `renderTable()`, `categoryReportTierLabel()`, `dashboardCategoryReportRows()`, `dashboardCategoryPieHtml()` (large SVG pie chart), `dashboardCategoryOptimizationPreviewsHtml()`, `renderDashboardCategoryReport()`, `handleCategoryPointerMove()`, `setCategoryHighlight()` |
-| 5541–6145 | **Global render + XLSX export** | `renderAll()` (line ~5586), `syncControls()` (line ~5593), `resetFilters()`, `chatbotOfferDescriptor()`, `todayDownloadDateStamp()`, `registerRecommendationDownload()`, `recommendationExportColumns()`, `paymentExportColumns()`, `objectExportColumns()`, XLSX generation functions (`worksheetXml()`, `workbookXml()`, `crc32()`, `createZip()`, `createRecommendationWorkbook()`, `triggerWorkbookDownload()`), `downloadRowsAsXlsx()`, `downloadFilteredXlsx()`, `downloadPaymentsXlsx()`, `downloadSheetTargetsXlsx()`, `downloadTierSheetXlsx()`, `downloadRecommendationXlsx()` |
-| 6146–6291 | **Payment page rendering** | `paymentStatusClass()`, `uniquePaymentValues()`, `refreshPaymentFilterOptions()`, `refreshPaymentSortOptions()`, `getFilteredPayments()`, `latestPaymentCheckedDate()`, `renderPaymentSummary()`, `paymentStatusSummaryItems()`, `renderPaymentHead()`, `renderPaymentRows()`, `renderPaymentsPage()` |
-| 6292–7464 | **Tier sheet management** | `sheetByName()`, `storageApi()`, `isTierMoveTarget()`, `isTierDataSheet()`, `loadManualTierMoves()`, `persistManualTierMoves()`, `tierMoveAdminToken()`, `tierMovePayload()`, `renderAfterTierMoveSync()`, `defineTierRowMeta()`, `cloneTierRow()`, `cacheOriginalTierSheetRows()`, `applyManualTierMoves()`, `applyManualTierMovesToOffers()`, `hasManualTierMoves()`, `tierLogicItems()`, `renderTierLogicSummary()`, `renderTierSummary()`, `renderSheetTable()`, `tier2PhaseKind()`, `normalizeVisualStatusColor()`, `explicitVisualStatusColor()`, `tierRowRuleHighlightKind()`, `visualStatusForTierRow()`, `displayHeadersForSheet()`, `selectedHeadersForTierSheet()`, `visibleHeadersForSheet()`, `renderTierColumnPanel()`, `offerForSheetRow()`, `offerToTierSheetRow()`, `tierSheetRowsForDisplay()`, `renderTierSheetTable()`, `canExpandTierSheet()`, `syncTierSheetOverlay()`, `openTierSheetOverlay()`, `closeTierSheetOverlay()`, `renderTierMoveDialog()`, `getFilteredTierSheetRows()`, `tierCategorySummaryRows()`, `renderTierCategorySummary()`, `renderTierPage()` |
-| 7465–8729 | **Targets page & DB status dashboard** | `targetOverrideKey()`, `applyTargetOverride()`, `targetRecords()`, `derivedTargetRecordsFromTierSheets()`, `filteredTargetRecords()`, `refreshTargetFilters()`, `targetRowsForMonth()`, `targetSummary()`, `compactNumber()`, `compactMoney()`, `dateKey()`, `monthKeyFromText()`, `dbDailyTrendRows()`, `dbStatusViewModel()`, `dbStatusDemoEnabled()`, `demoDbStatusPayload()`, `deltaText()`, `dbTrendPath()`, `dbDailyTrendChartHtml()` (SVG), `dbStatusPanelHtml()`, `refreshDbStatusUi()`, `targetMetricConfig()`, `targetDeltaHtml()`, `renderSheetSummary()`, `targetGoal()`, `targetGoalCardHtml()`, `targetProgressHtml()`, `targetTrendPlotHtml()` (SVG chart ~line 8336), `targetMatrixHtml()`, `renderSheetPage()`, `refreshTargetMetricViews()`, `handleTargetReportClick()`, `handleTargetReportSubmit()` |
-| 8730–8901 | **`init()` — event bindings** | All DOM event listeners wired up: chat submit, report sort clicks, tier move buttons, payment filters, language toggle, download buttons, column toggle, overlay open/close, keyboard Escape handlers. `switchPage()` (line ~8695) handles SPA page routing. |
-
-**How to use this index:**
-1. Identify the feature area you need (e.g., "payment overdue logic")
-2. Read only the matching line range (e.g., lines 1787–1978 for payment queries)
-3. Use `grep -n "function name" public/app.js` to pinpoint exact line numbers within a range
-4. For cross-cutting changes, check multiple ranges — but still never read the whole file
-5. The `state` object (lines 69–110) defines all filter/sort/page state — read this first when adding new filters or pages
-6. **For chatbot work**, rows marked ★ are your entry points, but also read `docs/chatbot-feature-report.md` — it maps every chatbot function to its line number and explains the full LLM→skills→frontend pipeline
+- frontend/src/runtime/modernApp.ts owns the standalone application lifecycle, page mounting, navigation, and language.
+- frontend/src/runtime/contracts.ts owns bootstrap and application API types.
+- frontend/src/shell/AppShell.vue owns desktop/mobile navigation, theme, page title, and the single page host.
+- frontend/src/entry.ts registers the 12 Vue page factories and shared export/session services.
+- frontend/src/features/ contains page-owned models, composables, components, styles, and behavior tests.
+- public/auth.js owns authentication, protected bootstrap loading, the explicit startup error state, and loading the modern bundle.
+- The removed public/app.js and frontend/src/legacy/ runtime must not be restored; rollback uses a prior deploy.
 
 ### Data files
 

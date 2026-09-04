@@ -1,11 +1,13 @@
 # ADR-001：前端框架与渐进迁移架构
 
 > 日期：2026-08-27  
-> 状态：已接受，实施中  
+> 状态：已接受，M7 实施完成
 > 决策范围：YeahPromos Offer Intelligence 浏览器端  
 > 关联 Roadmap：`docs/superpowers/plans/2026-08-27-frontend-framework-migration-roadmap.md`
 
 ## 背景
+
+> **实施结果（2026-09-04）：** 本 ADR 下方的 `public/app.js`、bridge 和双运行时描述记录的是渐进迁移阶段。M7 已完成后，浏览器端只保留 standalone Vue Runtime；旧页面 DOM、旧 bundle/CSS、辅助脚本与 `frontend/src/legacy/` 已删除。生产回滚使用上一份可部署构建。
 
 当前前端是由 Python 服务和 Vercel 直接发布的原生 JavaScript SPA。`public/auth.js` 在认证成功后加载 Offer、Sheet 和关键词数据，将其写入受控的 `window.*` 启动对象，再动态加载 `public/app.js`。后者目前同时承担全局状态、页面导航、API 请求、业务计算、DOM 渲染、导出、Chatbot 和 Agent 生命周期。
 

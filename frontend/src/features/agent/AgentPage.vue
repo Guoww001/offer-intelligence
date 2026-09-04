@@ -425,7 +425,7 @@ async function submit(): Promise<void> {
       const publisher = await bridge({ kind: command.command.route, query: command.value, language: requestLanguage, signal: request.signal });
       if (request.signal.aborted) throw new DOMException("Stopped", "AbortError");
       result = { ok: true, status: "done", response: publisher.text, steps: [{ id: "publisher", phase: "tool", label, status: "done" }],
-        report: { intent: "analysis", status: "resolved", query: prompt, source: publisher.source, rows: [], summary: { offerCount: 0, clicks: 0, orders: 0, revenue: 0, commission: 0, conversionRate: null }, message: label, legacyHtml: publisher.html } };
+        report: { intent: "analysis", status: "resolved", query: prompt, source: publisher.source, rows: [], summary: { offerCount: 0, clicks: 0, orders: 0, revenue: 0, commission: 0, conversionRate: null }, message: label, contentHtml: publisher.html } };
     } else result = await props.run(request);
     attemptError = result.errorCode || "";
     timeline.value = result.steps.map(normalizeAgentTimelineStep);

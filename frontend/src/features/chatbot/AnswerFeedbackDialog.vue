@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import type { LegacyFeedbackBridge } from "../../legacy/contracts";
+import type { ChatbotFeedback } from "./chatbotViewTypes";
 import type { UiLanguage } from "../../shared/i18n";
 
 type FeedbackReason = "inaccurate" | "not_answered" | "incomplete_data" | "unclear" | "other";
@@ -9,7 +9,7 @@ type FeedbackReason = "inaccurate" | "not_answered" | "incomplete_data" | "uncle
 const props = withDefaults(defineProps<{
   readonly open: boolean;
   readonly language: UiLanguage;
-  readonly feedback?: LegacyFeedbackBridge | null;
+  readonly feedback?: ChatbotFeedback | null;
   readonly refreshKey?: number;
   readonly restoreFocus?: HTMLElement | null;
 }>(), {

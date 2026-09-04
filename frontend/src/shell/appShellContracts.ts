@@ -1,4 +1,4 @@
-import type { ModernPageName, UiLanguage } from "../legacy/contracts";
+import type { ModernPageName, UiLanguage } from "../runtime/contracts";
 import type { ShellTheme } from "./theme";
 
 export interface AppShellController {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
-import type { LegacyAnswerFeedbackState, LegacyFeedbackBridge } from "../../legacy/contracts";
+import type { ChatbotAnswerFeedbackState, ChatbotFeedback } from "./chatbotViewTypes";
 import type { UiLanguage } from "../../shared/i18n";
 import AnswerFeedbackDialog from "./AnswerFeedbackDialog.vue";
 
@@ -9,8 +9,8 @@ const props = withDefaults(defineProps<{
   readonly language: UiLanguage;
   readonly answerId?: string;
   readonly canOpenDeep?: boolean;
-  readonly feedbackState?: LegacyAnswerFeedbackState;
-  readonly feedback?: LegacyFeedbackBridge | null;
+  readonly feedbackState?: ChatbotAnswerFeedbackState;
+  readonly feedback?: ChatbotFeedback | null;
   readonly refreshKey?: number;
 }>(), {
   answerId: "",

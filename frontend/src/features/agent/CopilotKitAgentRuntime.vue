@@ -100,7 +100,7 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
       language: session.language,
       memory: text(request.memoryText, 8000),
       history: session.history,
-      legacyParity: true
+      behaviorParity: true
     }
   });
 

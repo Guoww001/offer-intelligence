@@ -4,8 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import ChatbotPage from "./ChatbotPage.vue";
 import { createChatbotSession } from "./chatbotSession";
-import type { ChatbotChatRequest } from "./chatbotViewTypes";
-import type { LegacyChatRunCallbacks, LegacyChatViewResult, LegacyChatViewState } from "../../legacy/contracts";
+import type {
+  ChatbotChatRequest,
+  ChatbotRunCallbacks,
+  ChatbotSessionResult,
+  ChatbotViewState
+} from "./chatbotViewTypes";
 
 const offers = [
   {
@@ -70,7 +74,7 @@ describe("ChatbotPage", () => {
   });
 
   it("uses the Legacy session bridge for Report routes and renders its controlled result", async () => {
-    let state: LegacyChatViewState = {
+    let state: ChatbotViewState = {
       mode: "report",
       language: "zh",
       hasMemory: false,
@@ -81,8 +85,8 @@ describe("ChatbotPage", () => {
       memory: [],
       currentResult: null
     };
-    const listeners = new Set<(next: LegacyChatViewState) => void>();
-    const result: LegacyChatViewResult = {
+    const listeners = new Set<(next: ChatbotViewState) => void>();
+    const result: ChatbotSessionResult = {
       ok: true,
       status: "success",
       mode: "report",
@@ -105,7 +109,7 @@ describe("ChatbotPage", () => {
       removeMemory: vi.fn(),
       clearConversation: vi.fn(),
       downloadOverview,
-      onChange: vi.fn((listener: (next: LegacyChatViewState) => void) => {
+      onChange: vi.fn((listener: (next: ChatbotViewState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       })
@@ -143,7 +147,7 @@ describe("ChatbotPage", () => {
   });
 
   it("keeps feedback, logs, help, guide, onboarding, and clear actions on the shared session", async () => {
-    let state: LegacyChatViewState = {
+    let state: ChatbotViewState = {
       mode: "report",
       language: "en",
       hasMemory: false,
@@ -159,7 +163,7 @@ describe("ChatbotPage", () => {
       isAvailable: vi.fn(() => feedbackAvailable),
       submit: vi.fn(async () => ({ ok: true as const }))
     };
-    const listeners = new Set<(next: LegacyChatViewState) => void>();
+    const listeners = new Set<(next: ChatbotViewState) => void>();
     const session = {
       getState: () => state,
       setMode: vi.fn(),
@@ -187,7 +191,7 @@ describe("ChatbotPage", () => {
       toggleHelp: vi.fn(() => true),
       toggleGuide: vi.fn(() => true),
       startOnboarding: vi.fn(() => true),
-      onChange: vi.fn((listener: (next: LegacyChatViewState) => void) => {
+      onChange: vi.fn((listener: (next: ChatbotViewState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       })
@@ -355,7 +359,7 @@ describe("ChatbotPage", () => {
 
   it("delegates report download cards to the Legacy exporter", async () => {
     const downloadRecommendation = vi.fn(() => true);
-    const result: LegacyChatViewResult = {
+    const result: ChatbotSessionResult = {
       ok: true,
       status: "success",
       mode: "report",
@@ -364,7 +368,7 @@ describe("ChatbotPage", () => {
       response: "Recommendations ready",
       contentHtml: '<button type="button" data-download-id="recommendation-1">Download Excel</button>'
     };
-    let state: LegacyChatViewState = {
+    let state: ChatbotViewState = {
       mode: "report",
       language: "en",
       hasMemory: false,
@@ -375,7 +379,7 @@ describe("ChatbotPage", () => {
       memory: [],
       currentResult: null
     };
-    const listeners = new Set<(next: LegacyChatViewState) => void>();
+    const listeners = new Set<(next: ChatbotViewState) => void>();
     const session = {
       getState: () => state,
       setMode: vi.fn(),
@@ -388,7 +392,7 @@ describe("ChatbotPage", () => {
       removeMemory: vi.fn(),
       clearConversation: vi.fn(),
       downloadRecommendation,
-      onChange: vi.fn((listener: (next: LegacyChatViewState) => void) => {
+      onChange: vi.fn((listener: (next: ChatbotViewState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       })
@@ -404,7 +408,7 @@ describe("ChatbotPage", () => {
   });
 
   it("aborts a Legacy chat request when the page is unmounted", async () => {
-    let state: LegacyChatViewState = {
+    let state: ChatbotViewState = {
       mode: "chat",
       language: "en",
       hasMemory: false,
@@ -420,7 +424,7 @@ describe("ChatbotPage", () => {
     const session = {
       getState: () => state,
       setMode: vi.fn(),
-      submit: vi.fn((_prompt: string, callbacks: LegacyChatRunCallbacks) => new Promise<LegacyChatViewResult>((resolve) => {
+      submit: vi.fn((_prompt: string, callbacks: ChatbotRunCallbacks) => new Promise<ChatbotSessionResult>((resolve) => {
         requestSignal = callbacks.signal;
         release = () => resolve({
           ok: false,
@@ -452,7 +456,7 @@ describe("ChatbotPage", () => {
   it("aborts a Legacy report request when the page is unmounted", async () => {
     let requestSignal: AbortSignal | undefined;
     let release: (() => void) | undefined;
-    const result: LegacyChatViewResult = {
+    const result: ChatbotSessionResult = {
       ok: false,
       status: "stopped",
       mode: "report",
@@ -460,7 +464,7 @@ describe("ChatbotPage", () => {
       response: "",
       errorCode: "stopped_by_user"
     };
-    const state: LegacyChatViewState = {
+    const state: ChatbotViewState = {
       mode: "report",
       language: "en",
       hasMemory: false,
@@ -474,7 +478,7 @@ describe("ChatbotPage", () => {
     const session = {
       getState: () => state,
       setMode: vi.fn(),
-      submit: vi.fn((_prompt: string, callbacks: LegacyChatRunCallbacks) => new Promise<LegacyChatViewResult>((resolve) => {
+      submit: vi.fn((_prompt: string, callbacks: ChatbotRunCallbacks) => new Promise<ChatbotSessionResult>((resolve) => {
         requestSignal = callbacks.signal;
         release = () => resolve(result);
       })),
@@ -497,7 +501,7 @@ describe("ChatbotPage", () => {
   });
 
   it("marks only the current assistant message as streaming", async () => {
-    let state: LegacyChatViewState = {
+    let state: ChatbotViewState = {
       mode: "chat",
       language: "en",
       hasMemory: false,
@@ -514,14 +518,14 @@ describe("ChatbotPage", () => {
       memory: [],
       currentResult: null
     };
-    let notify: (next: LegacyChatViewState) => void = () => undefined;
+    let notify: (next: ChatbotViewState) => void = () => undefined;
     const session = {
       getState: () => state,
       setMode: vi.fn(),
       submit: vi.fn(),
       removeMemory: vi.fn(),
       clearConversation: vi.fn(),
-      onChange: vi.fn((listener: (next: LegacyChatViewState) => void) => {
+      onChange: vi.fn((listener: (next: ChatbotViewState) => void) => {
         notify = listener;
         return () => undefined;
       })

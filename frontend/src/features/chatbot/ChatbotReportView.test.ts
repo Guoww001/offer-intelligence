@@ -57,7 +57,7 @@ describe("ChatbotReportView Context", () => {
     ]);
   });
 
-  it("keeps the Legacy report summary and live DB card in the chat log", async () => {
+  it("keeps the modern report summary and live DB card in the chat log", async () => {
     const wrapper = mount(ChatbotReportView, {
       props: {
         language: "zh",
@@ -70,8 +70,8 @@ describe("ChatbotReportView Context", () => {
           rows: [],
           summary: { offerCount: 1, clicks: 0, orders: 0, revenue: 0, commission: 0, conversionRate: null },
           message: "报告已生成",
-          legacyHtml: '<div class="merchant-card">Shokz Official</div>',
-          bridgeResult: {
+          contentHtml: '<div class="merchant-card">Shokz Official</div>',
+          sessionResult: {
             ok: true,
             status: "success",
             mode: "report",

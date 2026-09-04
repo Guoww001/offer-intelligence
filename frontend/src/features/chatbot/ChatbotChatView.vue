@@ -3,18 +3,19 @@ import { computed, ref } from "vue";
 
 import { renderMarkdownToHtml } from "../../shared/markdown/markdown";
 import type { UiLanguage } from "../../shared/i18n";
-import type {
-  LegacyChatStarterCard,
-  LegacyChatAnswerMessage,
-  LegacyChatViewResult,
-  LegacyFeedbackBridge,
-  LegacyChatUtilityState
-} from "../../legacy/contracts";
 import ChatAnswerActions from "./ChatAnswerActions.vue";
 import FeedbackForm from "./FeedbackForm.vue";
-import type { ChatbotHistoryMessage, ChatbotMemoryItem } from "./chatbotViewTypes";
+import type {
+  ChatbotFeedback,
+  ChatbotHistoryMessage,
+  ChatbotMemoryItem,
+  ChatbotSessionMessage,
+  ChatbotSessionResult,
+  ChatbotStarterCard,
+  ChatbotUtilityState
+} from "./chatbotViewTypes";
 
-interface ChatMessage extends ChatbotHistoryMessage, Partial<Omit<LegacyChatAnswerMessage, "role" | "content">> {
+interface ChatMessage extends ChatbotHistoryMessage, Partial<Omit<ChatbotSessionMessage, "role" | "content">> {
   readonly id: string;
   readonly streaming?: boolean;
 }
@@ -29,12 +30,12 @@ const props = defineProps<{
   readonly contextTitle?: string;
   readonly contextSubtitle?: string;
   readonly contextHtml?: string;
-  readonly feedback?: LegacyFeedbackBridge;
+  readonly feedback?: ChatbotFeedback;
   readonly feedbackRefreshKey?: number;
-  readonly starterCards?: readonly LegacyChatStarterCard[];
-  readonly currentResult?: LegacyChatViewResult | null;
-  readonly utility?: LegacyChatUtilityState;
-  readonly feedbackForAnswer?: (answerId: string) => LegacyFeedbackBridge | null;
+  readonly starterCards?: readonly ChatbotStarterCard[];
+  readonly currentResult?: ChatbotSessionResult | null;
+  readonly utility?: ChatbotUtilityState;
+  readonly feedbackForAnswer?: (answerId: string) => ChatbotFeedback | null;
   readonly dropHighlighted?: boolean;
   readonly supplementalHtml?: string;
 }>();
@@ -105,15 +106,15 @@ const copy = computed(() => props.language === "zh" ? {
   collapse: "Collapse"
 });
 
-const legacyContextHtml = computed(() => props.contextHtml?.trim() || "");
+const contextRichHtml = computed(() => props.contextHtml?.trim() || "");
 
 function rendered(content: string): string {
   return renderMarkdownToHtml(content);
 }
 
 function messageHtml(message: ChatMessage): string {
-  const legacyHtml = message.role === "assistant" ? message.contentHtml?.trim() || "" : "";
-  return legacyHtml || rendered(message.content);
+  const richHtml = message.role === "assistant" ? message.contentHtml?.trim() || "" : "";
+  return richHtml || rendered(message.content);
 }
 
 function handleDownload(event: MouseEvent): void {
@@ -168,7 +169,7 @@ function handleReminderInteraction(event: MouseEvent): void {
           </div>
         </div>
         <div class="recommendation-box context-panel" :class="{ 'drop-highlight': dropHighlighted }" @click="handleContextInteraction" @change="handleContextInteraction">
-          <div v-if="legacyContextHtml" class="chatbot-legacy-context" data-chatbot-context-html v-html="legacyContextHtml"></div>
+          <div v-if="contextRichHtml" class="chatbot-rich-context" data-chatbot-context-html v-html="contextRichHtml"></div>
           <div v-else-if="currentResult?.contentHtml" class="chat-stream-text" data-chatbot-chat-context v-html="currentResult.contentHtml"></div>
           <div v-else-if="currentResult?.recommendationHtml" class="chat-stream-text" data-chatbot-chat-context v-html="currentResult.recommendationHtml"></div>
           <p v-else class="chatbot-chat-context-empty">{{ copy.contextEmpty }}</p>

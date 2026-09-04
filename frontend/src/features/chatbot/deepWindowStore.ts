@@ -10,6 +10,12 @@ export type DeepWindowInteraction =
   | "trend-column-core"
   | "trend-column-all";
 
+export interface DeepWindowSkeletonStep {
+  readonly id: string;
+  readonly label: string;
+  readonly state: "pending" | "active" | "done";
+}
+
 export interface DeepWindowState {
   readonly id: string;
   readonly mode: "report" | "chat";
@@ -18,11 +24,7 @@ export interface DeepWindowState {
   readonly summary: string;
   readonly contentHtml?: string;
   readonly errorMessage?: string;
-  readonly skeletonSteps?: readonly {
-    readonly id: string;
-    readonly label: string;
-    readonly state: "pending" | "active" | "done";
-  }[];
+  readonly skeletonSteps?: readonly DeepWindowSkeletonStep[];
   readonly zIndex?: number;
   readonly minimized: boolean;
   readonly pinned: boolean;
@@ -167,7 +169,7 @@ export function createDeepWindowStore(options: DeepWindowStoreOptions = {}): Dee
       result,
       title: result.title || result.category || result.tier || result.message || result.intent,
       summary: result.message,
-      ...(result.contentHtml || result.legacyHtml ? { contentHtml: result.contentHtml || result.legacyHtml } : {}),
+      ...(result.contentHtml ? { contentHtml: result.contentHtml } : {}),
       zIndex: 1300 + windows.value.length,
       minimized: false,
       pinned: false,

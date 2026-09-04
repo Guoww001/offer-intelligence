@@ -7,7 +7,7 @@ import {
   searchChatbotOffers
 } from "./chatbotModel";
 import type { ChatbotIntent, ChatbotSearchOptions } from "./chatbotTypes";
-import type { LegacyDataSource } from "../../legacy/contracts";
+type ChatbotDataSource = "cache" | "db" | "unavailable";
 
 type OfferRow = Readonly<Record<string, unknown>>;
 
@@ -30,7 +30,7 @@ export interface ChatbotReportResult {
   readonly intent: ChatbotIntent;
   readonly status: ChatbotReportStatus;
   readonly query: string;
-  readonly source: LegacyDataSource;
+  readonly source: ChatbotDataSource;
   readonly rows: readonly OfferRow[];
   readonly summary: ChatbotReportSummary;
   readonly message: string;

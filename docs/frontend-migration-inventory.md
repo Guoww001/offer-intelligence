@@ -1,8 +1,8 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-04（Chatbot/Agent 已完成 Modern-first 运行时切换；默认使用 standalone modern entry，Agent 默认通过 CopilotKit Runtime/AG-UI 接入 Python registry。`?legacy=1`、`window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 仍可显式回退 Legacy；旧实现继续保留回滚窗口。M7/01–02 已完成入口隔离、modern 启动错误态与认证资源收敛；legacy 页面资源尚未删除）
-> 权威路由入口：modern `ModernAppApi.setPage(page)`；legacy 回滚时为 `public/app.js` 的 `switchPage(page)`
+> 最近更新：2026-09-04（M07 已完成：12 个页面只使用 standalone Vue Runtime；旧页面 DOM、`public/app.js`、`public/styles.css`、辅助脚本和 `frontend/src/legacy/` 已删除。Agent 默认通过 CopilotKit Runtime/AG-UI 接入 Python registry/proof。运行时 legacy 开关已移除，回滚单位改为上一份可部署构建。）
+> 权威路由入口：`ModernAppApi.setPage(page)`
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
 ## 使用规则
@@ -23,190 +23,601 @@
     {
       "pageKey": "agent",
       "label": "Chat Agent",
-      "status": "modern",
-      "roots": ["#dashboardAgentPage", "#agentModernRoot"],
-      "legacyEntry": ["switchPage()", "renderAgentPageWelcomeIfIdle()", "handleAgentPageSubmit()", "runChatAgent()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/agent/CopilotKitAgentHost.vue", "frontend/src/features/agent/CopilotKitAgentRuntime.vue", "frontend/src/features/agent/AgentPage.vue", "frontend/src/features/agent/AgentTimeline.vue", "frontend/src/features/agent/agentSession.ts", "frontend/src/features/agent/agentViewState.ts", "frontend/src/features/agent/agentModel.ts", "frontend/src/features/agent/agent.css", "copilotkit_runtime.mjs", "agent_agui.py"],
-      "state": ["state.page", "state.agentPage", "state.language", "state.agentEnabled"],
-      "apis": ["/api/copilotkit", "/api/chat/agui", "/api/chat/agent", "/api/chat/stream", "/api/chat/stream?operation=agent_trace", "/api/chat/stream?operation=questions", "/api/chat/stream?operation=feedback"],
-      "storage": ["oi_agent_memory_v1", "oiChatbotQuestionSessionId.v1", "offerLanguage"],
-      "exports": ["question log download", "answer feedback download", "agent trace download"],
-      "overlays": ["agent execution timeline", "#answerFeedbackDialog"],
-      "tests": ["scripts/test_dashboard_chat_pages.mjs", "scripts/test_chat_agent.mjs", "scripts/test_agent_memory_state.mjs", "scripts/test_agent_trace.mjs", "scripts/test_agent_stop_button.mjs", "scripts/test_agent_execution_timeline.mjs", "frontend/src/features/agent/agentModel.test.ts", "frontend/src/features/agent/agentSession.test.ts", "frontend/src/features/agent/AgentTimeline.test.ts", "frontend/src/features/agent/AgentPage.test.ts", "frontend/src/legacy/bridge.test.ts", "scripts/test_m6_chatbot_agent_behavior_parity.mjs", "scripts/test_m6_modern_mount.mjs", "scripts/test_modern_page_cutover.mjs"],
-      "testGap": "独立 Agent session、7 个前端工具、时间线、停止、内存态导航恢复、问题日志/反馈/Trace 和整页 Legacy fallback 由自动化覆盖；本轮真实浏览器登录、数据、视觉、SSE 网络和完整用户操作待用户验收。",
-      "notes": "默认由 Modern Agent 挂载；CopilotKit 前端工具通过注入的 Vue Agent executor 执行，Runtime 不读取 Legacy bridge。CopilotKit 不可用时仍停留在 Modern 页面并使用独立 session runtime；仅显式设置 window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false 或 Modern factory 挂载失败时整页回退 Legacy。"
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/runtime/modernApp.ts",
+        "frontend/src/features/agent/CopilotKitAgentHost.vue",
+        "frontend/src/features/agent/CopilotKitAgentRuntime.vue",
+        "frontend/src/features/agent/AgentPage.vue",
+        "frontend/src/features/agent/AgentTimeline.vue",
+        "frontend/src/features/agent/agentSession.ts",
+        "frontend/src/features/agent/agentViewState.ts",
+        "frontend/src/features/agent/agentModel.ts",
+        "copilotkit_runtime.mjs",
+        "agent_agui.py"
+      ],
+      "state": [
+        "state.page",
+        "state.agentPage",
+        "state.language",
+        "state.agentEnabled"
+      ],
+      "apis": [
+        "/api/copilotkit",
+        "/api/chat/agui",
+        "/api/chat/agent",
+        "/api/chat/stream",
+        "/api/chat/stream?operation=agent_trace",
+        "/api/chat/stream?operation=questions",
+        "/api/chat/stream?operation=feedback"
+      ],
+      "storage": [
+        "oi_agent_memory_v1",
+        "oiChatbotQuestionSessionId.v1",
+        "offerLanguage"
+      ],
+      "exports": [
+        "question log download",
+        "answer feedback download",
+        "agent trace download"
+      ],
+      "overlays": [
+        "agent execution timeline",
+        "#answerFeedbackDialog"
+      ],
+      "tests": [
+        "frontend/src/features/agent/agentModel.test.ts",
+        "frontend/src/features/agent/agentSession.test.ts",
+        "frontend/src/features/agent/AgentTimeline.test.ts",
+        "frontend/src/features/agent/AgentPage.test.ts",
+        "scripts/test_m6_chatbot_agent_behavior_parity.mjs",
+        "scripts/test_m6_modern_mount.mjs",
+        "scripts/test_modern_page_cutover.mjs"
+      ],
+      "testGap": "生产账号下的真实 CopilotKit/AG-UI SSE 与密钥注入由 M8 部署验收覆盖；本地协议、鉴权、proof、停止和结果渲染已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "dashboard",
       "label": "Chatbot Report/Chat Mode",
-      "status": "modern",
-      "roots": [".topbar.dashboard-page", ".main-grid.dashboard-page", "#chatbotModernRoot"],
-      "legacyEntry": ["switchPage()", "renderAll()", "answerPrompt()", "applyPrompt()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/chatbot/ChatbotPage.vue", "frontend/src/features/chatbot/ChatbotReportView.vue", "frontend/src/features/chatbot/ChatbotChatView.vue", "frontend/src/features/chatbot/ChatbotResultView.vue", "frontend/src/features/chatbot/DeepWindow.vue", "frontend/src/features/chatbot/chatbotSession.ts", "frontend/src/features/chatbot/deepWindowStore.ts", "frontend/src/features/chatbot/useChatbotReport.ts", "frontend/src/features/chatbot/useChatbotChat.ts", "frontend/src/shared/markdown/markdown.ts", "frontend/src/shared/stream/sse.ts"],
-      "state": ["state.currentQuery", "state.currentContext", "state.deepMode", "state.deepReport", "state.deepHistory", "state.chatHistory", "state.reportMemory", "state.chatIntentOverride"],
-      "apis": ["/api/chat/classify", "/api/chat/analyze", "/api/chat/stream", "/api/ui/db/chatbot-offers", "/api/ui/db/merchant", "/api/ui/db/search", "/api/chat/stream?operation=questions", "/api/chat/stream?operation=feedback"],
-      "storage": ["offerLanguage", "oi_onboarding_done", "oi_welcome_collapsed", "oi_reminder_collapsed", "oi_starter_collapsed", "oiChatbotQuestionSessionId.v1"],
-      "exports": ["downloadRecommendationXlsx()", "question log download", "answer feedback download"],
-      "overlays": ["Deep Window stack", "#answerFeedbackDialog", "#userFlowImageLightbox"],
-      "tests": ["scripts/test_chatbot_intent_flow.mjs", "scripts/test_zh_chatbot.mjs", "scripts/test_chatbot_mode_navigation.mjs", "scripts/test_report_mode_guide.mjs", "scripts/test_onboarding_tour.mjs", "scripts/test_chatbot_welcome.mjs", "scripts/test_chatbot_answer_feedback_frontend.mjs", "frontend/src/features/chatbot/chatbotModel.test.ts", "frontend/src/features/chatbot/chatbotReportModel.test.ts", "frontend/src/features/chatbot/chatbotSession.test.ts", "frontend/src/features/chatbot/deepWindowStore.test.ts", "frontend/src/features/chatbot/ChatbotResultView.test.ts", "frontend/src/features/chatbot/ChatbotPage.test.ts", "frontend/src/features/chatbot/ChatbotChatView.test.ts", "frontend/src/features/chatbot/DeepWindow.test.ts", "frontend/src/features/chatbot/FeedbackForm.test.ts", "frontend/src/shared/markdown/markdown.test.ts", "frontend/src/shared/stream/sse.test.ts", "frontend/src/legacy/bridge.test.ts", "scripts/test_m6_chatbot_agent_behavior_parity.mjs", "scripts/test_m6_modern_mount.mjs", "scripts/test_modern_page_cutover.mjs"],
-      "testGap": "独立 Report/Chat session、SSE/停止、Deep Window 生命周期与会话内状态恢复由自动化覆盖；关键词候选预筛已修复 test_chatbot_intent_flow.mjs 的历史性超时，当前 intent flow 已通过；本轮真实浏览器登录、数据、视觉和 SSE 网络待用户验收。",
-      "notes": "默认由 Modern Chatbot 挂载；Report/Chat 使用独立 Vue session，Deep Window 使用独立 store，页面卸载后会话和窗口状态仍由入口级 session 保留。Legacy 仅保留整页 fallback，显式设置 window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false 可回退。"
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/runtime/modernApp.ts",
+        "frontend/src/features/chatbot/ChatbotPage.vue",
+        "frontend/src/features/chatbot/ChatbotReportView.vue",
+        "frontend/src/features/chatbot/ChatbotChatView.vue",
+        "frontend/src/features/chatbot/ChatbotResultView.vue",
+        "frontend/src/features/chatbot/DeepWindow.vue",
+        "frontend/src/features/chatbot/chatbotSession.ts",
+        "frontend/src/features/chatbot/deepWindowStore.ts",
+        "frontend/src/features/chatbot/useChatbotReport.ts",
+        "frontend/src/features/chatbot/useChatbotChat.ts",
+        "frontend/src/shared/stream/sse.ts"
+      ],
+      "state": [
+        "state.currentQuery",
+        "state.currentContext",
+        "state.deepMode",
+        "state.deepReport",
+        "state.deepHistory",
+        "state.chatHistory",
+        "state.reportMemory",
+        "state.chatIntentOverride"
+      ],
+      "apis": [
+        "/api/chat/classify",
+        "/api/chat/analyze",
+        "/api/chat/stream",
+        "/api/ui/db/chatbot-offers",
+        "/api/ui/db/merchant",
+        "/api/ui/db/search",
+        "/api/chat/stream?operation=questions",
+        "/api/chat/stream?operation=feedback"
+      ],
+      "storage": [
+        "offerLanguage",
+        "oi_onboarding_done",
+        "oi_welcome_collapsed",
+        "oi_reminder_collapsed",
+        "oi_starter_collapsed",
+        "oiChatbotQuestionSessionId.v1"
+      ],
+      "exports": [
+        "downloadRecommendationXlsx()",
+        "question log download",
+        "answer feedback download"
+      ],
+      "overlays": [
+        "Deep Window stack",
+        "#answerFeedbackDialog",
+        "#userFlowImageLightbox"
+      ],
+      "tests": [
+        "frontend/src/features/chatbot/chatbotModel.test.ts",
+        "frontend/src/features/chatbot/chatbotReportModel.test.ts",
+        "frontend/src/features/chatbot/chatbotSession.test.ts",
+        "frontend/src/features/chatbot/deepWindowStore.test.ts",
+        "frontend/src/features/chatbot/ChatbotResultView.test.ts",
+        "frontend/src/features/chatbot/ChatbotPage.test.ts",
+        "frontend/src/features/chatbot/ChatbotChatView.test.ts",
+        "frontend/src/features/chatbot/DeepWindow.test.ts",
+        "frontend/src/features/chatbot/FeedbackForm.test.ts",
+        "frontend/src/shared/markdown/markdown.test.ts",
+        "frontend/src/shared/stream/sse.test.ts",
+        "scripts/test_m6_chatbot_agent_behavior_parity.mjs",
+        "scripts/test_m6_modern_mount.mjs",
+        "scripts/test_modern_page_cutover.mjs"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "payments",
       "label": "Payments",
-      "status": "modern",
-      "roots": ["#paymentsPage", "#paymentsModernRoot"],
-      "legacyEntry": ["switchPage()", "renderPaymentsPage()", "refreshLevantaPayments()", "downloadPaymentsXlsx()", "downloadModernPayments()"],
-      "state": ["state.payments", "state.paymentSort", "state.paymentSource", "state.livePaymentsLoaded", "state.livePaymentsLoading"],
-      "apis": ["/api/levanta/payments"],
-      "storage": ["offerPaymentLastAutoSync"],
-      "exports": ["downloadPaymentsXlsx()"],
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "state": [
+        "state.payments",
+        "state.paymentSort",
+        "state.paymentSource",
+        "state.livePaymentsLoaded",
+        "state.livePaymentsLoading"
+      ],
+      "apis": [
+        "/api/levanta/payments"
+      ],
+      "storage": [
+        "offerPaymentLastAutoSync"
+      ],
+      "exports": [
+        "downloadPaymentsXlsx()"
+      ],
       "overlays": [],
-      "tests": ["scripts/test_payment_placeholders.py", "scripts/test_zh_chatbot.mjs", "scripts/test_payments_frontend.mjs", "frontend/src/features/payments/paymentModel.test.ts", "frontend/src/features/payments/usePayments.test.ts", "frontend/src/features/payments/PaymentsPage.test.ts"],
-      "testGap": "",
-      "notes": "Payments 默认由 Vue modern root 渲染；保留 legacy fallback。付款记录包含 Paid、Pending、Unpaid、Overdue、Partial；零 Revenue 且零 Commission 记录必须从页面和导出排除。现代页面已对齐参考 Payments 布局：紧凑页头、4×2 摘要卡、两行筛选、固定高度可滚动表格和表头下载入口。"
+      "tests": [
+        "scripts/test_payment_placeholders.py",
+        "frontend/src/features/payments/paymentModel.test.ts",
+        "frontend/src/features/payments/usePayments.test.ts",
+        "frontend/src/features/payments/PaymentsPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。",
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/payments/PaymentsPage.vue",
+        "frontend/src/features/payments/paymentModel.ts",
+        "frontend/src/features/payments/usePayments.ts"
+      ]
     },
     {
       "pageKey": "publishers",
       "label": "Publishers",
-      "status": "modern",
-      "roots": ["#publishersPage", "#publishersModernRoot"],
-      "legacyEntry": ["switchPage()", "renderPublishersPage()", "loadPublishersData()", "downloadPublishersXlsx()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/publishers/PublishersPage.vue", "frontend/src/features/publishers/publisherModel.ts", "frontend/src/features/publishers/usePublishers.ts"],
-      "state": ["state.publisherMarket", "state.publisherNetwork", "state.publisherLinkType", "state.publisherManagerSearch", "state.publisherPortfolioSearch", "state.publisherSort", "state.publisherTablePage", "state.publisherLayoutEditing", "state.publisherLayout"],
-      "apis": ["/api/ui/db/publishers"],
-      "storage": ["publisherLayoutOrder"],
-      "exports": ["downloadPublishersXlsx()"],
-      "overlays": ["publisher layout editing mode"],
-      "tests": ["scripts/test_publisher_manager_tier_frontend.mjs", "scripts/test_publishers_portfolio.py", "scripts/test_publishers_frontend.mjs", "scripts/test_chatbot_publisher_records.mjs", "scripts/test_chatbot_publisher_profile.mjs", "frontend/src/features/publishers/publisherModel.test.ts", "frontend/src/features/publishers/usePublishers.test.ts", "frontend/src/features/publishers/PublishersPage.test.ts"],
-      "testGap": "",
-      "notes": "Publishers 默认由 Vue modern root 渲染；保留 legacy fallback。页面包含 Overview、Manager、Site、Tracking、Portfolio、筛选、排序、分页、列设置、布局编辑和当前页/全部导出；离开页面必须退出布局编辑。选中 Publisher 后，顶部 KPI 与商家组合切换到该媒体的 profile/portfolio 口径；零订单商家仍保留在组合中，AOV 在订单为 0 时显示 N/A。已在持久化 Sites 视觉 QA 站点完成 modern/legacy 同视口对比。"
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/publishers/PublishersPage.vue",
+        "frontend/src/features/publishers/publisherModel.ts",
+        "frontend/src/features/publishers/usePublishers.ts"
+      ],
+      "state": [
+        "state.publisherMarket",
+        "state.publisherNetwork",
+        "state.publisherLinkType",
+        "state.publisherManagerSearch",
+        "state.publisherPortfolioSearch",
+        "state.publisherSort",
+        "state.publisherTablePage",
+        "state.publisherLayoutEditing",
+        "state.publisherLayout"
+      ],
+      "apis": [
+        "/api/ui/db/publishers"
+      ],
+      "storage": [
+        "publisherLayoutOrder"
+      ],
+      "exports": [
+        "downloadPublishersXlsx()"
+      ],
+      "overlays": [
+        "publisher layout editing mode"
+      ],
+      "tests": [
+        "scripts/test_publishers_portfolio.py",
+        "frontend/src/features/publishers/publisherModel.test.ts",
+        "frontend/src/features/publishers/usePublishers.test.ts",
+        "frontend/src/features/publishers/PublishersPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "brand-media",
       "label": "Brand Media",
-      "status": "modern",
-      "roots": ["#brandMediaPage", "#brandMediaModernRoot"],
-      "legacyEntry": ["switchPage()", "brandMediaFactory", "renderBrandMediaPage()", "_brandMediaLoadTrend()", "_bindBrandMediaPageInteractions()"],
-      "state": ["state.brandMedia", "useBrandMedia() 的 merchant/date/manager/lockedKeys 状态"],
-      "apis": ["/api/ui/db/publishers", "/api/ui/db/brand-media-trend"],
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "state": [
+        "state.brandMedia",
+        "useBrandMedia() 的 merchant/date/manager/lockedKeys 状态"
+      ],
+      "apis": [
+        "/api/ui/db/publishers",
+        "/api/ui/db/brand-media-trend"
+      ],
       "storage": [],
       "exports": [],
-      "overlays": ["expanded brand media chart", "merchant combobox dropdown"],
-      "tests": ["scripts/test_brand_media_trend.py", "scripts/test_brand_media_trend_frontend.mjs", "scripts/test_brand_media_frontend.mjs", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/brand-media/brandMediaModel.test.ts", "frontend/src/features/brand-media/useBrandMedia.test.ts", "frontend/src/features/brand-media/BrandMediaPage.test.ts"],
-      "testGap": "",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；品牌目录来自 Publishers；趋势请求使用 AbortController 和过期响应保护；订单折线图保留缺失日期断线、真实零值和 Revenue hover，媒体锁定后提供单媒体/累计点击图。桌面端、关键交互和 390px 视觉验收已完成，2026-09-01 由用户确认 M4 验收完成；本次完成 dual → modern 安全放行，不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "overlays": [
+        "expanded brand media chart",
+        "merchant combobox dropdown"
+      ],
+      "tests": [
+        "scripts/test_brand_media_trend.py",
+        "scripts/test_modern_page_cutover.mjs",
+        "frontend/src/features/brand-media/brandMediaModel.test.ts",
+        "frontend/src/features/brand-media/useBrandMedia.test.ts",
+        "frontend/src/features/brand-media/BrandMediaPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。",
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/brand-media/BrandMediaPage.vue",
+        "frontend/src/features/brand-media/brandMediaModel.ts",
+        "frontend/src/features/brand-media/useBrandMedia.ts"
+      ]
     },
     {
       "pageKey": "revenue-flow",
       "label": "Revenue Flow",
-      "status": "modern",
-      "roots": ["#revenueFlowPage", "#revenueFlowModernRoot"],
-      "legacyEntry": ["switchPage()", "renderRevenueFlowPage()", "_revenueFlowLoad()", "_bindRevenueFlowPageInteractions()", "modernApp.mountPage(\"revenue-flow\")"],
-      "state": ["state.revenueFlow", "useRevenueFlow() 的品牌选择/日期/请求/展开状态"],
-      "apis": ["/api/ui/db/publishers", "/api/ui/db/brand-media-sankey"],
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "state": [
+        "state.revenueFlow",
+        "useRevenueFlow() 的品牌选择/日期/请求/展开状态"
+      ],
+      "apis": [
+        "/api/ui/db/publishers",
+        "/api/ui/db/brand-media-sankey"
+      ],
       "storage": [],
       "exports": [],
-      "overlays": ["expanded revenue flow chart", "merchant multi-select dropdown"],
-      "tests": ["frontend/src/features/revenue-flow/revenueFlowModel.test.ts", "frontend/src/features/revenue-flow/useRevenueFlow.test.ts", "frontend/src/features/revenue-flow/RevenueFlowPage.test.ts", "scripts/test_revenue_flow_frontend.mjs", "scripts/test_modern_page_cutover.mjs"],
-      "testGap": "",
-      "notes": "最多选择 12 个品牌，useRevenueFlow 维护模块级请求去重、进行中请求复用、AbortController、payload 缓存、日期快捷范围和展开生命周期；Revenue FlowSankey 使用 Canvas、可聚焦节点 overlay 与连线 Flow tooltip，entry 使用 /api/ui/db/publishers 和 /api/ui/db/brand-media-sankey，挂载失败保留 legacy fallback。M4 真实数据、关键交互和移动端视觉验收已由用户于 2026-09-01 确认完成；本次完成 dual → modern 安全放行，不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "overlays": [
+        "expanded revenue flow chart",
+        "merchant multi-select dropdown"
+      ],
+      "tests": [
+        "frontend/src/features/revenue-flow/revenueFlowModel.test.ts",
+        "frontend/src/features/revenue-flow/useRevenueFlow.test.ts",
+        "frontend/src/features/revenue-flow/RevenueFlowPage.test.ts",
+        "scripts/test_modern_page_cutover.mjs"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。",
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/revenue-flow/RevenueFlowPage.vue",
+        "frontend/src/features/revenue-flow/RevenueFlowSankey.vue",
+        "frontend/src/features/revenue-flow/revenueFlowModel.ts",
+        "frontend/src/features/revenue-flow/useRevenueFlow.ts"
+      ]
     },
     {
       "pageKey": "google-ads",
       "label": "Google Ads Workbench",
-      "status": "modern",
-      "roots": ["#googleAdsPage", "#googleAdsModernRoot"],
-      "legacyEntry": ["switchPage()", "renderGoogleAdsPage()", "_googleAdsLoad()", "_bindGoogleAdsPageInteractions()", "modernApp.mountPage(\"google-ads\")"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/google-ads/GoogleAdsPage.vue", "frontend/src/features/google-ads/googleAdsModel.ts", "frontend/src/features/google-ads/useGoogleAds.ts"],
-      "state": ["state.googleAds", "useGoogleAds() 的日期/请求/加载状态"],
-      "apis": ["/api/ui/db/google-ads-workbench"],
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/google-ads/GoogleAdsPage.vue",
+        "frontend/src/features/google-ads/googleAdsModel.ts",
+        "frontend/src/features/google-ads/useGoogleAds.ts"
+      ],
+      "state": [
+        "state.googleAds",
+        "useGoogleAds() 的日期/请求/加载状态"
+      ],
+      "apis": [
+        "/api/ui/db/google-ads-workbench"
+      ],
       "storage": [],
       "exports": [],
       "overlays": [],
-      "tests": ["scripts/test_google_ads_workbench.py", "scripts/test_google_ads_workbench_frontend.mjs", "scripts/test_google_ads_mobile_frontend.mjs", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/google-ads/googleAdsModel.test.ts", "frontend/src/features/google-ads/useGoogleAds.test.ts", "frontend/src/features/google-ads/GoogleAdsPage.test.ts"],
-      "testGap": "Sites version 9 fixed fixture 已完成 1363×936 legacy/Vue 桌面对比、390×844 legacy/Vue 截图、日期范围/刷新交互和标题 computed-style 对齐；M4 浏览器验收已由用户于 2026-09-01 确认完成；本次完成 dual → modern 安全放行，页面仍保留 legacy fallback。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；聚合 Google Ads 与 Backend Orders，必须保留匹配覆盖率、ROAS、未匹配花费和归因边界说明。请求沿用 /api/ui/db/google-ads-workbench，快捷范围、显式日期和 force refresh 均由 composable 维护；Google Ads feature CSS 负责 modern mount 的窄屏最小宽度、局部横向滚动和长文案换行，页面标题复用 legacy h2 视觉契约；M4 真实数据、关键交互和移动端视觉验收已由用户于 2026-09-01 确认完成；本次完成 dual → modern 安全放行，不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "tests": [
+        "scripts/test_google_ads_workbench.py",
+        "scripts/test_google_ads_mobile_frontend.mjs",
+        "scripts/test_modern_page_cutover.mjs",
+        "frontend/src/features/google-ads/googleAdsModel.test.ts",
+        "frontend/src/features/google-ads/useGoogleAds.test.ts",
+        "frontend/src/features/google-ads/GoogleAdsPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "monthly-new-merchants",
       "label": "Monthly New Merchants",
-      "status": "modern",
-      "roots": ["#monthlyNewMerchantsPage", "#monthlyNewMerchantsModernRoot"],
-      "legacyEntry": ["switchPage()", "renderMonthlyNewMerchantsPage()", "loadMonthlyNewMerchants()", "openMonthlyNewMerchantDrawer()", "openMonthlyNewMerchantImport()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.vue", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.ts"],
-      "state": ["state.monthlyNewMerchants"],
-      "apis": ["/api/ui/db/monthly-new-merchants"],
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.vue",
+        "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.ts",
+        "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.ts"
+      ],
+      "state": [
+        "state.monthlyNewMerchants"
+      ],
+      "apis": [
+        "/api/ui/db/monthly-new-merchants"
+      ],
       "storage": [],
-      "exports": ["downloadMonthlyNewMerchantTemplate()"],
-      "overlays": ["monthly merchant edit drawer", "monthly merchant import dialog", "month picker"],
-      "tests": ["scripts/test_monthly_new_merchants.py", "scripts/test_monthly_new_merchants_frontend.mjs", "scripts/test_monthly_new_merchants_modern_cutover.mjs", "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.test.ts", "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.test.ts", "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.test.ts"],
-      "testGap": "",
-      "notes": "Vue modern root 默认渲染；legacy fallback 继续保留在回滚窗口。覆盖月度查询、14 列列表、重点标记、搜索、增改删抽屉、CSV/TSV/Excel 粘贴或文件导入、逐行错误预览、模板下载、批量保存和焦点恢复。XLS/XLSX 读取器由 entry 注入，API 与数据库 payload 沿用既有契约。M4 桌面、移动端和关键交互验收已由用户于 2026-09-01 确认完成，并据此完成 modern 放行。"
+      "exports": [
+        "downloadMonthlyNewMerchantTemplate()"
+      ],
+      "overlays": [
+        "monthly merchant edit drawer",
+        "monthly merchant import dialog",
+        "month picker"
+      ],
+      "tests": [
+        "scripts/test_monthly_new_merchants.py",
+        "frontend/src/features/monthly-new-merchants/monthlyNewMerchantsModel.test.ts",
+        "frontend/src/features/monthly-new-merchants/useMonthlyNewMerchants.test.ts",
+        "frontend/src/features/monthly-new-merchants/MonthlyNewMerchantsPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "offer-list-tracker",
       "label": "Offer List Tracker",
-      "status": "modern",
-      "roots": ["#offerListTrackerPage", "#offerListTrackerModernRoot"],
-      "legacyEntry": ["switchPage()", "renderOfferListTrackerPage()", "loadOfferTrackerRange()", "downloadOfferTrackerWorkbook()"],
-      "state": ["state.offerListTracker"],
-      "apis": ["/api/ui/db/offers"],
-      "storage": ["offerListTrackerRulesV1", "offerListTrackerColumnsV1", "offerListTrackerSavedViewsV1"],
-      "exports": ["downloadOfferTrackerWorkbook()", "triggerWorkbookDownload()"],
-      "overlays": ["Offer Tracker export dialog", "column panel", "rules panel", "saved views menu"],
-      "tests": ["scripts/test_offer_list_tracker_frontend.mjs", "scripts/test_offer_tracker_date_range.py", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/offer-tracker/offerTrackerModel.test.ts", "frontend/src/features/offer-tracker/OfferTrackerPage.test.ts", "frontend/src/shared/api/client.test.ts", "frontend/src/shared/i18n/index.test.ts"],
-      "testGap": "核心路径已完成真实浏览器验收；modern-first 挂载、卸载、fallback 和 CSS boundary 已通过统一放行契约；保存视图、列面板和优先级规则已由 Vue 接管，旧导出设置对话框仍只在 legacy 回退实现，作为后续收尾范围。",
-      "notes": "M2 首个试点已完成 dual → modern 安全放行：核心筛选、排序、选择、分页、保存视图、列设置、优先级规则和导出入口由 Vue 接管；M3 已接入共享 API client、错误类型和 i18n；旧导出设置对话框仍保留在 legacy 回退实现。选择变化必须使用局部同步，不能对全部缓存 Offer 重新筛选、排序和重建 DOM。"
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "state": [
+        "state.offerListTracker"
+      ],
+      "apis": [
+        "/api/ui/db/offers"
+      ],
+      "storage": [
+        "offerListTrackerRulesV1",
+        "offerListTrackerColumnsV1",
+        "offerListTrackerSavedViewsV1"
+      ],
+      "exports": [
+        "downloadOfferTrackerWorkbook()",
+        "triggerWorkbookDownload()"
+      ],
+      "overlays": [
+        "Offer Tracker export dialog",
+        "column panel",
+        "rules panel",
+        "saved views menu"
+      ],
+      "tests": [
+        "scripts/test_offer_tracker_date_range.py",
+        "scripts/test_modern_page_cutover.mjs",
+        "frontend/src/features/offer-tracker/offerTrackerModel.test.ts",
+        "frontend/src/features/offer-tracker/OfferTrackerPage.test.ts",
+        "frontend/src/shared/api/client.test.ts",
+        "frontend/src/shared/i18n/index.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。",
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/offer-tracker/OfferTrackerPage.vue",
+        "frontend/src/features/offer-tracker/offerTrackerModel.ts",
+        "frontend/src/features/offer-tracker/useOfferTracker.ts"
+      ]
     },
     {
       "pageKey": "sheets",
       "label": "Targets",
-      "status": "modern",
-      "roots": ["#sheetPage", "#sheetModernRoot"],
-      "legacyEntry": ["switchPage()", "renderSheetPage()", "refreshTargetMetricViews()", "downloadSheetTargetsXlsx()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/targets/TargetsPage.vue", "frontend/src/features/targets/targetModel.ts", "frontend/src/features/targets/useTargets.ts"],
-      "state": ["state.targetFilters", "state.targetMetric", "state.targetTrendView", "state.targetOverrides", "state.targetSort", "state.dbStatus", "state.dbTierSummary"],
-      "apis": ["/api/ui/db/status", "/api/ui/db/tier-summary"],
-      "storage": ["offerTargetTextOverrides.v1"],
-      "exports": ["downloadSheetTargetsXlsx()", "downloadTargets()", "downloadWorkbook()"],
-      "overlays": ["inline target edit form"],
-      "tests": ["scripts/test_target_month_selection.mjs", "scripts/test_db_status_view_model.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_targets_frontend.mjs", "scripts/test_m5_mobile_frontend.mjs", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/targets/targetModel.test.ts", "frontend/src/features/targets/useTargets.test.ts", "frontend/src/features/targets/TargetsPage.test.ts"],
-      "testGap": "M5 Targets 验收已由用户于 2026-09-01 确认完成；Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 Vue focused 截图，并在公开 Browser 中验证 month/compare-month/Tier hooks、metric 和 daily trend 切换；本次完成 dual → modern 安全放行，页面仍保留 legacy fallback。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖月份/对比月份/Tier 筛选、5 个 KPI、月度/日度趋势、Tier 目标进度与 localStorage 编辑、Tier 对比矩阵和当前筛选结果导出。Sheet 快照与 2026-06 已核验目标模板作为回退，/api/ui/db/status 与 /api/ui/db/tier-summary 成功时覆盖数据库实际数据；目标 XLSX 保持 Month/Tier/Brand Count/Total Clicks/Order Count/Revenue/Avg Conversion/New Tier Entries/Tier Exits/Target 字段顺序。TargetsPage、CategoryReportPage、TierSheetPage 的关键控件提供稳定 data-* hooks，便于公开固定 fixture smoke 验收；Sites version 7 的 390×844 focused 验收由 `scripts/test_m5_mobile_frontend.mjs` 与 Firecrawl screenshot 记录；本次不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/targets/TargetsPage.vue",
+        "frontend/src/features/targets/targetModel.ts",
+        "frontend/src/features/targets/useTargets.ts"
+      ],
+      "state": [
+        "state.targetFilters",
+        "state.targetMetric",
+        "state.targetTrendView",
+        "state.targetOverrides",
+        "state.targetSort",
+        "state.dbStatus",
+        "state.dbTierSummary"
+      ],
+      "apis": [
+        "/api/ui/db/status",
+        "/api/ui/db/tier-summary"
+      ],
+      "storage": [
+        "offerTargetTextOverrides.v1"
+      ],
+      "exports": [
+        "downloadSheetTargetsXlsx()",
+        "downloadTargets()",
+        "downloadWorkbook()"
+      ],
+      "overlays": [
+        "inline target edit form"
+      ],
+      "tests": [
+        "scripts/test_m5_mobile_frontend.mjs",
+        "scripts/test_modern_page_cutover.mjs",
+        "frontend/src/features/targets/targetModel.test.ts",
+        "frontend/src/features/targets/useTargets.test.ts",
+        "frontend/src/features/targets/TargetsPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "category",
       "label": "Category Report",
-      "status": "modern",
-      "roots": ["#categoryPage", "#categoryModernRoot"],
-      "legacyEntry": ["switchPage()", "ensureDashboardCategoryReportData()", "renderDashboardCategoryReport()", "downloadFocusedCategoryRows()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/category-report/CategoryReportPage.vue", "frontend/src/features/category-report/categoryReportModel.ts", "frontend/src/features/category-report/useCategoryReport.ts", "frontend/src/shared/export/xlsx.ts"],
-      "state": ["state.categoryReportTiers", "state.categoryReportSearch", "state.categoryReportSelection", "state.categoryReportSort", "state.categoryReportDirection", "state.categoryReportFocusKey", "state.expandedCategoryKey", "state.tierReport"],
-      "apis": ["/api/ui/db/tier_sheet"],
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/category-report/CategoryReportPage.vue",
+        "frontend/src/features/category-report/categoryReportModel.ts",
+        "frontend/src/features/category-report/useCategoryReport.ts",
+        "frontend/src/shared/export/xlsx.ts"
+      ],
+      "state": [
+        "state.categoryReportTiers",
+        "state.categoryReportSearch",
+        "state.categoryReportSelection",
+        "state.categoryReportSort",
+        "state.categoryReportDirection",
+        "state.categoryReportFocusKey",
+        "state.expandedCategoryKey",
+        "state.tierReport"
+      ],
+      "apis": [
+        "/api/ui/db/tier_sheet"
+      ],
       "storage": [],
-      "exports": ["downloadFocusedCategoryRows()", "downloadCategory()", "downloadWorkbook()"],
-      "overlays": ["category pie spotlight", "category focused detail"],
-      "tests": ["scripts/test_sheet_categories.mjs", "scripts/test_category_drilldown.mjs", "scripts/test_category_trend.mjs", "scripts/test_tier_report_frontend.mjs", "scripts/test_category_frontend.mjs", "scripts/test_modern_page_cutover.mjs", "frontend/src/features/category-report/categoryReportModel.test.ts", "frontend/src/features/category-report/useCategoryReport.test.ts", "frontend/src/features/category-report/CategoryReportPage.test.ts"],
-      "testGap": "M5 Category 验收已由用户于 2026-09-01 确认完成；Sites version 8 fixed fixture 已完成 1363×936 legacy/Vue 对比和 390×844 Vue focused 页面加载，并在公开 Browser 验证 Orders lens、pie focus/reset 与分类行展开；本次完成 dual → modern 安全放行，页面仍保留 legacy fallback。",
-      "notes": "Vue modern root 默认渲染并保留 legacy fallback；覆盖 DB sheetCategory → mainCategory → Feishu → 其他来源 → levantaCategory → Uncategorized 优先级、Tier 选择、分类/商家精确搜索、排序、饼图 Top 7 与 Other 下钻、趋势聚合、展开商家明细和 focused export。compact tier_sheet 响应按 Merchant ID 与 Sheet 快照合并，日期切换使用 AbortController/请求序号丢弃过期响应；页面复用旧版 dashboard-category class 和响应式规则，导出由 shared/export/xlsx.ts 生成；本次不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "exports": [
+        "downloadFocusedCategoryRows()",
+        "downloadCategory()",
+        "downloadWorkbook()"
+      ],
+      "overlays": [
+        "category pie spotlight",
+        "category focused detail"
+      ],
+      "tests": [
+        "scripts/test_sheet_categories.mjs",
+        "scripts/test_modern_page_cutover.mjs",
+        "frontend/src/features/category-report/categoryReportModel.test.ts",
+        "frontend/src/features/category-report/useCategoryReport.test.ts",
+        "frontend/src/features/category-report/CategoryReportPage.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     },
     {
       "pageKey": "tier",
       "label": "Tier Sheet",
-      "status": "modern",
-      "roots": ["#tierPage", "#tierModernRoot"],
-      "legacyEntry": ["switchPage()", "renderTierPage()", "renderTierSheetTable()", "openTierSheetOverlay()", "openTierMoveDialog()"],
-      "modernEntry": ["frontend/src/entry.ts", "frontend/src/features/tier-sheet/TierSheetPage.vue", "frontend/src/features/tier-sheet/tierSheetModel.ts", "frontend/src/features/tier-sheet/useTierSheet.ts", "frontend/src/shared/export/xlsx.ts"],
-      "state": ["state.selectedTierPage", "state.expandedTierSheet", "state.selectedTierRowKeys", "state.visibleTierRowKeys", "state.tierTablePages", "state.manualTierMoves", "state.tier1Management", "state.tierSheetFilters", "state.tierReport", "state.tierVisibleColumns", "state.trendVisibleColumns"],
-      "apis": ["/api/ui/db/tier_sheet", "/api/ui/db/tier-summary", "/api/ui/db/tier1-merchants", "/api/tier_moves"],
-      "storage": ["offerTierOverrides", "offerTierVisibleColumns.v4", "offerTrendVisibleColumns.v1", "offerTierSheetManualMoves.v1", "offerTierMoveAdminToken"],
-      "exports": ["downloadTierSheetXlsx()", "downloadTier()", "downloadWorkbook()"],
-      "overlays": ["Tier Sheet overlay", "Tier Move dialog", "Tier 1 additions overlay", "Tier 1 merchant dialog", "Tier column panel"],
-      "tests": ["scripts/test_tier_report_frontend.mjs","scripts/test_tier_visual_status.mjs","scripts/test_tier_visual_status_rules.py","scripts/test_tier1_merchant_frontend.mjs","scripts/test_tier2_recommendation_rules.mjs","scripts/test_manual_tier_automation.py","scripts/test_tier_moves_api.py","scripts/test_tier_frontend.mjs","scripts/test_m5_mobile_frontend.mjs","scripts/test_shared_xlsx_frontend.mjs","scripts/test_modern_page_cutover.mjs","frontend/src/features/tier-sheet/tierSheetModel.test.ts","frontend/src/features/tier-sheet/useTierSheet.test.ts","frontend/src/features/tier-sheet/TierSheetPage.test.ts","frontend/src/shared/export/xlsx.test.ts"],
-      "testGap": "M5 Tier 验收已由用户于 2026-09-01 确认完成；Sites version 14 fixed fixture 已完成 1363×936 legacy/Vue 对比、390×844 legacy/Vue focused 截图；两侧 Added merchants 均为 1，Brand Count/Clicks/Orders/Revenue/Avg Conversion 使用同一可见 Tier 行口径；公开 Browser 已验证 Tier 2、行选择、Move dialog、目标 Tier 激活和安全关闭，页面级无横向溢出且宽表由局部滚动容器承载。新增 Tier Move API 边界测试覆盖非对象 JSON、256 KiB 请求体上限、1000 条记录上限和 webhook JSON 形状归一化；Vue 共享保存 busy/disabled/aria-busy 和 560px 移动弹窗契约已覆盖；Tier 1 additions 在挂载时预加载并缓存空响应，新增 composable/page 回归；本次完成 dual → modern 安全放行，页面仍保留 legacy fallback。",
-      "notes": "Tier 1–4 与 BLACK TIER、颜色状态、手动移动、列配置、分页、Overlay 和 XLSX 是同一迁移域。Vue modern root 默认渲染并保留 legacy fallback；共享 Move GET/POST、401 token 重试、Tier 1 additions/search/add、localStorage moves/columns 和三张 workbook sheets（Tier、Category Summary、Offer List）均已接入。认证启动链、legacy 与 Vue loader 统一沿用缓存报告的 startDate/endDate，避免实时刷新覆盖缓存指标；旧版/Vue 代码级对照已修正 Tier/Category root 内边距及 Tier 弹层 z-index；Tier/Category/Targets 关键控件提供稳定 data-* hooks；version 14 补充 `api/tier_moves.py` 的请求/响应边界保护、`useTierSheet` 的 `moveSyncing` 状态、Tier 1 additions 挂载预加载与 modern 移动弹窗约束，并由 Firecrawl screenshot 与公开 Browser 交互记录验证；本次完成 dual → modern 安全放行，不修改 API、数据口径、认证链或 legacy 侧边栏视觉。"
+      "status": "removed",
+      "roots": [
+        "#modernAppRoot",
+        "[data-modern-page-host]"
+      ],
+      "legacyEntry": [],
+      "modernEntry": [
+        "frontend/src/entry.ts",
+        "frontend/src/features/tier-sheet/TierSheetPage.vue",
+        "frontend/src/features/tier-sheet/tierSheetModel.ts",
+        "frontend/src/features/tier-sheet/useTierSheet.ts",
+        "frontend/src/shared/export/xlsx.ts"
+      ],
+      "state": [
+        "state.selectedTierPage",
+        "state.expandedTierSheet",
+        "state.selectedTierRowKeys",
+        "state.visibleTierRowKeys",
+        "state.tierTablePages",
+        "state.manualTierMoves",
+        "state.tier1Management",
+        "state.tierSheetFilters",
+        "state.tierReport",
+        "state.tierVisibleColumns",
+        "state.trendVisibleColumns"
+      ],
+      "apis": [
+        "/api/ui/db/tier_sheet",
+        "/api/ui/db/tier-summary",
+        "/api/ui/db/tier1-merchants",
+        "/api/tier_moves"
+      ],
+      "storage": [
+        "offerTierOverrides",
+        "offerTierVisibleColumns.v4",
+        "offerTrendVisibleColumns.v1",
+        "offerTierSheetManualMoves.v1",
+        "offerTierMoveAdminToken"
+      ],
+      "exports": [
+        "downloadTierSheetXlsx()",
+        "downloadTier()",
+        "downloadWorkbook()"
+      ],
+      "overlays": [
+        "Tier Sheet overlay",
+        "Tier Move dialog",
+        "Tier 1 additions overlay",
+        "Tier 1 merchant dialog",
+        "Tier column panel"
+      ],
+      "tests": [
+        "scripts/test_tier_visual_status_rules.py",
+        "scripts/test_tier1_merchant_frontend.mjs",
+        "scripts/test_manual_tier_automation.py",
+        "scripts/test_tier_moves_api.py",
+        "scripts/test_m5_mobile_frontend.mjs",
+        "scripts/test_shared_xlsx_frontend.mjs",
+        "scripts/test_modern_page_cutover.mjs",
+        "frontend/src/features/tier-sheet/tierSheetModel.test.ts",
+        "frontend/src/features/tier-sheet/useTierSheet.test.ts",
+        "frontend/src/features/tier-sheet/TierSheetPage.test.ts",
+        "frontend/src/shared/export/xlsx.test.ts"
+      ],
+      "testGap": "生产认证、真实数据和部署环境的浏览器冒烟由 M8 负责；页面模型、交互与构建契约已自动化覆盖。",
+      "notes": "页面仅由 standalone Vue Runtime 挂载；旧 DOM、旧渲染器、旧 bridge 与旧静态资源已删除。回滚使用上一份可部署构建，不再使用运行时 legacy 开关。"
     }
   ]
 }
@@ -217,23 +628,20 @@
 
 | 依赖 | 当前入口 | 迁移要求 |
 | --- | --- | --- |
-| 认证与数据预载 | `public/auth.js`、`public/auth.css` | M1 保持会话、登录和 `/api/ui/db/offers` 语义；正常入口加载 standalone modern 与认证关键样式，modern 失败显示 `#modernAppError`；完整 legacy CSS/辅助脚本仅由 `?legacy=1` 回滚加载 |
-| 全局导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/legacy/bridge.ts`（M7 过渡） | standalone modern 由 `ModernAppApi.setPage()` 统一切换；`public/app.js:switchPage()` 只属于显式 legacy 回滚，禁止正常入口双重绑定 |
-| 语言 | `state.language`、`offerLanguage`、`chatbot_i18n.js`、`frontend/src/shared/i18n/` | legacy 仍由 `state.language` 管理，通过 `OI_MODERN_APP.setLanguage()` 同步 modern；迁移文案必须中文/英文成对维护 |
+| 认证与数据预载 | `public/auth.js`、`public/auth.css` | 保持会话、登录和 `/api/ui/db/offers` 语义；认证成功后只加载 standalone modern bundle，启动失败显示 `#modernAppError` |
+| 全局导航 | `frontend/src/runtime/modernApp.ts`、`frontend/src/shell/AppShell.vue` | `ModernAppApi.setPage()` 是唯一页面切换入口，页面只挂载到 `[data-modern-page-host]` |
+| 语言 | `offerLanguage`、`frontend/src/shared/i18n/` | `ModernAppApi.setLanguage()` 统一同步 Shell 和页面；迁移文案必须中文/英文成对维护 |
 | 共享 API、错误与契约 | `frontend/src/shared/api/`、`frontend/src/shared/contracts/` | M3 的 modern 页面使用统一 JSON/错误/超时边界；契约只保留跨页面稳定字段，不复制完整数据库响应 |
-| 导出 | `frontend/src/shared/export/xlsx.ts`、`downloadWorkbook()`；legacy `downloadRowsAsXlsx()` | M2–M5 逐步复用；Targets/Category/Tier 已以同一 fixture 比较列格式、worksheet XML、styles XML 和 workbook package parts，legacy bridge 继续保留回滚窗口 |
-| Deep Window | `_deepPanels` 与相关渲染函数 | 页面切换、最小化、恢复和请求中止在 Chatbot 阶段统一迁移 |
-| 数据启动对象 | `window.CHATBOT_DATA`、`window.SHEET_REPORT_DATA`、`window.PRODUCT_KEYWORDS` | 只在 `LegacyBootstrapData` 边界读取，Vue feature 不得直接读取任意全局对象 |
-| 主题与移动导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/shell/theme.ts`、`frontend/src/shell/shell.css` | AppShell 与 standalone Shell 负责主题、页面标题、桌面/移动导航和焦点；legacy 样式仅由显式回滚路径加载 |
+| 导出 | `frontend/src/shared/export/xlsx.ts` | 页面通过 shared exporter 生成 XLSX；字段、格式、worksheet XML、styles XML 和 package parts 由 fixture 测试保护 |
+| Deep Window | `frontend/src/features/chatbot/deepWindowStore.ts`、`DeepWindow.vue` | Vue store/component 负责最小化、恢复、拖动、关闭、请求中止和加入对话 |
+| 数据启动对象 | `AppBootstrapData` | 只在 `frontend/src/runtime/contracts.ts` 的受控边界读取；feature 不直接读取任意全局对象 |
+| 主题与移动导航 | `frontend/src/shell/AppShell.vue`、`frontend/src/shell/theme.ts`、`frontend/src/shell/shell.css` | AppShell 负责主题、页面标题、桌面/移动导航、焦点和 reduced-motion |
 
 ## 当前测试缺口优先级
 
-1. P1：Offer Tracker 旧导出设置对话框仍由 legacy 提供，需在回滚窗口内继续迁移或明确保留边界；保存视图、列面板和规则面板已由 Vue 接管。
-2. P1：Brand Media、Revenue Flow、Google Ads、Targets、Category、Tier 已完成当前 M4/M5 验收与 `dual → modern` 安全放行，继续保留 legacy rollback window 并按删除安全规则收尾。
-3. P1：M2 Offer Tracker 仍需旧/新页面逐字段差异报告，并决定旧导出设置对话框的迁移或保留边界。
-4. P2：M6 Chatbot/Agent 已完成 Modern-first 运行时与页面切换；独立 Vue session、CopilotKit/AG-UI Agent、Deep Window 控件和显式 Legacy fallback 已纳入自动化回归。关键词候选预筛已修复 `test_chatbot_intent_flow.mjs` 的历史性超时并通过；真实生产登录/SSE 与 legacy 删除继续分别作为验收和 M7 清理边界。
-5. P2：M7/01–02 已将正常认证入口切到 standalone modern，并提供 `?legacy=1` 显式回滚、独立 `auth.css` 与 `#modernAppError` 启动错误态；legacy DOM、旧 CSS、bridge 和 Offer Tracker 旧导出设置对话框仍需迁移或明确保留后才能删除。
-6. P2：modern 页面仍保留 legacy rollback window；后续阶段再按删除安全规则清理旧渲染与事件代码。
+1. P1：M8 在真实部署环境验证认证、12 个页面路由、API 非 2xx、CopilotKit/AG-UI SSE、停止和重试。
+2. P1：执行构建级回滚演练；回滚到上一份可部署构建，不恢复已经删除的运行时开关或旧源码。
+3. P2：记录 modern bundle 与按需 Agent bundle 的体积、启动错误率和关键交互耗时。
 
 ## 状态更新记录
 
@@ -262,6 +670,7 @@
 | 2026-09-03 | Chatbot/Agent Legacy-first 浏览器验收 | `Chatbot/Agent dual` | `Chatbot/Agent dual` | 用户已完成 Chatbot Report/Chat、Deep Window 与 Agent 的 Legacy-first 浏览器视觉、交互、真实数据和 SSE 验收；PR #186 补齐 Chat/Report 输入区白色文字、发送按钮视觉和 Chat Mode 独立“转为 View”控件收敛。Modern 继续仅作显式对照，legacy 删除不启动。 |
 | 2026-09-04 | M6 Modern-first Runtime 与回退完整性 | `Chatbot/Agent dual` | `Chatbot/Agent modern` | Modern Chatbot/Agent 默认由独立 session 渲染；Agent 默认使用按需 CopilotKit bundle、同源 `/api/copilotkit` 与 Python `/api/chat/agui`。显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 可回退 Legacy；补齐本地 AG-UI 路由、Legacy Agent session 适配、Chat answer ID/反馈/Open as View、Deep Window 趋势控件和关键词候选预筛回归。 |
 | 2026-09-04 | M7/01–02 standalone modern 入口与认证资源收敛 | `M7 未开始` | `M7 进行中` | `public/auth.js` 默认加载并挂载 standalone modern app；旧 `public/app.js` 仅由 `?legacy=1` 显式加载；modern 启动失败显示 `#modernAppError`；新增 `public/auth.css`，legacy CSS 与五个辅助脚本仅由回滚加载器动态载入；`ModernAppApi.mountApplication()`、modern Shell CSS、本地 Agent 趋势 SVG、M7/M4 入口契约和全量前端/Node/Python 回归通过。legacy 页面 DOM、bridge、旧导出设置对话框和旧行为测试仍有真实引用，未满足删除门槛。 |
+| 2026-09-04 | M7 legacy 运行时移除 | `M7 进行中` | `M7 完成` | 12 个页面的清单状态更新为 `removed`；启动数据与应用 API 类型迁入 `frontend/src/runtime/`；删除旧页面 DOM、`public/app.js`、`public/styles.css`、五个辅助脚本、`frontend/src/legacy/` 和只断言旧源码字符串的测试。认证入口只加载 standalone modern bundle；CI、清单、构建、M4/M6/M7 契约与 Vue 行为测试改为验证当前实现。运行时回滚开关确认移除，后续仅使用上一份可部署构建回滚。 |
 | 2026-09-01 | M5 Tier Move 生产边界与移动交互 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy` 和 modern 560px Move dialog 边界，前端全量 33 个 Vitest 文件/160 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 10（QA commit `97f93d99ab833fdaf64932c9bd8a216007245393`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；按当时 M5 验收结论保持 `dual`，随后按回滚安全规则完成逐页 `dual → modern` 放行 |
 | 2026-09-01 | M5 Tier Move 生产边界、移动交互与 Tier 1 预加载一致性 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy`、modern 560px Move dialog 边界和 Tier 1 additions 挂载预加载/空响应缓存，前端全量 33 个 Vitest 文件/162 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 14（QA commit `fcb53dcff5873db4341ce6ae86375f854f07e092`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；两侧 Added merchants 均为 1，按既有 M5 验收结论保持 `dual`，后续按回滚安全规则逐页放行 |
 | 2026-09-01 | M4 Brand Media/Revenue Flow/Google Ads modern 放行 | `M4 dual` | `M4 modern` | M4 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过统一放行契约；不修改 API、数据口径、认证或侧边栏视觉 |

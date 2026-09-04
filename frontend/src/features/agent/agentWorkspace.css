@@ -134,8 +134,8 @@ body.dashboard-mode .dashboard-agent-page.is-modern .agent-workspace { height: 1
 .agent-workspace .aw-replay-comparison h4 { margin: 0 0 10px; font-size: 12px; }
 .agent-workspace .aw-replay-comparison pre { max-height: 320px; overflow: auto; white-space: pre-wrap; font: 12px/1.7 inherit; }
 .agent-workspace .agent-modern-logs-menu .aw-case-menu-button { grid-column: 1 / -1; }
-.agent-workspace .chatbot-result-legacy-html .table-wrap { overflow: auto; max-width: 100%; }
-.agent-workspace .chatbot-result-legacy-html table { font-size: 11px; }
+.agent-workspace .chatbot-result-rich-html .table-wrap { overflow: auto; max-width: 100%; }
+.agent-workspace .chatbot-result-rich-html table { font-size: 11px; }
 .agent-workspace .aw-composer:focus-within { border-color: #779de7; box-shadow: 0 0 0 3px rgb(41 93 204 / 6%); }
 .agent-workspace .aw-composer textarea { display: block; width: 100%; min-height: 56px; max-height: 168px; padding: 0; border: 0; border-radius: 0; outline: none; resize: none; background: transparent; color: var(--aw-ink); font-size: 13px; line-height: 1.7; box-shadow: none; }
 .agent-workspace .aw-composer textarea::placeholder { color: #8995a8; }

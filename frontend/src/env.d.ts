@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { Component } from "vue";
-import type { LegacyBridgeApi, ModernAppApi, ModernPageName, UiLanguage } from "./legacy/contracts";
+import type { ModernAppApi, ModernPageName, UiLanguage } from "./runtime/contracts";
 
 export interface CopilotKitRuntimeConfig {
   /** Server-issued production default; false disables the CopilotKit transport. */
@@ -10,8 +10,8 @@ export interface CopilotKitRuntimeConfig {
   readonly endpoint?: string;
   /** Required capability marker for the safe opt-in path. */
   readonly authority?: "python-registry";
-  /** Explicit rollback is opt-in; modern is the normal path. */
-  readonly fallback?: "legacy" | "modern";
+  /** Modern local Agent remains available if the CopilotKit bundle cannot load. */
+  readonly fallback?: "modern";
 }
 
 export interface ModernRuntimeHost {
@@ -35,7 +35,6 @@ export interface ModernRuntimeHost {
 
 declare global {
   interface Window {
-    OI_LEGACY_BRIDGE?: LegacyBridgeApi;
     OI_MODERN_RUNTIME?: ModernRuntimeHost;
     OI_COPILOTKIT_RUNTIME?: CopilotKitRuntimeConfig;
     OI_COPILOTKIT_AGENT_COMPONENT?: Component;

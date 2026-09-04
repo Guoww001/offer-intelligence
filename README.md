@@ -6,14 +6,14 @@ Internal YeahPromos Amazon offer intelligence dashboard for offer ranking, categ
 
 ## What Is Included
 
-- Static dashboard UI in `public/`.
+- Standalone Vue 3 dashboard in `frontend/`, built to `public/assets/modern/`; `public/` contains only the authentication/bootstrap shell.
 - Cached browser payloads in `protected_data/` (committed DB API cache files):
   - `protected_data/db_offers_cache.json`
   - `protected_data/db_keywords_cache.json`
   - `protected_data/db_publishers_cache.json`
 - Google Sheet and Feishu category intelligence for main-category and subcategory search.
 - Recommendation chatbot with English and Chinese prompt support.
-- Tier 2 publisher recommendation rules in `public/tier2_recommendation_rules.js`.
+- Tier and publisher recommendation behavior in the typed Vue feature models and Python Agent tool registry.
 - Tier sheet category-wise reporting and multi-sheet XLSX exports.
 - Levanta payment API helpers in `server.py` and `api/levanta/payments.py`.
 - Read-only Offer DB API helpers in `offer_db.py` and `api/db/`.
@@ -87,7 +87,7 @@ Each tier page (`Tier 1`, `Tier 2`, `Tier 3`, `Tier 4`, and `BLACK TIER`) render
 - Tier XLSX downloads include the selected tier sheet plus a `Category Summary` sheet.
 - Tier XLSX downloads also include an `Offer List` sheet with `Merchant ID`, `Merchant Name`, `Category`, and `Avg Commission Rate`.
 - `Avg Commission Rate` is rounded up to a whole percentage for export.
-- Tier row colors prefer `visualStatusColor` fields when present, then fall back to legacy tier rules.
+- Tier row colors prefer `visualStatusColor` fields when present, then use the typed Vue tier rules.
 
 ### Dashboard Category Report
 
@@ -138,7 +138,7 @@ Tier 2 recommendations read publisher counts such as `14/20` as `14 of 20 publis
 
 Payment records come from Levanta invoice data and should be attributed to Levanta merchant IDs when the same brand also has a direct offer in the system.
 
-- Live sync in `server.py`, static data generation in `scripts/build_offer_chatbot_data.rb`, and browser normalization in `public/app.js` prefer exact Levanta-network offer matches for Levanta payment rows.
+- Live sync in `server.py`, static data generation in `scripts/build_offer_chatbot_data.rb`, and the Vue payment model prefer exact Levanta-network offer matches for Levanta payment rows.
 - If Levanta provides a brand UUID, the dashboard keeps it as `levantaBrandId` while displaying the matched internal Levanta merchant ID.
 - Direct offers with the same brand name do not inherit Levanta payment status or sales.
 - RENPHO Group payment rows map to Levanta MID `362938`; RENPHO Wellness payment rows map to Levanta MID `363199`.
@@ -282,9 +282,12 @@ Run the same checks used by CI:
 
 ```bash
 node --check public/auth.js
-node --check public/app.js
-node --check public/chatbot_i18n.js
-node --check public/tier2_recommendation_rules.js
+npm ci
+npm run test:copilotkit
+npm --prefix frontend ci
+npm --prefix frontend run typecheck
+npm --prefix frontend run test -- --run
+npm --prefix frontend run build
 python scripts/test_auth_helpers.py
 python scripts/test_vercel_function_budget.py
 python scripts/test_vercel_db_wsgi.py
@@ -294,11 +297,14 @@ python scripts/test_vercel_payment_packaging.py
 python scripts/test_llm_stream_timeout.py
 # after `vercel build --prod`
 python scripts/test_vercel_build_output.py
-node scripts/test_chatbot_intent_flow.mjs
-node scripts/test_tier2_recommendation_rules.mjs
+node scripts/test_frontend_migration_inventory.mjs
+node scripts/test_frontend_build_contract.mjs
+node scripts/test_m4_shell_frontend.mjs
+node scripts/test_modern_page_cutover.mjs
+node scripts/test_m6_chatbot_agent_behavior_parity.mjs
+node scripts/test_m6_modern_mount.mjs
+node scripts/test_m7_modern_entry.mjs
 node scripts/test_sheet_categories.mjs
-node scripts/test_tier_visual_status.mjs
-node scripts/test_zh_chatbot.mjs
 python -m scripts.test_payment_placeholders
 python -m py_compile auth.py server.py offer_db.py levanta_payments.py api/auth/index.py api/chat/actions.py api/chat/stream.py api/db/index.py api/levanta/payments.py api/tier_moves.py scripts/validate_db_migration.py
 ```

@@ -1,6 +1,4 @@
-/* Critical styles shared by the authentication gate and the modern entry.
- * The full legacy stylesheet is loaded only by the explicit ?legacy=1
- * rollback path in auth.js. */
+/* Critical styles shared by the authentication gate and the modern entry. */
 @font-face {
   font-family: "Plus Jakarta Sans";
   src: url("./fonts/plus-jakarta-sans-latin-400-normal.woff2") format("woff2");
@@ -296,7 +294,12 @@ body.auth-ready .auth-panel {
   to { transform: translateX(-50%) translate3d(18px, 0, 0) rotate(var(--auth-beam-rotate)); }
 }
 
-/* Loading progress remains visible before either runtime is selected. */
+/* Loading progress remains visible while the modern runtime starts. */
+.app-shell {
+  position: relative;
+  min-height: 100dvh;
+}
+
 .app-loading-skeleton {
   position: absolute;
   inset: 0;

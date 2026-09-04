@@ -1,6 +1,6 @@
 import { ref, type Ref } from "vue";
 
-import type { ModernPageName } from "../legacy/contracts";
+import type { ModernPageName } from "../runtime/contracts";
 import { navigationGroupForPage, type NavigationLocation } from "./navigation";
 
 export interface PageState {

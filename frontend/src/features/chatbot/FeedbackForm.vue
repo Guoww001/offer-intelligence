@@ -2,13 +2,13 @@
 import { computed, ref, watch } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type { LegacyFeedbackBridge } from "../../legacy/contracts";
+import type { ChatbotFeedback } from "./chatbotViewTypes";
 
 type FeedbackReason = "inaccurate" | "not_answered" | "incomplete_data" | "unclear" | "other";
 
 const props = withDefaults(defineProps<{
   readonly language: UiLanguage;
-  readonly feedback?: LegacyFeedbackBridge;
+  readonly feedback?: ChatbotFeedback;
   readonly refreshKey?: number;
 }>(), {
   feedback: undefined,

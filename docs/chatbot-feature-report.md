@@ -2,6 +2,8 @@
 
 > 更新日期：2026-09-04 · 分支：`FRONTEND-VUE-MIGRATION`
 
+> **M7 当前实现说明：** 本文中带有 Legacy、`public/app.js`、旧辅助脚本或 `frontend/src/legacy/` 的章节是迁移历史与行为来源记录，不再代表当前文件路径。生产前端现由 `frontend/src/runtime/modernApp.ts`、`frontend/src/entry.ts`、`frontend/src/features/chatbot/` 与 `frontend/src/features/agent/` 承载；认证入口仅为 `public/auth.js`。旧运行时、旧页面 DOM 和运行时回退开关已删除，回滚使用上一份可部署构建。
+
 ## 1. 概述
 
 > Agent 请求上限与工具批处理修复（2026-08-24）：规划请求继续使用 64KB；本地和 Vercel 综合流入口实际读取上限统一为 128KB。工具规划结果按每批最多 4 个执行，总预算 6 个；超过总预算时返回 partial、omittedTargets 等元数据，并在综合回答和执行时间线中明确提示结果不完整。
@@ -28,9 +30,9 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 >
 > Chat Mode 面对商户、品类、Tier、趋势和媒体等不同分析类型的内容与边界，见 [Chat Mode 不同分析类型说明](chat-mode-analysis-types.md)。
 
-> M6 Modern-first Runtime（2026-09-04）：Chatbot Report/Chat、Deep Window 与独立 Agent 默认由 Vue session/页面渲染；Agent 进入页面后按需加载 `@copilotkit/vue`，通过真实 `/api/copilotkit` Runtime 和同源 `/api/chat/agui` 使用 Python registry。Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，内部 token 只用于 Python AG-UI 调用；Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。关键词检索增加语义保持的候选预筛，`scripts/test_chatbot_intent_flow.mjs` 已稳定通过。`window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 可恢复 Legacy 页面/Agent session，旧实现保留回滚窗口。
+> M6/M7 当前 Runtime（2026-09-04）：Chatbot Report/Chat、Deep Window 与独立 Agent 由 Vue session/页面渲染；Agent 进入页面后按需加载 `@copilotkit/vue`，通过真实 `/api/copilotkit` Runtime 和同源 `/api/chat/agui` 使用 Python registry。Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，内部 token 只用于 Python AG-UI 调用；Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。M7 已删除旧运行时及 parity/legacy runtime 开关；CopilotKit 不可用时停留在 Vue 页面并使用受控 modern session。
 
-### M6 CopilotKit Agent 与 Legacy 回退边界（2026-09-03）
+### M6 CopilotKit Agent 迁移边界（历史记录，2026-09-03）
 
 - Report Mode 通过 `applyPrompt()` 和 `loadLiveChatbotData()` 复用 merchant、ASIN、category、Tier、recommendation、payment、analysis/trend、keyword、publisher 和 publisher profile 路由；来源状态只暴露 `cache`、`db` 或不可用。
 - Chat Mode 复用 Legacy 的 Report Memory、Memory recommendation、`/api/chat/stream` 逐 token/fallback/停止链路、反馈、问题日志、帮助、指南和 onboarding；成功回答才进入历史，停止/失败本轮不进入正式历史。
@@ -54,7 +56,7 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 - `AgentTrendResult.vue` 调用现有 `renderAgentTrendChartHtml()`，保留 SVG、数据来源标识、月份与指标切换；指标/表格/状态/摘要组件继续由本地 registry 渲染。表格保留空列位置并支持最多 100 行，已完成的结果组件绑定到对应回答，追问后仍可查看和切换图表。
 - 验证入口：`scripts/test_chat_agent.mjs`、`scripts/test_agent_agui.py`、`CopilotKitAgentRuntime.test.ts`、`AgentTrendResult.test.ts`、`AgentPage.test.ts`。浏览器使用本地固定数据验证交互；生产登录、真实 LLM 和 Vercel SSE 仍需部署后验收。
 
-### 2026-09-03 Chatbot Legacy-first 对齐落地
+### 2026-09-03 Chatbot Legacy-first 对齐落地（历史记录）
 
 - 默认入口继续由 `public/app.js:switchPage()` 使用 Legacy；Modern Chatbot/Agent 只在 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 且对应 bridge/Runtime 可用时作为逐页对照页挂载。
 - `frontend/src/legacy/contracts.ts` 与 `frontend/src/legacy/bridge.ts` 现在保留回答 ID、回答 HTML、Deep Window 关联、反馈状态、工具面板状态、补充异步内容和 Deep Window skeleton/capability 字段；bridge 仍只投影页面安全字段。

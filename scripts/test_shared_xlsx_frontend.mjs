@@ -40,12 +40,14 @@ for (const contract of [
 
 const test = read("frontend/src/shared/export/xlsx.test.ts");
 for (const contract of [
-  "legacy.worksheetXml",
-  "legacy.createWorkbookSheets",
+  "buildWorkbook([",
+  "zipEntries(workbook)",
+  '"xl/worksheets/sheet1.xml"',
   "toContain(\"<v>0.27</v>\")",
-  "toContain(\"<v>0.2025</v>\")"
+  "toContain(\"<v>0.2025</v>\")",
+  "toContain(\"<t>154.489751</t>\")"
 ]) {
-  assert(test.includes(contract), `共享 XLSX 等价测试缺少断言: ${contract}`);
+  assert(test.includes(contract), `共享 XLSX 行为测试缺少断言: ${contract}`);
 }
 
 const ci = read(".github/workflows/ci.yml");

@@ -1,7 +1,4 @@
-/*
- * Chatbot 的 Modern 预览只保留 Vue 行为层；页面骨架复用 public/styles.css
- * 中的 Legacy insight-panel、chat-panel、chat-log、chat-input 和 mode-btn。
- */
+/* Chatbot layout and interaction styles owned by the Vue feature. */
 .chatbot-modern-root,
 .chatbot-modern-page {
   min-width: 0;
@@ -256,7 +253,7 @@ body.dashboard-mode[data-dash-theme="light"] :is(.insight-panel, .chat-panel) .c
   gap: 6px;
 }
 
-.chatbot-legacy-context {
+.chatbot-rich-context {
   min-width: 0;
 }
 

@@ -1,20 +1,11 @@
 (function () {
-  const APP_SCRIPT = "./app.js?v=20260901-m4-shell";
-  const LEGACY_STYLE_SHEET = "./styles.css?v=20260901-m4-shell";
-  const LEGACY_COMPAT_SCRIPTS = [
-    "./chatbot_i18n.js?v=20260626-zh1",
-    "./onboarding_tour.js?v=20260806-chat-mode-glow3",
-    "./chatbot_welcome.js?v=20260813-chat-reminder-copy1",
-    "./tier2_recommendation_rules.js?v=20260626-tier2pub1",
-    "./agent_memory_state.js?v=20260826-agent-memory1"
-  ];
   const MODERN_SESSION_STORAGE_KEYS = [
     "oi_agent_memory_v1",
     "oi_agent_session_v1",
     "oi_chat_session_v1",
     "oiChatbotQuestionSessionId.v1"
   ];
-  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260901-m4-shell";
+  const MODERN_APP_SCRIPT = "./assets/modern/oi-modern.js?v=20260904-m7-final";
   const AUTH_READY_CLASS = "auth-ready";
   const reduceMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -206,38 +197,12 @@
     });
   }
 
-  function loadStyleSheet(href) {
-    return new Promise((resolve, reject) => {
-      const existing = document.querySelector(`link[data-legacy-rollback-style][href="${href}"]`);
-      if (existing) {
-        resolve(existing);
-        return;
-      }
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = href;
-      link.dataset.legacyRollbackStyle = "true";
-      link.onload = () => resolve(link);
-      link.onerror = () => reject(new Error(`Could not load ${href}`));
-      (document.head || document.body).appendChild(link);
-    });
-  }
-
   function clearModernSessionState() {
     try {
       const storage = window.localStorage;
       MODERN_SESSION_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
-      window.AGENT_MEMORY_STATE?.clear?.(storage);
     } catch (_error) {
       // A blocked localStorage must not prevent the server-side logout.
-    }
-  }
-
-  function legacyRollbackEnabled() {
-    try {
-      return new URLSearchParams(window.location.search).get("legacy") === "1";
-    } catch (_error) {
-      return false;
     }
   }
 
@@ -289,15 +254,6 @@
     }
   }
 
-  async function loadLegacyRollbackApp() {
-    await loadStyleSheet(LEGACY_STYLE_SHEET);
-    for (const script of LEGACY_COMPAT_SCRIPTS) {
-      await loadScript(script);
-    }
-    await loadScript(APP_SCRIPT);
-    loadingProgress.finish("Dashboard ready", "Legacy rollback workspace is ready");
-  }
-
   let _dataLoading = false;
 
   async function loadDashboardAssets() {
@@ -345,11 +301,7 @@
     }
     setStatus("", "");
     loadingProgress.driftTo(94, "Building dashboard…", "Applying filters and preparing report views");
-    if (legacyRollbackEnabled()) {
-      await loadLegacyRollbackApp();
-    } else {
-      await loadModernApp();
-    }
+    await loadModernApp();
 
     // Background: load keyword data after dashboard renders
     // (not awaited — non-blocking)
@@ -363,11 +315,6 @@
       const kwResp = await fetchJson("/api/ui/db/keywords");
       window.PRODUCT_KEYWORDS = kwResp;
       window.__OFFER_KEYWORDS_LOADED = true;
-      // Notify the legacy rollback app, when that path is active, to merge
-      // keyword data into its in-memory offers.
-      if (typeof window.__onOfferKeywordsLoaded === "function") {
-        window.__onOfferKeywordsLoaded(kwResp);
-      }
     } catch (_err) {
       // Keywords unavailable — attempt to be non-fatal;
       // chatbot keyword search will degrade gracefully.

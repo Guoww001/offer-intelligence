@@ -1,7 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { LegacyChatViewResult } from "../../legacy/contracts";
 import ChatbotResultView from "./ChatbotResultView.vue";
 import { buildChatbotReport, type ChatbotReportData } from "./chatbotReportModel";
 
@@ -40,30 +39,20 @@ describe("ChatbotResultView", () => {
     expect(wrapper.findAll("[data-chatbot-row]")).toHaveLength(0);
   });
 
-  it("does not synthesize a table when the Legacy bridge has no HTML payload", () => {
-    const bridgeResult: LegacyChatViewResult = {
-      ok: true,
-      status: "success",
-      mode: "report",
-      source: "cache",
-      response: "Legacy answer is still loading"
-    };
+  it("renders the structured table without a compatibility payload", () => {
     const result = buildChatbotReport("Alpha", data, "en");
-    const wrapper = mount(ChatbotResultView, {
-      props: { language: "en", result: { ...result, bridgeResult } }
-    });
+    const wrapper = mount(ChatbotResultView, { props: { language: "en", result } });
 
-    expect(wrapper.find("[data-chatbot-explicit-state]").exists()).toBe(true);
-    expect(wrapper.find(".chatbot-result-table-wrap").exists()).toBe(false);
-    expect(wrapper.findAll("[data-chatbot-row]")).toHaveLength(0);
+    expect(wrapper.find(".chatbot-result-table-wrap").exists()).toBe(true);
+    expect(wrapper.findAll("[data-chatbot-row]")).toHaveLength(1);
   });
 
-  it("forwards legacy recommendation download clicks", async () => {
+  it("forwards rich-result download clicks", async () => {
     const result = buildChatbotReport("Alpha", data, "en");
     const wrapper = mount(ChatbotResultView, {
       props: {
         language: "en",
-        result: { ...result, legacyHtml: '<button type="button" data-download-id="download-1">Download Excel</button>' }
+        result: { ...result, contentHtml: '<button type="button" data-download-id="download-1">Download Excel</button>' }
       }
     });
 

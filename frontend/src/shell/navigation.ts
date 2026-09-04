@@ -1,4 +1,4 @@
-import type { ModernPageName, UiLanguage } from "../legacy/contracts";
+import type { ModernPageName, UiLanguage } from "../runtime/contracts";
 
 export type NavigationGroupKey = "workspace" | "merchants" | "media" | "products";
 export type NavigationLocation = NavigationGroupKey | "google-ads";

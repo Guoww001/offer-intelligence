@@ -3,10 +3,9 @@ import type { AgentRunStatus, AgentTimelinePhase, AgentTimelineStep } from "./ag
 /**
  * Explicit lifecycle phases for the Agent run.
  *
- * The legacy Python runner remains authoritative for what is executed.  This
- * reducer only models the UI lifecycle, so the Vue surface can render the
- * same planning/tool/replan/synthesis/stop transitions for either the legacy
- * bridge or a future CopilotKit transport.
+ * The Python registry and proof adapter remain authoritative for execution.
+ * This reducer models only the Vue lifecycle shared by the local session and
+ * the CopilotKit transport.
  */
 export type AgentRunPhase =
   | "idle"

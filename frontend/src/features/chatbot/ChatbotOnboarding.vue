@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import type { LegacyChatUtilityState } from "../../legacy/contracts";
+import type { ChatbotUtilityState } from "./chatbotViewTypes";
 import type { UiLanguage } from "../../shared/i18n";
 
 const props = defineProps<{
   readonly language: UiLanguage;
-  readonly utility: LegacyChatUtilityState;
+  readonly utility: ChatbotUtilityState;
   readonly available?: boolean;
 }>();
 

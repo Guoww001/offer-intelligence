@@ -18,13 +18,13 @@ import "./features/agent/agent.css";
 import "./features/agent/agentWorkspace.css";
 import "./shell/shell.css";
 
-import { createModernAppApi, getLegacyAgentViewSession, getLegacySnapshot } from "./legacy/bridge";
+import { createModernAppApi, getAppSnapshot } from "./runtime/modernApp";
 import type {
-  LegacyBootstrapData,
+  AppBootstrapData,
   ModernPageController,
   ModernPageFactory,
   ModernShellFactory
-} from "./legacy/contracts";
+} from "./runtime/contracts";
 import type {
   OfferRecord,
   OfferTrackerDateRange,
@@ -143,11 +143,11 @@ interface MonthlyNewMerchantsApiPayload {
   readonly records?: unknown;
 }
 
-function targetReportData(data: LegacyBootstrapData): TargetReportData {
+function targetReportData(data: AppBootstrapData): TargetReportData {
   return isRecord(data.sheetReportData) ? data.sheetReportData as TargetReportData : { sheets: [] };
 }
 
-function categoryReportData(data: LegacyBootstrapData): CategoryReportData {
+function categoryReportData(data: AppBootstrapData): CategoryReportData {
   const sheetReportData = isRecord(data.sheetReportData) ? data.sheetReportData : {};
   return {
     ...sheetReportData,
@@ -155,7 +155,7 @@ function categoryReportData(data: LegacyBootstrapData): CategoryReportData {
   } as CategoryReportData;
 }
 
-function tierReportData(data: LegacyBootstrapData): TierSheetReportData {
+function tierReportData(data: AppBootstrapData): TierSheetReportData {
   const sheetReportData = isRecord(data.sheetReportData) ? data.sheetReportData : {};
   return {
     ...sheetReportData,
@@ -183,25 +183,25 @@ interface WindowWithSpreadsheetReader extends Window {
   readonly XLSX?: SpreadsheetReader;
 }
 
-function chatbotRecord(data: LegacyBootstrapData): Record<string, unknown> {
+function chatbotRecord(data: AppBootstrapData): Record<string, unknown> {
   return isRecord(data.chatbotData) ? data.chatbotData : {};
 }
 
-function offerRecords(data: LegacyBootstrapData): readonly OfferRecord[] {
+function offerRecords(data: AppBootstrapData): readonly OfferRecord[] {
   const rows = chatbotRecord(data).offers;
   return Array.isArray(rows)
     ? rows.filter((row): row is OfferRecord => isRecord(row))
     : [];
 }
 
-function paymentRecords(data: LegacyBootstrapData): readonly Record<string, unknown>[] {
+function paymentRecords(data: AppBootstrapData): readonly Record<string, unknown>[] {
   const rows = chatbotRecord(data).paymentRecords;
   return Array.isArray(rows)
     ? rows.filter((row): row is Record<string, unknown> => isRecord(row))
     : [];
 }
 
-function sheetRows(data: LegacyBootstrapData): readonly Record<string, unknown>[] {
+function sheetRows(data: AppBootstrapData): readonly Record<string, unknown>[] {
   const sheetReport = isRecord(data.sheetReportData) ? data.sheetReportData : {};
   const sheets = sheetReport.sheets;
   if (!Array.isArray(sheets)) return [];
@@ -211,7 +211,7 @@ function sheetRows(data: LegacyBootstrapData): readonly Record<string, unknown>[
   });
 }
 
-function defaultDateRange(data: LegacyBootstrapData): OfferTrackerDateRange {
+function defaultDateRange(data: AppBootstrapData): OfferTrackerDateRange {
   const chatbotData = chatbotRecord(data);
   const startDate = stringValue(chatbotData.startDate);
   const endDate = stringValue(chatbotData.endDate);
@@ -587,7 +587,7 @@ function downloadTier(payload: TierExportPayload): boolean {
 }
 
 const shellFactory: ModernShellFactory = (element) => {
-  const i18n = createI18nStore(getLegacySnapshot().value.language);
+  const i18n = createI18nStore(getAppSnapshot().value.language);
   let shellController: AppShellController | null = null;
   const app = createApp({
     name: "ModernAppShellMount",
@@ -629,7 +629,7 @@ const shellFactory: ModernShellFactory = (element) => {
 };
 
 const offerTrackerFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const offers = offerRecords(snapshot);
   const range = defaultDateRange(snapshot);
@@ -658,7 +658,7 @@ const offerTrackerFactory: ModernPageFactory = (element): ModernPageController =
 };
 
 const paymentsFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernPaymentsMount",
@@ -686,7 +686,7 @@ const paymentsFactory: ModernPageFactory = (element): ModernPageController => {
 };
 
 const publishersFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernPublishersMount",
@@ -712,7 +712,7 @@ const publishersFactory: ModernPageFactory = (element): ModernPageController => 
 };
 
 const brandMediaFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernBrandMediaMount",
@@ -737,7 +737,7 @@ const brandMediaFactory: ModernPageFactory = (element): ModernPageController => 
 };
 
 const revenueFlowFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const initialState = revenueFlowInitialState(element);
   const app = createApp({
@@ -766,7 +766,7 @@ const revenueFlowFactory: ModernPageFactory = (element): ModernPageController =>
 };
 
 const monthlyNewMerchantsFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernMonthlyNewMerchantsMount",
@@ -794,7 +794,7 @@ const monthlyNewMerchantsFactory: ModernPageFactory = (element): ModernPageContr
 };
 
 const googleAdsFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernGoogleAdsMount",
@@ -819,7 +819,7 @@ const googleAdsFactory: ModernPageFactory = (element): ModernPageController => {
 };
 
 const targetsFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernTargetsMount",
@@ -846,7 +846,7 @@ const targetsFactory: ModernPageFactory = (element): ModernPageController => {
 };
 
 const tierFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernTierSheetMount",
@@ -879,7 +879,7 @@ const tierFactory: ModernPageFactory = (element): ModernPageController => {
 };
 
 const categoryReportFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const app = createApp({
     name: "ModernCategoryReportMount",
@@ -922,7 +922,7 @@ function downloadChatbotReport(result: ChatbotReportViewResult): boolean {
   );
 }
 
-function chatbotSession(snapshot: LegacyBootstrapData): ChatbotSession {
+function chatbotSession(snapshot: AppBootstrapData): ChatbotSession {
   if (!modernChatbotSession) {
     modernChatbotSession = createChatbotSession({
       offers: offerRecords(snapshot),
@@ -937,7 +937,7 @@ function chatbotSession(snapshot: LegacyBootstrapData): ChatbotSession {
   return modernChatbotSession;
 }
 
-function agentSession(snapshot: LegacyBootstrapData): AgentSession {
+function agentSession(snapshot: AppBootstrapData): AgentSession {
   if (!modernAgentSession) {
     modernAgentSession = createAgentSession({
       offers: offerRecords(snapshot),
@@ -952,7 +952,7 @@ function agentSession(snapshot: LegacyBootstrapData): AgentSession {
 }
 
 const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const session = chatbotSession(snapshot);
   const app = createApp({
@@ -981,15 +981,12 @@ const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
 };
 
 const agentFactory: ModernPageFactory = (element): ModernPageController => {
-  const snapshot = getLegacySnapshot().value;
+  const snapshot = getAppSnapshot().value;
   const i18n = createI18nStore(snapshot.language);
   const session = agentSession(snapshot);
   const runtime = window.OI_COPILOTKIT_RUNTIME;
   const copilotKitEnabled = runtime?.enabled === true && runtime.authority === "python-registry";
-  const legacyFallback = runtime?.fallback === "legacy" && snapshot.agentEnabled
-    ? getLegacyAgentViewSession()
-    : null;
-  const fallbackSession = legacyFallback || session;
+  const fallbackSession = session;
   const fallbackRun: AgentRunner = async (request) => {
     const result = await fallbackSession.submit(request, {
       onToken: request.onToken,
@@ -1044,10 +1041,8 @@ window.OI_MODERN_APP = createModernAppApi({
   agent: agentFactory
 }, shellFactory);
 
-// The modern entry owns exports and navigation.  Keeping this small host
-// object separate from the old bridge lets the normal bundle run without
-// creating or reading OI_LEGACY_BRIDGE; the legacy app can still provide its
-// own compatibility object when an explicit rollback URL is used.
+// The modern entry owns exports and navigation. This bounded host exposes
+// only the operations that modern feature components need.
 window.OI_MODERN_RUNTIME = {
   download(type, payload) {
     if (type === "offer-tracker" && isRecord(payload) && Array.isArray(payload.rows)) {

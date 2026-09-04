@@ -166,7 +166,7 @@ function offerIndex(data: CategoryReportData): ReadonlyMap<string, RawRecord> {
 }
 
 /**
- * Resolve the display category in the same order as the legacy dashboard.
+ * Resolve the display category using the established dashboard priority order.
  * Category on a Tier Sheet is the database main-category column.
  */
 export function resolveCategory(row: Readonly<Record<string, unknown>>, offer?: Readonly<Record<string, unknown>>): {

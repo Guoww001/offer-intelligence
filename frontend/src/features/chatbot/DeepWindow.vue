@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 
-import type {
-  LegacyAnswerFeedbackState,
-  LegacyDeepWindowInteraction,
-  LegacyDeepWindowSkeletonStep,
-  LegacyFeedbackBridge
-} from "../../legacy/contracts";
 import type { UiLanguage } from "../../shared/i18n";
 import ChatAnswerActions from "./ChatAnswerActions.vue";
 import ChatbotResultView from "./ChatbotResultView.vue";
-import type { ChatbotReportViewResult } from "./chatbotViewTypes";
+import type { ChatbotAnswerFeedbackState, ChatbotFeedback, ChatbotReportViewResult } from "./chatbotViewTypes";
+import type { DeepWindowInteraction, DeepWindowSkeletonStep } from "./deepWindowStore";
 
 type DeepWindowStatus = "loading" | "ready" | "content" | "cancelled" | "error";
 
@@ -23,7 +18,7 @@ const props = withDefaults(defineProps<{
   readonly summary?: string;
   readonly contentHtml?: string;
   readonly errorMessage?: string;
-  readonly skeletonSteps?: readonly LegacyDeepWindowSkeletonStep[];
+  readonly skeletonSteps?: readonly DeepWindowSkeletonStep[];
   readonly zIndex?: number;
   readonly minimized: boolean;
   readonly pinned?: boolean;
@@ -37,8 +32,8 @@ const props = withDefaults(defineProps<{
   readonly canExport?: boolean;
   readonly canMinimize?: boolean;
   readonly canClose?: boolean;
-  readonly feedbackState?: LegacyAnswerFeedbackState;
-  readonly feedback?: LegacyFeedbackBridge | null;
+  readonly feedbackState?: ChatbotAnswerFeedbackState;
+  readonly feedback?: ChatbotFeedback | null;
 }>(), {
   id: "deep-window",
   mode: "report",
@@ -75,7 +70,7 @@ const emit = defineEmits<{
   (event: "overlay"): void;
   (event: "cancel"): void;
   (event: "download", downloadId: string): void;
-  (event: "trend-interact", action: LegacyDeepWindowInteraction, value?: string): void;
+  (event: "trend-interact", action: DeepWindowInteraction, value?: string): void;
   (event: "trend-columns", columns: readonly string[]): void;
   (event: "drop-memory"): void;
   (event: "drop-highlight", active: boolean): void;
@@ -92,8 +87,8 @@ const isLoading = computed(() => status.value === "loading");
 const isContent = computed(() => status.value === "content");
 const windowTitle = computed(() => props.title || props.result.title || props.result.category || props.result.tier || props.result.intent || "Deep Analysis");
 const windowSummary = computed(() => props.summary || props.result.message || "");
-const reportHtml = computed(() => props.contentHtml?.trim() || props.result.legacyHtml?.trim() || "");
-const steps = computed<readonly LegacyDeepWindowSkeletonStep[]>(() => props.skeletonSteps?.length ? props.skeletonSteps : [
+const reportHtml = computed(() => props.contentHtml?.trim() || props.result.contentHtml?.trim() || "");
+const steps = computed<readonly DeepWindowSkeletonStep[]>(() => props.skeletonSteps?.length ? props.skeletonSteps : [
   { id: "understand", label: props.language === "zh" ? "理解问题" : "Understanding your question", state: "active" },
   { id: "query", label: props.language === "zh" ? "查询数据" : "Querying data", state: "pending" },
   { id: "report", label: props.language === "zh" ? "生成报告" : "Generating report", state: "pending" }

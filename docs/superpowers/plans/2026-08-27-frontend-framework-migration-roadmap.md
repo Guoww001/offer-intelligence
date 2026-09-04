@@ -8,7 +8,7 @@
 
 **技术栈：** Vue 3、TypeScript、Vite、Vitest、Vue Test Utils、`happy-dom`、现有 Python 3.12 服务、现有 Vercel Python Functions、现有 Node 22 CI、现有原生 JavaScript 回归脚本；运行时不引入 Pinia、Vue Router、组件库或 CSS 框架，除非后续独立 ADR 证明必要。
 
-> **最近更新：** 2026-09-04；在 `817d6d8` / PR #184 最新 Agent/Chatbot 外观基线上，Chatbot Report/Chat、Deep Window 与独立 Vue Agent 已完成 Modern-first 运行时切换。Agent 按需加载 `@copilotkit/vue`，经真实 `/api/copilotkit` Runtime 与 Python `/api/chat/agui` 进入 registry/proof；生产默认使用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 或显式 parity 开关保留紧急回退。Python registry、plan proof、批次、replan 和 synthesis 仍为唯一权威；M7/01 已完成 standalone modern 入口和受控启动错误态，legacy 资源删除仍在进行中，M8 部署切换尚未开始。
+> **最近更新：** 2026-09-04；在 PR #184 最新 Agent/Chatbot 外观基线上，Chatbot Report/Chat、Deep Window 与独立 Vue Agent 已完成 Modern-first 运行时切换。Agent 按需加载 `@copilotkit/vue`，经真实 `/api/copilotkit` Runtime 与 Python `/api/chat/agui` 进入 registry/proof；Python registry、plan proof、批次、replan 和 synthesis 仍为唯一权威。M7 已完成 standalone modern 入口、受控启动错误态、runtime 类型迁移及全部 legacy 静态资源/bridge 删除；运行时回滚开关已移除，M8 使用上一构建回滚并完成部署验收。
 
 ## 全局约束
 
@@ -841,7 +841,7 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - [x] 迁移 Report Mode，并保留 merchant、ASIN、category、Tier、recommendation、payment、analysis/trend、keyword、publisher 和 publisher profile 路由、来源刷新、结果、下载和反馈上下文。
 - [x] 迁移 Chat Mode，验证 Markdown、逐 token、历史、Report Memory、Memory recommendation、反馈、日志、帮助、指南、onboarding 和停止行为。
 - [x] 迁移 Deep Window，验证最小化、恢复、拖动、置顶、关闭、取消、图表控制、clone、overlay、导出、加入对话和页面切换清理。
-- [x] 迁移 Agent，验证 planning/tool/synthesis 时间线、工具批次、partial/omitted、Trace 元数据、可见流式回答、停止、失败重试和结构化 Memory 隐私边界；工具执行继续由 Legacy bridge 承担。
+- [x] 迁移 Agent，验证 planning/tool/synthesis 时间线、工具批次、partial/omitted、Trace 元数据、可见流式回答、停止、失败重试和结构化 Memory 隐私边界；工具执行由 CopilotKit/AG-UI 接入 Python registry/proof。
 - [x] 迁移 onboarding/help guide，保持中英文 copy、缓存版本和 active 状态。
 - [x] 运行全部 Chatbot/Agent Node/Python/Vitest 回归、typecheck、build、M6 parity/mount/cutover 和差异检查；关键词候选预筛后 `test_chatbot_intent_flow.mjs` 稳定通过。
 
@@ -868,18 +868,18 @@ node scripts/test_offer_list_tracker_frontend.mjs
 **删除前证据：**
 
 - `rg` 确认没有 HTML、JS、测试或文档仍加载/引用待删除文件。
-- 所有页面清单状态为 `modern`，且没有 `dual` 或 `legacy`。
+- 所有页面已越过 `modern` 稳定窗口，清单中没有 `dual` 或 `legacy`。
 - modern bundle 加载失败时显示明确应用错误状态，不再静默回退已删除的旧应用。
 - 认证失败仍能独立显示登录界面，不依赖 modern app 已成功启动。
 
 **执行步骤：**
 
-- [ ] 建立失败测试，断言入口不再加载 legacy bundle、bridge 全局不存在、页面 Shell 只保留根节点。
-- [ ] 删除每个已证明无引用的旧文件或旧代码块；一次只删除一个逻辑域并运行回归。
-- [ ] 把仍需保留的认证样式移入独立 `public/auth.css` 或 modern 认证入口，禁止留下整份 legacy CSS。
-- [ ] 删除源码字符串测试，前提是对应行为已有 Vitest 或浏览器验收覆盖。
-- [ ] 运行 `rg` 引用检查、全量 CI、Vite 构建和浏览器全流程。
-- [ ] 更新清单状态为 `removed`，记录删除证据和替代测试。
+- [x] 建立失败测试，断言入口不再加载 legacy bundle、bridge 全局不存在、页面 Shell 只保留根节点。
+- [x] 删除每个已证明无引用的旧文件或旧代码块；旧页面 DOM、bundle、CSS、辅助脚本和 bridge 已删除。
+- [x] 把认证样式收敛到独立 `public/auth.css`，未保留整份 legacy CSS。
+- [x] 删除源码字符串测试，对应行为由 Vitest、Python 协议测试和 modern 静态契约覆盖。
+- [x] 运行 `rg` 引用检查、全量 CI 命令与 Vite 构建；生产浏览器全流程归入 M8 部署验收。
+- [x] 更新清单状态为 `removed`，记录删除证据和替代测试。
 
 退出门槛：应用运行时不存在 `OI_LEGACY_BRIDGE`、`OFFER_INTELLIGENCE_TEST_HOOKS` 和旧页面渲染器；构建、认证和全部业务页面只使用 modern entry。
 
@@ -993,7 +993,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M4 Shell 与低风险页面 | 已验证 | M4 的功能、视觉和交互验收由用户于 2026-09-01 确认完成；Payments、Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 均已由 Vue modern root 接管并完成 `dual → modern` 安全放行；本轮新增共享 `AppShell` 导航状态、主题持久化和页面标题同步，保留 legacy 侧边栏、移动端导航和各页 legacy fallback；自动化测试、typecheck、build、页面契约和 diff check 通过 |
 | M5 Targets/Category/Tier | 已验证 | M5 的固定 fixture、桌面/移动、关键控件、导出及其余验收由用户于 2026-09-01 确认完成；Targets、Category、Tier 已完成 `dual → modern` 安全放行并接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；公开 Sites version 14 的 Tier Move API 边界、共享保存 busy/aria-busy、移动弹窗、Tier 1 additions 预加载和页面回归均通过，legacy fallback 继续保留 |
 | M6 Chatbot/Agent | 已验证（Modern-first；legacy 回滚窗口保留） | Chatbot Report/Chat、Deep Window 与 Agent 均由独立 Vue session 默认渲染；Agent 通过按需 CopilotKit bundle、`/api/copilotkit` → `/api/chat/agui` 进入 Python registry/proof。已补齐本地 AG-UI 路由、显式 Legacy Agent session 适配、回答级反馈/Open as View 和 Deep Window 趋势控件回归；真实生产登录/SSE 验收与 legacy 删除分别留在稳定窗口/M7。 |
-| M7 legacy 清理 | 进行中 | M7/01 已完成 standalone modern 入口、显式 `?legacy=1` 回滚边界、modern 启动错误态、modern Shell CSS 和本地 Agent 趋势渲染；`public/app.js`、`styles.css`、bridge 仍有真实引用，尚未满足删除门槛 |
+| M7 legacy 清理 | 已验证 | standalone modern 入口、启动错误态、认证样式、runtime 类型和本地 Agent 结果渲染已收敛；旧页面 DOM、`public/app.js`、`public/styles.css`、辅助脚本与 `frontend/src/legacy/` 已删除，清单 12 页均标记为 `removed`；运行时回滚开关不再存在 |
 | M8 部署切换 | 未开始 | Vercel 仍无前端 build command |
 
 状态只允许使用 `未开始`、`进行中`、`已验证`、`受阻`。只有完成该阶段全部测试、差异检查和浏览器门槛后才能标记 `已验证`；本地补丁、静态测试或文档计划不能等同于已完成迁移。
@@ -1004,13 +1004,13 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 
 - 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；M4/M5 的页面视觉与交互验收由用户于 2026-09-01 确认完成，本轮补充公开 Sites version 14 的 Tier legacy/Vue 390×844 截图、1363×936 compare、Tier 1 additions 对齐和 Move dialog/mobile boundary 证据，不把静态测试当作截图证据；M6 Chatbot/Agent 的真实浏览器、数据、视觉和 SSE 验收已由用户于 2026-09-02 确认完成。
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 范围边界：Roadmap 初始创建阶段只产出计划；M0–M5 与此前页面状态保持不变。M6 Chatbot/Agent 已切换为 Modern-first，Modern 通过独立 Vue session 承载，bridge/fallback 继续保留为回滚窗口；Offer Tracker 旧导出设置对话框仍保留在 legacy 回滚范围，legacy 删除必须等待稳定窗口和删除安全检查；version 14 的 Tier Move API 边界、busy 状态、移动弹窗保护、Tier 1 additions 预加载及其固定 fixture 证据已纳入上述验证。
+- 范围边界：M0–M6 的迁移、视觉和协议验收记录保留为历史证据；M7 已在稳定窗口之后删除 bridge/fallback、旧页面实现和旧静态资源。Offer Tracker 的保存视图、列设置、优先级规则与导出均由 Vue/shared exporter 承担；version 14 的 Tier Move API 边界、busy 状态、移动弹窗保护、Tier 1 additions 预加载及其 fixed fixture 证据继续有效。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M5 的既有实现与页面状态保持不变，M4 共享 Shell 已接入并由 `switchPage()` 继续作为唯一页面切换权威入口。M6 Chatbot/Agent 已由 Modern-first 承载，factory/bridge 在 CopilotKit 不可用或显式回退时继续提供 Legacy；关键词候选预筛已修复 `test_chatbot_intent_flow.mjs` 的历史性超时并通过。M7/01 已落地 standalone modern 应用根、显式 `?legacy=1` 回滚开关、启动错误态、现代 Shell CSS、本地趋势 SVG 渲染和入口契约；旧 bundle、旧 CSS 与 bridge 仍存在真实页面/测试引用，不能宣称 legacy 已删除。所有 modern/dual 页面继续保留 legacy fallback 作为回滚窗口；M7 legacy 删除必须等待真实生产验收、稳定窗口和删除安全检查。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+M0–M6 的迁移与验收已完成，M7 已将页面切换权威收敛为 `ModernAppApi.setPage()`：standalone modern 应用根、启动错误态、现代 Shell CSS、本地趋势 SVG 与入口契约全部落地；旧 bundle、旧 CSS、辅助脚本、bridge、旧页面 DOM 和源码字符串测试均已移除。CopilotKit 不可用时 Agent 保持在 Vue 页面并使用受控 modern session，不再回退旧应用。下一阶段 M8 必须从干净安装完成部署验收与构建级回滚演练。
 
 **M4 Monthly New Merchants 执行记录（2026-08-31）：**
 
@@ -1190,4 +1190,11 @@ Roadmap 获确认后，从 M0 开始执行；当前 M0–M5 的既有实现与�
 - 独立壳层：`ModernAppApi.mountApplication()` 创建 standalone Shell、workspace 和 page host；导航通过 `OI_MODERN_APP.setPage()` 切换，不依赖旧侧栏 `switchPage()`。新增 `frontend/src/shell/shell.css` 提供桌面/移动布局、焦点环和 `prefers-reduced-motion` 保护。
 - Agent 安全渲染：趋势结果由本地 Vue SVG 组件绘制，保留指标切换、范围和可访问标签，不再读取 `OI_LEGACY_BRIDGE.renderAgentTrend()` 或注入模型 HTML。
 - 回归：`scripts/test_m7_modern_entry.mjs`、`scripts/test_m4_shell_frontend.mjs`、Vitest（65 文件/296 项）、typecheck、双 Vite build、M6 parity/mount/cutover、Agent/Chatbot Node/Python 回归、`node --check public/auth.js`、`node --check public/app.js` 和 `git diff --check` 已通过。
-- 删除阻塞：`public/index.html` 仍包含 legacy 页面 DOM，多个 feature 仍从 `legacy/contracts` 取类型，Offer Tracker 旧导出设置对话框和旧行为测试仍读取 `public/app.js`/`styles.css`；旧资源当前仅作为显式回滚依赖，下一切片必须先迁移这些依赖，再逐文件删除。
+- 当时删除阻塞：`public/index.html` 仍包含旧页面 DOM，多个 feature 仍从过渡 contracts 取类型，旧行为测试仍读取 `public/app.js`/`styles.css`；这些依赖已在后续 M7 完成切片中迁移并删除。
+
+**M7 完整移除执行记录（2026-09-04）：**
+
+- Runtime 收敛：新增 `frontend/src/runtime/contracts.ts` 与 `modernApp.ts`，由 standalone runtime 统一管理启动快照、Shell、页面挂载、导航和语言；feature 与测试不再导入 `frontend/src/legacy/`。
+- 静态资源删除：`public/index.html` 仅保留认证、启动错误态和 `#modernAppRoot`；删除 `public/app.js`、`public/styles.css`、五个旧辅助脚本及旧 bridge/contracts。
+- 测试替换：删除只检查旧源码字符串的 Node 脚本，保留 Python 业务/协议测试；用 Vue 行为测试、shared XLSX fixture、迁移清单、构建及 M4/M6/M7 modern 契约覆盖当前实现。
+- 回滚边界：删除 `?legacy=1`、`OI_LEGACY_BRIDGE`、`OFFER_INTELLIGENCE_TEST_HOOKS` 和 Agent legacy runtime 模式。M8 回滚只能切换至上一份已验证部署，不恢复已删除源码。

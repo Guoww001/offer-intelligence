@@ -1,39 +1,51 @@
 import fs from "node:fs";
+import path from "node:path";
 import assert from "node:assert/strict";
 
+const removedFiles = [
+  "public/app.js",
+  "public/styles.css",
+  "public/chatbot_i18n.js",
+  "public/onboarding_tour.js",
+  "public/chatbot_welcome.js",
+  "public/tier2_recommendation_rules.js",
+  "public/agent_memory_state.js",
+  "frontend/src/legacy/bridge.ts",
+  "frontend/src/legacy/contracts.ts"
+];
+for (const file of removedFiles) assert.equal(fs.existsSync(file), false, `${file} 必须删除`);
+
 const read = (file) => fs.readFileSync(file, "utf8").replace(/\r\n?/g, "\n");
-const indexHtml = read("public/index.html");
+const html = read("public/index.html");
 const auth = read("public/auth.js");
 const entry = read("frontend/src/entry.ts");
-const shell = read("frontend/src/shell/shell.css");
-const appApi = read("frontend/src/legacy/bridge.ts");
+const runtime = read("frontend/src/runtime/modernApp.ts");
+const contracts = read("frontend/src/runtime/contracts.ts");
 const trend = read("frontend/src/features/agent/results/AgentTrendResult.vue");
 const authCss = read("public/auth.css");
 
-assert.match(indexHtml, /id="modernAppRoot"/, "M7 modern 应用必须拥有独立根节点");
-assert.match(indexHtml, /id="modernAppError"/, "M7 必须提供可见的 modern 启动错误态");
-assert.match(indexHtml, /auth\.css\?v=20260904-m7-entry/, "modern index 必须只加载认证关键样式");
-assert.doesNotMatch(indexHtml, /styles\.css\?v=20260901-m4-shell/, "modern index 不得预加载整份 legacy CSS");
-assert.doesNotMatch(indexHtml, /(?:chatbot_i18n|onboarding_tour|chatbot_welcome|tier2_recommendation_rules|agent_memory_state)\.js/, "modern index 不得预加载 legacy 辅助脚本");
-assert.match(auth, /async function loadLegacyRollbackApp\(\)/, "legacy 只能通过显式回滚加载");
-assert.match(auth, /LEGACY_STYLE_SHEET\s*=\s*"\.\/styles\.css\?v=20260901-m4-shell"/, "legacy CSS 必须由回滚加载器拥有");
-assert.match(auth, /LEGACY_COMPAT_SCRIPTS/, "legacy 辅助脚本必须由回滚加载器拥有");
-assert.match(auth, /for \(const script of LEGACY_COMPAT_SCRIPTS\)/, "legacy 辅助脚本必须按顺序加载");
-assert.match(auth, /function clearModernSessionState\(\)/, "退出登录必须清理 modern 会话状态");
-assert.match(auth, /oi_agent_memory_v1/, "退出登录必须清理 Agent 结构化记忆");
-assert.match(auth, /new URLSearchParams\(window\.location\.search\).*legacy.*1/s, "回滚入口必须由 URL 明确启用");
-assert.match(auth, /mountApplication\(modernAppRoot, "agent"\)/, "认证成功后必须挂载完整 modern 应用");
-assert.match(auth, /showModernError\(error\)/, "modern 启动失败必须显示错误态");
-assert.doesNotMatch(auth, /catch \(error\) \{[\s\S]{0,180}continuing with the legacy dashboard/i, "modern 失败不得静默切回旧应用");
-assert.match(entry, /window\.OI_MODERN_APP\?\.setPage\(page\)/, "modern Shell 导航必须回到 modern app API");
-assert.doesNotMatch(entry, /downloadOfferTracker[\s\S]{0,180}OI_LEGACY_BRIDGE/, "Offer Tracker 导出不得依赖 legacy bridge");
-assert.match(appApi, /mountApplication\(element, initialPage = "agent"\)/, "modern app API 必须支持 standalone mount");
-assert.match(appApi, /data-modern-workspace/, "standalone mount 必须创建独立 workspace");
-assert.doesNotMatch(trend, /OI_LEGACY_BRIDGE/, "Agent 趋势图必须由 Vue 本地渲染");
-assert.match(trend, /<svg[^>]+class="agent-trend-chart"/, "Agent 趋势结果必须渲染可访问 SVG");
-assert.match(shell, /\.modern-application\s*\{/, "modern Shell 必须拥有独立布局 CSS");
-assert.match(shell, /body\.modern-only #appShell > :not\(#modernAppRoot\)/, "modern-only 模式必须隐藏旧 DOM 壳");
-assert.match(shell, /prefers-reduced-motion/, "modern Shell 必须保留 reduced-motion 保护");
+assert.match(html, /id="modernAppRoot"/, "M7 必须提供唯一应用根节点");
+assert.match(html, /id="modernAppError"/, "M7 必须提供启动错误态");
+assert.match(html, /auth\.css\?v=20260904-m7-final/, "M7 必须加载独立认证样式");
+assert.doesNotMatch(html, /(?:styles\.css|app\.js|chatbot_i18n|onboarding_tour|chatbot_welcome|tier2_recommendation_rules|agent_memory_state)/, "入口不得加载已删除资源");
+assert.match(auth, /await loadModernApp\(\)/, "认证成功后必须加载 Modern Runtime");
+assert.match(auth, /mountApplication\(modernAppRoot, "agent"\)/, "认证成功后必须挂载完整应用");
+assert.match(auth, /showModernError\(error\)/, "启动失败必须显示错误态");
+assert.doesNotMatch(auth, /legacy|LEGACY|\?legacy=1/i, "auth.js 不得保留旧回滚路径");
+assert.match(runtime, /getAppSnapshot/, "Modern Runtime 必须持有受控启动快照");
+assert.match(contracts, /AppBootstrapData/, "Modern Runtime 必须使用现代启动契约");
+assert.doesNotMatch(entry + runtime + contracts, /OI_LEGACY_BRIDGE|OFFER_INTELLIGENCE_TEST_HOOKS|legacy\/(?:bridge|contracts)/, "运行时代码不得引用旧全局或旧模块");
+assert.match(trend, /<svg[^>]+class="agent-trend-chart"/, "Agent 趋势必须渲染本地 SVG");
 assert.match(authCss, /\.auth-shell\s*\{/, "认证关键样式必须独立存在");
 
-console.log("M7 modern entry isolation contract: PASS");
+function sourceFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) return sourceFiles(target);
+    return /\.(?:ts|vue|js)$/.test(entry.name) ? [target] : [];
+  });
+}
+const runtimeSource = sourceFiles("frontend/src").concat(sourceFiles("public"))
+  .map((file) => read(file)).join("\n");
+assert.doesNotMatch(runtimeSource, /OI_LEGACY_BRIDGE|OFFER_INTELLIGENCE_TEST_HOOKS/, "应用运行时不得包含旧全局");
+console.log("PASS: M7 legacy runtime removal contract");

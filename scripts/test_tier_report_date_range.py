@@ -239,26 +239,22 @@ def test_report_payload():
 
 
 def test_frontend_contract():
-    app = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
-    html = (ROOT / "public" / "index.html").read_text(encoding="utf-8")
+    entry = (ROOT / "frontend" / "src" / "entry.ts").read_text(encoding="utf-8")
+    tier_page = (ROOT / "frontend" / "src" / "features" / "tier-sheet" / "TierSheetPage.vue").read_text(encoding="utf-8")
+    category_page = (ROOT / "frontend" / "src" / "features" / "category-report" / "CategoryReportPage.vue").read_text(encoding="utf-8")
     backend = (ROOT / "offer_db.py").read_text(encoding="utf-8")
-    assert 'id="tierStartDate"' in html
-    assert 'id="tierEndDate"' in html
-    assert 'id="tierDateApply"' in html
-    tier_control_start = html.index('id="tierDateStatus"')
-    tier_control_end = html.index('id="tierDateApply"')
-    assert tier_control_start < html.index('class="tier-date-range-controls"', tier_control_start, tier_control_end)
-    assert 'id="categoryStartDate"' in html
-    assert 'id="categoryEndDate"' in html
-    assert 'id="categoryDateApply"' in html
-    assert 'id="dashboardCategoryOptions"' in html
-    category_control_start = html.index('class="dashboard-category-controls"')
-    category_date_controls = html.index('class="tier-date-range-controls"', category_control_start)
-    category_date_status = html.index('id="categoryDateStatus"', category_date_controls)
-    assert category_date_controls < category_date_status
-    assert "start_date" in app and "end_date" in app
+    assert 'data-tier-date="start"' in tier_page
+    assert 'data-tier-date="end"' in tier_page
+    assert 'data-tier-action="date-apply"' in tier_page
+    assert 'class="tier-date-status"' in tier_page
+    assert 'data-category-date="start"' in category_page
+    assert 'data-category-date="end"' in category_page
+    assert 'data-category-action="apply-date"' in category_page
+    assert 'id="category-report-options"' in category_page
+    assert "start_date" in entry and "end_date" in entry
     for removed in ("May Revenue", "June Revenue"):
-        assert removed not in app, f"{removed} still present in app.js"
+        assert removed not in tier_page, f"{removed} still present in TierSheetPage.vue"
+        assert removed not in category_page, f"{removed} still present in CategoryReportPage.vue"
         assert removed not in backend, f"{removed} still present in offer_db.py"
     assert "commission_amount_epc(all_commission, clicks)" in backend
     assert "commission_amount_epc(aff_commission, clicks)" in backend

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import type { ModernPageName, UiLanguage } from "../legacy/contracts";
+import type { ModernPageName, UiLanguage } from "../runtime/contracts";
 import {
   GOOGLE_ADS_NAVIGATION_ITEM,
   NAVIGATION_GROUPS,
@@ -420,5 +420,5 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Shell 的布局和主题样式集中在 shell.css，组件样式保持为零，便于 legacy 页面复用变量。 */
+/* Shell 的布局和主题样式集中在 shell.css，组件样式保持为零，避免重复定义变量。 */
 </style>

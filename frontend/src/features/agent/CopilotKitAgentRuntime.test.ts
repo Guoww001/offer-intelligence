@@ -45,7 +45,7 @@ describe("CopilotKit behavior parity", () => {
     sdk.run.mockImplementation(async () => { events.onCustomEvent?.({ event: { name: "oi.planning_fallback", value: { content: "planner text" } } }); });
     await f.run(f.request);
     expect(f.session.direct).toHaveBeenCalledWith({ content: "planner text" });
-    expect(sdk.setState.mock.calls[0]![0].offerIntelligence).toMatchObject({ history: f.session.history, memory: "Tier 2", legacyParity: true });
+    expect(sdk.setState.mock.calls[0]![0].offerIntelligence).toMatchObject({ history: f.session.history, memory: "Tier 2", behaviorParity: true });
     f.wrapper.unmount();
   });
 

@@ -60,13 +60,13 @@ describe("DeepWindow", () => {
     expect(wrapper.find('[data-deep-window-action="close"]').exists()).toBe(true);
   });
 
-  it("delegates legacy trend-chart controls through explicit events", async () => {
+  it("delegates rich trend-chart controls through explicit events", async () => {
     const wrapper = mount(DeepWindow, {
       props: {
         language: "en",
         result: {
           ...deepWindowReport,
-          legacyHtml: `<div class="trend-context-wrap">
+          contentHtml: `<div class="trend-context-wrap">
             <button type="button" data-trend-metric="revenue">Revenue</button>
             <label><input type="checkbox" value="orders" data-trend-column-check></label>
             <label><input type="checkbox" value="revenue" data-trend-column-check></label>
@@ -84,13 +84,13 @@ describe("DeepWindow", () => {
     expect(wrapper.emitted("trend-columns")).toEqual([[['orders']]]);
   });
 
-  it("keeps the legacy column picker usable inside the Vue-owned window", async () => {
+  it("keeps the column picker usable inside the Vue-owned window", async () => {
     const wrapper = mount(DeepWindow, {
       props: {
         language: "en",
         result: {
           ...deepWindowReport,
-          legacyHtml: `<div class="trend-context-wrap">
+          contentHtml: `<div class="trend-context-wrap">
             <button type="button" data-trend-column-toggle aria-expanded="false">Display</button>
             <div class="trend-column-picker hidden" data-trend-column-panel>
               <button type="button" data-trend-column-core>Default</button>

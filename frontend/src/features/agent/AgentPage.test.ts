@@ -3,8 +3,8 @@ import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AgentPage, { type AgentRunResult, type AgentRunner } from "./AgentPage.vue";
-import type { LegacyAgentViewState, LegacyAgentRunResult } from "../../legacy/contracts";
 import { normalizeAgentResultView } from "../../shared/contracts/agentResult";
+import type { AgentSessionResult, AgentSessionState } from "./agentSession";
 import { clearAgentViewSnapshot } from "./agentViewState";
 
 describe("AgentPage", () => {
@@ -79,12 +79,12 @@ describe("AgentPage", () => {
     await flushPromises();
     expect(bridge).toHaveBeenCalledWith(expect.objectContaining({ kind: 'publisher', query: '1022' }));
     expect(run).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-chatbot-legacy-result] td').text()).toBe('Publisher fixture');
+    expect(wrapper.get('[data-chatbot-rich-result] td').text()).toBe('Publisher fixture');
     await wrapper.get('[data-agent-input]').setValue('Explain that publisher');
     await wrapper.get('[data-agent-form]').trigger('submit'); await flushPromises();
     expect(run.mock.calls[0]![0].history).toEqual([{ role: 'user', content: '/publisher 1022' }, { role: 'assistant', content: 'Publisher fixture' }]);
     expect(session.submit).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-chatbot-legacy-result] td').text()).toBe('Publisher fixture');
+    expect(wrapper.get('[data-chatbot-rich-result] td').text()).toBe('Publisher fixture');
     wrapper.unmount(); window.OI_MODERN_RUNTIME = previous;
   });
 
@@ -126,7 +126,7 @@ describe("AgentPage", () => {
 
   it("renders the streamed response while the shared Agent session is still running", async () => {
     let release: (() => void) | undefined;
-    let state: LegacyAgentViewState = {
+    let state: AgentSessionState = {
       status: "idle",
       history: [],
       messages: [],
@@ -136,7 +136,7 @@ describe("AgentPage", () => {
       omittedTargets: [],
       hasMemory: false
     };
-    const listeners = new Set<(next: LegacyAgentViewState) => void>();
+    const listeners = new Set<(next: AgentSessionState) => void>();
     const session = {
       getState: () => state,
       submit: vi.fn(async (_request: unknown, callbacks: { onToken?: (token: string) => void }) => {
@@ -160,7 +160,7 @@ describe("AgentPage", () => {
       }),
       stop: vi.fn(),
       newConversation: vi.fn(),
-      onChange: vi.fn((listener: (next: LegacyAgentViewState) => void) => {
+      onChange: vi.fn((listener: (next: AgentSessionState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       })
@@ -177,7 +177,7 @@ describe("AgentPage", () => {
   });
 
   it("uses the shared Agent session, renders streamed tokens and survives remount", async () => {
-    let state: LegacyAgentViewState = {
+    let state: AgentSessionState = {
       status: "idle",
       history: [],
       messages: [],
@@ -187,8 +187,8 @@ describe("AgentPage", () => {
       omittedTargets: [],
       hasMemory: false
     };
-    const listeners = new Set<(next: LegacyAgentViewState) => void>();
-    const result: LegacyAgentRunResult = {
+    const listeners = new Set<(next: AgentSessionState) => void>();
+    const result: AgentSessionResult = {
       ok: true,
       status: "done" as const,
       response: "EPC 1.23",
@@ -215,7 +215,7 @@ describe("AgentPage", () => {
       }),
       stop: vi.fn(),
       newConversation: vi.fn(() => { state = { ...state, status: "idle", history: [], messages: [], response: "", steps: [] }; }) ,
-      onChange: vi.fn((listener: (next: LegacyAgentViewState) => void) => {
+      onChange: vi.fn((listener: (next: AgentSessionState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       })
@@ -323,7 +323,7 @@ describe("AgentPage", () => {
   });
 
   it("keeps Agent feedback and question-log downloads on the shared session", async () => {
-    let state: LegacyAgentViewState = {
+    let state: AgentSessionState = {
       status: "idle",
       history: [],
       messages: [],
@@ -333,7 +333,7 @@ describe("AgentPage", () => {
       omittedTargets: [],
       hasMemory: false
     };
-    const listeners = new Set<(next: LegacyAgentViewState) => void>();
+    const listeners = new Set<(next: AgentSessionState) => void>();
     const feedback = {
       isAvailable: vi.fn(() => state.status === "done"),
       submit: vi.fn(async () => ({ ok: true as const }))
@@ -355,7 +355,7 @@ describe("AgentPage", () => {
       newConversation: vi.fn(),
       feedback,
       downloadLogs: vi.fn(() => true),
-      onChange: vi.fn((listener: (next: LegacyAgentViewState) => void) => {
+      onChange: vi.fn((listener: (next: AgentSessionState) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       })
@@ -397,7 +397,7 @@ describe("AgentPage", () => {
   });
 
   it("aborts a shared Agent request when the page is unmounted", async () => {
-    let state: LegacyAgentViewState = {
+    let state: AgentSessionState = {
       status: "idle",
       history: [],
       messages: [],
@@ -411,7 +411,7 @@ describe("AgentPage", () => {
     let requestSignal: AbortSignal | undefined;
     const session = {
       getState: () => state,
-      submit: vi.fn((request: { signal: AbortSignal }) => new Promise<LegacyAgentRunResult>((resolve) => {
+      submit: vi.fn((request: { signal: AbortSignal }) => new Promise<AgentSessionResult>((resolve) => {
         requestSignal = request.signal;
         release = () => resolve({ ok: false, status: "stopped", response: "", steps: [] });
       })),

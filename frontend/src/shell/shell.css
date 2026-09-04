@@ -1,5 +1,4 @@
-/* Standalone modern shell. The legacy stylesheet remains available only for
- * an explicit rollback URL; the normal application owns its layout here. */
+/* Standalone modern shell owned by the Vue application. */
 
 .modern-application {
   --modern-shell-width: 268px;

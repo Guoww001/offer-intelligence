@@ -23,10 +23,14 @@ run_check() {
 }
 
 echo "=== JS syntax checks ==="
-run_check "public/app.js"                    node --check public/app.js
 run_check "public/auth.js"                   node --check public/auth.js
-run_check "public/chatbot_i18n.js"           node --check public/chatbot_i18n.js
-run_check "public/tier2_recommendation_rules.js" node --check public/tier2_recommendation_rules.js
+
+echo ""
+echo "=== Modern frontend checks ==="
+run_check "CopilotKit runtime tests" npm run test:copilotkit
+run_check "Vue typecheck" npm --prefix frontend run typecheck
+run_check "Vue tests" npm --prefix frontend run test -- --run
+run_check "Vue production build" npm --prefix frontend run build
 
 echo ""
 echo "=== Python compilation checks ==="
@@ -50,13 +54,14 @@ run_check "test_llm_stream_timeout.py"      python scripts/test_llm_stream_timeo
 run_check "test_tier_visual_status_rules.py" python scripts/test_tier_visual_status_rules.py
 run_check "test_merchant_aov_estimates.py" python scripts/test_merchant_aov_estimates.py
 run_check "test_payment_placeholders.py"    python -m scripts.test_payment_placeholders
-run_check "test_chatbot_intent_flow.mjs"    node scripts/test_chatbot_intent_flow.mjs
-run_check "test_zh_chatbot.mjs"             node scripts/test_zh_chatbot.mjs
-run_check "test_tier2_recommendation_rules.mjs" node scripts/test_tier2_recommendation_rules.mjs
+run_check "test_frontend_migration_inventory.mjs" node scripts/test_frontend_migration_inventory.mjs
+run_check "test_frontend_build_contract.mjs" node scripts/test_frontend_build_contract.mjs
+run_check "test_m4_shell_frontend.mjs" node scripts/test_m4_shell_frontend.mjs
+run_check "test_modern_page_cutover.mjs" node scripts/test_modern_page_cutover.mjs
+run_check "test_m6_chatbot_agent_behavior_parity.mjs" node scripts/test_m6_chatbot_agent_behavior_parity.mjs
+run_check "test_m6_modern_mount.mjs" node scripts/test_m6_modern_mount.mjs
+run_check "test_m7_modern_entry.mjs" node scripts/test_m7_modern_entry.mjs
 run_check "test_sheet_categories.mjs"       node scripts/test_sheet_categories.mjs
-run_check "test_tier_visual_status.mjs"     node scripts/test_tier_visual_status.mjs
-run_check "test_db_status_view_model.mjs"   node scripts/test_db_status_view_model.mjs
-run_check "test_target_month_selection.mjs" node scripts/test_target_month_selection.mjs
 
 echo ""
 echo "========================================"

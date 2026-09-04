@@ -1,38 +1,39 @@
 # Progress
 
-> Last updated: 2026-07-09. Active feature, its status, last verification evidence, and next step.
-> Integrates with mew-spec workflow — each feature maps to a `specs/<NNN>-<slug>/` directory.
+> Last updated: 2026-09-04. Active migration milestone, verification evidence, and next step.
 
-## Active feature
+## Active milestone
 
-**chatbot-data-analysis** — LLM intent classification + chatbot data analysis
-Specs: [`specs/001-llm-intent-classifier/`](specs/001-llm-intent-classifier/), [`specs/002-chatbot-data-analysis/`](specs/002-chatbot-data-analysis/)
-Branch: `main`
-Status: **implementation done, acceptance pending**
+**M07 — legacy frontend removal**
 
-### Last verification
+Branch: `codex/m07-completion` (target: `FRONTEND-VUE-MIGRATION`)
+Status: **implementation complete; full regression and commit in progress**
 
+### Completed scope
+
+- Standalone Vue Runtime owns authentication handoff, Shell, navigation, language, and all 12 pages.
+- CopilotKit/AG-UI remains the default Agent transport with Python registry/proof as authority.
+- The old page DOM, `public/app.js`, `public/styles.css`, auxiliary scripts, and `frontend/src/legacy/` are removed.
+- Runtime legacy switches and old test globals are removed; rollback now uses the previous deploy.
+- Source-string tests were replaced with Vue behavior, runtime/build, shared XLSX, and Python protocol tests.
+
+### Verification
+
+```bash
+npm run test:copilotkit
+npm --prefix frontend run typecheck
+npm --prefix frontend run test -- --run
+npm --prefix frontend run build
+node scripts/test_frontend_migration_inventory.mjs
+node scripts/test_frontend_build_contract.mjs
+node scripts/test_m4_shell_frontend.mjs
+node scripts/test_modern_page_cutover.mjs
+node scripts/test_m6_chatbot_agent_behavior_parity.mjs
+node scripts/test_m6_modern_mount.mjs
+node scripts/test_m7_modern_entry.mjs
+python scripts/test_agent_agui.py
 ```
-node --check public/app.js public/auth.js public/chatbot_i18n.js   # ✅ pass
-python -m py_compile llm_classify.py api/chat/analyze.py api/chat/classify.py server.py  # ✅ pass
-node scripts/test_chatbot_intent_flow.mjs                           # ✅ pass
-node scripts/test_zh_chatbot.mjs                                    # ✅ pass
-```
-
-### What's left
-
-- [ ] spec/001 — all functional verification (AC1–AC6) unchecked
-- [ ] spec/002 — functional verification (AC1–AC8) + 4 E2E scenarios unchecked
-- [ ] Run full `bash init.sh` to confirm no regressions
 
 ### Next step
 
-Run the spec/002 acceptance checks by exercising the chatbot end-to-end (`python server.py`, open browser). Start with AC3 (merchant analysis completeness) since the implementation checks already pass.
-
----
-
-## Completed features
-
-<!-- Move features here once all acceptance checks pass and the branch is merged. -->
-
-*(none yet)*
+Complete the full CI-equivalent regression, create the bilingual M07 removal commit, and push both M07 commits to `FRONTEND-VUE-MIGRATION` after confirming the remote head.

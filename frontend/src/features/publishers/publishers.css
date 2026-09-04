@@ -1,9 +1,6 @@
-/* Publishers keeps the legacy geometry classes so the Vue migration can be
- * compared against the established page at the same viewport. */
+/* Publishers layout and interaction styles owned by the Vue feature. */
 .publishers-modern-page {
-  /* #publishersPage remains the outer legacy shell and owns the page inset.
-   * Reset the reused page geometry here so the Vue island does not add a
-   * second 24px padding layer while retaining the legacy descendant rules. */
+  /* The standalone workspace owns the outer page inset. */
   display: flex;
   flex-direction: column;
   gap: 16px;

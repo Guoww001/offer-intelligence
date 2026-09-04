@@ -1,7 +1,4 @@
-/* Keep the Vue island on the same geometry and palette as the established
- * monthly-new-merchants page. The legacy stylesheet owns the detailed table,
- * drawer, and import-dialog rules; this file only resets the modern mount
- * boundary so those rules do not receive a second page inset. */
+/* Monthly New Merchants layout, table, drawer, and import-dialog styles. */
 .oi-modern-page.monthly-new-merchants-modern-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

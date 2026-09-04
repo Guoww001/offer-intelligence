@@ -28,10 +28,7 @@ function stoppedError(error: unknown, signal?: AbortSignal): boolean {
   return Boolean(signal?.aborted || (isRecord(error) && error.name === "AbortError"));
 }
 
-/**
- * Chat Mode 的默认 SSE runner。Agent-enabled 场景由 entry 注入 legacy bridge runner，
- * 没有 bridge 时仍可直接走普通 `/api/chat/stream`，避免 modern root 出现空白。
- */
+/** Chat Mode default SSE runner for the modern application. */
 export const streamChatbotReply: ChatbotChatRunner = async (request, onToken) => {
   if (request.signal?.aborted) return { ok: false, stopped: true, response: "" };
 

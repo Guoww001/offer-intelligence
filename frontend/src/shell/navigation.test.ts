@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MODERN_PAGE_NAMES } from "../legacy/contracts";
+import { MODERN_PAGE_NAMES } from "../runtime/contracts";
 import {
   GOOGLE_ADS_NAVIGATION_ITEM,
   NAVIGATION_GROUPS,

@@ -1,6 +1,4 @@
-/* Targets keeps the established report-overview geometry and palette. The
- * legacy stylesheet still owns the detailed target cards, trend, and matrix
- * rules while this file isolates the Vue mount boundary. */
+/* Targets cards, trend, matrix, and responsive layout styles. */
 .sheet-page-modern {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.95fr);
