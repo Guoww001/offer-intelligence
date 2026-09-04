@@ -182,7 +182,7 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
       steps,
       partial,
       omittedTargets,
-      memoryEvents: completed ? completed.memoryEvents.map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) : memoryEvents,
+      memoryEvents: completed ? (completed.memoryEvents || []).map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) : memoryEvents,
       resultViews: normalizeAgentResultViews(completed?.resultViews || resultViews),
       ...(errorCode ? { errorCode } : {})
     } as AgentRunResult;
@@ -196,7 +196,7 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
     if (!aborted && synthesisStarted) {
       const completed = await session.complete(response, { synthesisFailed: true, partial, omittedTargets });
       if (completed.fallbackDelivered) return { ...completed, ok: true, status: "done", steps,
-        memoryEvents: completed.memoryEvents.map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
+        memoryEvents: (completed.memoryEvents || []).map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
     }
     return {
       ok: false,

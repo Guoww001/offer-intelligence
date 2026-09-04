@@ -20,11 +20,11 @@ beforeEach(() => {
 
 function fixture(bypassPlanning = false) {
   const session = {
-    language: "zh", history: [{ role: "assistant", content: "EPC: 1.2" }], bypassPlanning,
-    direct: vi.fn(async () => ({ ok: true, status: "done" as const, response: "历史上下文解释" })),
+    language: "zh" as const, history: [{ role: "assistant" as const, content: "EPC: 1.2" }], bypassPlanning,
+    direct: vi.fn(async () => ({ ok: true, status: "done" as const, response: "历史上下文解释", steps: [] })),
     execute: vi.fn(), dispose: vi.fn(),
     complete: vi.fn(async (response, options) => ({ ok: true, status: "done" as const, response: options.synthesisFailed ? "已保留工具数据" : response,
-      fallbackDelivered: options.synthesisFailed === true, partial: false, omittedTargets: [], memoryEvents: [], resultViews: [] }))
+      steps: [], fallbackDelivered: options.synthesisFailed === true, partial: false, omittedTargets: [], memoryEvents: [], resultViews: [] }))
   };
   const wrapper = mount(CopilotKitAgentRuntime, { props: { language: "zh", beginRun: () => session } });
   const request: AgentRunRequest = { prompt: "分析商户", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "Tier 2", signal: new AbortController().signal };
