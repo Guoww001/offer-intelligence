@@ -2,17 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type {
-  LegacyChatAnswerMessage,
-  LegacyChatViewResult,
-  LegacyChatViewState,
-  LegacyChatUtilityState,
-  LegacyChatStarterCard,
-  LegacyDeepWindowInteraction,
-  LegacyDeepWindowView,
-  LegacyDeepWindowsBridge,
-  LegacyDeepWindowsViewState
-} from "../../legacy/contracts";
 import ChatbotChatView from "./ChatbotChatView.vue";
 import ChatbotOnboarding from "./ChatbotOnboarding.vue";
 import ChatbotReportView from "./ChatbotReportView.vue";
@@ -20,7 +9,13 @@ import ChatbotUtilityPanels from "./ChatbotUtilityPanels.vue";
 import DeepWindow from "./DeepWindow.vue";
 import { streamChatbotReply } from "./useChatbotChat";
 import { useChatbotReport } from "./useChatbotReport";
-import { useDeepWindows, type DeepWindowState } from "./useDeepWindows";
+import {
+  createDeepWindowStore,
+  type DeepWindowInteraction,
+  type DeepWindowState,
+  type DeepWindowStore,
+  type DeepWindowViewState
+} from "./deepWindowStore";
 import type {
   ChatbotChatRequest,
   ChatbotChatResult,
@@ -29,7 +24,12 @@ import type {
   ChatbotMemoryItem,
   ChatbotMode,
   ChatbotReportViewResult,
-  ChatbotSession
+  ChatbotSession,
+  ChatbotSessionMessage,
+  ChatbotSessionResult,
+  ChatbotStarterCard,
+  ChatbotUtilityState,
+  ChatbotViewState
 } from "./chatbotViewTypes";
 
 const props = withDefaults(defineProps<{
@@ -37,7 +37,7 @@ const props = withDefaults(defineProps<{
   readonly offers: readonly Readonly<Record<string, unknown>>[];
   readonly runChat?: ChatbotChatRunner;
   readonly session?: ChatbotSession;
-  readonly deepWindows?: LegacyDeepWindowsBridge;
+  readonly deepWindows?: DeepWindowStore;
   readonly autoFocus?: boolean;
 }>(), {
   runChat: undefined,
@@ -58,12 +58,12 @@ const supplementalHtml = ref("");
 const chatInput = ref("");
 const chatLoading = ref(false);
 const chatError = ref("");
-const chatMessages = ref<Array<ChatbotHistoryMessage & Partial<LegacyChatAnswerMessage> & { readonly id: string; readonly streaming?: boolean }>>([]);
-const chatCurrentResult = ref<LegacyChatViewResult | null>(null);
-const starterCards = ref<readonly LegacyChatStarterCard[]>([]);
+const chatMessages = ref<Array<ChatbotHistoryMessage & Partial<ChatbotSessionMessage> & { readonly id: string; readonly streaming?: boolean }>>([]);
+const chatCurrentResult = ref<ChatbotSessionResult | null>(null);
+const starterCards = ref<readonly ChatbotStarterCard[]>([]);
 const memory = ref<ChatbotMemoryItem[]>([]);
 const memoryDropHighlighted = ref(false);
-const utilityState = ref<LegacyChatUtilityState>({
+const utilityState = ref<ChatbotUtilityState>({
   helpOpen: false,
   guideOpen: false,
   helpHtml: "",
@@ -76,24 +76,13 @@ const utilityState = ref<LegacyChatUtilityState>({
   reminderCollapsed: false
 });
 const feedbackRefreshKey = ref(0);
-const {
-  deepWindow: localDeepWindow,
-  windows: localDeepWindows,
-  open: openLocalDeepWindow,
-  minimize: minimizeLocalDeepWindow,
-  restore: restoreLocalDeepWindow,
-  close: closeLocalDeepWindow,
-  pin: pinLocalDeepWindow,
-  move: moveLocalDeepWindow,
-  clone: cloneLocalDeepWindow,
-  toggleOverlay: toggleLocalDeepWindowOverlay,
-  export: exportLocalDeepWindow,
-  cancel: cancelLocalDeepWindow,
-  clear: clearLocalDeepWindows
-} = useDeepWindows();
+const localDeepWindows = createDeepWindowStore({
+  onAddToChat: (window) => addReportToMemory(window.result)
+});
+const deepWindowController = props.deepWindows || localDeepWindows;
 let chatAbortController: AbortController | null = null;
 let stopSessionSubscription: (() => void) | null = null;
-const legacyDeepWindowsState = ref<LegacyDeepWindowsViewState>(props.deepWindows?.getState() || { windows: [], activeId: null });
+const deepWindowsState = ref<DeepWindowViewState>(deepWindowController.getState());
 let stopDeepWindowSubscription: (() => void) | null = null;
 let idCounter = 0;
 
@@ -112,7 +101,7 @@ const copy = computed(() => props.language === "zh" ? {
 });
 
 const reportError = computed(() => report.hasError.value ? copy.value.reportError : "");
-const reportAnswerId = computed(() => reportResult.value?.bridgeResult?.answerId || null);
+const reportAnswerId = computed(() => reportResult.value?.sessionResult?.answerId || null);
 const reportAnswerFeedback = computed(() => reportAnswerId.value ? feedbackForAnswer(reportAnswerId.value) : null);
 
 const utilityCopy = computed(() => props.language === "zh" ? {
@@ -178,7 +167,8 @@ function feedbackForDeepWindow(windowId: string): ReturnType<NonNullable<Chatbot
   return props.session?.feedbackForDeepWindow?.(windowId) || null;
 }
 
-function bridgeResultToView(result: LegacyChatViewResult, query: string): ChatbotReportViewResult {
+function sessionResultToView(result: ChatbotSessionResult, query: string): ChatbotReportViewResult {
+  if (result.report) return { ...result.report, sessionResult: result };
   const status: ChatbotReportViewResult["status"] = result.status === "success"
     ? "resolved" : result.status === "stopped" ? "deferred" : "not_found";
   return {
@@ -197,73 +187,24 @@ function bridgeResultToView(result: LegacyChatViewResult, query: string): Chatbo
       conversionRate: null
     },
     message: result.response || (result.status === "stopped" ? copy.value.reportError : copy.value.reportError),
-    ...(result.contentHtml ? { legacyHtml: result.contentHtml } : {}),
+    ...(result.contentHtml ? { contentHtml: result.contentHtml, legacyHtml: result.contentHtml } : {}),
     ...(result.recommendationHtml ? { recommendationHtml: result.recommendationHtml } : {}),
-    bridgeResult: result
+    sessionResult: result
   };
 }
 
-function deepWindowResult(view: LegacyDeepWindowView): ChatbotReportViewResult {
-  return {
-    intent: "analysis",
-    title: view.title,
-    status: view.status === "content" ? "resolved" : view.status === "error" ? "not_found" : "deferred",
-    query: view.prompt,
-    source: view.source,
-    rows: [],
-    summary: {
-      offerCount: 0,
-      clicks: 0,
-      orders: 0,
-      revenue: 0,
-      commission: 0,
-      conversionRate: null
-    },
-    message: view.summary || view.title,
-    ...(view.contentHtml ? { legacyHtml: view.contentHtml } : {})
-  };
-}
-
-function deepWindowState(view: LegacyDeepWindowView): DeepWindowState {
-  return {
-    id: view.id,
-    mode: view.mode,
-    result: deepWindowResult(view),
-    title: view.title,
-    summary: view.summary,
-    contentHtml: view.contentHtml,
-    errorMessage: view.errorMessage,
-    skeletonSteps: view.skeletonSteps,
-    zIndex: view.zIndex,
-    canCancel: view.canCancel,
-    minimized: view.minimized,
-    pinned: view.pinned,
-    overlay: view.overlay,
-    status: view.status === "loading" ? "loading" : view.status === "error" ? "error" : "ready",
-    position: view.position,
-    canAddMemory: view.canAddMemory,
-    addedToMemory: view.addedToMemory,
-    canExport: view.canExport,
-    canMinimize: view.canMinimize,
-    canClose: view.canClose,
-    feedbackState: view.feedbackState
-  };
-}
-
-const displayedDeepWindows = computed<readonly DeepWindowState[]>(() => props.deepWindows
-  ? legacyDeepWindowsState.value.windows.map(deepWindowState)
-  : localDeepWindows.value);
+const displayedDeepWindows = computed<readonly DeepWindowState[]>(() => deepWindowsState.value.windows);
 
 const activeDisplayedDeepWindow = computed<DeepWindowState | null>(() => {
-  const activeId = props.deepWindows ? legacyDeepWindowsState.value.activeId : localDeepWindow.value?.id;
+  const activeId = deepWindowsState.value.activeId;
   return displayedDeepWindows.value.find((item) => item.id === activeId) || displayedDeepWindows.value.at(-1) || null;
 });
 
-function syncDeepWindowState(next: LegacyDeepWindowsViewState = props.deepWindows!.getState()): void {
-  legacyDeepWindowsState.value = next;
+function syncDeepWindowState(next: DeepWindowViewState = deepWindowController.getState()): void {
+  deepWindowsState.value = next;
 }
 
-function sessionMemoryToLocal(state: LegacyChatViewState): ChatbotMemoryItem[] {
+function sessionMemoryToLocal(state: ChatbotViewState): ChatbotMemoryItem[] {
   return state.memory.map((item) => ({
     id: item.id,
     title: item.title,
@@ -273,7 +214,7 @@ function sessionMemoryToLocal(state: LegacyChatViewState): ChatbotMemoryItem[] {
   }));
 }
 
-function syncSessionState(next: LegacyChatViewState = props.session!.getState()): void {
+function syncSessionState(next: ChatbotViewState = props.session!.getState()): void {
   mode.value = next.mode;
   contextTitle.value = next.contextTitle || "";
   contextSubtitle.value = next.contextSubtitle || "";
@@ -305,7 +246,7 @@ function syncSessionState(next: LegacyChatViewState = props.session!.getState())
       : {})
   }));
   if (next.currentResult && next.currentResult.mode === "report") {
-    reportResult.value = bridgeResultToView(next.currentResult, reportPrompt.value || reportResult.value?.query || "");
+    reportResult.value = sessionResultToView(next.currentResult, reportPrompt.value || reportResult.value?.query || "");
     report.hasError.value = next.currentResult.ok === false;
   } else if (!next.currentResult) {
     reportResult.value = null;
@@ -327,10 +268,10 @@ async function submitReport(): Promise<void> {
     chatAbortController = new AbortController();
     try {
       const result = await props.session.submit(query, { signal: chatAbortController.signal });
-      reportResult.value = bridgeResultToView(result, query);
+      reportResult.value = sessionResultToView(result, query);
       report.hasError.value = !result.ok;
       feedbackRefreshKey.value += 1;
-      if (result.ok && !props.deepWindows) closeLocalDeepWindow();
+      if (result.ok && !props.deepWindows) deepWindowController.close();
     } finally {
       chatAbortController = null;
       reportLoading.value = false;
@@ -338,22 +279,24 @@ async function submitReport(): Promise<void> {
     return;
   }
   const result = await report.submit();
-  if (result) closeLocalDeepWindow();
+  if (result) deepWindowController.close();
 }
 
 function openDeep(): void {
   if (!reportResult.value) return;
-  const legacyId = reportResult.value.bridgeResult?.deepWindowId;
-  if (props.deepWindows && legacyId) {
-    props.deepWindows.activate(legacyId);
+  const existingId = reportResult.value.sessionResult?.deepWindowId;
+  if (existingId) {
+    deepWindowController.activate(existingId);
     return;
   }
-  openLocalDeepWindow(reportResult.value);
+  const sessionId = props.session?.openDeepWindow?.();
+  if (sessionId) deepWindowController.activate(sessionId);
+  else deepWindowController.open(reportResult.value);
 }
 
 function openChatAnswer(answerId: string): void {
   const id = props.session?.openChatAnswer?.(answerId) || null;
-  if (id && props.deepWindows) props.deepWindows.activate(id);
+  if (id) deepWindowController.activate(id);
 }
 
 function setMemoryDropHighlight(active: boolean): void {
@@ -366,8 +309,8 @@ function setStarterPrompt(prompt: string): void {
 
 function addReportToMemory(result = reportResult.value): void {
   if (!result) return;
-  if (props.session?.addMemory && result.bridgeResult) {
-    props.session.addMemory(result.bridgeResult);
+  if (props.session?.addMemory) {
+    props.session.addMemory(result.sessionResult || result);
     setMode("chat");
     return;
   }
@@ -378,7 +321,6 @@ function addReportToMemory(result = reportResult.value): void {
     result
   };
   memory.value = [...memory.value.filter((entry) => entry.result?.query !== result.query), item].slice(-5);
-  if (localDeepWindow.value) localDeepWindow.value = { ...localDeepWindow.value, result };
   setMode("chat");
 }
 
@@ -392,11 +334,7 @@ function addDeepWindowToMemory(id?: string): void {
     ? displayedDeepWindows.value.find((item) => item.id === id)
     : activeDisplayedDeepWindow.value;
   if (!active) return;
-  if (props.deepWindows) {
-    props.deepWindows.addToChat(active.id);
-    return;
-  }
-  addReportToMemory(active.result);
+  deepWindowController.addToChat(active.id);
 }
 
 function activeDeepWindowId(): string | null {
@@ -404,41 +342,35 @@ function activeDeepWindowId(): string | null {
 }
 
 function pinDeepWindowById(id: string): void {
-  if (props.deepWindows) props.deepWindows.pin(id);
-  else pinLocalDeepWindow(id);
+  deepWindowController.pin(id);
 }
 
 function moveDeepWindowById(id: string, x: number, y: number): void {
-  if (props.deepWindows) props.deepWindows.move(id, x, y);
-  else moveLocalDeepWindow(id, x, y);
+  deepWindowController.move(id, x, y);
 }
 
 function cloneDeepWindowById(id: string): void {
-  if (props.deepWindows) props.deepWindows.clone(id);
-  else cloneLocalDeepWindow(id);
+  deepWindowController.clone(id);
 }
 
 function toggleDeepWindowOverlayById(id: string): void {
-  if (props.deepWindows) props.deepWindows.toggleOverlay(id);
-  else toggleLocalDeepWindowOverlay(id);
+  deepWindowController.toggleOverlay(id);
 }
 
 function exportDeepWindowById(id: string): void {
-  if (props.deepWindows) props.deepWindows.export(id);
-  else exportLocalDeepWindow(id);
+  deepWindowController.export(id);
 }
 
 function cancelDeepWindowById(id: string): void {
-  if (props.deepWindows) props.deepWindows.cancel(id);
-  else cancelLocalDeepWindow(id);
+  deepWindowController.cancel(id);
 }
 
-function interactDeepWindowById(id: string, action: LegacyDeepWindowInteraction, value?: string): void {
-  props.deepWindows?.interact(id, action, value);
+function interactDeepWindowById(id: string, action: DeepWindowInteraction, value?: string): void {
+  deepWindowController.interact(id, action, value);
 }
 
 function setDeepWindowTrendColumns(id: string, columns: readonly string[]): void {
-  props.deepWindows?.setTrendColumns(id, columns);
+  deepWindowController.setTrendColumns(id, columns);
 }
 
 function memoryText(): string {
@@ -539,10 +471,8 @@ onMounted(() => {
     syncSessionState();
     stopSessionSubscription = props.session.onChange(syncSessionState);
   }
-  if (props.deepWindows) {
-    syncDeepWindowState();
-    stopDeepWindowSubscription = props.deepWindows.onChange(syncDeepWindowState);
-  }
+  syncDeepWindowState();
+  stopDeepWindowSubscription = deepWindowController.onChange(syncDeepWindowState);
 });
 
 onBeforeUnmount(() => {
@@ -552,7 +482,7 @@ onBeforeUnmount(() => {
   stopSessionSubscription = null;
   stopDeepWindowSubscription?.();
   stopDeepWindowSubscription = null;
-  clearLocalDeepWindows();
+  if (!props.deepWindows) localDeepWindows.dispose();
 });
 </script>
 
@@ -580,7 +510,7 @@ onBeforeUnmount(() => {
       :feedback="session?.feedback"
       :feedback-refresh-key="feedbackRefreshKey"
       :answer-id="reportAnswerId"
-      :feedback-state="reportResult?.bridgeResult?.feedbackState"
+      :feedback-state="reportResult?.sessionResult?.feedbackState"
       :answer-feedback="reportAnswerFeedback"
       :supplemental-html="supplementalHtml"
       @update:prompt="reportPrompt = $event"
@@ -781,10 +711,10 @@ onBeforeUnmount(() => {
       :feedback-state="window.feedbackState"
       :feedback="feedbackForDeepWindow(window.id)"
       :absolute-position="Boolean(props.deepWindows)"
-      @activate="props.deepWindows ? props.deepWindows.activate(window.id) : undefined"
-      @minimize="props.deepWindows ? props.deepWindows.minimize(window.id) : minimizeLocalDeepWindow(window.id)"
-      @restore="props.deepWindows ? props.deepWindows.restore(window.id) : restoreLocalDeepWindow(window.id)"
-      @close="props.deepWindows ? props.deepWindows.close(window.id) : closeLocalDeepWindow(window.id)"
+      @activate="deepWindowController.activate(window.id)"
+      @minimize="deepWindowController.minimize(window.id)"
+      @restore="deepWindowController.restore(window.id)"
+      @close="deepWindowController.close(window.id)"
       @add-memory="addDeepWindowToMemory(window.id)"
       @pin="pinDeepWindowById(window.id)"
       @move="(x, y) => moveDeepWindowById(window.id, x, y)"

@@ -76,10 +76,10 @@ import type { TierSheetReportData } from "./features/tier-sheet/tierSheetModel";
 import GoogleAdsPage from "./features/google-ads/GoogleAdsPage.vue";
 import type { GoogleAdsLoadRequest } from "./features/google-ads/useGoogleAds";
 import ChatbotPage from "./features/chatbot/ChatbotPage.vue";
-import type { ChatbotChatRunner } from "./features/chatbot/chatbotViewTypes";
+import { createChatbotSession } from "./features/chatbot/chatbotSession";
+import type { ChatbotReportViewResult, ChatbotSession } from "./features/chatbot/chatbotViewTypes";
 import AgentPage, { type AgentRunner } from "./features/agent/AgentPage.vue";
-import type { AgentMemoryEvent } from "./features/agent/agentModel";
-import { normalizeAgentResultViews } from "./shared/contracts/agentResult";
+import { createAgentSession, type AgentSession } from "./features/agent/agentSession";
 import AppShell from "./shell/AppShell.vue";
 import type { AppShellController } from "./shell/appShellContracts";
 
@@ -898,56 +898,65 @@ const categoryReportFactory: ModernPageFactory = (element): ModernPageController
   };
 };
 
-const modernChatRunner: ChatbotChatRunner = async (request, onToken) => {
-  const result = await window.OI_LEGACY_BRIDGE?.runChat?.({ ...request, onToken });
-  if (!result) {
-    return {
-      ok: false,
-      response: "",
-      errorCode: "legacy_chat_bridge_unavailable"
-    };
-  }
-  return result;
-};
+let modernChatbotSession: ChatbotSession | null = null;
+let modernAgentSession: AgentSession | null = null;
 
-function modernAgentMemoryEvents(events: readonly Record<string, unknown>[] | undefined): readonly AgentMemoryEvent[] {
-  return (events || []).flatMap((event) => {
-    const kind = event.kind;
-    if (kind !== "tool_success" && kind !== "candidates") return [];
-    return [{ ...event, kind } as AgentMemoryEvent];
-  });
+function downloadChatbotReport(result: ChatbotReportViewResult): boolean {
+  const rows = result.rows.length
+    ? result.rows
+    : [{ query: result.query, intent: result.intent, source: result.source, message: result.message, ...result.summary }];
+  const scope = result.title || result.category || result.tier || result.intent || "report";
+  return downloadWorkbook(
+    `chatbot_${safeExportPart(scope)}_${rows.length}_rows_${exportDateStamp()}.xlsx`,
+    {
+      rows,
+      columns: objectExportColumns(rows),
+      sheetName: safeSheetName(scope)
+    }
+  );
 }
 
-const modernAgentRunner: AgentRunner = async (request) => {
-  const result = await window.OI_LEGACY_BRIDGE?.runAgent?.(request);
-  if (!result) {
-    return {
-      ok: false,
-      status: "error",
-      response: "",
-      steps: [],
-      memoryEvents: []
-    };
+function chatbotSession(snapshot: LegacyBootstrapData): ChatbotSession {
+  if (!modernChatbotSession) {
+    modernChatbotSession = createChatbotSession({
+      offers: offerRecords(snapshot),
+      paymentRecords: paymentRecords(snapshot),
+      language: snapshot.language,
+      llmEnabled: snapshot.llmEnabled,
+      storage: browserStorage(),
+      downloadReport: downloadChatbotReport
+    });
   }
-  return {
-    ...result,
-    memoryEvents: modernAgentMemoryEvents(result.memoryEvents),
-    resultViews: normalizeAgentResultViews(result.resultViews)
-  };
-};
+  modernChatbotSession.setLanguage?.(snapshot.language);
+  return modernChatbotSession;
+}
+
+function agentSession(snapshot: LegacyBootstrapData): AgentSession {
+  if (!modernAgentSession) {
+    modernAgentSession = createAgentSession({
+      offers: offerRecords(snapshot),
+      paymentRecords: paymentRecords(snapshot),
+      language: snapshot.language,
+      storage: browserStorage(),
+      agentEnabled: snapshot.agentEnabled
+    });
+  }
+  modernAgentSession.setLanguage?.(snapshot.language);
+  return modernAgentSession;
+}
 
 const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
+  const session = chatbotSession(snapshot);
   const app = createApp({
     name: "ModernChatbotMount",
     setup() {
       return () => h(ChatbotPage, {
         offers: offerRecords(snapshot),
         language: i18n.language.value,
-        runChat: modernChatRunner,
-        session: window.OI_LEGACY_BRIDGE?.chatSession,
-        deepWindows: window.OI_LEGACY_BRIDGE?.deepWindows,
+        session,
+        deepWindows: session.deepWindows,
         autoFocus: false
       });
     }
@@ -956,6 +965,7 @@ const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
   return {
     setLanguage(nextLanguage) {
       i18n.setLanguage(nextLanguage);
+      session.setLanguage?.(nextLanguage);
     },
     unmount() {
       app.unmount();
@@ -967,8 +977,14 @@ const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
 const agentFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getLegacySnapshot().value;
   const i18n = createI18nStore(snapshot.language);
+  const session = agentSession(snapshot);
   const runtime = window.OI_COPILOTKIT_RUNTIME;
   const copilotKitEnabled = runtime?.enabled === true && runtime.authority === "python-registry";
+  const fallbackRun: AgentRunner = (request) => session.submit(request, {
+    onToken: request.onToken,
+    onTimeline: request.onTimeline,
+    onResultView: request.onResultView
+  });
   const app = createApp({
     name: "ModernAgentMount",
     setup() {
@@ -976,8 +992,9 @@ const agentFactory: ModernPageFactory = (element): ModernPageController => {
         language: i18n.language.value,
         endpoint: runtime?.endpoint || "/api/copilotkit",
         enabled: copilotKitEnabled,
-        fallbackRun: modernAgentRunner,
-        fallbackSession: window.OI_LEGACY_BRIDGE?.agentSession,
+        fallbackRun,
+        fallbackSession: session,
+        toolExecutor: session.executeTool,
         storage: browserStorage(),
       });
     }
@@ -986,6 +1003,7 @@ const agentFactory: ModernPageFactory = (element): ModernPageController => {
   return {
     setLanguage(nextLanguage) {
       i18n.setLanguage(nextLanguage);
+      session.setLanguage?.(nextLanguage);
     },
     unmount() {
       app.unmount();

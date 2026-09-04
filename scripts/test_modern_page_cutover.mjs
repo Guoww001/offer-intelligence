@@ -131,18 +131,17 @@ for (const page of pages) {
 const m6ModernPages = new Map(
   inventory.pages.filter((page) => ["dashboard", "agent"].includes(page.pageKey)).map((page) => [page.pageKey, page])
 );
-assert(m6ModernPages.get("dashboard")?.status === "dual", "Dashboard 视觉等价完成前必须保持 dual 状态");
-assert(m6ModernPages.get("agent")?.status === "dual", "Chat Agent Legacy-first 时必须保持 dual 状态");
+assert(m6ModernPages.get("dashboard")?.status === "modern", "Dashboard 独立会话放行后必须进入 modern 状态");
+assert(m6ModernPages.get("agent")?.status === "modern", "Chat Agent 独立 Runtime 放行后必须进入 modern 状态");
 assert(m6ModernPages.get("dashboard")?.roots?.includes("#chatbotModernRoot"), "Dashboard 清单缺少 Chatbot modern root");
 assert(m6ModernPages.get("agent")?.roots?.includes("#agentModernRoot"), "Chat Agent 清单缺少 Agent modern root");
 
 const parityGate = app.match(/function modernChatbotAgentParityEnabled\(\) \{([\s\S]*?)\n  \}/);
 assert(parityGate, "缺少 Chatbot/Agent modern parity gate");
-assert(parityGate[1].includes("modernChatbotAgentBridgeAvailable()"), "Modern parity gate 必须保留 bridge 能力检查");
-assert(parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ === true"), "Chatbot 视觉等价完成前必须显式 true 才启用 Modern 对照");
-assert(!parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false"), "Chatbot 视觉等价完成前不得默认启用 Modern");
+assert(!parityGate[1].includes("modernChatbotAgentBridgeAvailable()"), "Modern-first 闸门不得依赖 Legacy bridge 可用性");
+assert(parityGate[1].includes("__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false"), "Chatbot/Agent 必须默认启用 Modern，并允许显式 false 回退 Legacy");
 assert(/function modernAgentRuntimeEnabled\(\)/.test(app), "Agent 必须使用独立的生产 Runtime 闸门");
 assert(/function modernAgentParityEnabled\(\)/.test(app), "Agent Modern 对照必须有独立 parity 闸门");
-assert(/isAgent && modernAgentParityEnabled\(\)/.test(app), "Agent 默认必须继续使用 Legacy，仅显式开启 parity 才挂载 Modern");
+assert(/isAgent && modernAgentParityEnabled\(\)/.test(app), "Agent 必须通过 Modern-first 闸门挂载并保留 Legacy fallback");
 
 console.log("PASS: modern page cutover contract");

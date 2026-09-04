@@ -32140,79 +32140,23 @@ var _NUMERIC_COL_PATTERNS = [
     ).trim();
   }
 
-  function modernChatbotAgentBridgeAvailable() {
-    var bridge = window.OI_LEGACY_BRIDGE;
-    var chat = bridge && bridge.chatSession;
-    var agent = bridge && bridge.agentSession;
-    var deepWindows = bridge && bridge.deepWindows;
-    var chatReady = chat
-      && typeof chat.getState === "function"
-      && typeof chat.setMode === "function"
-      && typeof chat.submit === "function"
-      && typeof chat.removeMemory === "function"
-      && typeof chat.clearConversation === "function"
-      && typeof chat.addMemory === "function"
-      && typeof chat.downloadOverview === "function"
-      && typeof chat.downloadRecommendation === "function"
-      && typeof chat.downloadLogs === "function"
-      && typeof chat.toggleHelp === "function"
-      && typeof chat.toggleGuide === "function"
-      && typeof chat.startOnboarding === "function"
-      && typeof chat.openDeepWindow === "function"
-      && chat.feedback
-      && typeof chat.feedback.isAvailable === "function"
-      && typeof chat.feedback.submit === "function"
-      && typeof chat.onChange === "function";
-    var agentReady = agent
-      && typeof agent.getState === "function"
-      && typeof agent.submit === "function"
-      && typeof agent.stop === "function"
-      && typeof agent.newConversation === "function"
-      && typeof agent.downloadLogs === "function"
-      && agent.feedback
-      && typeof agent.feedback.isAvailable === "function"
-      && typeof agent.feedback.submit === "function"
-      && typeof agent.onChange === "function";
-    var deepReady = deepWindows
-      && typeof deepWindows.getState === "function"
-      && typeof deepWindows.activate === "function"
-      && typeof deepWindows.minimize === "function"
-      && typeof deepWindows.restore === "function"
-      && typeof deepWindows.close === "function"
-      && typeof deepWindows.pin === "function"
-      && typeof deepWindows.move === "function"
-      && typeof deepWindows.clone === "function"
-      && typeof deepWindows.toggleOverlay === "function"
-      && typeof deepWindows.export === "function"
-      && typeof deepWindows.cancel === "function"
-      && typeof deepWindows.addToChat === "function"
-      && typeof deepWindows.interact === "function"
-      && typeof deepWindows.setTrendColumns === "function"
-      && typeof deepWindows.onChange === "function";
-    return Boolean(chatReady && agentReady && deepReady);
-  }
-
   function modernChatbotAgentParityEnabled() {
-    // 视觉等价由用户最终验收；验收完成前默认使用 Legacy，仅显式开启 Modern 进行逐页对照。
-    return window.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true && modernChatbotAgentBridgeAvailable();
+    // Modern 默认启用；现场故障时可显式设为 false，按页面回退到完整 Legacy 实现。
+    return window.__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false;
   }
 
   function modernAgentRuntimeEnabled() {
     var config = window.OI_COPILOTKIT_RUNTIME;
-    var bridge = window.OI_LEGACY_BRIDGE;
     return Boolean(
       config
       && config.enabled === true
       && config.authority === "python-registry"
-      && bridge
-      && typeof bridge.executeAgentTool === "function"
-      && modernChatbotAgentBridgeAvailable()
     );
   }
 
   function modernAgentParityEnabled() {
-    // CopilotKit Runtime 仅作为显式 Modern 对照能力，默认页面继续使用 Legacy。
-    return modernChatbotAgentParityEnabled() && modernAgentRuntimeEnabled();
+    // CopilotKit 不可用时，Modern Agent 使用独立的 Vue session runtime，不回落到 Legacy bridge。
+    return modernChatbotAgentParityEnabled();
   }
 
   function switchPage(page) {

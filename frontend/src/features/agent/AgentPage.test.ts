@@ -1,12 +1,15 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AgentPage, { type AgentRunResult, type AgentRunner } from "./AgentPage.vue";
 import type { LegacyAgentViewState, LegacyAgentRunResult } from "../../legacy/contracts";
 import { normalizeAgentResultView } from "../../shared/contracts/agentResult";
+import { clearAgentViewSnapshot } from "./agentViewState";
 
 describe("AgentPage", () => {
+  beforeEach(() => clearAgentViewSnapshot("modern-agent"));
+
   it("keeps result components with their answer after a follow-up and clears them on new conversation", async () => {
     const view = normalizeAgentResultView({ id: "result-1", toolName: "merchant_analysis", kind: "metric", status: "done", title: "Merchant metrics", metrics: [{ label: "EPC", value: "1.2" }] })!;
     const run = vi.fn<AgentRunner>()
@@ -259,6 +262,31 @@ describe("AgentPage", () => {
     expect(wrapper.find('[data-agent-timeline]').exists()).toBe(true);
     expect(wrapper.find('[data-agent-response] h3').exists()).toBe(true);
     expect(wrapper.find('[data-agent-response]').text()).toContain("Tapo");
+  });
+
+  it("restores the CopilotKit runner view after a navigation remount", async () => {
+    const run: AgentRunner = vi.fn(async () => ({
+      ok: true as const,
+      status: "done" as const,
+      response: "Tapo EPC 1.23",
+      steps: [{ id: "tool-restore", phase: "tool" as const, status: "done" as const, label: "Tapo" }],
+      memoryEvents: []
+    }));
+    const stateKey = "agent-remount-test";
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, stateKey, autoFocus: false } });
+
+    await wrapper.get('[data-agent-input]').setValue("查询 Tapo EPC");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+    wrapper.unmount();
+
+    const remounted = mount(AgentPage, { props: { language: "zh", run, stateKey, autoFocus: false } });
+    await nextTick();
+
+    expect(remounted.find('[data-agent-response]').text()).toContain("Tapo EPC 1.23");
+    expect(remounted.find('[data-agent-timeline-step]').attributes("data-step-status")).toBe("done");
+    await remounted.get('[data-agent-action="new"]').trigger("click");
+    remounted.unmount();
   });
 
   it("renders bounded tool result views through the local component registry", async () => {

@@ -1,7 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { ref } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LegacyAgentToolSession } from "../../legacy/contracts";
 import AgentPage, { type AgentRunRequest } from "./AgentPage.vue";
 import CopilotKitAgentRuntime from "./CopilotKitAgentRuntime.vue";
 import { emptyAgentMemory } from "./agentModel";
@@ -20,11 +19,11 @@ beforeEach(() => {
 });
 
 function fixture(bypassPlanning = false) {
-  const session: LegacyAgentToolSession = {
+  const session = {
     language: "zh", history: [{ role: "assistant", content: "EPC: 1.2" }], bypassPlanning,
     direct: vi.fn(async () => ({ ok: true, status: "done" as const, response: "历史上下文解释" })),
     execute: vi.fn(), dispose: vi.fn(),
-    complete: vi.fn((response, options) => ({ response: options.synthesisFailed ? "已保留工具数据" : response,
+    complete: vi.fn(async (response, options) => ({ ok: true, status: "done" as const, response: options.synthesisFailed ? "已保留工具数据" : response,
       fallbackDelivered: options.synthesisFailed === true, partial: false, omittedTargets: [], memoryEvents: [], resultViews: [] }))
   };
   const wrapper = mount(CopilotKitAgentRuntime, { props: { language: "zh", beginRun: () => session } });

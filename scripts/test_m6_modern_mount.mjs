@@ -6,6 +6,7 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n?/g, "\n");
 const html = read("public/index.html");
 const entry = read("frontend/src/entry.ts");
+const agentHost = read("frontend/src/features/agent/CopilotKitAgentHost.vue");
 const app = read("public/app.js");
 const styles = read("public/styles.css");
 const chatbotStyles = read("frontend/src/features/chatbot/chatbot.css");
@@ -14,6 +15,11 @@ assert.match(html, /id="chatbotModernRoot"/, "index.html 必须提供 Chatbot mo
 assert.match(html, /id="agentModernRoot"/, "index.html 必须提供 Agent modern root");
 assert.match(entry, /ChatbotPage/, "entry.ts 必须导入 ChatbotPage");
 assert.match(entry, /AgentPage/, "entry.ts 必须导入 AgentPage");
+assert.match(entry, /createChatbotSession/, "entry.ts 必须创建独立 Chatbot session");
+assert.match(entry, /createAgentSession/, "entry.ts 必须创建独立 Agent session");
+assert.doesNotMatch(entry, /OI_LEGACY_BRIDGE\?\.(?:chatSession|deepWindows|agentSession|runChat|runAgent)/, "Modern Chatbot/Agent 正常链路不得读取 Legacy session 或 runner");
+assert.doesNotMatch(agentHost, /OI_LEGACY_BRIDGE/, "CopilotKit 前端工具不得通过 Legacy bridge 执行");
+assert.match(agentHost, /toolExecutor/, "CopilotKit 前端工具必须注入独立工具执行器");
 assert.match(entry, /(?:["']dashboard["']|dashboard)\s*:/, "entry.ts 必须注册 dashboard factory");
 assert.match(entry, /(?:["']agent["']|agent)\s*:/, "entry.ts 必须注册 agent factory");
 

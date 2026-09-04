@@ -2,7 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type { LegacyAgentSessionBridge, LegacyAgentViewState } from "../../legacy/contracts";
 import { renderMarkdownToHtml } from "../../shared/markdown/markdown";
 import type { AgentResultView as AgentResultViewModel } from "../../shared/contracts/agentResult";
 import { normalizeAgentResultViews } from "../../shared/contracts/agentResult";
@@ -15,6 +14,8 @@ import { AGENT_COMMANDS, parseAgentCommand } from "./agentCommands";
 import { appendDiagnosticTurn, diagnosticTurn, type AgentDiagnosticTurn } from "./agentDiagnostics";
 import AgentTimeline from "./AgentTimeline.vue";
 import AgentResultView from "./AgentResultView.vue";
+import type { AgentSessionState, AgentViewSession } from "./agentSession";
+import { clearAgentViewSnapshot, loadAgentViewSnapshot, saveAgentViewSnapshot } from "./agentViewState";
 import {
   agentMemoryDisplayText,
   agentMemoryPromptText,
@@ -63,10 +64,12 @@ const props = withDefaults(defineProps<{
   readonly run: AgentRunner;
   readonly storage?: Storage;
   readonly autoFocus?: boolean;
-  readonly session?: LegacyAgentSessionBridge;
+  readonly session?: AgentViewSession;
+  readonly stateKey?: string;
 }>(), {
   storage: undefined,
   session: undefined,
+  stateKey: "modern-agent",
   autoFocus: true
 });
 
@@ -274,7 +277,7 @@ function upsertResultView(view: unknown): void {
     : resultViews.value.map((item, itemIndex) => itemIndex === index ? normalized : item);
 }
 
-function syncSessionState(next: LegacyAgentViewState = props.session!.getState()): void {
+function syncSessionState(next: AgentSessionState = props.session!.getState()): void {
   if (localSessionOverride.value) return;
   runStatus.value = next.status;
   timeline.value = next.steps.map(normalizeAgentTimelineStep);
@@ -496,6 +499,7 @@ function newConversation(): void {
   resultViews.value = [];
   feedbackRefreshKey.value += 1;
   memory.value = emptyAgentMemory();
+  clearAgentViewSnapshot(props.stateKey);
   clearAgentMemory(props.storage);
   nextTick(() => inputRef.value?.focus());
 }
@@ -514,6 +518,18 @@ onMounted(() => {
     stopSessionSubscription = props.session.onChange(syncSessionState);
   } else {
     memory.value = loadAgentMemory(props.storage);
+    const restored = loadAgentViewSnapshot(props.stateKey);
+    if (restored) {
+      messages.value = restored.messages.map((message) => ({ ...message }));
+      timeline.value = restored.timeline.map((step) => ({ ...step }));
+      runStatus.value = restored.status;
+      response.value = restored.response;
+      partial.value = restored.partial;
+      omittedTargets.value = restored.omittedTargets.slice();
+      resultViews.value = normalizeAgentResultViews(restored.resultViews);
+      memory.value = normalizeAgentMemory(restored.memory);
+      error.value = restored.error;
+    }
   }
   if (props.autoFocus) inputRef.value?.focus();
   resizeInput();
@@ -529,6 +545,19 @@ onBeforeUnmount(() => {
   abortController?.abort();
   abortController = null;
   if (!props.session) {
+    if (runStatus.value !== "running") {
+      saveAgentViewSnapshot(props.stateKey, {
+        messages: messages.value.map((message) => ({ ...message })),
+        timeline: timeline.value.map((step) => ({ ...step })),
+        status: runStatus.value,
+        response: response.value,
+        partial: partial.value,
+        omittedTargets: omittedTargets.value.slice(),
+        resultViews: normalizeAgentResultViews(resultViews.value),
+        memory: normalizeAgentMemory(memory.value),
+        error: error.value
+      });
+    }
     messages.value = [];
     timeline.value = [];
   }

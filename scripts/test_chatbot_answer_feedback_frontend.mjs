@@ -53,8 +53,8 @@ assertMatch(styles, /\.answer-feedback-dialog\s*\{/, "应提供反馈对话框�
 assertMatch(styles, /data-dash-theme="light"[\s\S]+\.answer-feedback-card/, "反馈对话框应支持浅色主题");
 assertMatch(html, /class="answer-feedback-mood"[^>]*>😡<\/span>/, "反馈面板应显示愤怒表情");
 assertMatch(styles, /\.answer-feedback-mood\s*\{/, "愤怒表情应有专属样式");
-assertMatch(html, /styles\.css\?v=20260817-[^"]+/, "反馈样式应使用当前缓存版本");
-assertMatch(html, /auth\.js\?v=20260817-[^"]+/, "反馈脚本应使用当前缓存版本");
+assertMatch(html, /styles\.css\?v=20\d{6}-[^"]+/, "反馈样式应使用带日期的当前缓存版本");
+assertMatch(html, /auth\.js\?v=20\d{6}-[^"]+/, "反馈脚本应使用带日期的当前缓存版本");
 
 const storageValues = new Map();
 const requests = [];

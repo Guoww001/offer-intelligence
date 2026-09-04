@@ -2,17 +2,36 @@
 import { useAgent, useCopilotKit } from "@copilotkit/vue/v2";
 
 import type { UiLanguage } from "../../shared/i18n";
-import type { LegacyAgentToolSession } from "../../legacy/contracts";
+import type { AgentToolExecutionResponse } from "./agentSession";
 import type { AgentResultView } from "../../shared/contracts/agentResult";
 import { normalizeAgentResultView, normalizeAgentResultViews } from "../../shared/contracts/agentResult";
 import type { AgentMemoryEvent, AgentTimelineStep } from "./agentModel";
 import { normalizeAgentTimelineStep } from "./agentModel";
 import AgentPage, { type AgentRunRequest, type AgentRunResult, type AgentRunner } from "./AgentPage.vue";
 
+interface AgentToolRunSession {
+  readonly language: UiLanguage;
+  readonly history: AgentRunRequest["history"];
+  readonly bypassPlanning: boolean;
+  direct(planningFallback?: { readonly content?: string }): Promise<AgentRunResult>;
+  execute(request: {
+    readonly callId: string;
+    readonly toolName: string;
+    readonly arguments: Record<string, unknown>;
+    readonly signal?: AbortSignal;
+  }): Promise<AgentToolExecutionResponse>;
+  complete(response: string, options: {
+    readonly synthesisFailed: boolean;
+    readonly partial: boolean;
+    readonly omittedTargets: readonly string[];
+  }): Promise<AgentRunResult & { readonly fallbackDelivered?: boolean }>;
+  dispose(): void;
+}
+
 const props = defineProps<{
   readonly language: UiLanguage;
   readonly storage?: Storage;
-  readonly beginRun: (request: AgentRunRequest) => LegacyAgentToolSession;
+  readonly beginRun: (request: AgentRunRequest) => AgentToolRunSession;
 }>();
 
 const { agent } = useAgent({ agentId: "default", throttleMs: 40 });
@@ -153,7 +172,7 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
         memoryEvents: (direct.memoryEvents || []).map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
     }
     const completed = !stopped && (!errorCode || synthesisStarted)
-      ? session.complete(response, { synthesisFailed: Boolean(errorCode) || !response.trim(), partial, omittedTargets })
+      ? await session.complete(response, { synthesisFailed: Boolean(errorCode) || !response.trim(), partial, omittedTargets })
       : null;
     if (completed?.fallbackDelivered) errorCode = "";
     return {
@@ -175,7 +194,7 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
         memoryEvents: (direct.memoryEvents || []).map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
     }
     if (!aborted && synthesisStarted) {
-      const completed = session.complete(response, { synthesisFailed: true, partial, omittedTargets });
+      const completed = await session.complete(response, { synthesisFailed: true, partial, omittedTargets });
       if (completed.fallbackDelivered) return { ...completed, ok: true, status: "done", steps,
         memoryEvents: completed.memoryEvents.map(memoryEvent).filter((item): item is AgentMemoryEvent => item !== null) };
     }
