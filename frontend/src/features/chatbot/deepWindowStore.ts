@@ -39,6 +39,7 @@ export interface DeepWindowState {
   readonly trendMetric?: string;
   readonly trendCategory?: string;
   readonly trendColumns?: readonly string[];
+  readonly trendColumnsOpen?: boolean;
 }
 
 export interface DeepWindowViewState {
@@ -94,6 +95,13 @@ function safeColumns(columns: readonly string[]): string[] {
     .filter(Boolean))).slice(0, 32);
 }
 
+const DEFAULT_TREND_COLUMNS = [
+  "revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate"
+] as const;
+const ALL_TREND_COLUMNS = [
+  ...DEFAULT_TREND_COLUMNS, "payout", "directSales", "haloSales"
+] as const;
+
 export function createDeepWindowStore(options: DeepWindowStoreOptions = {}): DeepWindowStore {
   const deepWindow = ref<DeepWindowState | null>(null);
   const windows = ref<DeepWindowState[]>([]);
@@ -108,7 +116,8 @@ export function createDeepWindowStore(options: DeepWindowStoreOptions = {}): Dee
       ...item,
       result: { ...item.result, rows: item.result.rows.slice(), summary: { ...item.result.summary } },
       position: { ...item.position },
-      ...(item.trendColumns ? { trendColumns: item.trendColumns.slice() } : {})
+      ...(item.trendColumns ? { trendColumns: item.trendColumns.slice() } : {}),
+      ...(item.trendColumnsOpen !== undefined ? { trendColumnsOpen: item.trendColumnsOpen } : {})
     };
   }
 
@@ -171,6 +180,7 @@ export function createDeepWindowStore(options: DeepWindowStoreOptions = {}): Dee
       canExport: openOptions.status !== "loading",
       canMinimize: true,
       canClose: true,
+      trendColumnsOpen: false,
       ...(result.sessionResult?.feedbackState ? { feedbackState: result.sessionResult.feedbackState } : {})
     }];
     if (openOptions.status === "loading") controllers.set(id, new AbortController());
@@ -295,9 +305,19 @@ export function createDeepWindowStore(options: DeepWindowStoreOptions = {}): Dee
     const target = safeId(id);
     if (!target || !["trend-metric", "trend-category", "trend-column-toggle", "trend-column-core", "trend-column-all"].includes(action)) return false;
     if (!find(target)) return false;
-    if (action === "trend-metric") return update(target, (item) => ({ ...item, trendMetric: safeId(value) }));
-    if (action === "trend-category") return update(target, (item) => ({ ...item, trendCategory: safeId(value) }));
-    return update(target, (item) => ({ ...item, trendColumns: item.trendColumns?.slice() || [] }));
+    if (action === "trend-metric") {
+      const metric = safeId(value);
+      return metric ? update(target, (item) => ({ ...item, trendMetric: metric })) : false;
+    }
+    if (action === "trend-category") {
+      const category = safeId(value);
+      return category ? update(target, (item) => ({ ...item, trendCategory: category })) : false;
+    }
+    if (action === "trend-column-toggle") {
+      return update(target, (item) => ({ ...item, trendColumnsOpen: item.trendColumnsOpen !== true }));
+    }
+    const columns = action === "trend-column-core" ? DEFAULT_TREND_COLUMNS : ALL_TREND_COLUMNS;
+    return update(target, (item) => ({ ...item, trendColumns: columns.slice(), trendColumnsOpen: true }));
   }
 
   function setTrendColumns(id: string, columns: readonly string[]): boolean {

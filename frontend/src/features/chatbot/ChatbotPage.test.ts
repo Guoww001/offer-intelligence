@@ -3,6 +3,7 @@ import { nextTick } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
 import ChatbotPage from "./ChatbotPage.vue";
+import { createChatbotSession } from "./chatbotSession";
 import type { ChatbotChatRequest } from "./chatbotViewTypes";
 import type { LegacyChatRunCallbacks, LegacyChatViewResult, LegacyChatViewState } from "../../legacy/contracts";
 
@@ -286,6 +287,35 @@ describe("ChatbotPage", () => {
     expect(wrapper.find('[data-deep-window]').classes()).toContain("is-minimized");
     await wrapper.get('[data-deep-window-action="close"]').trigger("click");
     expect(wrapper.find('[data-deep-window]').exists()).toBe(false);
+
+    // Closing a report must not leave a stale deepWindowId that makes the
+    // next "Open Deep Window" click a no-op.
+    await wrapper.get('[data-chatbot-action="open-deep"]').trigger("click");
+    expect(wrapper.find('[data-deep-window]').exists()).toBe(true);
+  });
+
+  it("reopens a session-owned report window after the user closes it", async () => {
+    const session = createChatbotSession({
+      offers,
+      language: "en",
+      llmEnabled: false,
+      enableQuestionLogging: false
+    });
+    const wrapper = mount(ChatbotPage, {
+      props: { language: "en", offers, session, deepWindows: session.deepWindows, autoFocus: false }
+    });
+
+    await wrapper.get('[data-chatbot-report-input]').setValue("Tapo ID398679");
+    await wrapper.get('[data-chatbot-report-form]').trigger("submit");
+    await flushPromises();
+    await wrapper.get('[data-chatbot-action="open-deep"]').trigger("click");
+    expect(wrapper.find('[data-deep-window]').exists()).toBe(true);
+    await wrapper.get('[data-deep-window-action="close"]').trigger("click");
+    expect(wrapper.find('[data-deep-window]').exists()).toBe(false);
+
+    await wrapper.get('[data-chatbot-action="open-deep"]').trigger("click");
+    expect(wrapper.find('[data-deep-window]').exists()).toBe(true);
+    session.dispose?.();
   });
 
   it("keeps the report memory bar structured and removable", async () => {

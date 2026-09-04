@@ -1,7 +1,7 @@
 # 前端框架迁移页面清单
 
 > 盘点日期：2026-08-27  
-> 最近更新：2026-09-03（Chatbot/Agent 已恢复为 `dual` 与 Legacy-first；只有显式设置 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 对照页。Modern 继续保留既有 bridge 行为并复用原版结构和样式类；最终浏览器视觉、交互、真实数据和 SSE 验收已由用户完成。其他 M4/M5 页面与 M2 Offer Tracker 的迁移状态不变）
+> 最近更新：2026-09-04（Chatbot/Agent 已完成 Modern-first 运行时切换；默认使用独立 Vue session，Agent 默认通过 CopilotKit Runtime/AG-UI 接入 Python registry。`window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 仍可显式回退 Legacy；旧实现继续保留回滚窗口。其他 M4/M5 页面与 M2 Offer Tracker 的迁移状态不变）
 > 权威路由入口：`public/app.js` 的 `switchPage(page)`  
 > 状态枚举：`legacy`、`dual`、`modern`、`removed`
 
@@ -49,7 +49,7 @@
       "exports": ["downloadRecommendationXlsx()", "question log download", "answer feedback download"],
       "overlays": ["Deep Window stack", "#answerFeedbackDialog", "#userFlowImageLightbox"],
       "tests": ["scripts/test_chatbot_intent_flow.mjs", "scripts/test_zh_chatbot.mjs", "scripts/test_chatbot_mode_navigation.mjs", "scripts/test_report_mode_guide.mjs", "scripts/test_onboarding_tour.mjs", "scripts/test_chatbot_welcome.mjs", "scripts/test_chatbot_answer_feedback_frontend.mjs", "frontend/src/features/chatbot/chatbotModel.test.ts", "frontend/src/features/chatbot/chatbotReportModel.test.ts", "frontend/src/features/chatbot/chatbotSession.test.ts", "frontend/src/features/chatbot/deepWindowStore.test.ts", "frontend/src/features/chatbot/ChatbotResultView.test.ts", "frontend/src/features/chatbot/ChatbotPage.test.ts", "frontend/src/features/chatbot/ChatbotChatView.test.ts", "frontend/src/features/chatbot/DeepWindow.test.ts", "frontend/src/features/chatbot/FeedbackForm.test.ts", "frontend/src/shared/markdown/markdown.test.ts", "frontend/src/shared/stream/sse.test.ts", "frontend/src/legacy/bridge.test.ts", "scripts/test_m6_chatbot_agent_behavior_parity.mjs", "scripts/test_m6_modern_mount.mjs", "scripts/test_modern_page_cutover.mjs"],
-      "testGap": "独立 Report/Chat session、SSE/停止、Deep Window 生命周期与会话内状态恢复由自动化覆盖；test_chatbot_intent_flow.mjs 的历史性超时继续单独记录；本轮真实浏览器登录、数据、视觉和 SSE 网络待用户验收。",
+      "testGap": "独立 Report/Chat session、SSE/停止、Deep Window 生命周期与会话内状态恢复由自动化覆盖；关键词候选预筛已修复 test_chatbot_intent_flow.mjs 的历史性超时，当前 intent flow 已通过；本轮真实浏览器登录、数据、视觉和 SSE 网络待用户验收。",
       "notes": "默认由 Modern Chatbot 挂载；Report/Chat 使用独立 Vue session，Deep Window 使用独立 store，页面卸载后会话和窗口状态仍由入口级 session 保留。Legacy 仅保留整页 fallback，显式设置 window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false 可回退。"
     },
     {
@@ -231,7 +231,7 @@
 1. P1：Offer Tracker 高级保存视图、列面板、规则面板和导出对话框仍由 legacy 提供，需在回滚窗口内继续迁移或明确保留边界。
 2. P1：Brand Media、Revenue Flow、Google Ads、Targets、Category、Tier 已完成当前 M4/M5 验收与 `dual → modern` 安全放行，继续保留 legacy rollback window 并按删除安全规则收尾。
 3. P1：M2 Offer Tracker 仍需旧/新页面逐字段差异报告，并迁移高级保存视图、列面板、规则面板和导出对话框。
-4. P2：M6 Chatbot/Agent 已完成受控行为 bridge 与原版结构类对齐，当前恢复为 `dual` / Legacy-first；Modern 仅在显式 true 时用于逐页对照，最终视觉与真实接口验收由用户完成，legacy 删除不应启动。
+4. P2：M6 Chatbot/Agent 已完成 Modern-first 运行时与页面切换；独立 Vue session、CopilotKit/AG-UI Agent、Deep Window 控件和显式 Legacy fallback 已纳入自动化回归。关键词候选预筛已修复 `test_chatbot_intent_flow.mjs` 的历史性超时并通过；真实生产登录/SSE 与 legacy 删除继续分别作为验收和 M7 清理边界。
 5. P2：modern 页面仍保留 legacy rollback window；后续阶段再按删除安全规则清理旧渲染与事件代码。
 
 ## 状态更新记录
@@ -259,6 +259,7 @@
 | 2026-09-02 | M6 Chatbot/Agent modern 放行 | `Chatbot/Agent dual` | `Chatbot/Agent modern` | 用户已确认完成 Chatbot Report/Chat Mode、Deep Window 与 Agent 的真实浏览器、数据、视觉和 SSE 验收；`test_m6_chatbot_agent_behavior_parity.mjs`、`test_m6_modern_mount.mjs`、`test_modern_page_cutover.mjs` 与既有 Agent/Chatbot 自动化回归用于放行确认。`modernChatbotAgentParityEnabled()` 默认启用 Modern，factory/bridge 失败时回退 Legacy，显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 保留回滚；`test_chatbot_intent_flow.mjs` 历史性超时仍单独记录，legacy 删除延后至 M7。 |
 | 2026-09-02 | Chatbot/Agent 原版对齐与放行撤回 | `Chatbot/Agent modern` | `Chatbot/Agent dual` | 用户反馈 Modern 与原版视觉和交互差异较大，因此恢复 Legacy-first；只有显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = true` 才挂载 Modern 对照页。Modern Chatbot/Agent 改为复用原版双栏、消息、输入、模式切换、Agent 工作区和时间线结构类；代码级回归通过，最终视觉与真实接口验收待用户完成。 |
 | 2026-09-03 | Chatbot/Agent Legacy-first 浏览器验收 | `Chatbot/Agent dual` | `Chatbot/Agent dual` | 用户已完成 Chatbot Report/Chat、Deep Window 与 Agent 的 Legacy-first 浏览器视觉、交互、真实数据和 SSE 验收；PR #186 补齐 Chat/Report 输入区白色文字、发送按钮视觉和 Chat Mode 独立“转为 View”控件收敛。Modern 继续仅作显式对照，legacy 删除不启动。 |
+| 2026-09-04 | M6 Modern-first Runtime 与回退完整性 | `Chatbot/Agent dual` | `Chatbot/Agent modern` | Modern Chatbot/Agent 默认由独立 session 渲染；Agent 默认使用按需 CopilotKit bundle、同源 `/api/copilotkit` 与 Python `/api/chat/agui`。显式 `window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 可回退 Legacy；补齐本地 AG-UI 路由、Legacy Agent session 适配、Chat answer ID/反馈/Open as View、Deep Window 趋势控件和关键词候选预筛回归。 |
 | 2026-09-01 | M5 Tier Move 生产边界与移动交互 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy` 和 modern 560px Move dialog 边界，前端全量 33 个 Vitest 文件/160 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 10（QA commit `97f93d99ab833fdaf64932c9bd8a216007245393`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；按当时 M5 验收结论保持 `dual`，随后按回滚安全规则完成逐页 `dual → modern` 放行 |
 | 2026-09-01 | M5 Tier Move 生产边界、移动交互与 Tier 1 预加载一致性 | `Targets/Category/Tier dual` | `Targets/Category/Tier dual` | 按 TDD 新增 `scripts/test_tier_moves_api.py`，先以 RED 锁定非对象 JSON、超大请求体和非对象 webhook 响应缺口，再由 `api/tier_moves.py` 加入 256 KiB/1000 条记录/JSON object/`moves` list 校验及 502 响应归一化；Vue 新增 `moveSyncing`、重复 Move/Reset 防护、按钮 disabled/`aria-busy`、modern 560px Move dialog 边界和 Tier 1 additions 挂载预加载/空响应缓存，前端全量 33 个 Vitest 文件/162 项、typecheck/build、Tier/M5/Google Ads 契约、旧版/Python 回归与 diff check 通过；公开 Sites version 14（QA commit `fcb53dcff5873db4341ce6ae86375f854f07e092`）完成 Firecrawl 390×844 legacy/Vue 截图、Browser 1363×936 compare 及 Tier 2/选行/Move dialog/目标切换 smoke；两侧 Added merchants 均为 1，按既有 M5 验收结论保持 `dual`，后续按回滚安全规则逐页放行 |
 | 2026-09-01 | M4 Brand Media/Revenue Flow/Google Ads modern 放行 | `M4 dual` | `M4 modern` | M4 验收已由用户确认完成；三页 modern root、factory、modern-first `switchPage()`、卸载清理、legacy fallback 和 `.is-modern` 页面边界均通过统一放行契约；不修改 API、数据口径、认证或侧边栏视觉 |

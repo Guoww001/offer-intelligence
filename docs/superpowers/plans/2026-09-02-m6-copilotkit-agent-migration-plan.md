@@ -2,10 +2,10 @@
 
 > 状态：已实施（生产 Agent 默认使用 CopilotKit Runtime；保留 legacy 紧急回退）
 > 基线分支：`FRONTEND-VUE-MIGRATION`  
-> 实施基线：`ec979ea02b5c514b7e150b004832a56c73750a1f`（2026-09-03，包含 PR #184 最新 Agent/Chatbot 外观）
-> 调研日期：2026-09-02；实施更新：2026-09-03
+> 实施基线：`817d6d81566af0516d99da53de95f45193701928`（2026-09-04，包含 PR #184 最新 Agent/Chatbot 外观与 M6 Runtime 对齐）
+> 调研日期：2026-09-02；实施更新：2026-09-04
 > 建议仓库落点：`docs/superpowers/plans/2026-09-02-m6-copilotkit-agent-migration-plan.md`
-> 当前落地状态（2026-09-03）：`@copilotkit/vue@1.70.0`、`@copilotkit/runtime@1.70.0`、`@ag-ui/client@0.0.59` 与 Python `ag-ui-protocol==0.1.22` 已接入；真实多路由端点为 `/api/copilotkit`，其默认 Agent 通过同部署 `/api/chat/agui` 回到 Python。生产启动配置默认启用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 可紧急回退。页面继续使用 PR #184 的 YeahPromos Vue 外观，不加载 CopilotKit Sidebar。
+> 当前落地状态（2026-09-04）：`@copilotkit/vue@1.70.0`、`@copilotkit/runtime@1.70.0`、`@ag-ui/client@0.0.59` 与 Python `ag-ui-protocol==0.1.22` 已接入；真实多路由端点为 `/api/copilotkit`，其默认 Agent 通过同部署 `/api/chat/agui` 回到 Python，本地 `server.py` 也暴露同一路由。Chatbot Report/Chat、Deep Window 与独立 Agent 均由 Modern Vue session 默认承载；生产启动配置默认启用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 或显式 parity 开关可紧急回退。页面继续使用 PR #184 的 YeahPromos Vue 外观，不加载 CopilotKit Sidebar。
 
 ## 1. 结论
 
@@ -15,7 +15,7 @@ M6/01 已按“业务与安全核心不变、传输层替换”的方式完成�
 2. CopilotKit Runtime 只负责同源认证、AG-UI 转发、消息状态与 frontend tool continuation；
 3. 浏览器继续执行现有 7 个只读数据工具，并回传与 Agent v2 相同的受限投影；
 4. Python AG-UI 状态机管理 planning、每批最多 4 个工具、总预算 6、一次 replan、synthesis 与 stop；
-5. 独立 Agent 已默认切换，Report Mode、Chatbot 与 Deep Window 不在本次被替换。
+5. Report/Chat、Deep Window 与独立 Agent 已默认切换到 Modern Vue session；Agent 的运行传输由 CopilotKit Runtime/AG-UI 接入，Legacy 仅作为显式回退窗口保留。
 
 目标不是“用 CopilotKit 重写 Agent”，而是采用绞杀式迁移：
 
@@ -30,8 +30,8 @@ M6/01 已按“业务与安全核心不变、传输层替换”的方式完成�
 
 | 来源 | 核对结果 | 在本方案中的用途 |
 |---|---|---|
-| [M0–M8 前端迁移路线图](https://github.com/Yeahpromos/offer-intelligence/blob/FRONTEND-VUE-MIGRATION/docs/superpowers/plans/2026-08-27-frontend-framework-migration-roadmap.md) | M0–M5 已验证，M6 尚未开始；M6 明确按 model → Report → Chat → Deep Window → Agent → 辅助能力迁移 | 决定阶段顺序与退出门槛 |
-| [`FRONTEND-VUE-MIGRATION` 分支](https://github.com/Yeahpromos/offer-intelligence/tree/FRONTEND-VUE-MIGRATION) | 基线提交为 `0b623e3`；Vue 3.5、TypeScript、Vite、Vitest 已落地，但 `entry.ts` 尚未注册 Chatbot/Agent modern factory | 决定文件结构与构建约束 |
+| [M0–M8 前端迁移路线图](https://github.com/Yeahpromos/offer-intelligence/blob/FRONTEND-VUE-MIGRATION/docs/superpowers/plans/2026-08-27-frontend-framework-migration-roadmap.md) | M0–M5 已验证，M6 Modern-first 运行时与页面切换已实施；M7 legacy 清理和 M8 部署切换仍保留为后续阶段 | 决定阶段顺序与退出门槛 |
+| [`FRONTEND-VUE-MIGRATION` 分支](https://github.com/Yeahpromos/offer-intelligence/tree/FRONTEND-VUE-MIGRATION) | 当前基线为 M6 Modern-first 运行时；Vue 3.5、TypeScript、Vite、Vitest 已落地，`entry.ts` 已注册 Chatbot/Agent modern factory，Agent 通过按需 CopilotKit bundle 接入同源 Runtime/AG-UI | 决定文件结构与构建约束 |
 | [Chatbot/Agent 功能报告](https://github.com/Yeahpromos/offer-intelligence/blob/FRONTEND-VUE-MIGRATION/docs/chatbot-feature-report.md) | Report/Chat 两模式、Agent v2、7 个只读工具、plan proof、Trace、记忆与停止语义均已有明确契约 | 决定不可回归项 |
 | [线上 yeahpromo.asia](https://www.yeahpromo.asia/) | 登录后导航同时存在 Agent 与 Chatbot；Agent 有工作区、能力卡、示例、时间线、新会话和停止；Chatbot 有 Report/Chat、上下文、记忆区、引导与日志 | 决定页面与交互迁移清单 |
 | [CopilotKit 仓库](https://github.com/CopilotKit/CopilotKit) / [v1.70.0](https://github.com/CopilotKit/CopilotKit/releases/tag/v1.70.0) | MIT；当前核对版本 `v1.70.0`；包含正式 Vue 包、Runtime 与 AG-UI 接入 | 决定目标依赖与能力边界 |
@@ -214,27 +214,27 @@ flowchart TD
 
 退出门槛：Node Runtime 与 Python AG-UI 协议测试、Python 契约测试、Vue 全量 Vitest、typecheck 和 production build 全部通过；`OI_AGENT_RUNTIME_MODE=legacy` 可恢复旧 session bridge。
 
-### M6/02：Report Mode
+### M6/02：Report Mode（已完成）
 
 - 迁移 mode 路由、分类回退、分析卡/表、上下文、记忆拖放与导出快照；
 - 对每种意图保留一份 legacy DOM snapshot 和结构化结果 fixture；
 - LLM 分类失败、超时、未知 intent 必须走原规则路径；
 - Report 结果不经过 CopilotKit 模型重新解释后再作为事实展示。
 
-### M6/03：Chat Mode
+### M6/03：Chat Mode（已完成）
 
 - 迁移 Markdown、流式增量、滚动锁、停止、重试、usage、`[DONE]`/fallback 和反馈；
 - 把 direct chat 与 data-agent 路由保持为两个明确分支；
 - 失败或停止的用户消息不写入正式历史；
 - 先以 AG-UI 适配旧 SSE，再决定是否删除 `frontend/src/shared/stream/sse.ts` 的兼容路径。
 
-### M6/04：Deep Window
+### M6/04：Deep Window（已完成）
 
 - 迁移最小化/恢复、跨模式上下文、图表克隆、焦点和页面清理；
 - 路由切换和登出必须清理 observer、listener、AbortController 和 detached chart；
 - 任何 Deep Window 状态不得意外进入 Agent 独立 thread。
 
-### M6/05：独立 Agent 页面切换
+### M6/05：独立 Agent 页面切换（已完成）
 
 - 注册 `agent` modern factory；
 - 迁移新会话、示例 prompt、能力卡、工作区、规划/工具/合成时间线、部分结果、停止；
@@ -242,7 +242,7 @@ flowchart TD
 - `dual` 模式记录结构化 parity 指标，不记录用户问题或答案；
 - 先内部用户、再小比例、再默认 modern；任一红线触发即时回 legacy。
 
-### M6/06：辅助能力与清理
+### M6/06：辅助能力与清理（M6 部分已完成；legacy 删除留至 M7）
 
 - onboarding、help guide、active state、缓存、问题日志、负反馈；
 - 更新 `docs/chatbot-feature-report.md`、inventory、生成物说明和文件索引；
@@ -450,7 +450,7 @@ AG-UI state snapshot/delta 只承载 UI 需要的安全字段；不能把完整 
 1. 生产默认 `copilotkit`：只在进入 Agent 时加载 Runtime bundle；通过认证后的 `/info` 与 run smoke test 后放量。
 2. 紧急 `legacy`：设置 `OI_AGENT_RUNTIME_MODE=legacy` 即恢复旧 session bridge，不需要重新构建前端。
 3. 观察完成率、停止率、失败率、首 token、总耗时、partial 率和 fallback 率。
-4. Agent 稳定后再按 M6/02–04 的状态逐步切换 Chatbot。
+4. Chatbot Report/Chat 与 Deep Window 已随 Modern-first 切换完成；后续只做真实生产验收、稳定窗口和 M7 legacy 清理，不再把 Chatbot 迁移当作未开始项。
 5. 稳定窗口后才删除 legacy。
 
 ### 12.2 红线与自动/人工回滚
@@ -501,14 +501,14 @@ M6 只有在以下条件同时满足时才结束：
 - Chatbot Report/Chat、Deep Window、独立 Agent、引导/帮助/反馈全部由 Vue 实现；
 - CopilotKit/AG-UI 路径保留现有分类回退、数据来源、工具注册表、proof、Trace、停止和隐私语义；
 - Node/Python/Vitest/浏览器/Sites 视觉测试全绿；
-- `public/app.js` 不再包含 Q&A、分析、工具执行、流式渲染或 Agent 页面实现；
-- legacy fallback 经过稳定窗口后按独立 PR 删除；
+- `public/app.js` 的相关实现已不再作为默认渲染路径；旧 Q&A、分析、工具执行、流式和 Agent DOM 继续作为 M7 删除范围；
+- legacy fallback 经过稳定窗口后按独立 M7 PR 删除，不阻塞 M6 Modern-first 放行；
 - `docs/chatbot-feature-report.md`、迁移 inventory、生成物与文件索引是当前权威；
 - 依赖版本、运行时 URL、密钥、开关、部署与回滚都有运维文档。
 
 ## 15. 推荐执行顺序
 
-M6/01 的 Runtime 切换已完成。下一步先在真实 Vercel 环境验证 `/api/copilotkit/info`、`/api/copilotkit/agent/default/run`、内部 `/api/chat/agui` 鉴权、停止与一次 replan，再继续 M6/02 Report Mode。稳定窗口内保留 legacy session bridge；不在同一提交删除回退路径。
+M6 Modern-first Runtime 与页面切换已完成：Report/Chat、Deep Window 和独立 Agent 均通过独立 Vue session 承载，Agent 默认按需加载 CopilotKit 并经 `/api/copilotkit` → `/api/chat/agui` 进入 Python registry/proof。此次补齐本地 AG-UI 路由、显式 Legacy Agent session 适配、Chat answer ID/逐回答反馈/Open as View、Deep Window 趋势控件和关键词候选预筛回归。下一步只需在真实 Vercel 环境验证 `/api/copilotkit/info`、`/api/copilotkit/agent/default/run`、内部鉴权、停止与一次 replan，并在稳定窗口后按独立 PR 删除 legacy；`test_chatbot_intent_flow.mjs` 已稳定通过。
 
 ## 16. 主要参考链接
 

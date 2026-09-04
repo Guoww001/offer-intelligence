@@ -49,7 +49,7 @@ describe("createChatbotSession", () => {
       { role: "user", content: "continue" },
       { role: "assistant", content: "hello" }
     ]);
-    expect(session.getState().messages).toEqual(session.getState().history);
+    expect(session.getState().messages.map(({ role, content }) => ({ role, content }))).toEqual(session.getState().history);
   });
 
   it("adds bounded report memory and routes Deep Window memory actions", async () => {
@@ -94,5 +94,40 @@ describe("createChatbotSession", () => {
     const windowId = session.openDeepWindow?.();
     expect(session.deepWindows.export(windowId!)).toBeTruthy();
     expect(downloadReport).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Chat answers addressable for feedback, Deep Window, and context controls", async () => {
+    const session = createChatbotSession({
+      offers,
+      language: "en",
+      llmEnabled: false,
+      enableQuestionLogging: false,
+      runChat: vi.fn(async () => ({ ok: true, response: "Revenue is stable." }))
+    });
+    session.setMode("chat");
+
+    const result = await session.submit("Explain the trend");
+    const answerId = result.answerId;
+
+    expect(answerId).toBeTruthy();
+    expect(result.feedbackState).toBe("available");
+    expect(session.getState().messages.at(-1)).toMatchObject({
+      role: "assistant",
+      answerId,
+      canOpenDeep: true,
+      feedbackState: "available"
+    });
+    expect(session.feedbackForAnswer?.(answerId!)).toMatchObject({ isAvailable: expect.any(Function) });
+    expect(session.feedbackForAnswer?.(answerId!)?.isAvailable()).toBe(true);
+
+    const deepWindowId = session.openChatAnswer?.(answerId!);
+    expect(deepWindowId).toBeTruthy();
+    expect(session.feedbackForDeepWindow?.(deepWindowId!)?.isAvailable()).toBe(true);
+    expect(session.deepWindows.getState().windows[0]).toMatchObject({
+      mode: "chat",
+      contentHtml: expect.stringContaining("Revenue is stable")
+    });
+    expect(session.interactContext?.("reminder-toggle")).toBe(true);
+    expect(session.getState().utility?.reminderCollapsed).toBe(true);
   });
 });

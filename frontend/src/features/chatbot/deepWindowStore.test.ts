@@ -79,4 +79,29 @@ describe("createDeepWindowStore", () => {
     controller.abort();
     expect(windows.getState().windows.find((item) => item.id === id)?.status).toBe("cancelled");
   });
+
+  it("applies trend metric, category, and column controls instead of treating them as no-ops", () => {
+    const windows = store();
+    const id = windows.open(result("Trend"));
+
+    expect(windows.interact(id, "trend-metric", "revenue")).toBe(true);
+    expect(windows.interact(id, "trend-category", "Electronics")).toBe(true);
+    expect(windows.interact(id, "trend-column-toggle")).toBe(true);
+    expect(windows.interact(id, "trend-column-core")).toBe(true);
+    const current = windows.getState().windows.find((item) => item.id === id);
+    expect(current).toMatchObject({
+      trendMetric: "revenue",
+      trendCategory: "Electronics",
+      trendColumnsOpen: true,
+      trendColumns: ["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate"]
+    });
+
+    expect(windows.interact(id, "trend-column-all")).toBe(true);
+    expect(windows.getState().windows.find((item) => item.id === id)?.trendColumns).toEqual([
+      "revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate",
+      "payout", "directSales", "haloSales"
+    ]);
+    expect(windows.interact(id, "trend-metric", "")).toBe(false);
+    expect(windows.interact(id, "trend-category", "")).toBe(false);
+  });
 });

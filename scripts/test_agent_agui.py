@@ -14,6 +14,15 @@ from agent_contract import issue_plan_proof
 
 
 class AgentAguiTests(unittest.TestCase):
+    def test_local_server_exposes_the_same_agui_route_as_vercel(self):
+        source = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn("from agent_agui import handle_agui_request", source)
+        for method in ("GET", "OPTIONS", "POST"):
+            self.assertIn(
+                f'if parsed.path == "/api/chat/agui":\n            handle_agui_request(self, "{method}")',
+                source,
+            )
+
     @patch("agent_agui.plan_agent_request")
     def test_parity_delegates_no_tool_outcome_to_shared_source_policy(self, planning):
         planning.return_value = (200, {"ok": True, "content": "Unverified revenue 999", "toolCalls": []})

@@ -55,6 +55,10 @@ interface QuestionContext {
   readonly language: UiLanguage;
   readonly intent: string;
   readonly answer: string;
+  readonly answerId?: string;
+  readonly result?: ChatbotSessionResult;
+  readonly deepWindowId?: string | null;
+  readonly feedbackSubmitted?: boolean;
   recordPromise: Promise<QuestionLogRecord | null>;
   completionPromise?: Promise<QuestionLogRecord | null>;
   feedbackEventId?: string;
@@ -327,9 +331,13 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
   let helpOpen = false;
   let guideOpen = false;
   let onboardingOpen = false;
+  let reminderVisible = false;
+  let reminderCollapsed = false;
   let activeController: AbortController | null = null;
   let disposed = false;
   let currentQuestion: QuestionContext | null = null;
+  const answerContexts = new Map<string, QuestionContext>();
+  const questionCompletions = new Map<string, Promise<QuestionLogRecord | null>>();
 
   function state(): ChatbotViewState {
     return {
@@ -352,8 +360,8 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
         onboardingOpen,
         onboardingStep: onboardingOpen ? 1 : 0,
         onboardingTotal: 1,
-        reminderVisible: false,
-        reminderCollapsed: false
+        reminderVisible,
+        reminderCollapsed
       },
       ...(errorCode ? { errorCode } : {})
     };
@@ -365,16 +373,21 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     listeners.forEach((listener) => listener(snapshot));
   }
 
+  function syncReminder(): void {
+    reminderVisible = mode === "chat" && memory.length === 0;
+    if (!reminderVisible) reminderCollapsed = false;
+  }
+
   function setState(nextStatus: ChatbotSessionStatus, nextSource?: ChatbotDataSource): void {
     status = nextStatus;
     if (nextSource) source = nextSource;
     notify();
   }
 
-  function completeQuestion(statusValue: "success" | "failed"): Promise<QuestionLogRecord | null> {
-    const question = currentQuestion;
+  function completeQuestionFor(question: QuestionContext | null, statusValue: "success" | "failed"): Promise<QuestionLogRecord | null> {
     if (!question) return Promise.resolve(null);
-    if (question.completionPromise) return question.completionPromise;
+    const known = question.completionPromise || questionCompletions.get(question.eventId);
+    if (known) return known;
     question.completionPromise = question.recordPromise.then(async (record) => {
       if (!record) return null;
       try {
@@ -393,10 +406,15 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
         return null;
       }
     });
+    questionCompletions.set(question.eventId, question.completionPromise);
     return question.completionPromise;
   }
 
-  function beginQuestion(prompt: string, currentMode: ChatbotMode): void {
+  function completeQuestion(statusValue: "success" | "failed"): Promise<QuestionLogRecord | null> {
+    return completeQuestionFor(currentQuestion, statusValue);
+  }
+
+  function beginQuestion(prompt: string, currentMode: ChatbotMode): QuestionContext {
     const eventId = uuid("question");
     const intent = detectChatbotIntent(prompt);
     const question: QuestionContext = {
@@ -420,10 +438,41 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
       }).then((payload) => isRecord(payload) && text(payload.recordId, 128) ? { recordId: text(payload.recordId, 128) } : null).catch(() => null)
     };
     currentQuestion = question;
+    return question;
   }
 
-  function setQuestionAnswer(answer: string): void {
-    if (currentQuestion) currentQuestion = { ...currentQuestion, answer: text(answer) };
+  function updateQuestionContext(question: QuestionContext, patch: Partial<QuestionContext>): QuestionContext {
+    const next = { ...question, ...patch };
+    if (question === currentQuestion || question.answerId === currentQuestion?.answerId) currentQuestion = next;
+    if (next.answerId) answerContexts.set(next.answerId, next);
+    return next;
+  }
+
+  function setQuestionAnswer(answer: string, question = currentQuestion): void {
+    if (question) updateQuestionContext(question, { answer: text(answer) });
+  }
+
+  function registerAnswer(question: QuestionContext, result: ChatbotSessionResult): ChatbotSessionResult {
+    if (!result.ok || result.status !== "success" || !result.response.trim()) return result;
+    const answerId = text(result.answerId || uuid("answer"), 120);
+    const nextResult: ChatbotSessionResult = {
+      ...result,
+      answerId,
+      feedbackState: result.feedbackState || "available"
+    };
+    const nextQuestion = updateQuestionContext(question, {
+      answer: text(nextResult.response),
+      answerId,
+      result: nextResult,
+      feedbackSubmitted: false
+    });
+    answerContexts.set(answerId, nextQuestion);
+    while (answerContexts.size > 50) {
+      const oldest = answerContexts.keys().next();
+      if (oldest.done) break;
+      answerContexts.delete(oldest.value);
+    }
+    return nextResult;
   }
 
   async function submitReport(prompt: string, callbacks: ChatbotRunCallbacks, signal: AbortSignal): Promise<ChatbotSessionResult> {
@@ -527,22 +576,29 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     const linked = linkSignal(options.signal, callbacks.signal);
     activeController = new AbortController();
     const bridge = linkSignal(linked.signal, activeController.signal);
-    beginQuestion(query, mode);
+    const question = beginQuestion(query, mode);
     errorCode = null;
     currentResult = null;
     setState("running");
     try {
-      const result = mode === "report"
+      const rawResult = mode === "report"
         ? await submitReport(query, callbacks, bridge.signal)
         : await submitChat(query, callbacks, bridge.signal);
+      const result = registerAnswer(question, rawResult);
       if (result.stopped) {
         setState("stopped", result.source);
-        await completeQuestion("failed");
+        await completeQuestionFor(question, "failed");
       } else {
         currentResult = result;
-        setQuestionAnswer(result.response);
+        setQuestionAnswer(result.response, question);
+        if (result.mode === "chat" && result.answerId) {
+          const answerId = result.answerId;
+          messages = messages.map((message, index) => index === messages.length - 1 && message.role === "assistant"
+            ? { ...message, answerId, id: answerId, canOpenDeep: true, feedbackState: result.feedbackState }
+            : message);
+        }
         setState(result.ok ? "success" : "error", result.source);
-        await completeQuestion(result.ok ? "success" : "failed");
+        await completeQuestionFor(question, result.ok ? "success" : "failed");
       }
       callbacks.onChange?.(state());
       return result;
@@ -562,41 +618,89 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     }
   }
 
-  const feedback: ChatbotFeedback = {
-    isAvailable() {
-      return Boolean(currentQuestion && currentQuestion.answer.trim() && currentResult?.ok);
-    },
-    async submit(reasonCode: string, reasonDetail = ""): Promise<ChatbotFeedbackResult> {
-      const question = currentQuestion;
-      const allowed = ["inaccurate", "not_answered", "incomplete_data", "unclear", "other"];
-      if (!question || !question.answer.trim() || !currentResult?.ok) return { ok: false, errorCode: "feedback_unavailable" };
-      if (!allowed.includes(reasonCode)) return { ok: false, errorCode: "invalid_reason" };
-      const record = await completeQuestion("success");
-      if (!record) return { ok: false, errorCode: "question_log_unavailable" };
-      const feedbackEventId = question.feedbackEventId || uuid("feedback");
-      currentQuestion = { ...question, feedbackEventId };
-      try {
-        const payload = await apiRequest<unknown>("/api/chat/stream?operation=feedback", {
-          method: "POST",
-          body: JSON.stringify({
-            feedbackEventId,
-            questionEventId: record.recordId,
-            sessionId: browserSessionId(storage),
-            mode: question.mode,
-            prompt: question.prompt,
-            answer: question.answer.slice(0, 120_000),
-            language: question.language,
-            reasonCode,
-            reasonDetail: text(reasonDetail, 4_000)
-          })
-        });
-        return isRecord(payload) && payload.ok === false ? { ok: false, errorCode: text(payload.errorCode || payload.code, 80) } : { ok: true };
-      } catch (error) {
-        if (isRecord(error) && Number(error.status) === 409) return { ok: true, alreadyExists: true };
-        return { ok: false, errorCode: "feedback_error" };
-      }
+  function markFeedbackSubmitted(question: QuestionContext): void {
+    const answerId = question.answerId;
+    const nextResult = question.result ? { ...question.result, feedbackState: "submitted" as const } : undefined;
+    const next = updateQuestionContext(question, {
+      feedbackSubmitted: true,
+      ...(nextResult ? { result: nextResult } : {})
+    });
+    if (answerId) {
+      messages = messages.map((message) => message.answerId === answerId || message.id === answerId
+        ? { ...message, feedbackState: "submitted" }
+        : message);
+      if (currentResult?.answerId === answerId && nextResult) currentResult = nextResult;
+      answerContexts.set(answerId, next);
     }
-  };
+    notify();
+  }
+
+  function createFeedbackBridge(resolve: () => QuestionContext | null): ChatbotFeedback {
+    return {
+      isAvailable() {
+        const question = resolve();
+        return Boolean(question && question.answer.trim() && question.result?.ok && !question.feedbackSubmitted);
+      },
+      async submit(reasonCode: string, reasonDetail = ""): Promise<ChatbotFeedbackResult> {
+        const question = resolve();
+        const allowed = ["inaccurate", "not_answered", "incomplete_data", "unclear", "other"];
+        if (!question || !question.answer.trim() || !question.result?.ok || question.feedbackSubmitted) {
+          return { ok: false, errorCode: "feedback_unavailable" };
+        }
+        if (!allowed.includes(reasonCode)) return { ok: false, errorCode: "invalid_reason" };
+        const record = await completeQuestionFor(question, "success");
+        if (!record) return { ok: false, errorCode: "question_log_unavailable" };
+        const feedbackEventId = question.feedbackEventId || uuid("feedback");
+        const nextQuestion = updateQuestionContext(question, { feedbackEventId });
+        try {
+          const payload = await apiRequest<unknown>("/api/chat/stream?operation=feedback", {
+            method: "POST",
+            body: JSON.stringify({
+              feedbackEventId,
+              questionEventId: record.recordId,
+              sessionId: browserSessionId(storage),
+              mode: nextQuestion.mode,
+              prompt: nextQuestion.prompt,
+              answer: nextQuestion.answer.slice(0, 120_000),
+              language: nextQuestion.language,
+              reasonCode,
+              reasonDetail: text(reasonDetail, 4_000)
+            })
+          });
+          if (isRecord(payload) && payload.ok === false) {
+            return { ok: false, errorCode: text(payload.errorCode || payload.code, 80) };
+          }
+          markFeedbackSubmitted(nextQuestion);
+          return { ok: true };
+        } catch (error) {
+          if (isRecord(error) && Number(error.status) === 409) {
+            markFeedbackSubmitted(nextQuestion);
+            return { ok: true, alreadyExists: true };
+          }
+          return { ok: false, errorCode: "feedback_error" };
+        }
+      }
+    };
+  }
+
+  const feedback: ChatbotFeedback = createFeedbackBridge(() => currentQuestion);
+
+  function feedbackForAnswer(answerId: string): ChatbotFeedback | null {
+    const id = text(answerId, 120);
+    return id && answerContexts.has(id) ? createFeedbackBridge(() => answerContexts.get(id) || null) : null;
+  }
+
+  function feedbackForDeepWindow(windowId: string): ChatbotFeedback | null {
+    const id = text(windowId, 120);
+    if (!id) return null;
+    for (const question of answerContexts.values()) {
+      if (question.deepWindowId === id) return createFeedbackBridge(() => {
+        const current = question.answerId ? answerContexts.get(question.answerId) : question;
+        return current?.deepWindowId === id ? current : null;
+      });
+    }
+    return null;
+  }
 
   function addMemory(result: ChatbotSessionResult | ChatbotReportViewResult): boolean {
     const view = "mode" in result ? viewResultFromSession(result, result.response) : result;
@@ -611,12 +715,14 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     });
     if (!item) return false;
     memory = [...memory.filter((entry) => entry.result?.query !== view.query), item].slice(-MAX_MEMORY);
+    syncReminder();
     notify();
     return true;
   }
 
   function removeMemory(memoryId: string): void {
     memory = memory.filter((item) => item.id !== text(memoryId, 120));
+    syncReminder();
     notify();
   }
 
@@ -627,15 +733,67 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     memory = [];
     currentResult = null;
     currentQuestion = null;
+    answerContexts.clear();
+    questionCompletions.clear();
     errorCode = null;
     status = "idle";
+    syncReminder();
     notify();
   }
 
   function openDeepWindow(): string | null {
+    if (currentResult?.mode === "chat" && currentResult.answerId) return openChatAnswer(currentResult.answerId);
     const result = currentResult ? viewResultFromSession(currentResult, currentResult.response) : null;
     if (!result) return null;
-    return deepWindows.open(result);
+    const deepWindowId = deepWindows.open(result);
+    if (deepWindowId && currentResult?.answerId) {
+      const context = answerContexts.get(currentResult.answerId);
+      if (context) {
+        const nextResult = { ...currentResult, deepWindowId };
+        answerContexts.set(currentResult.answerId, updateQuestionContext(context, { deepWindowId, result: nextResult }));
+        currentResult = nextResult;
+        notify();
+      }
+    }
+    return deepWindowId;
+  }
+
+  function openChatAnswer(answerId: string): string | null {
+    const id = text(answerId, 120);
+    const context = id ? answerContexts.get(id) : null;
+    if (!context || !context.answer.trim()) return null;
+    if (context.deepWindowId) {
+      const exists = deepWindows.getState().windows.some((item) => item.id === context.deepWindowId);
+      if (exists) {
+        deepWindows.activate(context.deepWindowId);
+        return context.deepWindowId;
+      }
+      updateQuestionContext(context, { deepWindowId: null });
+    }
+    const baseResult = context.result || {
+      ok: true,
+      status: "success" as const,
+      mode: context.mode,
+      source,
+      response: context.answer,
+      answerId: id,
+      feedbackState: context.feedbackSubmitted ? "submitted" as const : "available" as const
+    };
+    const view = {
+      ...viewResultFromSession(baseResult, context.prompt),
+      contentHtml: renderMarkdownToHtml(context.answer)
+    };
+    const deepWindowId = deepWindows.open(view);
+    if (!deepWindowId) return null;
+    const nextResult = { ...baseResult, deepWindowId };
+    const next = updateQuestionContext(context, { deepWindowId, result: nextResult });
+    answerContexts.set(id, next);
+    if (currentResult?.answerId === id) currentResult = nextResult;
+    messages = messages.map((message) => message.answerId === id || message.id === id
+      ? { ...message, id, answerId: id, deepWindowId, canOpenDeep: true }
+      : message);
+    notify();
+    return deepWindowId;
   }
 
   function downloadRecommendation(downloadId: string): boolean {
@@ -671,7 +829,31 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
   function setMode(nextMode: ChatbotMode): void {
     if (nextMode !== "report" && nextMode !== "chat") return;
     mode = nextMode;
+    syncReminder();
     notify();
+  }
+
+  function interactContext(action: string, value?: string): boolean {
+    const normalized = text(action, 80);
+    if (normalized === "go-report") {
+      setMode("report");
+      return true;
+    }
+    if (normalized === "reminder-toggle") {
+      if (!reminderVisible) return false;
+      reminderCollapsed = !reminderCollapsed;
+      notify();
+      return true;
+    }
+    if (["trend-metric", "trend-category", "trend-column-toggle", "trend-column-core", "trend-column-all"].includes(normalized)) {
+      const activeId = currentResult?.answerId;
+      if (activeId) {
+        const deepWindowId = openChatAnswer(activeId);
+        if (deepWindowId) return deepWindows.interact(deepWindowId, normalized as Parameters<DeepWindowStore["interact"]>[1], value);
+      }
+      return false;
+    }
+    return false;
   }
 
   function onChange(listener: (nextState: ChatbotViewState) => void): () => void {
@@ -709,6 +891,8 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     activeController?.abort();
     activeController = null;
     listeners.clear();
+    answerContexts.clear();
+    questionCompletions.clear();
     if (!options.deepWindows) deepWindows.dispose();
   }
 
@@ -724,6 +908,10 @@ export function createChatbotSession(options: ChatbotSessionOptions): ChatbotSes
     downloadOverview,
     downloadRecommendation,
     openDeepWindow,
+    openChatAnswer,
+    feedbackForAnswer,
+    feedbackForDeepWindow,
+    interactContext,
     onChange,
     feedback,
     downloadLogs,

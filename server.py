@@ -38,6 +38,7 @@ from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
 from agent_trace_http import handle_agent_trace
 from agent_debug_http import handle_agent_debug
+from agent_agui import handle_agui_request
 from agent_contract import (
     AGENT_CONTRACT_VERSION,
     build_synthesis_messages,
@@ -168,6 +169,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         operation = str((parse_qs(parsed.query).get("operation") or [""])[0]).strip().lower()
+        if parsed.path == "/api/chat/agui":
+            handle_agui_request(self, "GET")
+            return
         if parsed.path == "/api/chat/stream" and operation == "feedback":
             handle_chatbot_answer_feedback(self, "GET")
             return
@@ -201,6 +205,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
         operation = str((parse_qs(parsed.query).get("operation") or [""])[0]).strip().lower()
+        if parsed.path == "/api/chat/agui":
+            handle_agui_request(self, "OPTIONS")
+            return
         if parsed.path.startswith("/api/auth/"):
             handle_auth_options(self)
             return
@@ -223,6 +230,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         operation = str((parse_qs(parsed.query).get("operation") or [""])[0]).strip().lower()
+        if parsed.path == "/api/chat/agui":
+            handle_agui_request(self, "POST")
+            return
         if parsed.path == "/api/auth/login":
             handle_auth_login(self)
             return

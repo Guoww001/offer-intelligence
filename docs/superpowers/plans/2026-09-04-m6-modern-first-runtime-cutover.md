@@ -41,3 +41,10 @@
 - RED：新增契约先命中入口仍使用 Legacy session/runner、默认 Legacy gate、CopilotKit bridge 工具、Deep Window 缺少完整视图状态和 Agent 导航状态丢失。
 - GREEN：独立 session/store/tool executor、Modern-first gate、进程内状态恢复和独立 XLSX 下载实现后，目标组件与静态契约通过。
 - 浏览器登录、真实数据、SSE 网络、视觉和完整交互由用户最终验收；自动化结果不替代浏览器结论。
+
+## 2026-09-04 完整性修复
+
+- 本地 `server.py` 与 Vercel `api/chat/actions.py` 现在都把 `GET`/`OPTIONS`/`POST /api/chat/agui` 交给同一个 Python adapter，避免本地 CopilotKit Runtime 因路由缺失返回 404。
+- `OI_AGENT_RUNTIME_MODE=legacy` 会通过显式 Legacy Agent view-session adapter 真正接管 Modern Agent 的 submit/stop/new conversation，而不是只改变配置字段。
+- Modern Chatbot 为每个成功回答绑定稳定 answer ID，逐回答反馈、`Open as View`、Deep Window 反馈和关闭后重开均保持关联；趋势 metric/category/column 操作更新独立 store 状态。
+- `npm --prefix frontend test -- --run`（65 个文件/295 项）、typecheck、双 bundle build、CopilotKit/AG-UI 4 项、Python Agent 套件和 M6 静态回归通过；关键词候选预筛后 `scripts/test_chatbot_intent_flow.mjs` 稳定通过，不再作为未解决超时记录。

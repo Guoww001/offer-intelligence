@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLegacyAgentSessionBridge,
   createLegacyChatSessionBridge,
-  createLegacyDeepWindowsBridge
+  createLegacyDeepWindowsBridge,
+  getLegacyAgentViewSession
 } from "./bridge";
 import type {
   LegacyAgentViewState,
@@ -315,6 +316,46 @@ describe("Legacy session bridge contracts", () => {
     unsubscribe();
     bridge.newConversation();
     expect(bridge.getState()).toMatchObject({ status: "idle", response: "" });
+  });
+
+  it("adapts the explicit Legacy Agent fallback without changing the Modern session contract", async () => {
+    let state = agentState();
+    const legacy = createLegacyAgentSessionBridge({
+      getState: () => state,
+      submit: vi.fn(async (_request, callbacks) => {
+        callbacks.onToken?.("legacy answer");
+        state = { ...state, status: "done", response: "legacy answer" };
+        callbacks.onChange?.(state);
+        return { ok: true, status: "done" as const, response: "legacy answer", steps: [] };
+      }),
+      stop: vi.fn(),
+      newConversation: vi.fn()
+    });
+    const previous = window.OI_LEGACY_BRIDGE;
+    window.OI_LEGACY_BRIDGE = {
+      navigate: vi.fn(),
+      setLanguage: vi.fn(),
+      download: vi.fn(() => false),
+      ...(previous || {}),
+      agentSession: legacy
+    };
+    try {
+      const session = getLegacyAgentViewSession();
+      expect(session).not.toBeNull();
+      const tokens: string[] = [];
+      const result = await session!.submit({
+        prompt: "legacy",
+        language: "zh",
+        history: [],
+        memoryText: "",
+        signal: new AbortController().signal
+      }, { onToken: (token) => tokens.push(token) });
+      expect(tokens).toEqual(["legacy answer"]);
+      expect(result).toMatchObject({ ok: true, status: "done", response: "legacy answer" });
+      expect(session!.getState()).toMatchObject({ status: "done", response: "legacy answer" });
+    } finally {
+      window.OI_LEGACY_BRIDGE = previous;
+    }
   });
 
   it("keeps Agent result views structured and drops arbitrary markup/payloads", async () => {

@@ -285,7 +285,7 @@ async function submitReport(): Promise<void> {
 function openDeep(): void {
   if (!reportResult.value) return;
   const existingId = reportResult.value.sessionResult?.deepWindowId;
-  if (existingId) {
+  if (existingId && deepWindowsState.value.windows.some((item) => item.id === existingId)) {
     deepWindowController.activate(existingId);
     return;
   }

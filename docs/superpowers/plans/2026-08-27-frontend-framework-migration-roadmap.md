@@ -8,7 +8,7 @@
 
 **技术栈：** Vue 3、TypeScript、Vite、Vitest、Vue Test Utils、`happy-dom`、现有 Python 3.12 服务、现有 Vercel Python Functions、现有 Node 22 CI、现有原生 JavaScript 回归脚本；运行时不引入 Pinia、Vue Router、组件库或 CSS 框架，除非后续独立 ADR 证明必要。
 
-> **最近更新：** 2026-09-03；在 `ec979ea` / PR #184 最新 Agent/Chatbot 外观基线上，独立 Vue Agent 已接入按需 `@copilotkit/vue`、真实 `/api/copilotkit` Runtime 与 Python `/api/chat/agui`，生产默认使用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 保留紧急回退。Python registry、plan proof、批次、replan 和 synthesis 仍为唯一权威；Chatbot/Deep Window 未在本次切换。
+> **最近更新：** 2026-09-04；在 `817d6d8` / PR #184 最新 Agent/Chatbot 外观基线上，Chatbot Report/Chat、Deep Window 与独立 Vue Agent 已完成 Modern-first 运行时切换。Agent 按需加载 `@copilotkit/vue`，经真实 `/api/copilotkit` Runtime 与 Python `/api/chat/agui` 进入 registry/proof；生产默认使用 CopilotKit，`OI_AGENT_RUNTIME_MODE=legacy` 或显式 parity 开关保留紧急回退。Python registry、plan proof、批次、replan 和 synthesis 仍为唯一权威；M7 legacy 清理与 M8 部署切换尚未开始。
 
 ## 全局约束
 
@@ -843,7 +843,7 @@ node scripts/test_offer_list_tracker_frontend.mjs
 - [x] 迁移 Deep Window，验证最小化、恢复、拖动、置顶、关闭、取消、图表控制、clone、overlay、导出、加入对话和页面切换清理。
 - [x] 迁移 Agent，验证 planning/tool/synthesis 时间线、工具批次、partial/omitted、Trace 元数据、可见流式回答、停止、失败重试和结构化 Memory 隐私边界；工具执行继续由 Legacy bridge 承担。
 - [x] 迁移 onboarding/help guide，保持中英文 copy、缓存版本和 active 状态。
-- [x] 运行全部 Chatbot/Agent Node/Python/Vitest 回归、typecheck、build、M6 parity/mount/cutover 和差异检查；旧 `test_chatbot_intent_flow.mjs` 仍历史性超时，不能计为通过。
+- [x] 运行全部 Chatbot/Agent Node/Python/Vitest 回归、typecheck、build、M6 parity/mount/cutover 和差异检查；关键词候选预筛后 `test_chatbot_intent_flow.mjs` 稳定通过。
 
 退出门槛：Chatbot 与 Agent 均为 `modern`，`public/app.js` 不再执行问答、工具、分析或流式渲染逻辑，权威文档与实际文件索引一致。
 
@@ -992,7 +992,7 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 | M3 共享模块 | 已验证 | shared API/error、Tier/Payment 契约、i18n store 已接入 Offer Tracker；bridge 已收窄为导航与下载；Vitest、类型检查、构建和旧回归通过；页面仍保持 dual |
 | M4 Shell 与低风险页面 | 已验证 | M4 的功能、视觉和交互验收由用户于 2026-09-01 确认完成；Payments、Publishers、Monthly New Merchants、Brand Media、Revenue Flow、Google Ads 均已由 Vue modern root 接管并完成 `dual → modern` 安全放行；本轮新增共享 `AppShell` 导航状态、主题持久化和页面标题同步，保留 legacy 侧边栏、移动端导航和各页 legacy fallback；自动化测试、typecheck、build、页面契约和 diff check 通过 |
 | M5 Targets/Category/Tier | 已验证 | M5 的固定 fixture、桌面/移动、关键控件、导出及其余验收由用户于 2026-09-01 确认完成；Targets、Category、Tier 已完成 `dual → modern` 安全放行并接入 shared `frontend/src/shared/export/xlsx.ts`，Tier 保留三张导出表和 Move/管理 API；公开 Sites version 14 的 Tier Move API 边界、共享保存 busy/aria-busy、移动弹窗、Tier 1 additions 预加载和页面回归均通过，legacy fallback 继续保留 |
-| M6 Chatbot/Agent | Agent Runtime 已切换；Chatbot 后续继续 | Agent 保留 PR #184 最新 YeahPromos Vue 外观，通过独立按需 bundle 使用 CopilotKit `useAgent`；Node Runtime 验证 `oi_session` 后用内部 token 转发到 Python AG-UI。Python registry/proof 是唯一权威，legacy 可由 `OI_AGENT_RUNTIME_MODE=legacy` 回退。Chatbot Report/Chat、Deep Window 与完整真实生产验收仍按后续 M6 任务推进。 |
+| M6 Chatbot/Agent | 已验证（Modern-first；legacy 回滚窗口保留） | Chatbot Report/Chat、Deep Window 与 Agent 均由独立 Vue session 默认渲染；Agent 通过按需 CopilotKit bundle、`/api/copilotkit` → `/api/chat/agui` 进入 Python registry/proof。已补齐本地 AG-UI 路由、显式 Legacy Agent session 适配、回答级反馈/Open as View 和 Deep Window 趋势控件回归；真实生产登录/SSE 验收与 legacy 删除分别留在稳定窗口/M7。 |
 | M7 legacy 清理 | 未开始 | `public/app.js`、`styles.css`、bridge 尚未处理 |
 | M8 部署切换 | 未开始 | Vercel 仍无前端 build command |
 
@@ -1004,13 +1004,13 @@ M1–M6 的回滚单位必须是单页面或单逻辑域，不能要求回滚数
 
 - 视觉覆盖：已明确以 `D:\Code\offer-intelligence-main-worktrees\offer-intelligence-main` 为只读视觉基线，规定 CSS/HTML/渲染结构盘点、同数据同视口截图、计算样式对比、交互状态检查和放行条件；M4/M5 的页面视觉与交互验收由用户于 2026-09-01 确认完成，本轮补充公开 Sites version 14 的 Tier legacy/Vue 390×844 截图、1363×936 compare、Tier 1 additions 对齐和 Move dialog/mobile boundary 证据，不把静态测试当作截图证据；M6 Chatbot/Agent 的真实浏览器、数据、视觉和 SSE 验收已由用户于 2026-09-02 确认完成。
 - 需求覆盖：包含框架选型、构建、本地/Vercel 双运行、页面迁移、测试、浏览器验收、CSS、Chatbot/Agent、回滚和运维文档。
-- 范围边界：Roadmap 初始创建阶段只产出计划；M0–M5 与此前页面状态保持不变。M6 Chatbot/Agent 当前回到 `dual` / Legacy-first，Modern 作为显式对照页保留；Offer Tracker 高级面板仍由 legacy 提供，Chatbot/Agent 的 bridge/fallback 不得删除，legacy 删除必须等待重新放行与删除安全检查；version 14 的 Tier Move API 边界、busy 状态、移动弹窗保护、Tier 1 additions 预加载及其固定 fixture 证据已纳入上述验证。
+- 范围边界：Roadmap 初始创建阶段只产出计划；M0–M5 与此前页面状态保持不变。M6 Chatbot/Agent 已切换为 Modern-first，Modern 通过独立 Vue session 承载，bridge/fallback 继续保留为回滚窗口；Offer Tracker 高级面板仍由 legacy 提供，legacy 删除必须等待稳定窗口和删除安全检查；version 14 的 Tier Move API 边界、busy 状态、移动弹窗保护、Tier 1 additions 预加载及其固定 fixture 证据已纳入上述验证。
 - 迁移顺序：先护栏和试点，再共享模块和普通页面，最后 Tier 与 Chatbot/Agent，避免先触碰最高风险区域。
 - 类型一致：`ModernPageName`、`LegacyBootstrapData`、`ModernAppApi`、`LegacyBridgeApi` 是后续阶段唯一允许的临时跨边界名称。
 - 占位符检查：本文没有依赖未定义函数或未指定文件的执行步骤；框架和首个试点已明确，依赖版本由 `--save-exact` 和 lockfile 在实施当日固定。
 - 删除安全：每次删除都要求引用扫描、替代测试和一个后续阶段的回滚窗口。
 
-Roadmap 获确认后，从 M0 开始执行；当前 M0–M5 的既有实现与页面状态保持不变，M4 共享 Shell 已接入并由 `switchPage()` 继续作为唯一页面切换权威入口。M6 Chatbot/Agent 的行为 bridge 与 Modern 对照能力保留，但当前由 Legacy-first 承载；factory/bridge 仅在显式开启对照时挂载 Modern，失败时继续使用 Legacy。`test_chatbot_intent_flow.mjs` 的历史性超时单独记录，不宣称通过。所有 modern/dual 页面继续保留 legacy fallback 作为回滚窗口；Chatbot/Agent 最终视觉验收前不得进入 M7 legacy 删除。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
+Roadmap 获确认后，从 M0 开始执行；当前 M0–M5 的既有实现与页面状态保持不变，M4 共享 Shell 已接入并由 `switchPage()` 继续作为唯一页面切换权威入口。M6 Chatbot/Agent 已由 Modern-first 承载，factory/bridge 在 CopilotKit 不可用或显式回退时继续提供 Legacy；关键词候选预筛已修复 `test_chatbot_intent_flow.mjs` 的历史性超时并通过。所有 modern/dual 页面继续保留 legacy fallback 作为回滚窗口；M7 legacy 删除必须等待真实生产验收、稳定窗口和删除安全检查。每进入一个新阶段，先根据当时仓库状态生成该阶段的细化实施计划，再按 TDD 小步完成；不得跳过阶段退出门槛。
 
 **M4 Monthly New Merchants 执行记录（2026-08-31）：**
 

@@ -109,6 +109,25 @@ const errorText = computed(() => props.errorMessage || (status.value === "cancel
   ? (props.language === "zh" ? "分析已停止。" : "The analysis was stopped.")
   : (props.language === "zh" ? "分析失败，请稍后重试。" : "The analysis failed. Please try again.")));
 
+const DEFAULT_TREND_COLUMNS = new Set([
+  "revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate"
+]);
+
+function chartBody(target: HTMLElement): HTMLElement | null {
+  const root = target.closest<HTMLElement>("[data-deep-window-content]");
+  return root && panelRoot.value?.contains(root) ? root : null;
+}
+
+function syncTrendColumnChecks(root: HTMLElement, all: boolean): void {
+  const checks = Array.from(root.querySelectorAll<HTMLInputElement>("[data-trend-column-check]"));
+  if (!checks.length) return;
+  const available = new Set(checks.map((checkbox) => checkbox.value).filter(Boolean));
+  const selected = all ? available : new Set([...DEFAULT_TREND_COLUMNS].filter((column) => available.has(column)));
+  if (!selected.size) selected.add(checks[0]!.value);
+  checks.forEach((checkbox) => { checkbox.checked = selected.has(checkbox.value); });
+  emit("trend-columns", checks.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value));
+}
+
 const windowStyle = computed(() => ({
   ...(props.absolutePosition
     ? { left: `${props.position.x}px`, top: `${props.position.y}px`, right: "auto", transform: "none" }
@@ -201,12 +220,28 @@ function handleChartClick(event: MouseEvent): void {
   }
   if (target.matches("button[data-trend-metric]")) {
     const metric = target.getAttribute("data-trend-metric");
-    if (metric) emit("trend-interact", "trend-metric", metric);
+    if (metric) {
+      const root = chartBody(target);
+      root?.querySelectorAll("[data-trend-metric]").forEach((button) => {
+        button.classList.toggle("active", button === target);
+      });
+      emit("trend-interact", "trend-metric", metric);
+    }
   } else if (target.matches("[data-trend-column-toggle]")) {
+    const root = chartBody(target);
+    const panel = root?.querySelector<HTMLElement>("[data-trend-column-panel]");
+    if (panel) {
+      const hidden = panel.classList.toggle("hidden");
+      target.setAttribute("aria-expanded", String(!hidden));
+    }
     emit("trend-interact", "trend-column-toggle");
   } else if (target.matches("[data-trend-column-core]")) {
+    const root = chartBody(target);
+    if (root) syncTrendColumnChecks(root, false);
     emit("trend-interact", "trend-column-core");
   } else if (target.matches("[data-trend-column-all]")) {
+    const root = chartBody(target);
+    if (root) syncTrendColumnChecks(root, true);
     emit("trend-interact", "trend-column-all");
   }
 }

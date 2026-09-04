@@ -84,6 +84,46 @@ describe("DeepWindow", () => {
     expect(wrapper.emitted("trend-columns")).toEqual([[['orders']]]);
   });
 
+  it("keeps the legacy column picker usable inside the Vue-owned window", async () => {
+    const wrapper = mount(DeepWindow, {
+      props: {
+        language: "en",
+        result: {
+          ...deepWindowReport,
+          legacyHtml: `<div class="trend-context-wrap">
+            <button type="button" data-trend-column-toggle aria-expanded="false">Display</button>
+            <div class="trend-column-picker hidden" data-trend-column-panel>
+              <button type="button" data-trend-column-core>Default</button>
+              <button type="button" data-trend-column-all>All</button>
+              <input type="checkbox" value="revenue" data-trend-column-check checked>
+              <input type="checkbox" value="orders" data-trend-column-check>
+              <input type="checkbox" value="directSales" data-trend-column-check>
+            </div>
+          </div>`
+        },
+        minimized: false
+      }
+    });
+
+    const toggle = wrapper.get("[data-trend-column-toggle]");
+    await toggle.trigger("click");
+    expect(wrapper.get("[data-trend-column-panel]").classes()).not.toContain("hidden");
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+
+    await wrapper.get("[data-trend-column-core]").trigger("click");
+    expect((wrapper.get('[data-trend-column-check][value="revenue"]').element as HTMLInputElement).checked).toBe(true);
+    expect((wrapper.get('[data-trend-column-check][value="orders"]').element as HTMLInputElement).checked).toBe(true);
+    expect((wrapper.get('[data-trend-column-check][value="directSales"]').element as HTMLInputElement).checked).toBe(false);
+
+    await wrapper.get("[data-trend-column-all]").trigger("click");
+    expect(wrapper.findAll('[data-trend-column-check]:checked')).toHaveLength(3);
+    expect(wrapper.emitted("trend-interact")).toEqual([
+      ["trend-column-toggle"],
+      ["trend-column-core"],
+      ["trend-column-all"]
+    ]);
+  });
+
   it("emits a memory-drop action when a panel ends over the memory bar", async () => {
     const memoryBar = document.createElement("div");
     memoryBar.setAttribute("data-chatbot-memory-bar", "true");

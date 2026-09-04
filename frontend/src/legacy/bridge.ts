@@ -31,6 +31,13 @@ import type {
   ModernShellFactory,
   UiLanguage
 } from "./contracts";
+import type {
+  AgentSessionCallbacks,
+  AgentSessionRequest,
+  AgentSessionState,
+  AgentViewSession,
+  AgentViewSessionResult
+} from "../features/agent/agentSession";
 
 export interface LegacyChatSessionBridgeOptions {
   readonly getState: () => LegacyChatViewState;
@@ -693,6 +700,69 @@ export function createLegacyAgentSessionBridge(options: LegacyAgentSessionBridge
       listeners.add(listener);
       return () => listeners.delete(listener);
     }
+  };
+}
+
+/**
+ * Adapt the explicitly configured Legacy Agent bridge to the modern Agent
+ * view-session contract. The normal Modern path never calls this helper; it
+ * is only used when the server bootstrap requests the emergency legacy
+ * fallback (or when the CopilotKit bundle fails to load).
+ */
+export function getLegacyAgentViewSession(): AgentViewSession | null {
+  const legacy = typeof window !== "undefined" ? window.OI_LEGACY_BRIDGE?.agentSession : undefined;
+  if (!legacy) return null;
+
+  const state = (value: LegacyAgentViewState): AgentSessionState => ({
+    status: value.status,
+    history: value.history,
+    ...(value.messages ? { messages: value.messages } : {}),
+    steps: value.steps,
+    response: value.response,
+    partial: value.partial,
+    omittedTargets: value.omittedTargets,
+    ...(value.resultViews ? { resultViews: normalizeAgentResultViews(value.resultViews) } : {}),
+    hasMemory: value.hasMemory,
+    ...(value.memory !== undefined ? { memory: value.memory } : {}),
+    ...(value.errorCode ? { errorCode: value.errorCode } : {})
+  });
+
+  const result = (value: LegacyAgentRunResult): AgentViewSessionResult => ({
+    ok: value.ok,
+    status: value.status,
+    response: value.response,
+    steps: value.steps,
+    ...(value.partial !== undefined ? { partial: value.partial } : {}),
+    ...(value.omittedTargets ? { omittedTargets: value.omittedTargets } : {}),
+    ...(value.resultViews ? { resultViews: normalizeAgentResultViews(value.resultViews) } : {}),
+    ...(value.memoryEvents ? { memoryEvents: value.memoryEvents } : {}),
+    ...(value.errorCode ? { errorCode: value.errorCode } : {})
+  });
+
+  return {
+    getState: () => state(legacy.getState()),
+    async submit(request: AgentSessionRequest, callbacks: AgentSessionCallbacks = {}) {
+      const next = await legacy.submit({
+        prompt: request.prompt,
+        language: request.language,
+        history: request.history,
+        memoryText: request.memoryText,
+        signal: request.signal
+      }, {
+        onToken: callbacks.onToken,
+        onTimeline: callbacks.onTimeline,
+        onResultView: callbacks.onResultView,
+        onChange: (value) => callbacks.onChange?.(state(value))
+      });
+      return result(next);
+    },
+    stop: () => legacy.stop(),
+    newConversation: () => legacy.newConversation(),
+    onChange(listener) {
+      return legacy.onChange((value) => listener(state(value)));
+    },
+    ...(legacy.feedback ? { feedback: legacy.feedback } : {}),
+    ...(legacy.downloadLogs ? { downloadLogs: legacy.downloadLogs } : {})
   };
 }
 

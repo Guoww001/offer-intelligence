@@ -18,7 +18,7 @@ import "./features/agent/agent.css";
 import "./features/agent/agentWorkspace.css";
 import "./shell/shell.css";
 
-import { createModernAppApi, getLegacySnapshot } from "./legacy/bridge";
+import { createModernAppApi, getLegacyAgentViewSession, getLegacySnapshot } from "./legacy/bridge";
 import type {
   LegacyBootstrapData,
   ModernPageController,
@@ -78,7 +78,7 @@ import type { GoogleAdsLoadRequest } from "./features/google-ads/useGoogleAds";
 import ChatbotPage from "./features/chatbot/ChatbotPage.vue";
 import { createChatbotSession } from "./features/chatbot/chatbotSession";
 import type { ChatbotReportViewResult, ChatbotSession } from "./features/chatbot/chatbotViewTypes";
-import AgentPage, { type AgentRunner } from "./features/agent/AgentPage.vue";
+import AgentPage, { type AgentRunResult, type AgentRunner } from "./features/agent/AgentPage.vue";
 import { createAgentSession, type AgentSession } from "./features/agent/agentSession";
 import AppShell from "./shell/AppShell.vue";
 import type { AppShellController } from "./shell/appShellContracts";
@@ -980,11 +980,21 @@ const agentFactory: ModernPageFactory = (element): ModernPageController => {
   const session = agentSession(snapshot);
   const runtime = window.OI_COPILOTKIT_RUNTIME;
   const copilotKitEnabled = runtime?.enabled === true && runtime.authority === "python-registry";
-  const fallbackRun: AgentRunner = (request) => session.submit(request, {
-    onToken: request.onToken,
-    onTimeline: request.onTimeline,
-    onResultView: request.onResultView
-  });
+  const legacyFallback = runtime?.fallback === "legacy" && snapshot.agentEnabled
+    ? getLegacyAgentViewSession()
+    : null;
+  const fallbackSession = legacyFallback || session;
+  const fallbackRun: AgentRunner = async (request) => {
+    const result = await fallbackSession.submit(request, {
+      onToken: request.onToken,
+      onTimeline: request.onTimeline,
+      onResultView: request.onResultView
+    });
+    return {
+      ...result,
+      memoryEvents: result.memoryEvents as AgentRunResult["memoryEvents"]
+    };
+  };
   const app = createApp({
     name: "ModernAgentMount",
     setup() {
@@ -993,7 +1003,7 @@ const agentFactory: ModernPageFactory = (element): ModernPageController => {
         endpoint: runtime?.endpoint || "/api/copilotkit",
         enabled: copilotKitEnabled,
         fallbackRun,
-        fallbackSession: session,
+        fallbackSession,
         toolExecutor: session.executeTool,
         storage: browserStorage(),
       });
@@ -1004,6 +1014,7 @@ const agentFactory: ModernPageFactory = (element): ModernPageController => {
     setLanguage(nextLanguage) {
       i18n.setLanguage(nextLanguage);
       session.setLanguage?.(nextLanguage);
+      fallbackSession.setLanguage?.(nextLanguage);
     },
     unmount() {
       app.unmount();

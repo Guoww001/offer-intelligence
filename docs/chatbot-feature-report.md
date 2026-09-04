@@ -1,6 +1,6 @@
 # Chatbot 完整档案
 
-> 更新日期：2026-09-03 · 分支：`FRONTEND-VUE-MIGRATION`
+> 更新日期：2026-09-04 · 分支：`FRONTEND-VUE-MIGRATION`
 
 ## 1. 概述
 
@@ -28,14 +28,14 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 >
 > Chat Mode 面对商户、品类、Tier、趋势和媒体等不同分析类型的内容与边界，见 [Chat Mode 不同分析类型说明](chat-mode-analysis-types.md)。
 
-> M6 Runtime 切换（2026-09-03）：独立 Vue Agent 沿用 PR #184 的 YeahPromos 双栏工作区与执行摘要外观；`@copilotkit/vue` Provider 与真实 `/api/copilotkit` 多路由 Runtime 作为 Modern 对照能力保留，页面默认仍使用 Legacy，只有显式 parity 开关且 Runtime/bridge 可用时才挂载 Modern。Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，并通过内部 token 调用 Python `/api/chat/agui`。Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。`OI_AGENT_RUNTIME_MODE=legacy` 可恢复旧 session bridge；Chatbot Report/Chat 与 Deep Window 本次不切换。
+> M6 Modern-first Runtime（2026-09-04）：Chatbot Report/Chat、Deep Window 与独立 Agent 默认由 Vue session/页面渲染；Agent 进入页面后按需加载 `@copilotkit/vue`，通过真实 `/api/copilotkit` Runtime 和同源 `/api/chat/agui` 使用 Python registry。Node Runtime 使用现有 `oi_session`/`OI_SESSION_SECRET` 鉴权，内部 token 只用于 Python AG-UI 调用；Python 继续拥有 7 工具 registry、参数/结果白名单、plan proof、批次、replan 与 synthesis。关键词检索增加语义保持的候选预筛，`scripts/test_chatbot_intent_flow.mjs` 已稳定通过。`window.__OI_MODERN_CHATBOT_AGENT_PARITY__ = false` 或 `OI_AGENT_RUNTIME_MODE=legacy` 可恢复 Legacy 页面/Agent session，旧实现保留回滚窗口。
 
 ### M6 CopilotKit Agent 与 Legacy 回退边界（2026-09-03）
 
 - Report Mode 通过 `applyPrompt()` 和 `loadLiveChatbotData()` 复用 merchant、ASIN、category、Tier、recommendation、payment、analysis/trend、keyword、publisher 和 publisher profile 路由；来源状态只暴露 `cache`、`db` 或不可用。
 - Chat Mode 复用 Legacy 的 Report Memory、Memory recommendation、`/api/chat/stream` 逐 token/fallback/停止链路、反馈、问题日志、帮助、指南和 onboarding；成功回答才进入历史，停止/失败本轮不进入正式历史。
 - Deep Window 通过受控操作保留 quick/deep、多窗口、拖动、置顶、最小化/恢复、关闭/取消、图表指标/分类/列控制、clone、overlay、导出和加入对话；完成的 Legacy panel 不因 Modern 页面卸载而误删。
-- Agent 的 Modern 对照页由 CopilotKit `useAgent` 管理运行与停止；默认 Legacy 页面继续复用既有 Agent 执行链。Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
+- Agent 的 Modern 页面由 CopilotKit `useAgent` 管理运行与停止；不可用或显式回退时才复用 Legacy Agent session。Python AG-UI adapter 发出标准 run/text/tool/state/custom 事件，客户端仅执行 Python 已签名的调用。受限 Memory event 和结果组件投影可按需渲染，plan proof、密钥和原始 provider payload 不进入 Vue。
 - CopilotKit bundle 与主 `oi-modern.js` 分离，仅在显式启用 Agent Modern 对照且 Runtime 可用时使用；CopilotKit 默认 Sidebar 与全局样式不作为页面 UI。真实登录数据、视觉几何与生产网络验收由用户完成。
 
 ### 2026-09-03 Agent 回答行为与趋势组件兼容

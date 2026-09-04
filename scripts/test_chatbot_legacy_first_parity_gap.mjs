@@ -49,7 +49,9 @@ if (stage === "full") {
   assert.match(styles, /\.chatbot-report-send[\s\S]*color:\s*#fff\s*!important/);
   assert.match(styles, /\.chatbot-report-send:hover:not\(:disabled\)/);
   assert.match(styles, /\.answer-feedback-dialog/);
-  assert.match(legacyRuntime, /window\.__OI_MODERN_CHATBOT_AGENT_PARITY__ === true/);
+  // The current M6 baseline is Modern-first; the same predicate must still
+  // expose an explicit false escape hatch for a Legacy rollback.
+  assert.match(legacyRuntime, /window\.__OI_MODERN_CHATBOT_AGENT_PARITY__ !== false/);
 }
 
 console.log(stage === "full" ? "Chatbot visual contract: PASS" : "Chatbot Legacy-first parity gap gate: PASS");
