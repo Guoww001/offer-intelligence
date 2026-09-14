@@ -111,16 +111,16 @@ def main():
         raise AssertionError("missing consolidated WSGI entrypoint api/db/index.py")
 
     common_excludes = (
-        "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,"
+        "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,"
         "*.md,*.txt,*.yml,init.sh,server.py}"
     )
     no_protected_excludes = (
-        "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,"
+        "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,"
         "protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}"
     )
     levanta_excludes = (
-        "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,"
-        "protected_data/db_keywords_cache.json,protected_data/db_publishers_cache.json,"
+        "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,"
+        "protected_data/db_keywords_cache.json,protected_data/db_publishers_cache.json,protected_data/offer_promotion_batches.json,"
         "*.md,*.txt,*.yml,init.sh,server.py}"
     )
     common_config = {

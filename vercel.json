@@ -321,32 +321,32 @@
   ],
   "functions": {
     "api/auth/index.py": {
-      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "excludeFiles": "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "maxDuration": 60
     },
     "api/chat/actions.py": {
-      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "excludeFiles": "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "maxDuration": 60
     },
     "api/chat/stream.py": {
-      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "excludeFiles": "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "maxDuration": 60
     },
     "api/copilotkit/[...path].js": {
       "maxDuration": 60
     },
     "api/db/index.py": {
-      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "excludeFiles": "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "includeFiles": "protected_data/**",
       "maxDuration": 60
     },
     "api/levanta/payments.py": {
-      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/db_keywords_cache.json,protected_data/db_publishers_cache.json,*.md,*.txt,*.yml,init.sh,server.py}",
+      "excludeFiles": "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/db_keywords_cache.json,protected_data/db_publishers_cache.json,protected_data/offer_promotion_batches.json,*.md,*.txt,*.yml,init.sh,server.py}",
       "includeFiles": "protected_data/db_offers_cache.json",
       "maxDuration": 60
     },
     "api/tier_moves.py": {
-      "excludeFiles": "{.git/**,.github/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
+      "excludeFiles": "{.git/**,.github/**,frontend/**,data/**,docs/**,output/**,public/**,scripts/**,protected_data/**,*.md,*.txt,*.yml,init.sh,server.py}",
       "maxDuration": 60
     }
   }

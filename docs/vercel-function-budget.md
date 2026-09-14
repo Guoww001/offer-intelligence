@@ -25,7 +25,7 @@ an unknown or missing route header return `404`.
 - `api/levanta/payments.py` includes only
   `protected_data/db_offers_cache.json` for merchant enrichment.
 - Auth, Chat, and tier-move functions do not include protected cache files.
-- Function bundles also exclude local-only sources such as `docs/`, `data/`,
+- Function bundles also exclude local-only sources such as `frontend/`, `docs/`, `data/`,
   `output/`, `public/`, test scripts, workflow files, and `server.py`; static
   assets in `public/` are still emitted separately by `outputDirectory`.
 
@@ -37,3 +37,27 @@ After `vercel build --prod`, run
 `python scripts/test_vercel_build_output.py` to inspect the generated
 `.vc-config.json` maps and verify the runtime, cache boundaries, excluded
 directories, and separately emitted static site.
+
+## Dependency scopes and storage
+
+All Python functions keep the shared runtime dependency manifest. The current
+Python builder uses one virtual environment for multiple entrypoints; switching
+between lean and Chat manifests can leave dangling dependency paths in earlier
+function outputs. Do not split manifests without verifying every referenced
+file still exists after the complete build.
+
+Frontend source is excluded from Python bundles; the compiled frontend is still
+served from `public/` as static output. The payments function includes only its
+merchant-enrichment cache, not Offer tracking batch definitions.
+
+The production project's Preview, Production, Canceled, and Errored retention
+periods are all 7 days (configured in Vercel, not in `vercel.json`). Vercel's
+retention exceptions can preserve active aliases and recent deployment counts
+beyond that age. Before manual cleanup, preserve the current production alias,
+two known-good rollback versions, and previews still required for testing.
+
+Functions Storage includes retained function bundles over time. Deleting old
+deployments reduces future accumulation; it does not erase earlier daily usage.
+The upstream cache workflow already runs once after the daily payment sync;
+the mirror only pushes when its Git history changes. Preserve that data refresh
+cadence, and avoid adding a second deploy trigger for the same update.

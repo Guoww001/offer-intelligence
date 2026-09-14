@@ -10,15 +10,17 @@ EXPECTED_PROTECTED_FILES = {
     "api/auth/index.func": set(),
     "api/chat/actions.func": set(),
     "api/chat/stream.func": set(),
+    "api/copilotkit/[...path].func": set(),
     "api/db/index.func": {
         "protected_data/db_keywords_cache.json",
         "protected_data/db_offers_cache.json",
         "protected_data/db_publishers_cache.json",
+        "protected_data/offer_promotion_batches.json",
     },
     "api/levanta/payments.func": {"protected_data/db_offers_cache.json"},
     "api/tier_moves.func": set(),
 }
-NON_RUNTIME_PREFIXES = (".github/", "data/", "docs/", "output/", "public/", "scripts/")
+NON_RUNTIME_PREFIXES = (".github/", "frontend/", "data/", "docs/", "output/", "public/", "scripts/")
 
 
 def main():
@@ -38,10 +40,24 @@ def main():
     total_source_bytes = 0
     for name, bundle in sorted(bundles.items()):
         config = json.loads((bundle / ".vc-config.json").read_text(encoding="utf-8"))
+        if name == "api/copilotkit/[...path].func":
+            if not str(config.get("runtime", "")).startswith("nodejs"):
+                raise AssertionError(f"{name} must use the Node.js runtime")
+            continue
         if config.get("runtime") != "python3.12":
             raise AssertionError(f"{name} must use python3.12")
 
-        paths = set(config.get("filePathMap", {}))
+        path_map = config.get("filePathMap", {})
+        paths = set(path_map)
+        if not paths:
+            raise AssertionError(f"{name} has no packaged Python files")
+        missing = [source for source in path_map.values() if not (ROOT / source).is_file()]
+        if missing:
+            raise AssertionError(f"{name} has missing bundle inputs: {', '.join(missing[:5])}")
+        if name.startswith("api/chat/"):
+            for package in ("openai", "anthropic", "ag_ui"):
+                if not any(path.startswith(f"_vendor/{package}/") for path in paths):
+                    raise AssertionError(f"{name} is missing its {package} dependency")
         protected = {path for path in paths if path.startswith("protected_data/")}
         if protected != EXPECTED_PROTECTED_FILES[name]:
             raise AssertionError(
