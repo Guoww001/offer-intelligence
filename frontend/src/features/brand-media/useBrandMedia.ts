@@ -62,6 +62,7 @@ export function useBrandMedia(options: UseBrandMediaOptions = {}) {
   const merchantSearch = ref("");
   const managerFilter = ref("");
   const lockedPublisherKeys = ref<string[]>([]);
+  const allOrderLineVisible = ref(true);
   const chartExpanded = ref(false);
   const startDate = ref("");
   const endDate = ref("");
@@ -102,7 +103,8 @@ export function useBrandMedia(options: UseBrandMediaOptions = {}) {
     if (!payload.value) return null;
     return buildBrandMediaChartModel(payload.value, visiblePublishers.value, {
       allPublishers: managerPublishers.value,
-      lockedKeys: lockedPublisherKeys.value
+      lockedKeys: lockedPublisherKeys.value,
+      showAllOrderLine: allOrderLineVisible.value
     });
   });
   const clickChartModel = computed<BrandMediaClickChartModel | null>(() => {
@@ -153,6 +155,7 @@ export function useBrandMedia(options: UseBrandMediaOptions = {}) {
 
   function selectMerchant(option: { readonly merchantId: string; readonly name: string }): void {
     invalidateTrendRequest();
+    allOrderLineVisible.value = true;
     merchantId.value = option.merchantId.trim();
     merchantName.value = option.name.trim();
     merchantSearch.value = merchantName.value;
@@ -175,6 +178,10 @@ export function useBrandMedia(options: UseBrandMediaOptions = {}) {
     lockedPublisherKeys.value = lockedPublisherKeys.value.includes(key)
       ? lockedPublisherKeys.value.filter((item) => item !== key)
       : [...lockedPublisherKeys.value, key];
+  }
+
+  function toggleAllOrderLine(): void {
+    allOrderLineVisible.value = !allOrderLineVisible.value;
   }
 
   function setChartExpanded(expanded: boolean): void {
@@ -284,6 +291,7 @@ export function useBrandMedia(options: UseBrandMediaOptions = {}) {
     managerFilter,
     managerOptions,
     lockedPublisherKeys,
+    allOrderLineVisible,
     chartExpanded,
     startDate,
     endDate,
@@ -309,6 +317,7 @@ export function useBrandMedia(options: UseBrandMediaOptions = {}) {
     selectMerchant,
     setManagerFilter,
     togglePublisherLock,
+    toggleAllOrderLine,
     setChartExpanded,
     loadTrend,
     unmount

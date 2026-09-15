@@ -423,6 +423,7 @@ export function buildBrandMediaChartModel(
   options: {
     readonly allPublishers?: readonly BrandMediaPublisher[];
     readonly lockedKeys?: readonly string[];
+    readonly showAllOrderLine?: boolean;
   } = {}
 ): BrandMediaChartModel | null {
   const publishers = publisherViews(publishersInput);
@@ -470,7 +471,7 @@ export function buildBrandMediaChartModel(
   }
 
   const locks = new Set((options.lockedKeys || []).map((key) => key.trim()).filter(Boolean));
-  const showAllOrderLine = locks.size === 0 && publishers.length === allPublishers.length;
+  const showAllOrderLine = options.showAllOrderLine !== false && locks.size === 0 && publishers.length === allPublishers.length;
   if (showAllOrderLine) {
     maxOrders = Math.max(maxOrders, ...Object.values(allDailyOrderTotals));
   }

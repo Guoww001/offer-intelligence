@@ -41,6 +41,33 @@ function mountBrandMedia(props: Record<string, unknown> = {}) {
 }
 
 describe("BrandMediaPage", () => {
+  it("总订单线可从两个图例开关，全屏保留状态，媒体锁定和指标不受影响", async () => {
+    const wrapper = mountBrandMedia();
+    await wrapper.get('input[role="combobox"]').trigger("focus");
+    await wrapper.get('[role="option"][data-brand-media-merchant-id="101"]').trigger("click");
+    const kpis = wrapper.get(".brand-media-kpis").text();
+    expect(wrapper.find(".brand-media-total-series").exists()).toBe(true);
+    await wrapper.get("button.brand-media-legend-total").trigger("click");
+    expect(wrapper.get(".brand-media-total-key").attributes("aria-pressed")).toBe("false");
+    expect(wrapper.get(".brand-media-legend-total").classes()).toContain("is-hidden");
+    expect(wrapper.find(".brand-media-total-series").exists()).toBe(false);
+    expect(wrapper.findAll(".brand-media-series")).toHaveLength(1);
+    expect(wrapper.get(".brand-media-kpis").text()).toBe(kpis);
+    await wrapper.get(".brand-media-chart-expand").trigger("click");
+    expect(wrapper.get(".brand-media-chart-panel").classes()).toContain("is-expanded");
+    expect(wrapper.get(".brand-media-legend-total").attributes("aria-pressed")).toBe("false");
+    await wrapper.get("button.brand-media-total-key").trigger("click");
+    expect(wrapper.find(".brand-media-total-series").exists()).toBe(true);
+    expect(wrapper.get(".brand-media-legend-total").attributes("aria-pressed")).toBe("true");
+    await wrapper.get("button.brand-media-total-key").trigger("click");
+    await wrapper.get(".brand-media-legend-item").trigger("click");
+    expect(wrapper.get(".brand-media-legend-total").attributes()).toHaveProperty("disabled");
+    await wrapper.get(".brand-media-legend-item").trigger("click");
+    expect(wrapper.find(".brand-media-total-series").exists()).toBe(false);
+    await wrapper.get("button.brand-media-legend-total").trigger("click");
+    expect(wrapper.find(".brand-media-total-series").exists()).toBe(true);
+    wrapper.unmount();
+  });
   it("保留旧页面的控件、KPI、趋势图、点击图和汇总表结构", async () => {
     const wrapper = mountBrandMedia();
 

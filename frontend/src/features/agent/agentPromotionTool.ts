@@ -87,9 +87,11 @@ function validWindow(value: unknown): value is AgentPromotionWindow {
   const beforeEnd = dateValues[4]!;
   return typeof value.days === "number" && Number.isInteger(value.days) && value.days >= 1 && value.days <= 92
     && start <= end
+    && parsed[1]! >= parsed[0]!
     && beforeStart <= beforeEnd
     && Math.round((parsed[2]! - parsed[1]!) / 86400000) + 1 === value.days
-    && Math.round((parsed[1]! - parsed[3]!) / 86400000) === value.days;
+    && Math.round((parsed[0]! - parsed[3]!) / 86400000) === value.days
+    && Math.round((parsed[0]! - parsed[4]!) / 86400000) === 1;
 }
 
 function sameWindow(left: AgentPromotionWindow, right: AgentPromotionWindow): boolean {
@@ -397,6 +399,8 @@ export async function executePromotionTool(
     launchDate: window.launchDate,
     startDate: window.startDate,
     endDate: window.endDate,
+    beforeStart: window.beforeStart,
+    beforeEnd: window.beforeEnd,
   };
   let report: PerformanceReport;
   try {

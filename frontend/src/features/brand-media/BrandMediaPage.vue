@@ -292,7 +292,7 @@ watch([
           <p>{{ copy.chartSubtitle }}</p>
         </div>
         <div class="brand-media-chart-meta">
-          <span v-if="media.chartModel.value && !media.lockedPublisherKeys.value.length" class="brand-media-total-key"><i aria-hidden="true" />{{ translateMessage(language, "brandMedia.allOrderLine", "All media orders") }}</span>
+          <button v-if="media.chartModel.value && !media.lockedPublisherKeys.value.length" type="button" class="brand-media-total-key" :class="{ 'is-hidden': !media.allOrderLineVisible.value }" :aria-pressed="media.allOrderLineVisible.value" :title="media.allOrderLineVisible.value ? (language === 'zh' ? '点击隐藏总订单线' : 'Hide total order line') : (language === 'zh' ? '点击恢复总订单线' : 'Show total order line')" @click="media.toggleAllOrderLine"><i aria-hidden="true" />{{ translateMessage(language, "brandMedia.allOrderLine", "All media orders") }}</button>
           <span class="brand-media-line-count" aria-live="polite">{{ media.payload.value ? lineCountText : "" }}</span>
           <button ref="expandButton" type="button" class="brand-media-chart-expand" aria-controls="brandMediaModernChartPanel" :aria-expanded="media.chartExpanded.value" :aria-label="media.chartExpanded.value ? copy.collapseChart : copy.expandChart" :title="media.chartExpanded.value ? copy.collapseChart : copy.expandChart" @click="setChartExpanded(!media.chartExpanded.value)">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6" /></svg>
@@ -309,6 +309,7 @@ watch([
           :merchant-name="media.merchantName.value"
           :empty-message="chartEmptyMessage"
           @toggle-lock="media.togglePublisherLock"
+          @toggle-total="media.toggleAllOrderLine"
         />
       </div>
     </section>

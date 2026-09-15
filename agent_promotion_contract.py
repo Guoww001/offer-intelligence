@@ -94,15 +94,17 @@ def _window(value: Any, field: str = "window") -> tuple[dict | None, dict | None
         return None, error
     cleaned["days"] = days
     start = date.fromisoformat(cleaned["startDate"])
+    launch = date.fromisoformat(cleaned["launchDate"])
     end = date.fromisoformat(cleaned["endDate"])
     before_start = date.fromisoformat(cleaned["beforeStart"])
     before_end = date.fromisoformat(cleaned["beforeEnd"])
     if (
         cleaned["startDate"] > cleaned["endDate"]
+        or start < launch
         or cleaned["beforeStart"] > cleaned["beforeEnd"]
         or (end - start).days + 1 != days
-        or before_end != start - timedelta(days=1)
-        or before_start != start - timedelta(days=days)
+        or before_end != launch - timedelta(days=1)
+        or before_start != launch - timedelta(days=days)
     ):
         return None, _error("invalid_arguments", field)
     return cleaned, None

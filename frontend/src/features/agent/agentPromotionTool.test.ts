@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { emptyMetrics, type PerformanceReport } from "../offer-performance/performanceModel";
 import { parseAgentAttachment, type AgentPromotionAttachment } from "./agentAttachment";
@@ -88,6 +88,19 @@ const args = (view: PromotionToolArguments["view"]): PromotionToolArguments => (
 });
 
 describe("promotion_analysis frontend tool", () => {
+  it("accepts observation after launch and sends the launch-anchored comparison to reports", async () => {
+    const window = { ...attachment.manifest.window!, startDate: "2026-09-10", endDate: "2026-09-16" };
+    const later = { ...attachment, manifest: { ...attachment.manifest, window } };
+    const loader = vi.fn(async (_request: unknown) => ({ ...report(), dateRange: window }));
+    const result = await executePromotionTool(later, { ...args("merchants"), window }, loader, new AbortController().signal, "zh");
+    expect(result.result.ok).toBe(true);
+    expect(loader.mock.calls[0]?.[0]).toMatchObject({ launchDate: "2026-09-07", startDate: "2026-09-10", beforeStart: "2026-08-31", beforeEnd: "2026-09-06" });
+    for (const invalid of [{ ...window, beforeEnd: "2026-09-09" }, { ...window, startDate: "2026-09-06", endDate: "2026-09-12" }]) {
+      const rejected = await executePromotionTool({ ...later, manifest: { ...later.manifest, window: invalid } }, { ...args("merchants"), window: invalid }, loader, new AbortController().signal, "zh");
+      expect(rejected.result.errorCode).toBe("invalid_arguments");
+    }
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
   it("aggregates merchant totals before applying ranking and preserves null semantics", async () => {
     const loadReport = async () => report();
     const result = await executePromotionTool(attachment, args("merchants"), loadReport, new AbortController().signal, "zh");

@@ -22,6 +22,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggleLock: [publisherKey: string];
+  toggleTotal: [];
 }>();
 
 const chartRoot = ref<HTMLElement | null>(null);
@@ -210,14 +211,14 @@ defineExpose({ focusLegendAgain });
   </div>
 
   <aside class="brand-media-legend" aria-label="Publisher line legend">
-    <div v-if="model" class="brand-media-legend-total">
+    <button v-if="model" type="button" class="brand-media-legend-total" :class="{ 'is-hidden': !model.showAllOrderLine }" :aria-pressed="model.showAllOrderLine" :disabled="!!lockedKeys.length" :title="lockedKeys.length ? (language === 'zh' ? '解除媒体锁定后可显示总订单线' : 'Unlock publishers to show total orders') : (model.showAllOrderLine ? (language === 'zh' ? '点击隐藏总订单线' : 'Hide total order line') : (language === 'zh' ? '点击恢复总订单线' : 'Show total order line'))" @click="clearHover(); emit('toggleTotal')">
       <i aria-hidden="true" />
       <span class="brand-media-legend-details">
         <strong>{{ copy.allOrderLine }}</strong>
         <small>{{ copy.totalOrders }}</small>
       </span>
       <strong>{{ formatBrandMediaCount(totalOrderCount) }}</strong>
-    </div>
+    </button>
     <button
       v-for="publisher in publishers"
       :key="publisher.publisherKey"
