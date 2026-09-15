@@ -21,7 +21,7 @@ def catalog():
     return json.loads((Path(__file__).parent / "protected_data/offer_promotion_batches.json").read_text(encoding="utf-8"))
 
 
-def date_window(launch_date=None, start_date=None, end_date=None):
+def date_window(launch_date=None, start_date=None, end_date=None, before_start=None, before_end=None):
     def parse(value):
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(value or "")):
             raise ValueError("Dates must use YYYY-MM-DD")
@@ -29,13 +29,29 @@ def date_window(launch_date=None, start_date=None, end_date=None):
     if bool(start_date) != bool(end_date):
         raise ValueError("Provide both startDate and endDate")
     start = parse(start_date or launch_date)
+    launch = parse(launch_date) if launch_date else start
     end = parse(end_date) if end_date else start + dt.timedelta(days=6)
     days = (end - start).days + 1
     if not 1 <= days <= 92:
         raise ValueError("Choose a period of 1 to 92 days")
+    if start < launch:
+        raise ValueError("Observation must start on or after the launch date")
+    if bool(before_start) != bool(before_end):
+        raise ValueError("Provide both beforeStart and beforeEnd")
+    previous_end = parse(before_end) if before_end else launch - dt.timedelta(days=1)
+    previous_start = parse(before_start) if before_start else launch - dt.timedelta(days=days)
+    if previous_end >= launch or not 1 <= (previous_end - previous_start).days + 1 <= 366:
+        raise ValueError("Comparison must cover 1 to 366 days before launch")
     return {"startDate": start.isoformat(), "endDate": end.isoformat(), "days": days,
-            "beforeStart": (start - dt.timedelta(days=days)).isoformat(),
-            "beforeEnd": (start - dt.timedelta(days=1)).isoformat()}
+            "beforeStart": previous_start.isoformat(), "beforeEnd": previous_end.isoformat()}
+
+
+def period_for(day, window):
+    if window["startDate"] <= day <= window["endDate"]:
+        return "after"
+    if window["beforeStart"] <= day <= window["beforeEnd"]:
+        return "before"
+    return None
 
 
 def month_keys(start):
@@ -76,7 +92,7 @@ def _latest_date(conn, table, columns):
     return db.normalize_day(latest[0].get("latest")) if latest else None
 
 
-def _read(conn, table, columns, ids, start, end, fields, detail=False, monthly=False, period_window=None, known_watermark=None):
+def _read(conn, table, columns, ids, start, end, fields, detail=False, monthly=False, period_window=None, known_watermark=None, report_window=None):
     merchant = db.pick_column(columns, ["advert_id", "merchant_id"])
     day = db.pick_column(columns, ["order_time_day", "time_day", "click_time_day", "order_date", "date"])
     if not merchant or not day:
@@ -110,9 +126,16 @@ def _read(conn, table, columns, ids, start, end, fields, detail=False, monthly=F
             if column:
                 group.append(expr)
     placeholders = ",".join(["%s"] * len(ids))
+    bounds = period_window or report_window
+    # Exclude the gap before grouping: it must never become comparison revenue.
+    gap_filter = ""
+    if bounds:
+        before_end = int(bounds["beforeEnd"].replace("-", ""))
+        after_start = int(bounds["startDate"].replace("-", ""))
+        gap_filter = f"AND ({date_expr} <= {before_end} OR {date_expr} >= {after_start}) "
     rows = db.fetch_all(conn, f"SELECT {', '.join(select)} FROM {db.q(table)} r "
                         f"WHERE r.{db.q(merchant)} IN ({placeholders}) AND {date_expr} BETWEEN %s AND %s "
-                        f"GROUP BY {', '.join(group)} LIMIT 25001",
+                        f"{gap_filter}GROUP BY {', '.join(group)} LIMIT 25001",
                         (*ids, int(start.replace("-", "")), int(end.replace("-", ""))))
     if len(rows) > 25000:
         raise ValueError("Too many detail rows; choose a shorter date range")
@@ -146,13 +169,13 @@ def summarize(rows, ids, window, supported, monthly_rows=(), watermark=None):
     monthly = {}
     for row in rows:
         mid, day = str(row["merchantId"]), db.normalize_day(row["day"])
-        if mid not in result or not day or not window["beforeStart"] <= day <= window["endDate"] or (watermark and day > watermark):
+        if mid not in result or not day or not period_for(day, window) or (watermark and day > watermark):
             continue
         key = (mid, day)
         _add(daily.setdefault(key, _empty(supported)), row, supported)
     for (mid, day), metrics in sorted(daily.items()):
         result[mid]["daily"].append({"date": day, **metrics})
-        period = "after" if window["startDate"] <= day <= window["endDate"] else "before"
+        period = period_for(day, window)
         _add(result[mid][period], metrics, supported)
     for row in monthly_rows:
         mid, month = str(row["merchantId"]), str(row["day"])
@@ -173,9 +196,9 @@ def summarize_details(rows, window, supported, watermark):
     media, links = {}, {}
     for row in rows:
         day = db.normalize_day(row["day"])
-        if not day or not window["beforeStart"] <= day <= window["endDate"] or (watermark and day > watermark):
+        if not day or not period_for(day, window) or (watermark and day > watermark):
             continue
-        period = "after" if window["startDate"] <= day <= window["endDate"] else "before"
+        period = period_for(day, window)
         mid = str(row["merchantId"])
         uid = str(row.get("publisherId") or "")
         kind, asin = target_identity(row)
@@ -207,7 +230,7 @@ def report(query):
         raise ValueError("Selected merchant is outside this batch")
     if selected:
         ids = [selected]
-    window = date_window(value("launchDate") or (batch or {}).get("launchDate"), value("startDate"), value("endDate"))
+    window = date_window(value("launchDate") or (batch or {}).get("launchDate"), value("startDate"), value("endDate"), value("beforeStart"), value("beforeEnd"))
     months = month_keys(window["startDate"])
     history_end = (dt.date.fromisoformat(window["startDate"]).replace(day=1) - dt.timedelta(days=1)).isoformat()
     with db.db_connection() as conn:
@@ -215,7 +238,7 @@ def report(query):
         click_cols = db.table_columns(conn, "cnpscy_amazon_click")
         # Choose a single clicks source for all periods and dimensions, never add both.
         has_clicks = all(db.pick_column(click_cols, c) for c in (["advert_id", "merchant_id"], ["time_day", "click_time_day", "date"], ["click", "clicks"]))
-        relation_options = {}
+        relation_options = {"report_window": window}
         if cohort_relations:
             source_dates = [_latest_date(conn, "cnpscy_amazon_order", order_cols)]
             if has_clicks:

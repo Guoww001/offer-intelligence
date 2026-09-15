@@ -24,6 +24,8 @@ export interface PromotionBatch {
   launchDate: string;
   observationStart?: string;
   observationEnd?: string;
+  comparisonStart?: string;
+  comparisonEnd?: string;
   offers: TrackedOffer[];
   local?: boolean;
   customized?: boolean;
@@ -69,6 +71,8 @@ export interface ReportRequest {
   launchDate: string;
   startDate?: string;
   endDate?: string;
+  beforeStart?: string;
+  beforeEnd?: string;
   merchantId?: string;
 }
 export interface PromotionWindow {
@@ -104,25 +108,28 @@ export function addDays(date: string, days: number): string {
     ? value.toISOString().slice(0, 10)
     : "";
 }
-export function windowDates(launch: string, start?: string, end?: string): PromotionWindow | null {
-  if (Boolean(start) !== Boolean(end)) return null;
+export function windowDates(launch: string, start?: string, end?: string, beforeStart?: string, beforeEnd?: string): PromotionWindow | null {
+  if (Boolean(start) !== Boolean(end) || Boolean(beforeStart) !== Boolean(beforeEnd)) return null;
   const valid = (v: string) =>
     /^\d{4}-\d{2}-\d{2}$/.test(v) && addDays(v, 0) === v;
   const from = start || launch,
     to = end || addDays(from, 6);
-  if (!valid(from) || !valid(to)) return null;
+  if (!valid(launch) || !valid(from) || !valid(to) || from < launch) return null;
   const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
   if (days < 1 || days > 92) return null;
+  const previousStart = beforeStart || addDays(launch, -days);
+  const previousEnd = beforeEnd || addDays(launch, -1);
+  if (!valid(previousStart) || !valid(previousEnd) || previousEnd >= launch || periodDays(previousStart, previousEnd) < 1 || periodDays(previousStart, previousEnd) > 366) return null;
   return {
     startDate: from,
     endDate: to,
-    beforeStart: addDays(from, -days),
-    beforeEnd: addDays(from, -1),
+    beforeStart: previousStart,
+    beforeEnd: previousEnd,
     days,
   };
 }
 export function observationWindow(batch: PromotionBatch) {
-  return (
+  const observation = (
     (batch.observationStart &&
       batch.observationEnd &&
       windowDates(
@@ -132,6 +139,41 @@ export function observationWindow(batch: PromotionBatch) {
       )) ||
     windowDates(batch.launchDate)
   );
+  if (!observation) return null;
+  return windowDates(batch.launchDate, observation.startDate, observation.endDate, batch.comparisonStart, batch.comparisonEnd) || observation;
+}
+export function periodDays(start: string, end: string): number {
+  return Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
+}
+export function dailyAverage(value: number | null, days: number): number | null {
+  return value === null || days <= 0 ? null : value / days;
+}
+
+export function dailyTimeline(rows: PerformanceRow[], window: PromotionWindow, availableThrough: string, metric: Metric, supported: boolean) {
+  const valueAt = (date: string) => {
+    if (!supported || !rows.length || !availableThrough || date > availableThrough) return null;
+    const values = rows.map(row => {
+      const daily = row.daily.find(day => day.date === date);
+      if (daily) return daily[metric];
+      return row.after[metric] === null && row.before[metric] === null ? null : 0;
+    });
+    return values.some(value => value === null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+  };
+  const points = [
+    ...Array.from({ length: periodDays(window.beforeStart, window.beforeEnd) }, (_, index) => {
+      const date = addDays(window.beforeStart, index);
+      return { date, period: "before", value: valueAt(date) };
+    }),
+    ...Array.from({ length: window.days }, (_, index) => {
+      const date = addDays(window.startDate, index);
+      return { date, period: "after", value: valueAt(date) };
+    }),
+  ];
+  // A single null marker breaks the line across an unselected gap, without
+  // allocating every date in a potentially very long gap.
+  if (addDays(window.beforeEnd, 1) < window.startDate)
+    points.push({ date: addDays(window.beforeEnd, 1), period: "gap", value: null });
+  return points.sort((a, b) => a.date.localeCompare(b.date));
 }
 export function observedDays(
   start: string,
@@ -340,6 +382,8 @@ export function restoreBatches(
             ? {
                 observationStart: override.observationStart,
                 observationEnd: override.observationEnd,
+                comparisonStart: override.comparisonStart,
+                comparisonEnd: override.comparisonEnd,
               }
             : {}),
           ...(override?.customized

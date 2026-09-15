@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import PromotionRelations from "./PromotionRelations.vue";
 import PromotionImport from "./PromotionImport.vue";
 import PromotionListPicker from "./PromotionListPicker.vue";
+import PromotionDailyChart from "./PromotionDailyChart.vue";
 import {
   categoryStyle,
   LINK_KINDS,
@@ -19,6 +20,9 @@ import type { UiLanguage } from "../../shared/i18n";
 import { loadCatalog, loadReport } from "./performanceApi";
 import {
   METRICS,
+  addDays,
+  periodDays,
+  dailyAverage,
   change,
   emptyMetrics,
   monthlyBaseline,
@@ -59,6 +63,24 @@ const batches = ref<PromotionBatch[]>([]),
 const launch = ref("2026-09-07"),
   start = ref(""),
   end = ref("");
+const customComparison = ref(false), comparisonStart = ref(""), comparisonEnd = ref("");
+const defaultWindow = computed(() => windowDates(launch.value, start.value, end.value));
+const comparisonDraftStart = computed(() => customComparison.value ? comparisonStart.value : defaultWindow.value?.beforeStart || "");
+const comparisonDraftEnd = computed(() => customComparison.value ? comparisonEnd.value : defaultWindow.value?.beforeEnd || "");
+function editComparison(which: "start" | "end", value: string) {
+  comparisonStart.value = comparisonDraftStart.value;
+  comparisonEnd.value = comparisonDraftEnd.value;
+  customComparison.value = true;
+  if (which === "start") comparisonStart.value = value;
+  else comparisonEnd.value = value;
+}
+function editLaunch(value: string) {
+  const length = defaultWindow.value?.days || 7;
+  launch.value = value;
+  start.value = value;
+  end.value = addDays(value, length - 1);
+  customComparison.value = false;
+}
 const report = ref<PerformanceReport | null>(null),
   detail = ref<PerformanceReport | null>(null);
 const loading = ref(false),
@@ -91,11 +113,13 @@ let relationId = 0,
   relationController: AbortController | undefined;
 const batch = computed(() => batches.value.find((b) => b.id === batchId.value));
 const draftWindow = computed(() =>
-  start.value && end.value
-    ? windowDates(launch.value, start.value, end.value)
+  start.value && end.value && (!customComparison.value || (comparisonStart.value && comparisonEnd.value))
+    ? windowDates(launch.value, start.value, end.value, comparisonDraftStart.value, comparisonDraftEnd.value)
     : null,
 );
 const range = computed(() => report.value?.dateRange || draftWindow.value);
+const beforeLength = computed(() => range.value ? periodDays(range.value.beforeStart, range.value.beforeEnd) : 0);
+const useAverage = computed(() => !!range.value && beforeLength.value !== range.value.days);
 const asOf = computed(() => report.value?.availableThrough || "");
 const daysAfter = computed(() =>
   range.value && asOf.value
@@ -112,7 +136,7 @@ const complete = computed(() =>
     report.value &&
     range.value &&
     daysAfter.value === range.value.days &&
-    daysBefore.value === range.value.days,
+    daysBefore.value === beforeLength.value,
   ),
 );
 const categories = computed(() =>
@@ -212,12 +236,12 @@ function format(
       ? 1
       : key === "revenue" || key === "commission"
         ? 2
-        : 0,
+        : useAverage.value ? 2 : 0,
     notation: compact ? "compact" : "standard",
   }).format(value);
 }
 function delta(before: number | null, after: number | null) {
-  const ratio = change(before, after, complete.value);
+  const ratio = change(useAverage.value ? dailyAverage(before, daysBefore.value) : before, useAverage.value ? dailyAverage(after, daysAfter.value) : after, complete.value);
   if (!report.value) return "—";
   if (!complete.value) return t("自定观察期未结束", "Observation in progress");
   if (ratio === null)
@@ -277,6 +301,9 @@ async function selectBatch() {
   const dates = observationWindow(batch.value);
   start.value = dates?.startDate || "";
   end.value = dates?.endDate || "";
+  customComparison.value = !!(batch.value.comparisonStart && batch.value.comparisonEnd && dates && (dates.beforeStart !== windowDates(launch.value, start.value, end.value)?.beforeStart || dates.beforeEnd !== addDays(launch.value, -1)));
+  comparisonStart.value = dates?.beforeStart || "";
+  comparisonEnd.value = dates?.beforeEnd || "";
   await apply();
 }
 async function apply() {
@@ -305,10 +332,14 @@ async function apply() {
     launchDate: launch.value,
     startDate: start.value,
     endDate: end.value,
+    beforeStart: draftWindow.value.beforeStart,
+    beforeEnd: draftWindow.value.beforeEnd,
   };
   batch.value.launchDate = launch.value;
   batch.value.observationStart = start.value;
   batch.value.observationEnd = end.value;
+  batch.value.comparisonStart = customComparison.value ? comparisonStart.value : undefined;
+  batch.value.comparisonEnd = customComparison.value ? comparisonEnd.value : undefined;
   persist();
   try {
     const result = await (props.reportLoader ?? loadReport)(
@@ -503,9 +534,14 @@ function exportRows() {
         METRICS.flatMap((k) => [
           [`Before_${k}`, r.before[k]],
           [`After_${k}`, r.after[k]],
+          [`BeforeDailyAverage_${k}`, dailyAverage(r.before[k], daysBefore.value)],
+          [`AfterDailyAverage_${k}`, dailyAverage(r.after[k], daysAfter.value)],
         ]),
       ),
       MonthlyAverageRevenue: r.baseline.average,
+      ComparisonBasis: useAverage.value ? "daily_average" : "total",
+      BeforeObservedDays: daysBefore.value,
+      AfterObservedDays: daysAfter.value,
       MonthlyPeakRevenue: r.baseline.peak,
       RecommendedASINs: r.asins.join(", "),
     })),
@@ -672,8 +708,8 @@ onBeforeUnmount(() => {
           <strong>{{ t("自定观察期", "Custom observation period") }}</strong>
           <small>{{
             t(
-              "选择起止日期，比较期自动取此前等长区间。",
-              "Choose dates; compare with the preceding period of equal length.",
+              "观察期从推送日（含）或之后开始；比较期默认为推送日前的等长区间。",
+              "Observation starts on or after launch; comparison defaults to an equal-length period before launch.",
             )
           }}</small>
         </div>
@@ -708,16 +744,29 @@ onBeforeUnmount(() => {
           <label
             >{{ t("推送日期", "Launch date")
             }}<DatePicker
-              v-model="launch"
+              :model-value="launch"
+              @update:model-value="editLaunch"
               :language="language"
               :label="t('推送日期', 'Launch date')"
           /></label>
           <small>{{
             t(
-              "用于记录推送时间，修改它不会改变自定观察期。",
-              "Records the launch date; editing it does not change your observation period.",
+              "修改推送日会同步移动观察期，并重置为默认等长比较期。",
+              "Changing launch moves observation and resets the equal-length comparison.",
             )
           }}</small>
+        </div>
+        <div class="promotion-comparison-controls">
+          <div class="promotion-date-heading">
+            <strong>{{ t("比较期", "Comparison period") }}</strong>
+            <small>{{ t("可延长比较期；天数不同时按日均值比较，观察期仍显示实际总量。", "Extend the comparison period to compare daily averages; observation totals remain visible.") }}</small>
+          </div>
+          <div class="promotion-dates">
+            <label>{{ t("开始日期", "Start date") }}<DatePicker :model-value="comparisonDraftStart" :language="language" :label="t('比较开始', 'Comparison start')" @update:model-value="editComparison('start', $event)" /></label>
+            <span class="promotion-date-divider" aria-hidden="true">—</span>
+            <label>{{ t("结束日期", "End date") }}<DatePicker :model-value="comparisonDraftEnd" :language="language" :label="t('比较结束', 'Comparison end')" @update:model-value="editComparison('end', $event)" /></label>
+            <button type="button" @click="customComparison = false">{{ t("恢复等长比较期", "Reset equal-length comparison") }}</button>
+          </div>
         </div>
       </div>
       <div v-if="range" class="promotion-periods">
@@ -739,8 +788,8 @@ onBeforeUnmount(() => {
       {{
         error === "date"
           ? t(
-              "请选择有效日期，自定观察期为 1—92 天。",
-              "Choose valid dates covering 1–92 days.",
+              "请选择有效日期：观察期为推送日（含）之后的 1—92 天；比较期为推送日前的 1—366 天。",
+              "Choose valid dates: observation covers 1–92 days on or after launch; comparison covers 1–366 days before launch.",
             )
           : t(
               "暂未取得报表数据。清单已保留，指标显示为“—”；连接恢复后可重新应用时间。",
@@ -780,9 +829,11 @@ onBeforeUnmount(() => {
         ><small
           >{{ t("比较期", "Comparison") }}
           {{ format(totals.before[key], key, true) }}</small
-        ><em>{{ delta(totals.before[key], totals.after[key]) }}</em>
+        ><small v-if="useAverage" class="promotion-daily-average"><span>{{ t("比较日均", "Comparison / day") }} {{ format(dailyAverage(totals.before[key], daysBefore), key) }}</span><span>{{ t("观察日均", "Observation / day") }} {{ format(dailyAverage(totals.after[key], daysAfter), key) }}</span></small>
+        <em>{{ useAverage ? t("日均变化 · ", "Daily avg change · ") : "" }}{{ delta(totals.before[key], totals.after[key]) }}</em>
       </button>
     </div>
+    <PromotionDailyChart v-if="report && range" :language="language" :rows="rows.flatMap(row => row.stats ? [row.stats] : [])" :range="range" :available-through="asOf" :metric="metric" :supported="report.supported[metric]" :metric-label="label(metric)" />
     <PromotionRelations
       :language="language"
       :offers="batch?.offers || []"
@@ -844,7 +895,7 @@ onBeforeUnmount(() => {
               <th>{{ t("商家 / 品类", "Merchant / category") }}</th>
               <th>{{ t("比较期营收", "Comparison revenue") }}</th>
               <th>{{ t("自定观察期营收", "Observed revenue") }}</th>
-              <th>{{ t("营收变化", "Revenue change") }}</th>
+              <th>{{ useAverage ? t("日均营收变化", "Daily average revenue change") : t("营收变化", "Revenue change") }}</th>
               <th>{{ t("点击量", "Clicks") }}</th>
               <th>ATC</th>
               <th>{{ t("订单", "Orders") }}</th>
@@ -881,7 +932,7 @@ onBeforeUnmount(() => {
                     : "—"
                 }}
               </td>
-              <td>{{ delta(r.before.revenue, r.after.revenue) }}</td>
+              <td>{{ delta(r.before.revenue, r.after.revenue) }}<small v-if="useAverage">{{ t("日均：比较", "Daily avg: comparison") }} {{ format(dailyAverage(r.before.revenue, daysBefore), "revenue") }} / {{ t("观察", "observation") }} {{ format(dailyAverage(r.after.revenue, daysAfter), "revenue") }}</small></td>
               <td>
                 {{ format(r.after.clicks, "clicks")
                 }}<small
@@ -946,6 +997,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <p class="promotion-note">{{ selected.notes }}</p>
+      <PromotionDailyChart v-if="report && range && selectedStats" :language="language" :rows="[selectedStats]" :range="range" :available-through="asOf" :metric="metric" :supported="report.supported[metric]" :metric-label="`${selected.merchantName} · ${label(metric)}`" />
       <div class="promotion-baseline">
         <div>
           <small>{{
