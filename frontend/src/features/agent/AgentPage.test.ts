@@ -141,6 +141,26 @@ describe("AgentPage", () => {
     wrapper.unmount();
   });
 
+  it("中文输入法组合态保持提问文本可见并暂时隐藏命令覆盖层", async () => {
+    const wrapper = mount(AgentPage, { props: { language: "zh", run: vi.fn(), autoFocus: false } });
+    const field = wrapper.get('[data-agent-input]');
+    await field.setValue("/trend ");
+    expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/trend");
+
+    await field.trigger("compositionstart");
+    await nextTick();
+
+    expect(field.classes()).toContain("aw-composer-textarea-composing");
+    expect(wrapper.find('[data-agent-composer-command]').exists()).toBe(false);
+
+    await field.trigger("compositionend");
+    await nextTick();
+
+    expect(field.classes()).not.toContain("aw-composer-textarea-composing");
+    expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/trend");
+    wrapper.unmount();
+  });
+
   it("按 Backspace 时以整体删除提问框中的斜杠命令", async () => {
     const wrapper = mount(AgentPage, { props: { language: "en", run: vi.fn(), autoFocus: false } });
     const field = wrapper.get('[data-agent-input]');
