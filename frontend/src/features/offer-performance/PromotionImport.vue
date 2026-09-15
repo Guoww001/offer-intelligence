@@ -29,6 +29,12 @@ const preview = ref<PromotionBatch | null>(null),
   end = ref(""),
   name = ref("");
 const dragging = ref(false);
+function editLaunch(value: string) {
+  const days = windowDates(date.value, start.value, end.value)?.days || 7;
+  date.value = value;
+  start.value = value;
+  end.value = addDays(value, days - 1);
+}
 const dates = computed(() =>
   windowDates(date.value) && start.value && end.value
     ? windowDates(date.value, start.value, end.value)
@@ -293,7 +299,8 @@ onBeforeUnmount(() => {
           <label
             >{{ t("推送日期", "Launch date")
             }}<DatePicker
-              v-model="date"
+              :model-value="date"
+              @update:model-value="editLaunch"
               :language="language"
               :teleport-to="dialog || 'body'"
               :label="t('新清单推送日期', 'New list launch date')"
@@ -322,8 +329,8 @@ onBeforeUnmount(() => {
           <p>
             {{
               t(
-                "比较期自动取此前等长区间；导入后仍可修改。",
-                "The comparison uses the preceding period of equal length. You can edit dates after importing.",
+                "观察期从推送日（含）或之后开始；比较期为推送日前等长区间，导入后可调整。",
+                "Observation starts on or after launch; comparison uses an equal-length period before launch and can be adjusted after import.",
               )
             }}
           </p>
@@ -331,8 +338,8 @@ onBeforeUnmount(() => {
         <p v-if="!dates" role="alert">
           {{
             t(
-              "请填写有效推送日期及 1—92 天的自定观察期，再确认导入。",
-              "Enter a valid launch date and a custom observation period of 1–92 days before confirming.",
+              "请填写有效推送日期，观察期须为推送日（含）之后的 1—92 天。",
+              "Enter a valid launch date; observation must cover 1–92 days on or after launch.",
             )
           }}
         </p>

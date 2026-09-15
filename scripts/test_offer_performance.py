@@ -32,6 +32,33 @@ class PromotionTests(unittest.TestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 p.date_window(**args)
 
+    def test_launch_anchored_custom_comparison_excludes_gaps(self):
+        window = p.date_window("2026-09-11", "2026-09-13", "2026-09-19")
+        self.assertEqual(window["beforeEnd"], "2026-09-10")
+        self.assertEqual(window["beforeStart"], "2026-09-04")
+        window = p.date_window("2026-09-11", "2026-09-13", "2026-09-19", "2026-08-25", "2026-09-07")
+        rows = [self.row(day, revenue=value, publisherId="7") for day, value in [("20260825", 100), ("20260907", 40), ("20260908", 999), ("20260912", 999), ("20260913", 20), ("20260919", 30)]]
+        result = p.summarize(rows, ["101"], window, self.supported, watermark="2026-09-19")[0]
+        self.assertEqual(result["before"]["revenue"], 140)
+        self.assertEqual(result["after"]["revenue"], 50)
+        self.assertEqual(len(result["daily"]), 4)
+        media, _ = p.summarize_details(rows, window, self.supported, "2026-09-19")
+        self.assertEqual(media[0]["before"]["revenue"], 140)
+        with patch.object(p.db, "fetch_all", return_value=[]) as fetch:
+            p._read(None, "cnpscy_amazon_order", {"advert_id", "order_time_day", "amount"}, ["101"], window["beforeStart"], window["endDate"], p.ORDER_FIELDS, period_window=window, known_watermark="2026-09-19")
+        sql = fetch.call_args.args[1]
+        self.assertIn("<= 20260907 OR", sql)
+        self.assertIn(">= 20260913", sql)
+
+    def test_invalid_comparison_never_queries_database(self):
+        for before_start, before_end in [("2026-09-01", "2026-09-11"), ("2026-09-05", "2026-09-04"), ("2026-09-01", ""), ("2025-01-01", "2026-09-10")]:
+            with self.subTest(before_start=before_start, before_end=before_end), patch.object(p.db, "db_connection") as conn:
+                with self.assertRaises(ValueError):
+                    p.report({"merchantIds": ["101"], "launchDate": ["2026-09-11"], "beforeStart": [before_start], "beforeEnd": [before_end]})
+                conn.assert_not_called()
+        with self.assertRaises(ValueError):
+            p.date_window("2026-09-11", "2026-09-10", "2026-09-17")
+
     def test_exact_ids_boundaries_and_pending_dates(self):
         rows = [self.row("20260830", revenue=999), self.row("20260831", revenue=10), self.row("20260906", revenue=20), self.row("20260907", revenue=40), self.row("20260908", revenue=50), self.row("20260909", revenue=999), self.row("20260914", revenue=999), {"merchantId": "1101", "day": "20260907", "revenue": 999}]
         result = p.summarize(rows, ["101"], self.window, self.supported, watermark="2026-09-08")[0]
@@ -112,7 +139,7 @@ class PromotionTests(unittest.TestCase):
         self.assertTrue(all(not r["daily"] and not r["monthly"] for r in result["merchants"]))
 
     def test_one_click_source_reporting_lag_and_history(self):
-        def read(conn, table, columns, ids, start, end, fields, detail=False, monthly=False):
+        def read(conn, table, columns, ids, start, end, fields, detail=False, monthly=False, report_window=None):
             self.assertEqual(ids, ["101"])
             supported = {k: k in fields for k in p.METRICS}
             if table.endswith("_order"):

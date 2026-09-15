@@ -122,7 +122,7 @@ function setLaunchDate(value: string): void {
 function setCustomWindow(): void {
   const dates = windowDates(launchDate.value, startDate.value || undefined, endDate.value || undefined);
   if (!dates && startDate.value && endDate.value) {
-    error.value = t("观察期必须是 1–92 天，并同时填写开始和结束日期。", "The observation window must be 1–92 days with both dates filled.");
+    error.value = t("观察期必须从推送日（含）或之后开始，长度为 1–92 天，并填写起止日期。", "Observation must start on or after launch, cover 1–92 days, and include both dates.");
   } else {
     error.value = "";
   }

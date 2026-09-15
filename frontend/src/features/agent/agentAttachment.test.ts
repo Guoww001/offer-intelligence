@@ -41,7 +41,7 @@ describe("AgentAttachment", () => {
 
     await wrapper.get('[data-agent-attachment-start]').setValue("2026-09-10");
     await wrapper.get('[data-agent-attachment-end]').setValue("2026-09-16");
-    expect(store.get()?.manifest.window).toMatchObject({ startDate: "2026-09-10", endDate: "2026-09-16", beforeStart: "2026-09-03", beforeEnd: "2026-09-09", days: 7 });
+    expect(store.get()?.manifest.window).toMatchObject({ startDate: "2026-09-10", endDate: "2026-09-16", beforeStart: "2026-08-31", beforeEnd: "2026-09-06", days: 7 });
 
     await wrapper.get('[data-agent-attachment-remove]').trigger("click");
     expect(store.get()).toBeNull();
