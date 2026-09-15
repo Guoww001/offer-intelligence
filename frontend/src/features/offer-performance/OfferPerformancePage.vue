@@ -21,9 +21,6 @@ import { loadCatalog, loadReport } from "./performanceApi";
 import {
   METRICS,
   addDays,
-  periodDays,
-  dailyAverage,
-  change,
   emptyMetrics,
   monthlyBaseline,
   observedDays,
@@ -63,23 +60,12 @@ const batches = ref<PromotionBatch[]>([]),
 const launch = ref("2026-09-07"),
   start = ref(""),
   end = ref("");
-const customComparison = ref(false), comparisonStart = ref(""), comparisonEnd = ref("");
 const defaultWindow = computed(() => windowDates(launch.value, start.value, end.value));
-const comparisonDraftStart = computed(() => customComparison.value ? comparisonStart.value : defaultWindow.value?.beforeStart || "");
-const comparisonDraftEnd = computed(() => customComparison.value ? comparisonEnd.value : defaultWindow.value?.beforeEnd || "");
-function editComparison(which: "start" | "end", value: string) {
-  comparisonStart.value = comparisonDraftStart.value;
-  comparisonEnd.value = comparisonDraftEnd.value;
-  customComparison.value = true;
-  if (which === "start") comparisonStart.value = value;
-  else comparisonEnd.value = value;
-}
 function editLaunch(value: string) {
   const length = defaultWindow.value?.days || 7;
   launch.value = value;
   start.value = value;
   end.value = addDays(value, length - 1);
-  customComparison.value = false;
 }
 const report = ref<PerformanceReport | null>(null),
   detail = ref<PerformanceReport | null>(null);
@@ -113,30 +99,22 @@ let relationId = 0,
   relationController: AbortController | undefined;
 const batch = computed(() => batches.value.find((b) => b.id === batchId.value));
 const draftWindow = computed(() =>
-  start.value && end.value && (!customComparison.value || (comparisonStart.value && comparisonEnd.value))
-    ? windowDates(launch.value, start.value, end.value, comparisonDraftStart.value, comparisonDraftEnd.value)
+  start.value && end.value
+    ? windowDates(launch.value, start.value, end.value)
     : null,
 );
 const range = computed(() => report.value?.dateRange || draftWindow.value);
-const beforeLength = computed(() => range.value ? periodDays(range.value.beforeStart, range.value.beforeEnd) : 0);
-const useAverage = computed(() => !!range.value && beforeLength.value !== range.value.days);
 const asOf = computed(() => report.value?.availableThrough || "");
 const daysAfter = computed(() =>
   range.value && asOf.value
     ? observedDays(range.value.startDate, range.value.endDate, asOf.value)
     : 0,
 );
-const daysBefore = computed(() =>
-  range.value && asOf.value
-    ? observedDays(range.value.beforeStart, range.value.beforeEnd, asOf.value)
-    : 0,
-);
 const complete = computed(() =>
   Boolean(
     report.value &&
     range.value &&
-    daysAfter.value === range.value.days &&
-    daysBefore.value === beforeLength.value,
+    daysAfter.value === range.value.days,
   ),
 );
 const categories = computed(() =>
@@ -153,7 +131,6 @@ const rows = computed(() =>
       return {
         ...offer,
         stats,
-        before: stats?.before || emptyMetrics(),
         after: stats?.after || emptyMetrics(),
         baseline: monthlyBaseline(stats, asOf.value),
       };
@@ -180,7 +157,6 @@ const baseline = computed(() =>
   monthlyBaseline(selectedStats.value, asOf.value),
 );
 const totals = computed(() => ({
-  before: sumMetrics(rows.value.map((r) => r.before)),
   after: sumMetrics(rows.value.map((r) => r.after)),
 }));
 const categoryRows = computed(() =>
@@ -236,19 +212,9 @@ function format(
       ? 1
       : key === "revenue" || key === "commission"
         ? 2
-        : useAverage.value ? 2 : 0,
+        : 0,
     notation: compact ? "compact" : "standard",
   }).format(value);
-}
-function delta(before: number | null, after: number | null) {
-  const ratio = change(useAverage.value ? dailyAverage(before, daysBefore.value) : before, useAverage.value ? dailyAverage(after, daysAfter.value) : after, complete.value);
-  if (!report.value) return "—";
-  if (!complete.value) return t("自定观察期未结束", "Observation in progress");
-  if (ratio === null)
-    return before === 0 && (after || 0) > 0
-      ? t("新产生数据", "New activity")
-      : "—";
-  return `${ratio > 0 ? "+" : ""}${(ratio * 100).toFixed(1)}%`;
 }
 const storeKey = "oi-promotion-batches-v1";
 let disposed = false;
@@ -301,9 +267,6 @@ async function selectBatch() {
   const dates = observationWindow(batch.value);
   start.value = dates?.startDate || "";
   end.value = dates?.endDate || "";
-  customComparison.value = !!(batch.value.comparisonStart && batch.value.comparisonEnd && dates && (dates.beforeStart !== windowDates(launch.value, start.value, end.value)?.beforeStart || dates.beforeEnd !== addDays(launch.value, -1)));
-  comparisonStart.value = dates?.beforeStart || "";
-  comparisonEnd.value = dates?.beforeEnd || "";
   await apply();
 }
 async function apply() {
@@ -332,14 +295,13 @@ async function apply() {
     launchDate: launch.value,
     startDate: start.value,
     endDate: end.value,
-    beforeStart: draftWindow.value.beforeStart,
-    beforeEnd: draftWindow.value.beforeEnd,
+    periodMode: "observation",
   };
   batch.value.launchDate = launch.value;
   batch.value.observationStart = start.value;
   batch.value.observationEnd = end.value;
-  batch.value.comparisonStart = customComparison.value ? comparisonStart.value : undefined;
-  batch.value.comparisonEnd = customComparison.value ? comparisonEnd.value : undefined;
+  delete batch.value.comparisonStart;
+  delete batch.value.comparisonEnd;
   persist();
   try {
     const result = await (props.reportLoader ?? loadReport)(
@@ -525,23 +487,14 @@ function exportRows() {
       Merchant: r.merchantName,
       Category: r.category,
       LaunchDate: appliedRequest?.launchDate,
-      BeforeStart: range.value?.beforeStart,
-      BeforeEnd: range.value?.beforeEnd,
-      AfterStart: range.value?.startDate,
-      AfterEnd: range.value?.endDate,
+      ObservationStart: range.value?.startDate,
+      ObservationEnd: range.value?.endDate,
       AvailableThrough: asOf.value,
       ...Object.fromEntries(
-        METRICS.flatMap((k) => [
-          [`Before_${k}`, r.before[k]],
-          [`After_${k}`, r.after[k]],
-          [`BeforeDailyAverage_${k}`, dailyAverage(r.before[k], daysBefore.value)],
-          [`AfterDailyAverage_${k}`, dailyAverage(r.after[k], daysAfter.value)],
-        ]),
+        METRICS.map((key) => [key, r.after[key]]),
       ),
       MonthlyAverageRevenue: r.baseline.average,
-      ComparisonBasis: useAverage.value ? "daily_average" : "total",
-      BeforeObservedDays: daysBefore.value,
-      AfterObservedDays: daysAfter.value,
+      ObservedDays: daysAfter.value,
       MonthlyPeakRevenue: r.baseline.peak,
       RecommendedASINs: r.asins.join(", "),
     })),
@@ -708,8 +661,8 @@ onBeforeUnmount(() => {
           <strong>{{ t("自定观察期", "Custom observation period") }}</strong>
           <small>{{
             t(
-              "观察期从推送日（含）或之后开始；比较期默认为推送日前的等长区间。",
-              "Observation starts on or after launch; comparison defaults to an equal-length period before launch.",
+              "观察期从推送日（含）或之后开始，按日期查看每日表现。",
+              "Observation starts on or after launch. View daily performance within the selected dates.",
             )
           }}</small>
         </div>
@@ -751,30 +704,14 @@ onBeforeUnmount(() => {
           /></label>
           <small>{{
             t(
-              "修改推送日会同步移动观察期，并重置为默认等长比较期。",
-              "Changing launch moves observation and resets the equal-length comparison.",
+              "修改推送日会同步移动观察期，保留已选天数。",
+              "Changing launch moves observation while keeping the selected duration.",
             )
           }}</small>
         </div>
-        <div class="promotion-comparison-controls">
-          <div class="promotion-date-heading">
-            <strong>{{ t("比较期", "Comparison period") }}</strong>
-            <small>{{ t("可延长比较期；天数不同时按日均值比较，观察期仍显示实际总量。", "Extend the comparison period to compare daily averages; observation totals remain visible.") }}</small>
-          </div>
-          <div class="promotion-dates">
-            <label>{{ t("开始日期", "Start date") }}<DatePicker :model-value="comparisonDraftStart" :language="language" :label="t('比较开始', 'Comparison start')" @update:model-value="editComparison('start', $event)" /></label>
-            <span class="promotion-date-divider" aria-hidden="true">—</span>
-            <label>{{ t("结束日期", "End date") }}<DatePicker :model-value="comparisonDraftEnd" :language="language" :label="t('比较结束', 'Comparison end')" @update:model-value="editComparison('end', $event)" /></label>
-            <button type="button" @click="customComparison = false">{{ t("恢复等长比较期", "Reset equal-length comparison") }}</button>
-          </div>
-        </div>
       </div>
       <div v-if="range" class="promotion-periods">
-        <span
-          ><i class="before" />{{ t("比较期", "Comparison") }}
-          <strong>{{ range.beforeStart }} — {{ range.beforeEnd }}</strong></span
-        ><span
-          ><i />{{ t("自定观察期", "Custom observation") }}
+        <span><i />{{ t("自定观察期", "Custom observation") }}
           <strong>{{ range.startDate }} — {{ range.endDate }}</strong></span
         ><small>{{
           t(
@@ -788,8 +725,8 @@ onBeforeUnmount(() => {
       {{
         error === "date"
           ? t(
-              "请选择有效日期：观察期为推送日（含）之后的 1—92 天；比较期为推送日前的 1—366 天。",
-              "Choose valid dates: observation covers 1–92 days on or after launch; comparison covers 1–366 days before launch.",
+              "请选择有效日期：观察期为推送日（含）之后的 1—92 天。",
+              "Choose valid dates covering 1–92 days on or after launch.",
             )
           : t(
               "暂未取得报表数据。清单已保留，指标显示为“—”；连接恢复后可重新应用时间。",
@@ -806,10 +743,10 @@ onBeforeUnmount(() => {
         {{ t("天", "days") }}</span
       ><span>{{
         complete
-          ? t("周期已结束，可查看变化幅度", "Period ended; change is available")
+          ? t("观察期已覆盖", "Observation period covered")
           : t(
-              "数据尚未覆盖完整周期，暂不计算涨跌幅。",
-              "Full period not yet covered; change is withheld.",
+              "尚未回传的日期显示为暂无数据。",
+              "Pending dates show no data.",
             )
       }}</span>
     </div>
@@ -826,11 +763,7 @@ onBeforeUnmount(() => {
         ><strong>{{
           daysAfter || !report ? format(totals.after[key], key, true) : "—"
         }}</strong
-        ><small
-          >{{ t("比较期", "Comparison") }}
-          {{ format(totals.before[key], key, true) }}</small
-        ><small v-if="useAverage" class="promotion-daily-average"><span>{{ t("比较日均", "Comparison / day") }} {{ format(dailyAverage(totals.before[key], daysBefore), key) }}</span><span>{{ t("观察日均", "Observation / day") }} {{ format(dailyAverage(totals.after[key], daysAfter), key) }}</span></small>
-        <em>{{ useAverage ? t("日均变化 · ", "Daily avg change · ") : "" }}{{ delta(totals.before[key], totals.after[key]) }}</em>
+        ><small>{{ t("观察期累计", "Observation total") }}</small>
       </button>
     </div>
     <PromotionDailyChart v-if="report && range" :language="language" :rows="rows.flatMap(row => row.stats ? [row.stats] : [])" :range="range" :available-through="asOf" :metric="metric" :supported="report.supported[metric]" :metric-label="label(metric)" />
@@ -864,7 +797,7 @@ onBeforeUnmount(() => {
           :disabled="!report || !download"
           @click="exportRows"
         >
-          {{ t("导出对比", "Export comparison") }}
+          {{ t("导出观察期", "Export observation") }}
         </button>
       </div>
       <div class="promotion-table-filters">
@@ -887,15 +820,13 @@ onBeforeUnmount(() => {
         class="promotion-scroll"
         tabindex="0"
         role="region"
-        :aria-label="t('商家前后表现表', 'Merchant comparison table')"
+        :aria-label="t('商家观察期表现表', 'Merchant observation table')"
       >
         <table class="promotion-merchant-table">
           <thead>
             <tr>
               <th>{{ t("商家 / 品类", "Merchant / category") }}</th>
-              <th>{{ t("比较期营收", "Comparison revenue") }}</th>
               <th>{{ t("自定观察期营收", "Observed revenue") }}</th>
-              <th>{{ useAverage ? t("日均营收变化", "Daily average revenue change") : t("营收变化", "Revenue change") }}</th>
               <th>{{ t("点击量", "Clicks") }}</th>
               <th>ATC</th>
               <th>{{ t("订单", "Orders") }}</th>
@@ -924,7 +855,6 @@ onBeforeUnmount(() => {
                   >
                 </div>
               </th>
-              <td>{{ format(r.before.revenue, "revenue") }}</td>
               <td class="promotion-emphasis">
                 {{
                   daysAfter || !report
@@ -932,27 +862,17 @@ onBeforeUnmount(() => {
                     : "—"
                 }}
               </td>
-              <td>{{ delta(r.before.revenue, r.after.revenue) }}<small v-if="useAverage">{{ t("日均：比较", "Daily avg: comparison") }} {{ format(dailyAverage(r.before.revenue, daysBefore), "revenue") }} / {{ t("观察", "observation") }} {{ format(dailyAverage(r.after.revenue, daysAfter), "revenue") }}</small></td>
               <td>
                 {{ format(r.after.clicks, "clicks")
-                }}<small
-                  >{{ t("前", "Before") }}
-                  {{ format(r.before.clicks, "clicks") }}</small
-                >
+                }}
               </td>
               <td>
                 {{ format(r.after.atc, "atc")
-                }}<small
-                  >{{ t("前", "Before") }}
-                  {{ format(r.before.atc, "atc") }}</small
-                >
+                }}
               </td>
               <td>
                 {{ format(r.after.orders, "orders")
-                }}<small
-                  >{{ t("前", "Before") }}
-                  {{ format(r.before.orders, "orders") }}</small
-                >
+                }}
               </td>
               <td>
                 {{ format(r.baseline.average, "revenue")
@@ -964,7 +884,7 @@ onBeforeUnmount(() => {
               <td>{{ format(r.baseline.peak, "revenue") }}</td>
             </tr>
             <tr v-if="!rows.length">
-              <td colspan="9">
+              <td colspan="7">
                 {{ t("没有匹配商家。", "No matching merchants.") }}
               </td>
             </tr>
@@ -1099,7 +1019,6 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th>{{ t("媒体", "Publisher") }}</th>
-                <th>{{ t("比较期营收", "Comparison revenue") }}</th>
                 <th>{{ t("自定观察期营收", "Observed revenue") }}</th>
                 <th>{{ t("点击", "Clicks") }}</th>
                 <th>DPV</th>
@@ -1115,7 +1034,6 @@ onBeforeUnmount(() => {
                     t("未识别媒体", "Unidentified publisher")
                   }}<small>ID {{ m.publisherId || "—" }}</small>
                 </th>
-                <td>{{ format(m.before.revenue, "revenue") }}</td>
                 <td>{{ format(m.after.revenue, "revenue") }}</td>
                 <td>{{ format(m.after.clicks, "clicks") }}</td>
                 <td>{{ format(m.after.dpv, "dpv") }}</td>
@@ -1123,7 +1041,7 @@ onBeforeUnmount(() => {
                 <td>{{ format(m.after.orders, "orders") }}</td>
               </tr>
               <tr v-if="!media.length">
-                <td colspan="7">
+                <td colspan="6">
                   {{
                     t(
                       "当前周期未观察到媒体活动。",
@@ -1334,8 +1252,8 @@ onBeforeUnmount(() => {
     <footer class="promotion-footnote">
       {{
         t(
-          "数据截至日期表示最新记录，不保证期间每日均已完整回传。Revenue 为 Amazon 归因营收；Orders 为购买数量。点击使用同一来源跨周期比较，不按营收比例分摊。对比展示相关活动，不能单独证明推送的因果效果。",
-          "The latest record date does not guarantee complete ingestion each day. Revenue is Amazon-attributed sales; Orders are purchase counts. Clicks use one consistent source, never revenue-based allocation. Before/after activity alone does not establish causality.",
+          "数据截至日期表示最新记录，不保证期间每日均已完整回传。Revenue 为 Amazon 归因营收；Orders 为购买数量。点击使用独立来源，不按营收比例分摊。观察期展示相关活动，不能单独证明推送的因果效果。",
+          "The latest record date does not guarantee complete ingestion each day. Revenue is Amazon-attributed sales; Orders are purchase counts. Clicks use one consistent source, never revenue-based allocation. Observed activity alone does not establish causality.",
         )
       }}<span v-if="report">
         · {{ t("点击来源", "Clicks source") }}: {{ report.clickSource }}</span

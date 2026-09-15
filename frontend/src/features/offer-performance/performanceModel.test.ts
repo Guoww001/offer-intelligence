@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   dailyAverage,
-  dailyTimeline,
+  dailyObservation,
   change,
   emptyMetrics,
   monthlyBaseline,
@@ -65,17 +65,17 @@ describe("promotion window and metrics", () => {
     expect(windowDates("2026-09-11", undefined, undefined, "2026-09-01", "2026-09-11")).toBeNull();
     expect(windowDates("2026-09-11", undefined, undefined, "2026-09-01")).toBeNull();
   });
-  it("orders both periods chronologically without filling pending dates", () => {
+  it("includes only observation dates without filling pending dates", () => {
     const window = windowDates("2026-09-11", undefined, undefined, "2026-08-28", "2026-09-10")!;
     const row = { merchantId: "101", before: { ...emptyMetrics(), revenue: 140 }, after: { ...emptyMetrics(), revenue: 20 }, daily: [{ ...emptyMetrics(), date: "2026-09-11", revenue: 20 }], monthly: [] };
-    const series = dailyTimeline([row], window, "2026-09-12", "revenue", true);
-    expect(series[0]?.date).toBe("2026-08-28");
-    expect(series).toHaveLength(21);
-    expect(series.filter(point => point.period === "after").map(point => point.value)).toEqual([20, 0, null, null, null, null, null]);
+    const series = dailyObservation([row], window, "2026-09-12", "revenue", true);
+    expect(series[0]?.date).toBe("2026-09-11");
+    expect(series).toHaveLength(7);
+    expect(series.map(point => point.value)).toEqual([20, 0, null, null, null, null, null]);
     expect(dailyAverage(20, 2)).toBe(10);
     expect(dailyAverage(null, 2)).toBeNull();
     expect(dailyAverage(20, 0)).toBeNull();
-    expect(dailyTimeline([row], window, "2026-09-12", "atc", false).every(point => point.value === null)).toBe(true);
+    expect(dailyObservation([row], window, "2026-09-12", "atc", false).every(point => point.value === null)).toBe(true);
   });
   it("rejects impossible, reversed, partial and oversized date ranges", () => {
     expect(windowDates("2026-02-30")).toBeNull();

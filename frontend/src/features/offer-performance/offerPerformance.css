@@ -140,8 +140,7 @@
 .promotion-relation-filters {
   display: grid;
   grid-template-columns:
-    minmax(180px, 2fr) minmax(180px, 2fr) minmax(140px, 1fr)
-    minmax(120px, 1fr);
+    minmax(180px, 2fr) minmax(180px, 2fr) minmax(140px, 1fr);
   gap: 14px;
   margin: 22px 0 16px;
 }
@@ -298,27 +297,19 @@
   gap: 16px;
   min-width: 0;
 }
-.promotion-comparison-controls { display: grid; gap: 12px; border-top: 1px solid var(--pp-line); padding-top: 16px; }
 .promotion-trend-legend, .promotion-trend-legend span { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .promotion-trend-legend { gap: 20px; font-size: 13px; }
 .promotion-trend-legend i { width: 20px; height: 4px; border-radius: 2px; background: #3478f6; }
-.promotion-trend-legend .before { background: #7387a8; }
 .promotion-trend-scroll { overflow-x: auto; margin: 16px 0 10px; }
 .promotion-trend svg { display: block; width: 100%; min-width: 620px; max-height: 380px; }
 .promotion-trend-grid line { stroke: var(--pp-line); stroke-dasharray: 4 4; }
 .promotion-trend-grid text, .promotion-trend-date { fill: var(--pp-muted); font-size: 12px; }
-.promotion-trend-line { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-.promotion-trend-line.before { stroke: #7387a8; }
-.promotion-trend-line.after { stroke: #3478f6; }
-.promotion-trend-line.average { stroke-dasharray: 7 5; }
-.promotion-trend-point { stroke: var(--pp-card, white); stroke-width: 2; }
-.promotion-trend-point.before { fill: #7387a8; }
-.promotion-trend-point.after { fill: #3478f6; }
-.promotion-trend-point:hover { r: 7; }
+.promotion-trend-bar { fill: #3478f6; }
+.promotion-trend-bar:hover { fill: #1755d8; }
+.promotion-trend-zero { stroke: #3478f6; stroke-width: 3; }
+.promotion-trend-zero-axis { stroke: var(--pp-line); }
 .promotion-trend-details { margin-top: 18px; }
 .promotion-trend-details summary { cursor: pointer; color: var(--pp-accent); padding: 10px 0; }
-.promotion-daily-average { line-height: 1.7; }
-.promotion-kpis .promotion-daily-average span { display: block; font-size: 12px; }
 .promotion-date-heading {
   display: grid;
   gap: 4px;
@@ -369,9 +360,6 @@
   height: 10px;
   border-radius: 3px;
   background: #3478ed;
-}
-.promotion-periods i.before {
-  background: light-dark(#7186a6, #819bbc);
 }
 .promotion-periods small {
   flex-basis: 100%;
