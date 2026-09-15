@@ -47,4 +47,22 @@ describe("AgentTimeline", () => {
 
     expect(wrapper.text()).toContain("2026-09-02");
   });
+
+  it("shows each step duration in 0.1 second increments", () => {
+    const wrapper = mount(AgentTimeline, {
+      props: {
+        language: "zh",
+        status: "done",
+        steps: [{
+          id: "tool-duration",
+          phase: "tool",
+          status: "done",
+          label: "商户分析",
+          elapsedMs: 6727
+        }]
+      }
+    });
+
+    expect(wrapper.find(".agent-run-step-meta").text()).toBe("6.7s");
+  });
 });

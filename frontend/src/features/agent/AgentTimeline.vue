@@ -8,6 +8,7 @@ const props = defineProps<{
   readonly language: UiLanguage;
   readonly status: AgentRunStatus;
   readonly steps: readonly AgentTimelineStep[];
+  readonly elapsedMs?: number;
   readonly partial?: boolean;
   readonly omittedTargets?: readonly string[];
 }>();
@@ -24,7 +25,8 @@ const copy = computed(() => props.language === "zh" ? {
   tool: "数据查询",
   synthesis: "综合",
   source: "数据来源",
-  estimated: "估算"
+  estimated: "估算",
+  elapsed: "耗时"
 } : {
   title: "Execution summary",
   running: "Running",
@@ -37,7 +39,8 @@ const copy = computed(() => props.language === "zh" ? {
   tool: "Data query",
   synthesis: "Synthesis",
   source: "Data source",
-  estimated: "Estimated"
+  estimated: "Estimated",
+  elapsed: "Elapsed"
 });
 
 const dataAsOfLabel = computed(() => props.language === "zh" ? "数据截至" : "Data as of");
@@ -57,7 +60,14 @@ function stepStatusIcon(status: AgentTimelineStep["status"]): string {
 }
 
 function elapsed(step: AgentTimelineStep): string {
-  return step.elapsedMs === undefined ? "" : `${Math.round(step.elapsedMs)}ms`;
+  return step.elapsedMs === undefined ? "" : `${(Math.round(step.elapsedMs / 100) / 10).toFixed(1)}s`;
+}
+
+function runElapsed(milliseconds: number | undefined): string {
+  const safeMilliseconds = typeof milliseconds === "number" && Number.isFinite(milliseconds)
+    ? Math.max(0, milliseconds)
+    : 0;
+  return `${copy.value.elapsed} ${(Math.round(safeMilliseconds / 100) / 10).toFixed(1)}s`;
 }
 </script>
 
@@ -75,7 +85,10 @@ function elapsed(step: AgentTimelineStep): string {
       <span class="agent-run-status-icon" aria-hidden="true">{{ status === "done" ? "✓" : status === "stopped" ? "■" : status === "error" ? "✗" : "⋯" }}</span>
       <span class="agent-run-title">{{ copy.title }}</span>
       <span class="agent-run-status" :data-agent-status="status">{{ statusText(status) }}</span>
-      <span class="agent-run-meta" aria-hidden="true">{{ steps.length }} {{ language === "zh" ? "步" : "steps" }}</span>
+      <span class="agent-run-meta" aria-hidden="true">
+        {{ steps.length }} {{ language === "zh" ? "步" : "steps" }} ·
+        <span class="agent-run-duration" data-agent-duration>{{ runElapsed(elapsedMs) }}</span>
+      </span>
     </summary>
     <div v-if="steps.length" class="agent-run-steps" role="list">
       <div
@@ -97,7 +110,7 @@ function elapsed(step: AgentTimelineStep): string {
             <span v-if="step.estimated"> · {{ copy.estimated }}</span>
           </span>
         </div>
-        <span v-if="elapsed(step)" class="agent-run-step-meta" aria-hidden="true">{{ elapsed(step) }}</span>
+        <span v-if="elapsed(step)" class="agent-run-step-meta" data-agent-timeline-step-duration aria-hidden="true">{{ elapsed(step) }}</span>
       </div>
     </div>
     <div v-if="partial" class="agent-run-partial" data-agent-partial role="status">

@@ -236,6 +236,53 @@ describe("AgentPage", () => {
     await flushPromises();
   });
 
+  it("preserves a session timeline when the completed state omits its steps", async () => {
+    let state: AgentSessionState = {
+      status: "idle",
+      history: [],
+      messages: [],
+      steps: [],
+      response: "",
+      partial: false,
+      omittedTargets: [],
+      hasMemory: false
+    };
+    const listeners = new Set<(next: AgentSessionState) => void>();
+    const session = {
+      getState: () => state,
+      submit: vi.fn(async (_request: unknown, callbacks: { onTimeline?: (step: unknown) => void }) => {
+        state = { ...state, status: "running", messages: [{ role: "user", content: "查询 EPC" }, { role: "assistant", content: "" }] };
+        listeners.forEach((listener) => listener(state));
+        callbacks.onTimeline?.({ id: "tool-session", phase: "tool", status: "done", label: "商户分析", elapsedMs: 180 });
+        state = {
+          ...state,
+          status: "done",
+          response: "EPC 1.23",
+          steps: [],
+          history: [{ role: "user", content: "查询 EPC" }, { role: "assistant", content: "EPC 1.23" }],
+          messages: [{ role: "user", content: "查询 EPC" }, { role: "assistant", content: "EPC 1.23" }]
+        };
+        listeners.forEach((listener) => listener(state));
+        return { ok: true as const, status: "done" as const, response: state.response, steps: [] };
+      }),
+      stop: vi.fn(),
+      newConversation: vi.fn(),
+      onChange: vi.fn((listener: (next: AgentSessionState) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      })
+    };
+    const wrapper = mount(AgentPage, { props: { language: "zh", run: vi.fn(), session, autoFocus: false } });
+
+    await wrapper.get('[data-agent-input]').setValue("查询 EPC");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-agent-timeline-step]')).toHaveLength(1);
+    expect(wrapper.find('[data-agent-timeline-step]').attributes("data-step-status")).toBe("done");
+    wrapper.unmount();
+  });
+
   it("uses the shared Agent session, renders streamed tokens and survives remount", async () => {
     let state: AgentSessionState = {
       status: "idle",
@@ -322,6 +369,78 @@ describe("AgentPage", () => {
     expect(wrapper.find('[data-agent-timeline]').exists()).toBe(true);
     expect(wrapper.find('[data-agent-response] h3').exists()).toBe(true);
     expect(wrapper.find('[data-agent-response]').text()).toContain("Tapo");
+  });
+
+  it("preserves streamed timeline steps when the completed result omits them", async () => {
+    const run: AgentRunner = vi.fn(async (request) => {
+      request.onTimeline?.({ id: "tool-streamed", phase: "tool", status: "running", label: "商户分析" });
+      request.onTimeline?.({ id: "tool-streamed", phase: "tool", status: "done", label: "商户分析", elapsedMs: 120 });
+      return { ok: true as const, status: "done" as const, response: "完成", steps: [] };
+    });
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+
+    await wrapper.get('[data-agent-input]').setValue("查询商户");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-agent-timeline-step]')).toHaveLength(1);
+    expect(wrapper.find('[data-agent-timeline-step]').attributes("data-step-status")).toBe("done");
+    wrapper.unmount();
+  });
+
+  it("shows the completed execution duration in 0.1 second increments", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    try {
+      const run: AgentRunner = vi.fn(async () => {
+        vi.advanceTimersByTime(1234);
+        return { ok: true as const, status: "done" as const, response: "完成", steps: [] };
+      });
+      const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+
+      await wrapper.get('[data-agent-input]').setValue("查询商户");
+      await wrapper.get('[data-agent-form]').trigger("submit");
+      await flushPromises();
+
+      expect(wrapper.get('[data-agent-duration]').text()).toBe("耗时 1.2s");
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("updates a running step duration every 0.1 second and freezes it after completion", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let release: (() => void) | undefined;
+    try {
+      const run: AgentRunner = vi.fn((request) => {
+        request.onTimeline?.({ id: "tool-live", phase: "tool", status: "running", label: "商户分析" });
+        return new Promise<AgentRunResult>((resolve) => {
+          release = () => resolve({ ok: true, status: "done", response: "完成", steps: [] });
+        });
+      });
+      const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+
+      await wrapper.get('[data-agent-input]').setValue("查询商户");
+      await wrapper.get('[data-agent-form]').trigger("submit");
+      await nextTick();
+
+      vi.advanceTimersByTime(800);
+      await nextTick();
+      expect(wrapper.get('[data-agent-timeline-step-duration]').text()).toBe("0.8s");
+
+      release?.();
+      await flushPromises();
+      expect(wrapper.get('[data-agent-timeline-step-duration]').text()).toBe("0.8s");
+
+      vi.advanceTimersByTime(5000);
+      await nextTick();
+      expect(wrapper.get('[data-agent-timeline-step-duration]').text()).toBe("0.8s");
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("restores the CopilotKit runner view after a navigation remount", async () => {

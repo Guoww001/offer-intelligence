@@ -323,7 +323,16 @@ onBeforeUnmount(() => {
       :inert="isCompact && !isMenuOpen"
     >
       <div class="modern-shell-brand">
-        <div class="modern-shell-brand-mark" aria-hidden="true">YP<span></span></div>
+        <button
+          v-if="isDocked && !isCompact"
+          class="modern-shell-brand-mark modern-shell-brand-trigger"
+          type="button"
+          data-shell-brand-expand
+          :aria-label="translate('expandNavigation')"
+          :title="translate('expandNavigation')"
+          @click="isDocked = false"
+        >YP<span></span></button>
+        <div v-else class="modern-shell-brand-mark" aria-hidden="true">YP<span></span></div>
         <div class="modern-shell-brand-copy">
           <strong>YeahPromos</strong>
           <span>{{ translate("brandSubtitle") }}</span>
@@ -463,7 +472,10 @@ onBeforeUnmount(() => {
           <span class="modern-shell-control-label">{{ theme === "light" ? translate("darkTheme") : translate("lightTheme") }}</span>
         </button>
         <button id="modernLogoutButton" class="modern-shell-control modern-shell-logout" type="button" :aria-label="translate('signOut')" :title="translate('signOut')">
-          <span class="modern-shell-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4H4v16h5m5-12 4 4-4 4m-6-4h12" /></svg></span>
+          <span class="modern-shell-control-icon" aria-hidden="true">
+            <svg v-if="isDocked && !isCompact" data-shell-logout-icon="power" viewBox="0 0 24 24"><path d="M12 3v8" /><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /></svg>
+            <svg v-else data-shell-logout-icon="sign-out" viewBox="0 0 24 24"><path d="M9 4H4v16h5m5-12 4 4-4 4m-6-4h12" /></svg>
+          </span>
           <span class="modern-shell-control-label">{{ translate("signOut") }}</span>
         </button>
       </div>

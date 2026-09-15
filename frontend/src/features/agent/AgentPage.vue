@@ -88,6 +88,7 @@ const attachment = ref<AgentPromotionAttachment | null>(attachmentStore.get());
 const input = ref("");
 const messages = ref<Array<{ readonly id: string; readonly role: "user" | "assistant"; readonly content: string; readonly resultViews?: readonly AgentResultViewModel[]; readonly report?: ChatbotReportViewResult }>>([]);
 const timeline = ref<AgentTimelineStep[]>([]);
+const runElapsedMs = ref(0);
 const runStatus = ref<AgentRunStatus>("idle");
 const response = ref("");
 const partial = ref(false);
@@ -120,6 +121,9 @@ let scrollFrame = 0;
 let abortController: AbortController | null = null;
 let stopSessionSubscription: (() => void) | null = null;
 let stopAttachmentSubscription: (() => void) | null = null;
+let runStartedAt: number | null = null;
+let elapsedTimer: number | null = null;
+const timelineStepStartedAt = new Map<string, number>();
 let idCounter = 0;
 
 const copy = computed(() => props.language === "zh" ? {
@@ -239,6 +243,98 @@ function resizeInput(): void {
   field.style.height = "auto";
   field.style.height = `${Math.min(Math.max(field.scrollHeight, 56), 168)}px`;
 }
+
+function clearElapsedTimer(): void {
+  if (elapsedTimer === null) return;
+  window.clearInterval(elapsedTimer);
+  elapsedTimer = null;
+}
+
+function clearTimeline(): void {
+  timeline.value = [];
+  timelineStepStartedAt.clear();
+}
+
+function syncTimelineStepClocks(steps: readonly AgentTimelineStep[], status: AgentRunStatus): void {
+  const runningSteps = steps.filter((step) => step.status === "running");
+  if (status !== "running" && !runningSteps.length) {
+    timelineStepStartedAt.clear();
+    return;
+  }
+  const runningIds = new Set(runningSteps.map((step) => step.id));
+  for (const id of timelineStepStartedAt.keys()) {
+    if (!runningIds.has(id)) timelineStepStartedAt.delete(id);
+  }
+  const now = Date.now();
+  for (const step of runningSteps) {
+    if (!timelineStepStartedAt.has(step.id)) {
+      timelineStepStartedAt.set(step.id, now - Math.max(0, step.elapsedMs || 0));
+    }
+  }
+  updateRunningTimelineSteps(now);
+}
+
+function updateTimelineStep(step: AgentTimelineStep): void {
+  let normalized = normalizeAgentTimelineStep(step);
+  const startedAt = timelineStepStartedAt.get(normalized.id);
+  const now = Date.now();
+  if (normalized.status === "running") {
+    const effectiveStartedAt = startedAt ?? (normalized.elapsedMs === undefined ? now : now - normalized.elapsedMs);
+    timelineStepStartedAt.set(normalized.id, effectiveStartedAt);
+    normalized = { ...normalized, elapsedMs: Math.max(0, now - effectiveStartedAt) };
+  } else {
+    const elapsedMs = normalized.elapsedMs ?? (startedAt === undefined ? undefined : Math.max(0, now - startedAt));
+    if (elapsedMs !== undefined) normalized = { ...normalized, elapsedMs };
+    timelineStepStartedAt.delete(normalized.id);
+  }
+  const existing = timeline.value.findIndex((item) => item.id === normalized.id);
+  if (existing >= 0) timeline.value[existing] = normalized;
+  else timeline.value = [...timeline.value, normalized];
+}
+
+function updateRunningTimelineSteps(now: number): void {
+  if (!timelineStepStartedAt.size) return;
+  let changed = false;
+  const nextTimeline = timeline.value.map((step) => {
+    const startedAt = timelineStepStartedAt.get(step.id);
+    if (step.status !== "running" || startedAt === undefined) return step;
+    const elapsedMs = Math.max(0, now - startedAt);
+    if (step.elapsedMs === elapsedMs) return step;
+    changed = true;
+    return { ...step, elapsedMs };
+  });
+  if (changed) timeline.value = nextTimeline;
+}
+
+function updateElapsed(): void {
+  if (runStartedAt === null) return;
+  const now = Date.now();
+  runElapsedMs.value = Math.max(0, now - runStartedAt);
+  updateRunningTimelineSteps(now);
+}
+
+function applyResultTimeline(steps: readonly unknown[]): AgentTimelineStep[] {
+  const now = Date.now();
+  return steps.map(normalizeAgentTimelineStep).map((step) => {
+    if (step.elapsedMs !== undefined) return step;
+    const startedAt = timelineStepStartedAt.get(step.id);
+    return startedAt === undefined ? step : { ...step, elapsedMs: Math.max(0, now - startedAt) };
+  });
+}
+
+function startElapsedTimer(): void {
+  clearElapsedTimer();
+  runStartedAt = Date.now();
+  runElapsedMs.value = 0;
+  elapsedTimer = window.setInterval(updateElapsed, 100);
+}
+
+function finishElapsedTimer(): void {
+  updateElapsed();
+  clearElapsedTimer();
+  runStartedAt = null;
+}
+
 function trackScroll(): void {
   const log = logRef.value;
   if (!log) return;
@@ -311,7 +407,11 @@ function upsertResultView(view: unknown): void {
 function syncSessionState(next: AgentSessionState = props.session!.getState()): void {
   if (localSessionOverride.value) return;
   runStatus.value = next.status;
-  timeline.value = next.steps.map(normalizeAgentTimelineStep);
+  const nextTimeline = next.steps.map(normalizeAgentTimelineStep);
+  if (nextTimeline.length || next.status === "idle" || !timeline.value.length) {
+    timeline.value = nextTimeline;
+    syncTimelineStepClocks(nextTimeline, next.status);
+  }
   response.value = next.response || "";
   partial.value = next.partial;
   omittedTargets.value = next.omittedTargets.slice(0, 20);
@@ -380,8 +480,9 @@ async function submit(): Promise<void> {
     partial.value = false;
     omittedTargets.value = [];
     resultViews.value = [];
-    timeline.value = [];
+    clearTimeline();
     runStatus.value = "running";
+    startElapsedTimer();
     feedbackRefreshKey.value += 1;
     abortController = new AbortController();
     try {
@@ -397,12 +498,7 @@ async function submit(): Promise<void> {
         onToken: (token) => {
           response.value += token;
         },
-        onTimeline: (step) => {
-          const normalized = normalizeAgentTimelineStep(step);
-          const existing = timeline.value.findIndex((item) => item.id === normalized.id);
-          if (existing >= 0) timeline.value[existing] = normalized;
-          else timeline.value = [...timeline.value, normalized];
-        },
+        onTimeline: updateTimelineStep,
         onResultView: upsertResultView
       });
       if (result.resultViews?.length) resultViews.value = normalizeAgentResultViews(result.resultViews);
@@ -418,6 +514,7 @@ async function submit(): Promise<void> {
     } finally {
       abortController = null;
       if (runStatus.value === "running") runStatus.value = "error";
+      finishElapsedTimer();
       recordAttempt();
       if (followingLatest.value && !composerCollapsed.value) inputRef.value?.focus();
     }
@@ -433,8 +530,9 @@ async function submit(): Promise<void> {
   partial.value = false;
   omittedTargets.value = [];
   resultViews.value = [];
-  timeline.value = [];
+  clearTimeline();
   runStatus.value = "running";
+  startElapsedTimer();
   feedbackRefreshKey.value += 1;
   abortController = new AbortController();
   activity?.begin(prompt, requestLanguage);
@@ -448,12 +546,7 @@ async function submit(): Promise<void> {
       signal: abortController.signal,
       promotionAttachment,
       onToken: (token) => { response.value += token; },
-      onTimeline: (step) => {
-        const normalized = normalizeAgentTimelineStep(step);
-        const existing = timeline.value.findIndex((item) => item.id === normalized.id);
-        if (existing >= 0) timeline.value[existing] = normalized;
-        else timeline.value = [...timeline.value, normalized];
-      },
+      onTimeline: updateTimelineStep,
       onResultView: upsertResultView
     };
     let result: AgentRunResult;
@@ -461,14 +554,18 @@ async function submit(): Promise<void> {
       const bridge = window.OI_MODERN_RUNTIME?.runAgentPublisher;
       if (!bridge) throw new Error("publisher_unavailable");
       const label = requestLanguage === "zh" ? command.command.zh : command.command.en;
-      timeline.value = [{ id: "publisher", phase: "tool", label, status: "running" }];
+      updateTimelineStep({ id: "publisher", phase: "tool", label, status: "running" });
       const publisher = await bridge({ kind: command.command.route, query: command.value, language: requestLanguage, signal: request.signal });
       if (request.signal.aborted) throw new DOMException("Stopped", "AbortError");
       result = { ok: true, status: "done", response: publisher.text, steps: [{ id: "publisher", phase: "tool", label, status: "done" }],
         report: { intent: "analysis", status: "resolved", query: prompt, source: publisher.source, rows: [], summary: { offerCount: 0, clicks: 0, orders: 0, revenue: 0, commission: 0, conversionRate: null }, message: label, contentHtml: publisher.html } };
     } else result = await props.run(request);
     attemptError = result.errorCode || "";
-    timeline.value = result.steps.map(normalizeAgentTimelineStep);
+    const resultTimeline = applyResultTimeline(result.steps);
+    if (resultTimeline.length || !timeline.value.length) {
+      timeline.value = resultTimeline;
+      syncTimelineStepClocks(resultTimeline, result.status);
+    }
     partial.value = result.partial === true;
     omittedTargets.value = (result.omittedTargets || []).map(String).filter(Boolean).slice(0, 20);
     runStatus.value = result.ok || result.status !== "done" ? result.status : "error";
@@ -497,6 +594,7 @@ async function submit(): Promise<void> {
   } finally {
     abortController = null;
     if (runStatus.value === "running") runStatus.value = "error";
+    finishElapsedTimer();
     recordAttempt();
     if (followingLatest.value && !composerCollapsed.value) inputRef.value?.focus();
   }
@@ -512,6 +610,8 @@ watch(runStatus, (status) => { if (status !== "running") stopping.value = false;
 
 function newConversation(): void {
   if (runStatus.value === "running") return;
+  finishElapsedTimer();
+  runElapsedMs.value = 0;
   stopping.value = false;
   lastPrompt.value = "";
   diagnostics.value = [];
@@ -531,7 +631,7 @@ function newConversation(): void {
     return;
   }
   messages.value = [];
-  timeline.value = [];
+  clearTimeline();
   runStatus.value = "idle";
   response.value = "";
   error.value = "";
@@ -569,6 +669,7 @@ onMounted(() => {
       omittedTargets.value = restored.omittedTargets.slice();
       resultViews.value = normalizeAgentResultViews(restored.resultViews);
       memory.value = normalizeAgentMemory(restored.memory);
+      runElapsedMs.value = Math.max(0, Number(restored.elapsedMs) || 0);
       error.value = restored.error;
     }
   }
@@ -584,6 +685,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   cancelAnimationFrame(scrollFrame);
+  finishElapsedTimer();
   abortController?.abort();
   abortController = null;
   if (!props.session) {
@@ -591,6 +693,7 @@ onBeforeUnmount(() => {
       saveAgentViewSnapshot(props.stateKey, {
         messages: messages.value.map((message) => ({ ...message })),
         timeline: timeline.value.map((step) => ({ ...step })),
+        elapsedMs: runElapsedMs.value,
         status: runStatus.value,
         response: response.value,
         partial: partial.value,
@@ -601,7 +704,7 @@ onBeforeUnmount(() => {
       });
     }
     messages.value = [];
-    timeline.value = [];
+    clearTimeline();
   }
   stopSessionSubscription?.();
   stopSessionSubscription = null;
@@ -683,7 +786,7 @@ onBeforeUnmount(() => {
             <section v-if="resultViews.length" class="agent-modern-results" :aria-label="copy.results">
               <div v-for="(view, index) in resultViews" :id="`${workspaceId}-current-${index}`" :key="view.id" class="aw-result-anchor"><AgentResultView :language="language" :view="view" /></div>
             </section>
-            <AgentTimeline v-if="timeline.length || runStatus !== 'idle'" :language="language" :status="runStatus" :steps="timeline" :partial="partial" :omitted-targets="omittedTargets" />
+            <AgentTimeline v-if="timeline.length || runStatus !== 'idle'" :language="language" :status="runStatus" :steps="timeline" :elapsed-ms="runElapsedMs" :partial="partial" :omitted-targets="omittedTargets" />
             <FeedbackForm :language="language" :feedback="feedback" :refresh-key="feedbackRefreshKey" />
             <div v-if="error || runStatus === 'stopped'" class="aw-notice" :class="{ 'aw-notice-error': error }" :role="error ? 'alert' : 'status'">
               <p>{{ error || copy.stopped }}</p><button v-if="lastPrompt" type="button" class="aw-button" data-agent-action="retry" @click="handleExample(lastPrompt)">{{ copy.retry }}</button>

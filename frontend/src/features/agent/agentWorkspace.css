@@ -38,6 +38,7 @@ body.dashboard-mode .dashboard-agent-page.is-modern .agent-workspace { height: 1
   flex: 1 1 auto;
   flex-direction: column;
   --aw-content-width: 1080px;
+  --aw-log-content-width: 960px;
   --aw-gutter: clamp(20px, 3vw, 36px);
   box-sizing: border-box;
   width: 100%;
@@ -171,7 +172,7 @@ body.dashboard-mode .dashboard-agent-page.is-modern .agent-workspace { height: 1
 .agent-workspace .aw-conversation-bar button { padding: 5px 0; border: 0; color: var(--aw-blue); background: none; font-size: 10px; font-weight: 750; letter-spacing: .02em; text-transform: none; }
 .agent-workspace .aw-conversation-bar button:hover { color: var(--aw-accent); transform: translateX(2px); }
 .agent-workspace .aw-log { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-color: rgb(36 94 206 / 22%) transparent; scrollbar-width: thin; }
-.agent-workspace .aw-log-content { width: min(100%, var(--aw-content-width)); margin: 0 auto; padding: 12px var(--aw-gutter) 24px; }
+.agent-workspace .aw-log-content { width: min(100%, var(--aw-log-content-width)); margin: 0 auto; padding: 12px var(--aw-gutter) 24px; }
 
 /* 六个示例等高排列，避免空卡片占用对话阅读空间。 */
 .agent-workspace .aw-welcome { position: relative; width: min(100%, 760px); margin: 0 auto; padding: 8px 0; animation: aw-enter 720ms cubic-bezier(.22, .8, .2, 1) both; }
