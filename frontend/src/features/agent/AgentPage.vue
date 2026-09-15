@@ -99,7 +99,6 @@ const error = ref("");
 const feedbackRefreshKey = ref(0);
 const inputRef = ref<HTMLTextAreaElement | null>(null);
 const inputScrollTop = ref(0);
-const inputComposing = ref(false);
 const logRef = ref<HTMLElement | null>(null);
 const detailsOpen = ref(true);
 const diagnosticsOpen = ref(false);
@@ -249,18 +248,6 @@ function resizeInput(): void {
 
 function syncInputScroll(): void {
   inputScrollTop.value = inputRef.value?.scrollTop || 0;
-}
-
-function handleCompositionStart(): void {
-  inputComposing.value = true;
-}
-
-function handleCompositionEnd(): void {
-  nextTick(() => {
-    inputComposing.value = false;
-    resizeInput();
-    syncInputScroll();
-  });
 }
 
 function clearElapsedTimer(): void {
@@ -906,10 +893,10 @@ onBeforeUnmount(() => {
             <AgentAttachment :language="language" :store="attachmentStore" :read-file="readFile" :busy="runStatus === 'running'" />
             <label class="aw-sr-only" :for="`${workspaceId}-input`">{{ copy.composer }}</label>
             <div class="aw-composer-input">
-              <div v-if="inputCommandHighlight && !inputComposing" class="aw-composer-input-highlight" :style="{ transform: `translateY(-${inputScrollTop}px)` }" aria-hidden="true">
+              <div v-if="inputCommandHighlight" class="aw-composer-input-highlight" :style="{ transform: `translateY(-${inputScrollTop}px)` }" aria-hidden="true">
                 <span>{{ inputCommandHighlight.leading }}</span><span class="aw-composer-command-token" data-agent-composer-command>{{ inputCommandHighlight.command }}</span><span data-agent-composer-command-value>{{ inputCommandHighlight.value }}</span>
               </div>
-              <textarea :id="`${workspaceId}-input`" ref="inputRef" v-model="input" :class="{ 'aw-composer-textarea-command': Boolean(inputCommandHighlight && !inputComposing), 'aw-composer-textarea-composing': inputComposing }" autocomplete="off" rows="2" :placeholder="copy.placeholder" :aria-expanded="commandMenu?.visible" :aria-controls="commandMenu?.visible ? commandMenu.menuId : undefined" :aria-activedescendant="commandMenu?.activeId" aria-autocomplete="list" data-agent-input @compositionstart="handleCompositionStart" @compositionend="handleCompositionEnd" @keydown="handleKeydown" @scroll="syncInputScroll"></textarea>
+              <textarea :id="`${workspaceId}-input`" ref="inputRef" v-model="input" autocomplete="off" spellcheck="false" rows="2" :placeholder="copy.placeholder" :aria-expanded="commandMenu?.visible" :aria-controls="commandMenu?.visible ? commandMenu.menuId : undefined" :aria-activedescendant="commandMenu?.activeId" aria-autocomplete="list" data-agent-input @keydown="handleKeydown" @scroll="syncInputScroll"></textarea>
             </div>
             <p v-if="commandHint" class="aw-command-hint">{{ commandHint }}</p>
             <div class="aw-composer-toolbar"><span class="aw-composer-hint">{{ runStatus === 'running' ? copy.draft : copy.keyboard }}</span>

@@ -136,28 +136,22 @@ describe("AgentPage", () => {
 
     expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/merchant");
     expect(wrapper.get('[data-agent-composer-command-value]').text()).toBe("shokz");
-    expect(field.classes()).toContain("aw-composer-textarea-command");
+    expect(field.attributes("spellcheck")).toBe("false");
     expect(run).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
-  it("中文输入法组合态保持提问文本可见并暂时隐藏命令覆盖层", async () => {
+  it("中文输入法组合态保持真实输入文字可见并保留命令背景", async () => {
     const wrapper = mount(AgentPage, { props: { language: "zh", run: vi.fn(), autoFocus: false } });
     const field = wrapper.get('[data-agent-input]');
-    await field.setValue("/trend ");
-    expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/trend");
+    await field.setValue("/asin ");
 
     await field.trigger("compositionstart");
     await nextTick();
 
-    expect(field.classes()).toContain("aw-composer-textarea-composing");
-    expect(wrapper.find('[data-agent-composer-command]').exists()).toBe(false);
-
-    await field.trigger("compositionend");
-    await nextTick();
-
-    expect(field.classes()).not.toContain("aw-composer-textarea-composing");
-    expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/trend");
+    expect(field.classes()).not.toContain("aw-composer-textarea-command");
+    expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/asin");
+    expect(field.attributes("spellcheck")).toBe("false");
     wrapper.unmount();
   });
 
