@@ -68,8 +68,11 @@ const bundlePath = "public/assets/modern/oi-modern.js";
 const cssPath = "public/assets/modern/oi-modern.css";
 assert(fs.existsSync(bundlePath), `${bundlePath} 未生成`);
 assert(fs.existsSync(cssPath), `${cssPath} 未生成`);
+const bundle = fs.readFileSync(bundlePath, "utf8");
+assert(bundle.includes("aw-composer-input-highlight"), "modern bundle 缺少提问框命令高亮结构");
+assert(bundle.includes("aw-composer-textarea-command"), "modern bundle 缺少提问框命令高亮状态");
 const sandbox = { console, window: {} };
-vm.runInNewContext(fs.readFileSync(bundlePath, "utf8"), sandbox, { filename: bundlePath });
+vm.runInNewContext(bundle, sandbox, { filename: bundlePath });
 const modernApp = sandbox.window.OI_MODERN_APP;
 assert(modernApp && typeof modernApp.bootstrap === "function", "modern bundle 未注册 OI_MODERN_APP");
 for (const page of ["agent", "dashboard", "offer-list-tracker", "payments", "publishers", "monthly-new-merchants", "brand-media", "revenue-flow", "google-ads", "sheets", "category", "tier"]) {

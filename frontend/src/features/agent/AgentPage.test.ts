@@ -78,7 +78,7 @@ describe("AgentPage", () => {
     const wrapper = mount(AgentPage, { props: { language: "en", run, autoFocus: false } });
     const field = wrapper.get('[data-agent-input]');
     await field.setValue('/');
-    expect(wrapper.findAll('[role="option"]')).toHaveLength(15);
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(11);
     await field.setValue('/pub');
     expect(wrapper.findAll('[role="option"]')).toHaveLength(2);
     await field.trigger('keydown', { key: 'Enter', isComposing: true });
@@ -98,6 +98,63 @@ describe("AgentPage", () => {
     await field.trigger('keydown', { key: 'Enter' });
     await flushPromises();
     expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: 'Look up ASIN B0D2HKCMBP' }));
+    wrapper.unmount();
+  });
+
+  it("要求 /promotion 先上传推广清单", async () => {
+    const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: "done", response: "不应执行", steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("/promotion 按商家统计媒体数量");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+    expect(run).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toContain("上传推广清单");
+    wrapper.unmount();
+  });
+
+  it("在用户提问气泡中突出显示斜杠命令并保留参数", async () => {
+    const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: "done", response: "Answer", steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: "en", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("/merchant Tapo");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+
+    const prompt = wrapper.get('[data-agent-user-prompt]');
+    expect(prompt.get('[data-agent-command]').text()).toBe("/merchant");
+    expect(prompt.get('[data-agent-command-value]').text()).toBe("Tapo");
+    expect(prompt.text()).toContain("Merchant");
+    expect(run.mock.calls[0]![0].prompt).toBe("Analyze merchant Tapo");
+    wrapper.unmount();
+  });
+
+  it("在输入框中实时突出显示斜杠命令", async () => {
+    const run = vi.fn<AgentRunner>().mockResolvedValue({ ok: true, status: "done", response: "Answer", steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: "en", run, autoFocus: false } });
+    const field = wrapper.get('[data-agent-input]');
+    await field.setValue("/merchant shokz");
+    await nextTick();
+
+    expect(wrapper.get('[data-agent-composer-command]').text()).toBe("/merchant");
+    expect(wrapper.get('[data-agent-composer-command-value]').text()).toBe("shokz");
+    expect(field.classes()).toContain("aw-composer-textarea-command");
+    expect(run).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("按 Backspace 时以整体删除提问框中的斜杠命令", async () => {
+    const wrapper = mount(AgentPage, { props: { language: "en", run: vi.fn(), autoFocus: false } });
+    const field = wrapper.get('[data-agent-input]');
+    const element = field.element as HTMLTextAreaElement;
+    await field.setValue("/merchant");
+    element.focus();
+    element.setSelectionRange(element.value.length, element.value.length);
+
+    await field.trigger("keydown", { key: "Backspace" });
+    await nextTick();
+
+    expect(element.value).toBe("");
+    expect(element.selectionStart).toBe(0);
+    expect(element.selectionEnd).toBe(0);
     wrapper.unmount();
   });
 

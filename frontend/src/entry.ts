@@ -91,6 +91,7 @@ import type { ReportDocument } from "./features/chatbot/report/reportContracts";
 import AgentPage, { type AgentRunResult, type AgentRunner } from "./features/agent/AgentPage.vue";
 import { createAgentSession, type AgentSession } from "./features/agent/agentSession";
 import { createAgentAttachmentStore, type AgentAttachmentStore } from "./features/agent/agentAttachment";
+import { createAgentPublisherBridge } from "./features/agent/agentPublisher";
 import AppShell from "./shell/AppShell.vue";
 import type { AppShellController } from "./shell/appShellContracts";
 
@@ -884,30 +885,34 @@ function downloadChatbotReport(result: ChatbotReportViewResult): boolean {
   );
 }
 
+function createModernReportProvider(snapshot: AppBootstrapData) {
+  const chatbotData = isRecord(snapshot.chatbotData) ? snapshot.chatbotData : {};
+  const sourceMeta = isRecord(chatbotData.sources) ? chatbotData.sources : {};
+  return createReportDataProvider({
+    offers: offerRecords(snapshot),
+    paymentRecords: paymentRecords(snapshot),
+    keywords: snapshot.productKeywords,
+    source: sourceMeta.mode === "db" ? "db" : "cache",
+    asOf: stringValue(sourceMeta.checkedAt) || stringValue(chatbotData.checkedAt) || null,
+    preferRemote: true,
+    loadOffers: (signal) => apiRequest<unknown>("/api/ui/db/chatbot-offers", { signal }),
+    loadKeywords: (signal) => apiRequest<unknown>("/api/ui/db/keywords", { signal }),
+    loadMerchant: (merchantId, months, signal) => apiRequest<unknown>(`/api/ui/db/merchant?${new URLSearchParams({ merchantId, months: String(months), limit: "50" }).toString()}`, { signal, timeoutMs: 30_000 }),
+    loadAsin: (asins, months, signal) => apiRequest<unknown>(`/api/ui/db/asin?${new URLSearchParams({ asins: asins.join(","), months: String(months) }).toString()}`, { signal, timeoutMs: 30_000 }),
+    loadSearch: (query, signal) => apiRequest<unknown>(`/api/ui/db/search?${new URLSearchParams({ q: query, limit: "25" }).toString()}`, { signal }),
+    loadPublishers: (signal) => apiRequest<unknown>("/api/ui/db/publishers", { signal, timeoutMs: 30_000 }),
+    loadPublisherPortfolio: (userId, startDate, endDate, signal) => {
+      const query = new URLSearchParams({ userId });
+      if (startDate) query.set("startDate", startDate);
+      if (endDate) query.set("endDate", endDate);
+      return apiRequest<unknown>(`/api/ui/db/publishers?${query.toString()}`, { signal, timeoutMs: 30_000 });
+    }
+  });
+}
+
 function chatbotSession(snapshot: AppBootstrapData): ChatbotSession {
   if (!modernChatbotSession) {
-    const chatbotData = isRecord(snapshot.chatbotData) ? snapshot.chatbotData : {};
-    const sourceMeta = isRecord(chatbotData.sources) ? chatbotData.sources : {};
-    const reportProvider = createReportDataProvider({
-      offers: offerRecords(snapshot),
-      paymentRecords: paymentRecords(snapshot),
-      keywords: snapshot.productKeywords,
-      source: sourceMeta.mode === "db" ? "db" : "cache",
-      asOf: stringValue(sourceMeta.checkedAt) || stringValue(chatbotData.checkedAt) || null,
-      preferRemote: true,
-      loadOffers: (signal) => apiRequest<unknown>("/api/ui/db/chatbot-offers", { signal }),
-      loadKeywords: (signal) => apiRequest<unknown>("/api/ui/db/keywords", { signal }),
-      loadMerchant: (merchantId, months, signal) => apiRequest<unknown>(`/api/ui/db/merchant?${new URLSearchParams({ merchantId, months: String(months), limit: "50" }).toString()}`, { signal, timeoutMs: 30_000 }),
-      loadAsin: (asins, months, signal) => apiRequest<unknown>(`/api/ui/db/asin?${new URLSearchParams({ asins: asins.join(","), months: String(months) }).toString()}`, { signal, timeoutMs: 30_000 }),
-      loadSearch: (query, signal) => apiRequest<unknown>(`/api/ui/db/search?${new URLSearchParams({ q: query, limit: "25" }).toString()}`, { signal }),
-      loadPublishers: (signal) => apiRequest<unknown>("/api/ui/db/publishers", { signal, timeoutMs: 30_000 }),
-      loadPublisherPortfolio: (userId, startDate, endDate, signal) => {
-        const query = new URLSearchParams({ userId });
-        if (startDate) query.set("startDate", startDate);
-        if (endDate) query.set("endDate", endDate);
-        return apiRequest<unknown>(`/api/ui/db/publishers?${query.toString()}`, { signal, timeoutMs: 30_000 });
-      }
-    });
+    const reportProvider = createModernReportProvider(snapshot);
     modernChatbotSession = createChatbotSession({
       offers: offerRecords(snapshot),
       getProductKeywords: () => getAppSnapshot().value.productKeywords,
@@ -938,6 +943,16 @@ function agentSession(snapshot: AppBootstrapData): AgentSession {
   modernAgentSession.setLanguage?.(snapshot.language);
   return modernAgentSession;
 }
+
+const runAgentPublisherForSnapshot = createAgentPublisherBridge(() => {
+  const snapshot = getAppSnapshot().value;
+  return {
+    offers: offerRecords(snapshot),
+    paymentRecords: paymentRecords(snapshot),
+    productKeywords: snapshot.productKeywords,
+    provider: createModernReportProvider(snapshot)
+  };
+});
 
 const chatbotFactory: ModernPageFactory = (element): ModernPageController => {
   const snapshot = getAppSnapshot().value;
@@ -1036,6 +1051,7 @@ window.OI_MODERN_APP = createModernAppApi({
 // The modern entry owns exports and navigation. This bounded host exposes
 // only the operations that modern feature components need.
 window.OI_MODERN_RUNTIME = {
+  runAgentPublisher: runAgentPublisherForSnapshot,
   download(type, payload) {
     if (type === "offer-tracker" && isRecord(payload) && Array.isArray(payload.rows)) {
       return downloadOfferTracker({

@@ -3,6 +3,7 @@
 import type { Component } from "vue";
 import type { ModernAppApi, ModernPageName, UiLanguage } from "./runtime/contracts";
 import type { PageAccessRuntime } from "./shared/pageAccess";
+import type { ReportDocument } from "./features/chatbot/report/reportContracts";
 
 export interface CopilotKitRuntimeConfig {
   /** Server-issued production default; false disables the CopilotKit transport. */
@@ -31,7 +32,7 @@ export interface ModernRuntimeHost {
     query: string;
     language: UiLanguage;
     signal: AbortSignal;
-  }) => Promise<{ html: string; text: string; source: "cache" | "db" | "unavailable" }>;
+  }) => Promise<{ html: string; text: string; source: "cache" | "db" | "unavailable"; report?: ReportDocument }>;
 }
 
 declare global {

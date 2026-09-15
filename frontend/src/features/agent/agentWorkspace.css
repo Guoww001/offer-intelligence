@@ -216,6 +216,11 @@ body.dashboard-mode .dashboard-agent-page.is-modern .agent-workspace { height: 1
 .agent-workspace .aw-message.aw-message-user .chat-stream-text { padding: 14px 19px; border: 1px solid rgb(36 94 206 / 32%); border-radius: 22px 22px 6px 22px; color: #fff; background: linear-gradient(145deg, #2c67ce, #174aab); box-shadow: 0 18px 34px -23px rgb(23 74 171 / 46%), inset 0 1px 0 rgb(255 255 255 / 16%); white-space: pre-wrap; }
 .agent-workspace .aw-message-user .chat-stream-text p { color: inherit; }
 .agent-workspace .aw-message-user .chat-stream-text :is(strong, em, code, a) { color: inherit; }
+.agent-workspace .aw-user-prompt { display: grid; gap: 8px; }
+.agent-workspace .aw-user-command-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.agent-workspace .aw-user-command { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid rgb(255 255 255 / 34%); border-radius: 999px; color: #e8f2ff; background: rgb(255 255 255 / 14%); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 800; letter-spacing: .02em; line-height: 1.2; }
+.agent-workspace .aw-user-command-label { color: rgb(255 255 255 / 76%); font-size: 10px; font-weight: 650; letter-spacing: .02em; }
+.agent-workspace .aw-user-command-value { margin: 0; color: inherit; white-space: pre-wrap; }
 .agent-workspace .aw-message-assistant { width: min(100%, 790px); padding-left: 18px; border-left: 2px solid var(--aw-accent); }
 .agent-workspace .aw-message .chat-stream-text { color: var(--aw-ink); font-size: 14px; line-height: 1.9; overflow-wrap: anywhere; }
 .agent-workspace .aw-message .chat-stream-text > :first-child { margin-top: 0; }
@@ -249,7 +254,11 @@ body.dashboard-mode .dashboard-agent-page.is-modern .agent-workspace { height: 1
 .agent-workspace .aw-composer-area:not(.aw-composer-collapsed) .aw-composer { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .agent-workspace .aw-composer { position: relative; padding: 18px 18px 14px; border: 1px solid rgb(36 94 206 / 17%); border-radius: 25px; background: linear-gradient(145deg, rgb(255 255 255 / 99%), rgb(248 250 253 / 98%)); box-shadow: 0 24px 48px -31px rgb(36 52 76 / 28%), inset 0 1px 0 rgb(255 255 255 / 94%); transition: border-color 620ms cubic-bezier(.22, .8, .2, 1), box-shadow 620ms cubic-bezier(.22, .8, .2, 1), transform 620ms cubic-bezier(.22, .8, .2, 1); }
 .agent-workspace .aw-composer:focus-within { border-color: rgb(36 94 206 / 42%); box-shadow: 0 28px 54px -32px rgb(36 94 206 / 38%), inset 0 1px 0 rgb(255 255 255 / 94%); transform: translateY(-2px); }
-.agent-workspace .aw-composer textarea { display: block; width: 100%; min-height: 56px; max-height: 168px; padding: 0; border: 0; border-radius: 0; outline: none; resize: none; color: var(--aw-ink); background: transparent; box-shadow: none; font-size: 14px; line-height: 1.75; }
+.agent-workspace .aw-composer-input { position: relative; min-height: 56px; overflow: hidden; }
+.agent-workspace .aw-composer-input-highlight { position: absolute; z-index: 0; inset: 0; overflow-wrap: anywhere; color: var(--aw-ink); font-size: 14px; line-height: 1.75; pointer-events: none; white-space: pre-wrap; word-break: break-word; }
+.agent-workspace .aw-composer-command-token { border-radius: 6px; color: var(--aw-blue-deep); background: var(--aw-tint); box-shadow: 0 0 0 3px var(--aw-tint); }
+.agent-workspace .aw-composer textarea { position: relative; z-index: 1; display: block; width: 100%; min-height: 56px; max-height: 168px; padding: 0; border: 0; border-radius: 0; outline: none; resize: none; color: var(--aw-ink); background: transparent; box-shadow: none; font-size: 14px; line-height: 1.75; }
+.agent-workspace .aw-composer textarea.aw-composer-textarea-command { color: transparent; caret-color: var(--aw-ink); -webkit-text-fill-color: transparent; }
 .agent-workspace .aw-composer textarea::placeholder { color: var(--aw-muted); opacity: .8; }
 .agent-workspace .agent-attachment { margin-bottom: 12px; }
 .agent-workspace .agent-attachment .aw-button { color: var(--aw-ink); background: var(--aw-surface); }
@@ -495,6 +504,7 @@ body[data-oi-theme="dark"] .agent-workspace .agent-modern-result-table thead th 
   .agent-workspace .aw-message-user { max-width: 92%; }
   .agent-workspace .aw-composer-area { width: 100%; padding: 8px 20px 12px; }
   .agent-workspace .aw-composer { padding: 15px 14px 12px; border-radius: 21px; }
+  .agent-workspace .aw-composer-input-highlight { font-size: 16px; }
   .agent-workspace .aw-composer textarea { font-size: 16px; }
   .agent-workspace .aw-submit { min-height: 40px; }
   .agent-workspace .agent-modern-result-card { padding: 17px; border-radius: 20px; }

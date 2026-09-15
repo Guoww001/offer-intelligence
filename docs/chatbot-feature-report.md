@@ -6,6 +6,8 @@
 
 > **2026-09-08 PR #189 审查修复：** Vue Report Mode 现在消费 `/api/chat/classify` 返回的有效 `intent` 和查询参数，分类失败或无效时使用本地规则；分类期间停止会阻止后续分析。`public/auth.js` 延迟获取关键词后调用 `OI_MODERN_APP.updateProductKeywords()`，已创建的 Chatbot session 在查询时读取最新快照，并仅按 Merchant ID 合并产品标题、关键词及 ASIN，不覆盖指标或清空会话。Chatbot 的媒体记录和媒体画像命令尚未接入完整数据通路，已从默认菜单隐藏；独立 Publishers 页面不受影响。此说明优先于下文历史迁移章节中的功能对齐描述。
 
+> **Agent 查询命令优化（2026-09-15）：** Agent 命令菜单展示 11 个高频入口；`/merchants`、`/unpaid`、`/revenue`、`/epc`、`/orders` 作为隐藏的历史别名继续兼容解析。`/publisher` 与 `/publisherprofile` 通过 `OI_MODERN_RUNTIME.runAgentPublisher` 复用 Report 数据提供器和结构化渲染，`/promotion` 在上传推广清单后进入 `promotion_analysis`，未上传时在页面直接提示。此说明更新并取代上文关于媒体命令未接入的状态描述。
+
 ## 1. 概述
 
 > Agent 请求上限与工具批处理修复（2026-08-24）：规划请求继续使用 64KB；本地和 Vercel 综合流入口实际读取上限统一为 128KB。工具规划结果按每批最多 4 个执行，总预算 6 个；超过总预算时返回 partial、omittedTargets 等元数据，并在综合回答和执行时间线中明确提示结果不完整。
@@ -51,7 +53,7 @@ YeahPromos Offer Intelligence 内建了一个对话式 AI 助手，支持中英�
 #### Agent 工作台、命令与回测
 
 - 新工作台继续挂在 `agentModernRoot`，外部 `primarySidebar` 导航不替换；桌面保留右侧查询详情，窄屏可展开。输入栏在浏览旧内容且没有草稿时收起，点击恢复，尊重 reduced-motion。
-- `/` 菜单复用 `ChatbotCommandMenu.vue`，Agent 提供 15 个可筛选的命令，支持方向键、Enter、Escape 和中文输入法。商户/ASIN/品类/Tier/对比/付款/趋势命令补充原有 Agent 查询；`/publisher`、`/publisherprofile` 使用现有媒体数据和 Report renderer，等待数据完成后通过 `ChatbotResultView` 显示，不向 Python 注册虚构工具。
+- `/` 菜单复用 `ChatbotCommandMenu.vue`，Agent 展示 11 个可筛选的高频命令，支持方向键、Enter、Escape 和中文输入法；`/merchants`、`/unpaid`、`/revenue`、`/epc`、`/orders` 为隐藏但兼容的历史别名。商户/ASIN/品类/Tier/对比/付款/趋势命令补充原有 Agent 查询；`/publisher`、`/publisherprofile` 通过 `OI_MODERN_RUNTIME.runAgentPublisher` 使用现有媒体数据和 Report renderer，结果通过 `ChatbotResultView` 的结构化 blocks 显示，不向 Python 注册虚构工具；`/promotion` 需先上传推广清单。
 - CopilotKit 页通过 `createAgentActivity()` 保留原问题日志及反馈机制。原 SVG 趋势图、12 指标切换、结果 registry、停止及成功后历史/记忆规则保持。
 - 用户可从“日志 → 对话日志与回测”或错误后的日志面板下载/导入 JSON、主动上传、选择某一轮重新运行并对照原回答。最近最多 10 轮、512 KB；记录问题、原历史与结构化记忆、回答、受控错误码和时间线，不导出 HTML、cookie、plan proof 或原始工具载荷。回测使用原语言/历史/记忆和**当前数据/模型**，不是旧数据快照重放，也不会自动修改代码。
 - 本地和 Vercel 共用 `agent_debug_http.py`，在 `/api/chat/stream?operation=agent_debug` 提供认证后的 POST 写入与 GET `id` 读取；不新增 Vercel function。上传显式写入 `cnpscy_oi_agent_debug_cases`，首写按现有 DB 模式建表；无 DDL 权限时可预先使用 `docs/agent-debug-cases.sql`。存储不可用返回 502，前端保留下载入口。未向真实 DB 写入测试日志。
