@@ -162,7 +162,7 @@ describe("visible merchant and product relationships", () => {
     expect(w.text()).toContain("当前筛选下没有观察到对应关系");
     expect(w.find('[role="alert"]').exists()).toBe(false);
   });
-  it("excludes before-only activity when observation is selected", async () => {
+  it("excludes comparison-only activity by default", async () => {
     const w = page({
       report: {
         ...report,
@@ -172,7 +172,7 @@ describe("visible merchant and product relationships", () => {
         ],
       },
     });
-    await w.findAll("select")[1]!.setValue("after");
+    expect(w.text()).not.toContain("比较期");
     expect(w.findAll(".promotion-relation-path")).toHaveLength(1);
     expect(w.get(".promotion-relation-path").text()).toContain("Second Home");
     await w.setProps({ language: "en" });

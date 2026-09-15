@@ -34,7 +34,6 @@ const t = (zh: string, en: string) => (props.language === "zh" ? zh : en);
 const mode = ref<"merchants" | "products">("merchants"),
   search = ref(""),
   merchant = ref(""),
-  period = ref("both"),
   sort = ref<Metric>("revenue"),
   limit = ref(40);
 const scopeFilter = ref<AsinScope | "all">("all");
@@ -50,8 +49,8 @@ const label = (key: Metric) => t(...labels[key]);
 const offersById = computed(
   () => new Map(props.offers.map((o) => [o.merchantId, o])),
 );
-const active = (row: MediaRow, side: "before" | "after") =>
-  METRICS.some((k) => Number.isFinite(row[side][k]) && row[side][k] !== 0);
+const active = (row: MediaRow) =>
+  METRICS.some((k) => Number.isFinite(row.after[k]) && row.after[k] !== 0);
 const relationships = computed(
   () =>
     (mode.value === "merchants" ? props.report?.media : props.report?.links) ||
@@ -65,19 +64,14 @@ const candidateRows = computed(() =>
       (r) =>
         offersById.value.has(r.merchantId) &&
         (!merchant.value || r.merchantId === merchant.value) &&
-        (period.value === "both"
-          ? active(r, "before") || active(r, "after")
-          : active(r, period.value as "before" | "after")) &&
+        active(r) &&
         `${r.merchantId} ${offersById.value.get(r.merchantId)?.merchantName} ${r.publisherId} ${r.publisherName} ${r.asin} ${r.purchasedAsin} ${r.linkType}`
           .toLowerCase()
           .includes(search.value.trim().toLowerCase()),
     )
     .sort(
       (a, b) =>
-        ((period.value === "before" ? b.before : b.after)[sort.value] ??
-          -Infinity) -
-        ((period.value === "before" ? a.before : a.after)[sort.value] ??
-          -Infinity),
+        (b.after[sort.value] ?? -Infinity) - (a.after[sort.value] ?? -Infinity),
     ),
 );
 const rows = computed(() =>
@@ -127,7 +121,7 @@ function format(value: number | null, metric: Metric) {
           metric === "revenue" || metric === "commission" ? 2 : 0,
       }).format(value);
 }
-watch([mode, search, merchant, period, scopeFilter], () => {
+watch([mode, search, merchant, scopeFilter], () => {
   limit.value = 40;
 });
 watch(
@@ -209,14 +203,6 @@ watch(
         </select></label
       >
       <label
-        >{{ t("活动周期", "Activity period")
-        }}<select v-model="period">
-          <option value="both">{{ t("前后两个周期", "Both periods") }}</option>
-          <option value="after">{{ t("仅自定观察期", "Custom observation only") }}</option>
-          <option value="before">{{ t("仅比较期", "Comparison only") }}</option>
-        </select></label
-      >
-      <label
         >{{ t("关系排序指标", "Sort relationships")
         }}<select v-model="sort">
           <option v-for="key in METRICS" :key="key" :value="key">
@@ -290,8 +276,8 @@ watch(
         ><small
           >{{
             t(
-              "每项指标上方为自定观察期，下方为比较期。",
-              "Each metric shows observation above and before below.",
+              "显示观察期内的实际指标。",
+              "Metrics show actual values within the observation period.",
             )
           }}
           · {{ t("数据截至", "Data through") }}
@@ -406,27 +392,21 @@ watch(
                     }}</strong
                     ><small>ID {{ r.publisherId || "—" }}</small
                     ><span class="promotion-relation-status">{{
-                      active(r, "after")
-                        ? t("自定观察期有活动", "Activity observed")
-                        : t("仅比较期有记录", "Comparison-period records only")
+                      t("观察期有活动", "Activity observed")
                     }}</span>
                   </div>
                 </div>
               </th>
               <td v-for="key in METRICS" :key="key">
-                <strong>{{ format(r.after[key], key) }}</strong
-                ><small
-                  >{{ t("前", "Before") }}
-                  {{ format(r.before[key], key) }}</small
-                >
+                <strong>{{ format(r.after[key], key) }}</strong>
               </td>
             </tr>
             <tr v-if="!rows.length">
               <td colspan="7">
                 {{
                   t(
-                    "当前筛选下没有观察到对应关系。可以切换活动周期或清空搜索。",
-                    "No relationships match. Change the activity period or clear the search.",
+                    "当前筛选下没有观察到对应关系。可以调整观察期或清空搜索。",
+                    "No relationships match. Adjust the observation period or clear the search.",
                   )
                 }}
               </td>

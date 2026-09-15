@@ -109,52 +109,39 @@ afterEach(() => {
 });
 
 describe("Offer promotion tracking", () => {
-  it("compares daily averages for a longer baseline and preserves applied dates in drilldown and export", async () => {
+  it("uses only observation dates and totals in requests, drilldown and export", async () => {
     const loader = vi.fn(async (request: ReportRequest) => ({
       ...fixture(), availableThrough: "2026-09-30",
-      dateRange: windowDates(request.launchDate, request.startDate, request.endDate, request.beforeStart, request.beforeEnd)!,
+      dateRange: windowDates(request.launchDate, request.startDate, request.endDate)!,
       merchants: fixture().merchants.map(row => ({ ...row, before: metrics(140), after: metrics(70) })),
     }));
     const download = vi.fn();
     const w = page({ reportLoader: loader, download });
     await flushPromises();
-    await w.get('input[aria-label="比较开始"]').setValue("2026-08-24");
+    await w.get('input[aria-label="观察结束"]').setValue("2026-09-15");
     await w.get(".promotion-dates .primary").trigger("click");
     await flushPromises();
-    expect(w.get(".promotion-periods").text()).toContain("2026-08-24 — 2026-09-06");
-    expect(w.get(".promotion-kpis").text()).toContain("日均变化 · 0.0%");
-    expect(w.get(".promotion-kpis").text()).not.toContain("-50.0%");
-    expect(w.get(".promotion-trend").text()).toContain("按实际日期从早到晚");
-    await w.get('input[aria-label="比较开始"]').setValue("2026-08-20");
+    expect(w.get(".promotion-periods").text()).toContain("2026-09-07 — 2026-09-15");
+    expect(w.text()).not.toContain("比较期");
+    expect(w.get(".promotion-kpis").text()).toContain("观察期累计");
+    expect(w.get(".promotion-trend").text()).toContain("每天一根柱");
+    await w.get('input[aria-label="观察结束"]').setValue("2026-09-20");
     await w.get(".promotion-merchant-table tbody button").trigger("click");
     await flushPromises();
-    expect(loader.mock.calls.at(-1)?.[0]).toMatchObject({ beforeStart: "2026-08-24", merchantId: "101" });
+    expect(loader.mock.calls.at(-1)?.[0]).toMatchObject({ periodMode: "observation", startDate: "2026-09-07", endDate: "2026-09-15", merchantId: "101" });
+    expect(loader.mock.calls.every(([request]) => !request.beforeStart && !request.beforeEnd && request.periodMode === "observation")).toBe(true);
     expect(w.get("#promotion-detail .promotion-trend").text()).toContain("Test Home");
-    await w.findAll("button").find(button => button.text() === "导出对比")!.trigger("click");
-    expect(download.mock.calls[0]?.[0][0]).toMatchObject({ Before_revenue: 140, After_revenue: 70, BeforeDailyAverage_revenue: 10, AfterDailyAverage_revenue: 10, ComparisonBasis: "daily_average" });
+    expect(w.get("#promotion-detail").text()).not.toContain("比较期");
+    await w.findAll("button").find(button => button.text() === "导出观察期")!.trigger("click");
+    const exported = download.mock.calls[0]?.[0][0];
+    expect(exported).toMatchObject({ revenue: 70, ObservationStart: "2026-09-07", ObservationEnd: "2026-09-15" });
+    expect(Object.keys(exported).some(key => /Before|After|Comparison|DailyAverage/.test(key))).toBe(false);
     w.unmount();
     const restored = page({ reportLoader: loader });
     await flushPromises();
-    expect(restored.get('input[aria-label="比较开始"]').element).toHaveProperty("value", "2026-08-24");
-    await restored.findAll("button").find(button => button.text() === "恢复等长比较期")!.trigger("click");
-    expect(restored.get('input[aria-label="比较开始"]').element).toHaveProperty("value", "2026-08-31");
+    expect(restored.get('input[aria-label="观察结束"]').element).toHaveProperty("value", "2026-09-15");
     await restored.get('input[aria-label="推送日期"]').setValue("2026-09-11");
     expect(restored.get('input[aria-label="观察开始"]').element).toHaveProperty("value", "2026-09-11");
-    expect(restored.get('input[aria-label="比较结束"]').element).toHaveProperty("value", "2026-09-10");
-  });
-  it("rejects comparison overlap or empty dates without replacing the applied report", async () => {
-    const loader = vi.fn(async () => fixture());
-    const w = page({ reportLoader: loader });
-    await flushPromises();
-    const calls = loader.mock.calls.length;
-    await w.get('input[aria-label="比较结束"]').setValue("2026-09-07");
-    await w.get(".promotion-dates .primary").trigger("click");
-    expect(loader).toHaveBeenCalledTimes(calls);
-    expect(w.get('[role="alert"]').text()).toContain("推送日前");
-    await w.get('input[aria-label="比较开始"]').setValue("");
-    await w.get('input[aria-label="比较结束"]').setValue("");
-    await w.get(".promotion-dates .primary").trigger("click");
-    expect(loader).toHaveBeenCalledTimes(calls);
   });
   it("filters merchant details between promoted ASINs in and outside the tracked list", async () => {
     const report = fixture();
@@ -297,7 +284,7 @@ describe("Offer promotion tracking", () => {
       merchantIds: "101,1101",
     });
     expect(w.get(".promotion-periods").text()).toContain(
-      "2026-08-31 — 2026-09-06",
+      "2026-09-07 — 2026-09-13",
     );
     expect(w.get(".promotion-periods").text()).toContain(
       "2026-09-07 — 2026-09-13",
@@ -310,7 +297,7 @@ describe("Offer promotion tracking", () => {
       startDate: "2026-09-07",
       endDate: "2026-09-13",
     });
-    expect(w.get(".promotion-kpis").text()).toContain("自定观察期未结束");
+    expect(w.get(".promotion-kpis").text()).toContain("观察期累计");
     expect(w.get(".promotion-kpis").text()).not.toContain("+100.0%");
   });
   it("applies custom dates and drills down with the applied, not draft, request", async () => {
@@ -332,7 +319,7 @@ describe("Offer promotion tracking", () => {
     await w.get(".promotion-dates .primary").trigger("click");
     await flushPromises();
     expect(w.get(".promotion-periods").text()).toContain(
-      "2026-08-24 — 2026-09-06",
+      "2026-09-11 — 2026-09-24",
     );
     dates[0]!.vm.$emit("update:modelValue", "2026-09-20");
     await w.get(".promotion-merchant-table tbody button").trigger("click");
@@ -471,14 +458,13 @@ describe("Offer promotion tracking", () => {
     w.findComponent(DatePicker).vm.$emit("update:modelValue", "2026-09-20");
     await w
       .findAll("button")
-      .find((b) => b.text() === "导出对比")!
+      .find((b) => b.text() === "导出观察期")!
       .trigger("click");
     expect(download.mock.calls[0]?.[0]).toEqual([
       expect.objectContaining({
         MerchantID: "1101",
         LaunchDate: "2026-09-07",
-        Before_revenue: 100,
-        After_revenue: 200,
+        revenue: 200,
       }),
     ]);
   });
@@ -515,7 +501,7 @@ describe("Offer promotion tracking", () => {
     await w.setProps({ language: "en" });
     expect(w.text()).toContain("Offer promotion tracking");
     expect(w.get(".promotion-kpis").text()).toContain(
-      "Observation in progress",
+      "Observation total",
     );
     expect(w.get(".promotion-dates .primary").text()).toBe("Apply dates");
   });

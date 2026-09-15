@@ -154,6 +154,22 @@ class PromotionTests(unittest.TestCase):
         self.assertEqual(result["merchants"][0]["monthly"][0]["clicks"], 80)
         self.assertEqual(reader.call_count, 4)
 
+    def test_observation_only_scopes_all_views_and_ignores_legacy_comparison(self):
+        rows = [self.row(day, revenue=value, publisherId="7", target_asin="B012345678") for day, value in [("20260910", 999), ("20260911", 20), ("20260912", 30), ("20260913", 40), ("20260914", 999)]]
+        for extra in ({}, {"merchantId": ["101"]}, {"action": ["relations"]}):
+            with self.subTest(extra=extra), patch.object(p.db, "db_connection", return_value=nullcontext(None)), patch.object(p.db, "table_columns", return_value=set()), patch.object(p, "_latest_date", return_value="2026-09-30"), patch.object(p, "_read", return_value=(rows, self.supported, "2026-09-30")) as reader, patch.object(p.db, "fetch_all", return_value=[]), patch.object(p.db, "reporting_today", return_value=dt.date(2026, 10, 1)):
+                result = p.report({"merchantIds": ["101"], "launchDate": ["2026-09-11"], "startDate": ["2026-09-11"], "endDate": ["2026-09-13"], "periodMode": ["observation"], "beforeStart": ["invalid legacy date"], **extra})
+            self.assertEqual(reader.call_args_list[0].args[4:6], ("2026-09-11", "2026-09-13"))
+            self.assertEqual(result["merchants"][0]["after"]["revenue"], 90)
+            self.assertTrue(all(v is None for v in result["merchants"][0]["before"].values()))
+            self.assertTrue(all("2026-09-11" <= day["date"] <= "2026-09-13" for day in result["merchants"][0]["daily"]))
+            for row in result.get("media", []) + result.get("links", []):
+                self.assertEqual(row["after"]["revenue"], 90)
+                self.assertTrue(all(v is None for v in row["before"].values()))
+            with patch.object(p.db, "fetch_all", return_value=[]) as fetch:
+                p._read(None, "cnpscy_amazon_order", {"advert_id", "order_time_day", "amount"}, ["101"], "2026-09-11", "2026-09-13", p.ORDER_FIELDS, period_window=result["dateRange"], known_watermark="2026-09-12")
+            self.assertEqual(fetch.call_args.args[2], ("101", 20260911, 20260912))
+
     def test_empty_source_does_not_claim_zero_performance(self):
         with patch.object(p.db, "db_connection", return_value=nullcontext(None)), patch.object(p.db, "table_columns", return_value=set()), patch.object(p, "_read", return_value=([], self.supported, None)):
             with self.assertRaisesRegex(RuntimeError, "no dated records"):

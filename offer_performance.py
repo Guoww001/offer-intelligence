@@ -161,6 +161,8 @@ def _mask_pending(item, window, watermark):
     for period, first in (("before", window["beforeStart"]), ("after", window["startDate"])):
         if not watermark or watermark < first:
             item[period] = dict.fromkeys(METRICS)
+    if window["beforeEnd"] < window["beforeStart"]:
+        item["before"] = dict.fromkeys(METRICS)
 
 
 def summarize(rows, ids, window, supported, monthly_rows=(), watermark=None):
@@ -230,7 +232,12 @@ def report(query):
         raise ValueError("Selected merchant is outside this batch")
     if selected:
         ids = [selected]
-    window = date_window(value("launchDate") or (batch or {}).get("launchDate"), value("startDate"), value("endDate"), value("beforeStart"), value("beforeEnd"))
+    observation_only = value("periodMode") == "observation"
+    window = date_window(value("launchDate") or (batch or {}).get("launchDate"), value("startDate"), value("endDate"), None if observation_only else value("beforeStart"), None if observation_only else value("beforeEnd"))
+    if observation_only:
+        # Keep the legacy shape for shared Agent clients, but query no comparison days.
+        window["beforeStart"] = window["startDate"]
+        window["beforeEnd"] = (dt.date.fromisoformat(window["startDate"]) - dt.timedelta(days=1)).isoformat()
     months = month_keys(window["startDate"])
     history_end = (dt.date.fromisoformat(window["startDate"]).replace(day=1) - dt.timedelta(days=1)).isoformat()
     with db.db_connection() as conn:

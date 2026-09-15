@@ -329,8 +329,8 @@ onBeforeUnmount(() => {
           <p>
             {{
               t(
-                "观察期从推送日（含）或之后开始；比较期为推送日前等长区间，导入后可调整。",
-                "Observation starts on or after launch; comparison uses an equal-length period before launch and can be adjusted after import.",
+                "观察期从推送日（含）或之后开始，导入后可调整。",
+                "Observation starts on or after launch and can be adjusted after import.",
               )
             }}
           </p>
@@ -345,11 +345,6 @@ onBeforeUnmount(() => {
         </p>
         <div v-else class="promotion-periods">
           <span
-            >{{ t("比较期", "Comparison") }}
-            <strong
-              >{{ dates.beforeStart }} — {{ dates.beforeEnd }}</strong
-            ></span
-          ><span
             >{{ t("自定观察期", "Custom observation") }}
             <strong>{{ dates.startDate }} — {{ dates.endDate }}</strong></span
           >

@@ -76,7 +76,7 @@ export const NAVIGATION_GROUPS: readonly NavigationGroup[] = [
     hint: text("目录与获客", "Catalog & acquisition"),
     items: [
       { page: "offer-list-tracker", label: text("Offer Tracker", "Offer Tracker"), hint: text("跟踪与筛选", "Track & filter"), icon: "products" },
-      { page: "offer-performance", label: text("推广追踪", "Promotion tracking"), hint: text("推送前后对比", "Before & after"), icon: "brand-media" },
+      { page: "offer-performance", label: text("推广追踪", "Promotion tracking"), hint: text("观察期表现", "Observation performance"), icon: "brand-media" },
       { page: "category", label: text("分类", "Category"), hint: text("分类报表", "Category report"), icon: "category" }
     ]
   }

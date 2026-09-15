@@ -94,9 +94,7 @@ describe("review before importing merchant lists", () => {
       "2026-09-06",
     );
     await flushPromises();
-    expect(w.get(".promotion-periods").text()).toContain(
-      "2026-08-24 — 2026-08-30",
-    );
+    expect(w.get(".promotion-periods").text()).not.toContain("比较期");
     expect(w.get(".promotion-periods").text()).toContain(
       "2026-08-31 — 2026-09-06",
     );
@@ -118,7 +116,7 @@ describe("review before importing merchant lists", () => {
     dates[2]!.vm.$emit("update:modelValue", "2026-09-24");
     await flushPromises();
     expect(w.get(".promotion-periods").text()).toContain(
-      "2026-08-24 — 2026-09-06",
+      "2026-09-11 — 2026-09-24",
     );
     dates[0]!.vm.$emit("update:modelValue", "2026-09-09");
     await w.get("form").trigger("submit");

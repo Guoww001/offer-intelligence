@@ -65,6 +65,7 @@ export interface PerformanceReport {
   links?: MediaRow[];
 }
 export interface ReportRequest {
+  periodMode?: "observation";
   action?: "relations";
   batchId: string;
   merchantIds: string;
@@ -149,31 +150,20 @@ export function dailyAverage(value: number | null, days: number): number | null 
   return value === null || days <= 0 ? null : value / days;
 }
 
-export function dailyTimeline(rows: PerformanceRow[], window: PromotionWindow, availableThrough: string, metric: Metric, supported: boolean) {
+export function dailyObservation(rows: PerformanceRow[], window: PromotionWindow, availableThrough: string, metric: Metric, supported: boolean) {
   const valueAt = (date: string) => {
     if (!supported || !rows.length || !availableThrough || date > availableThrough) return null;
     const values = rows.map(row => {
       const daily = row.daily.find(day => day.date === date);
       if (daily) return daily[metric];
-      return row.after[metric] === null && row.before[metric] === null ? null : 0;
+      return row.after[metric] === null ? null : 0;
     });
     return values.some(value => value === null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   };
-  const points = [
-    ...Array.from({ length: periodDays(window.beforeStart, window.beforeEnd) }, (_, index) => {
-      const date = addDays(window.beforeStart, index);
-      return { date, period: "before", value: valueAt(date) };
-    }),
-    ...Array.from({ length: window.days }, (_, index) => {
+  return Array.from({ length: window.days }, (_, index) => {
       const date = addDays(window.startDate, index);
-      return { date, period: "after", value: valueAt(date) };
-    }),
-  ];
-  // A single null marker breaks the line across an unselected gap, without
-  // allocating every date in a potentially very long gap.
-  if (addDays(window.beforeEnd, 1) < window.startDate)
-    points.push({ date: addDays(window.beforeEnd, 1), period: "gap", value: null });
-  return points.sort((a, b) => a.date.localeCompare(b.date));
+      return { date, value: valueAt(date) };
+    });
 }
 export function observedDays(
   start: string,
