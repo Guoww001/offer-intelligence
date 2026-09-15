@@ -228,7 +228,13 @@ export function createReportDataProvider(options: ReportDataProviderOptions): Re
     publishers,
     publisherPortfolio,
     snapshot: () => ({
-      source: offerSource === "db" || publisherSource === "db" || detailSource === "db" ? "db" : offerSource,
+      source: offerSource === "db" || publisherSource === "db" || detailSource === "db"
+        ? "db"
+        : offerSource !== "unavailable"
+          ? offerSource
+          : publisherSource !== "unavailable"
+            ? publisherSource
+            : detailSource,
       asOf: options.asOf || null,
       offersLoadedFrom: offerSource,
       detailLoadedFrom: detailSource,

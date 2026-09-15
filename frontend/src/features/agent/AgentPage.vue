@@ -11,7 +11,7 @@ import ChatbotResultView from "../chatbot/ChatbotResultView.vue";
 import type { ChatbotReportViewResult } from "../chatbot/chatbotViewTypes";
 import AgentDiagnostics from "./AgentDiagnostics.vue";
 import AgentAttachment from "./AgentAttachment.vue";
-import { AGENT_COMMANDS, parseAgentCommand } from "./agentCommands";
+import { AGENT_COMMANDS, AGENT_MENU_COMMANDS, parseAgentCommand } from "./agentCommands";
 import { appendDiagnosticTurn, diagnosticTurn, type AgentDiagnosticTurn } from "./agentDiagnostics";
 import AgentTimeline from "./AgentTimeline.vue";
 import AgentResultView from "./AgentResultView.vue";
@@ -98,6 +98,7 @@ const memory = ref<AgentMemoryState>(emptyAgentMemory());
 const error = ref("");
 const feedbackRefreshKey = ref(0);
 const inputRef = ref<HTMLTextAreaElement | null>(null);
+const inputScrollTop = ref(0);
 const logRef = ref<HTMLElement | null>(null);
 const detailsOpen = ref(true);
 const diagnosticsOpen = ref(false);
@@ -106,6 +107,7 @@ const replayTurn = ref<AgentDiagnosticTurn | null>(null);
 const replayComparison = ref<{ original: string; current: string } | null>(null);
 const commandMenu = ref<InstanceType<typeof ChatbotCommandMenu>>();
 const commandHint = computed(() => { const parsed = parseAgentCommand(input.value); return parsed ? (props.language === "zh" ? parsed.command.zhHint : parsed.command.enHint) : ""; });
+const inputCommandHighlight = computed(() => splitAgentCommandInput(input.value));
 const composerCollapsed = ref(false);
 const localSessionOverride = ref(false);
 let lastScrollTop = 0;
@@ -244,6 +246,10 @@ function resizeInput(): void {
   field.style.height = `${Math.min(Math.max(field.scrollHeight, 56), 168)}px`;
 }
 
+function syncInputScroll(): void {
+  inputScrollTop.value = inputRef.value?.scrollTop || 0;
+}
+
 function clearElapsedTimer(): void {
   if (elapsedTimer === null) return;
   window.clearInterval(elapsedTimer);
@@ -363,14 +369,58 @@ function jumpToResult(target: string): void {
   followingLatest.value = false;
   document.getElementById(target)?.scrollIntoView({ block: "start", behavior: "auto" });
 }
+
+function removeAgentCommandOnBackspace(event: KeyboardEvent): boolean {
+  if (event.key !== "Backspace" || event.isComposing || event.keyCode === 229) return false;
+  const field = inputRef.value;
+  const parsed = splitAgentCommandInput(input.value);
+  if (!field || !parsed) return false;
+
+  const selectionStart = field.selectionStart;
+  const selectionEnd = field.selectionEnd;
+  if (selectionStart === null || selectionEnd === null) return false;
+
+  const commandStart = parsed.leading.length;
+  const commandEnd = commandStart + parsed.command.length;
+  const separator = input.value.slice(commandEnd).match(/^\s+/)?.[0] || "";
+  const selectionIntersectsCommand = selectionStart < commandEnd && selectionEnd > commandStart;
+  const caretInsideCommand = selectionStart === selectionEnd && selectionStart > commandStart && selectionStart <= commandEnd;
+  const caretAfterSeparator = selectionStart === selectionEnd
+    && selectionStart > commandEnd
+    && separator.length > 0
+    && selectionStart === commandEnd + separator.length;
+  const commandOnly = selectionStart === selectionEnd
+    && selectionStart === input.value.length
+    && /^\s*$/.test(input.value.slice(commandEnd));
+  if (!selectionIntersectsCommand && !caretInsideCommand && !caretAfterSeparator && !commandOnly) return false;
+
+  let removeStart = commandStart;
+  let removeEnd = commandEnd + separator.length;
+  if (selectionStart !== selectionEnd) {
+    removeStart = Math.min(selectionStart, commandStart);
+    removeEnd = Math.max(selectionEnd, commandEnd + separator.length);
+  }
+
+  event.preventDefault();
+  input.value = `${input.value.slice(0, removeStart)}${input.value.slice(removeEnd)}`;
+  nextTick(() => {
+    const nextField = inputRef.value;
+    if (!nextField) return;
+    nextField.focus();
+    nextField.setSelectionRange(removeStart, removeStart);
+  });
+  return true;
+}
+
 function handleKeydown(event: KeyboardEvent): void {
   commandMenu.value?.handleKeydown(event);
   if (event.defaultPrevented) return;
+  if (removeAgentCommandOnBackspace(event)) return;
   if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
   event.preventDefault();
   if (runStatus.value !== "running") void submit();
 }
-watch(input, () => nextTick(resizeInput));
+watch(input, () => nextTick(() => { resizeInput(); syncInputScroll(); }));
 watch([response, messages, resultViews, timeline, runStatus], () => nextTick(followStream), { deep: true });
 
 function nextId(prefix: string): string {
@@ -380,6 +430,26 @@ function nextId(prefix: string): string {
 
 function renderAssistant(content: string): string {
   return renderMarkdownToHtml(content);
+}
+
+function userPromptCommand(content: string): { key: string; label: string; value: string } | null {
+  const parsed = parseAgentCommand(content);
+  if (!parsed?.value) return null;
+  return {
+    key: `/${parsed.command.key}`,
+    label: props.language === "zh" ? parsed.command.zh : parsed.command.en,
+    value: parsed.value
+  };
+}
+
+function splitAgentCommandInput(content: string): { leading: string; command: string; value: string } | null {
+  const match = content.match(/^(\s*)\/([a-z]+)(?=\s|$)/i);
+  if (!match?.[2]) return null;
+  const command = AGENT_COMMANDS.find((item) => item.key === match[2]!.toLowerCase());
+  if (!command) return null;
+  const leading = match[1] || "";
+  const commandEnd = leading.length + 1 + match[2].length;
+  return { leading, command: content.slice(leading.length, commandEnd), value: content.slice(commandEnd) };
 }
 
 function history(): readonly { readonly role: "user" | "assistant"; readonly content: string }[] {
@@ -453,6 +523,12 @@ async function submit(): Promise<void> {
   const initialHistory = replay?.history || (props.session && !localSessionOverride.value ? props.session.getState().history : history());
   const initialMemory = replay?.memory || memory.value;
   const promotionAttachment = replay ? undefined : attachmentStore.get() || undefined;
+  if (command?.command.key === "promotion" && !promotionAttachment) {
+    error.value = requestLanguage === "zh"
+      ? "请先上传推广清单，再使用 /promotion 查询。"
+      : "Upload a promotion list before using /promotion.";
+    return;
+  }
   if (promotionAttachment && requiresPromotionWindow(requestPrompt) && !promotionAttachment.manifest.window) {
     error.value = requestLanguage === "zh"
       ? "请先在上传清单卡片中确认推送日期，再查询推广表现。"
@@ -558,7 +634,7 @@ async function submit(): Promise<void> {
       const publisher = await bridge({ kind: command.command.route, query: command.value, language: requestLanguage, signal: request.signal });
       if (request.signal.aborted) throw new DOMException("Stopped", "AbortError");
       result = { ok: true, status: "done", response: publisher.text, steps: [{ id: "publisher", phase: "tool", label, status: "done" }],
-        report: { intent: "analysis", status: "resolved", query: prompt, source: publisher.source, rows: [], summary: { offerCount: 0, clicks: 0, orders: 0, revenue: 0, commission: 0, conversionRate: null }, message: label, contentHtml: publisher.html } };
+        report: publisher.report || { intent: "analysis", status: "resolved", query: prompt, source: publisher.source, rows: [], summary: { offerCount: 0, clicks: 0, orders: 0, revenue: 0, commission: 0, conversionRate: null }, message: label, contentHtml: publisher.html } };
     } else result = await props.run(request);
     attemptError = result.errorCode || "";
     const resultTimeline = applyResultTimeline(result.steps);
@@ -768,7 +844,16 @@ onBeforeUnmount(() => {
               <div class="aw-message-author"><span v-if="message.role === 'assistant'" class="aw-avatar" aria-hidden="true">YP</span>{{ message.role === 'user' ? copy.you : copy.answer }}</div>
               <ChatbotResultView v-if="message.report" :language="language" :result="message.report" @download="downloadReport" />
               <div v-else-if="message.role === 'assistant'" class="chat-stream-text" data-agent-response v-html="renderAssistant(message.content)"></div>
-              <div v-else class="chat-stream-text"><p>{{ message.content }}</p></div>
+              <div v-else class="chat-stream-text aw-user-prompt" data-agent-user-prompt>
+                <template v-if="userPromptCommand(message.content)">
+                  <div class="aw-user-command-row">
+                    <span class="aw-user-command" data-agent-command>{{ userPromptCommand(message.content)?.key }}</span>
+                    <span class="aw-user-command-label">{{ userPromptCommand(message.content)?.label }}</span>
+                  </div>
+                  <p class="aw-user-command-value" data-agent-command-value>{{ userPromptCommand(message.content)?.value }}</p>
+                </template>
+                <p v-else>{{ message.content }}</p>
+              </div>
               <section v-if="message.resultViews?.length" class="agent-modern-results" :aria-label="copy.results">
                 <div v-for="(view, index) in message.resultViews" :id="`${workspaceId}-${message.id}-${index}`" :key="view.id" class="aw-result-anchor"><AgentResultView :language="language" :view="view" /></div>
               </section>
@@ -804,10 +889,15 @@ onBeforeUnmount(() => {
           <button v-if="composerCollapsed" type="button" class="aw-composer-restore" data-agent-action="expand-composer" @click="expandComposer"><span>{{ input || (language === 'zh' ? '继续提问…' : 'Continue the conversation…') }}</span><span>{{ language === 'zh' ? '展开 ↑' : 'Expand ↑' }}</span></button>
           <div class="aw-composer-expandable" :inert="composerCollapsed || undefined">
           <form class="aw-composer" data-agent-form @submit.prevent="submit" @focusin="composerCollapsed = false">
-            <ChatbotCommandMenu ref="commandMenu" :language="language" :input="input" :options="AGENT_COMMANDS" @select="chooseCommand" />
+            <ChatbotCommandMenu ref="commandMenu" :language="language" :input="input" :options="AGENT_MENU_COMMANDS" @select="chooseCommand" />
             <AgentAttachment :language="language" :store="attachmentStore" :read-file="readFile" :busy="runStatus === 'running'" />
             <label class="aw-sr-only" :for="`${workspaceId}-input`">{{ copy.composer }}</label>
-            <textarea :id="`${workspaceId}-input`" ref="inputRef" v-model="input" autocomplete="off" rows="2" :placeholder="copy.placeholder" :aria-expanded="commandMenu?.visible" :aria-controls="commandMenu?.visible ? commandMenu.menuId : undefined" :aria-activedescendant="commandMenu?.activeId" aria-autocomplete="list" data-agent-input @keydown="handleKeydown"></textarea>
+            <div class="aw-composer-input">
+              <div v-if="inputCommandHighlight" class="aw-composer-input-highlight" :style="{ transform: `translateY(-${inputScrollTop}px)` }" aria-hidden="true">
+                <span>{{ inputCommandHighlight.leading }}</span><span class="aw-composer-command-token" data-agent-composer-command>{{ inputCommandHighlight.command }}</span><span data-agent-composer-command-value>{{ inputCommandHighlight.value }}</span>
+              </div>
+              <textarea :id="`${workspaceId}-input`" ref="inputRef" v-model="input" :class="{ 'aw-composer-textarea-command': Boolean(inputCommandHighlight) }" autocomplete="off" rows="2" :placeholder="copy.placeholder" :aria-expanded="commandMenu?.visible" :aria-controls="commandMenu?.visible ? commandMenu.menuId : undefined" :aria-activedescendant="commandMenu?.activeId" aria-autocomplete="list" data-agent-input @keydown="handleKeydown" @scroll="syncInputScroll"></textarea>
+            </div>
             <p v-if="commandHint" class="aw-command-hint">{{ commandHint }}</p>
             <div class="aw-composer-toolbar"><span class="aw-composer-hint">{{ runStatus === 'running' ? copy.draft : copy.keyboard }}</span>
               <button v-if="runStatus === 'running'" type="button" class="aw-submit aw-stop" data-agent-action="stop" :disabled="stopping" @click="stop"><span class="aw-stop-symbol" aria-hidden="true"></span>{{ stopping ? copy.stopping : copy.stop }}</button>
@@ -826,7 +916,7 @@ onBeforeUnmount(() => {
           <nav v-else :aria-label="copy.results" class="aw-result-index"><button v-for="(item, index) in resultIndex" :key="item.target" type="button" @click="jumpToResult(item.target)"><span>{{ String(index + 1).padStart(2, '0') }}</span><strong>{{ item.title }}</strong><span aria-hidden="true">↗</span></button></nav>
           <p v-if="resultIndex.length" class="aw-source-hint">{{ copy.sourceHint }}</p>
         </section>
-        <section class="aw-detail-section aw-guide"><h4>{{ language === 'zh' ? '查询命令' : 'Query commands' }}</h4><div class="aw-command-shortcuts"><button v-for="command in AGENT_COMMANDS" :key="command.key" type="button" @click="chooseCommand(command.key)"><code>/{{ command.key }}</code><span>{{ language === 'zh' ? command.zh : command.en }}</span></button></div></section>
+        <section class="aw-detail-section aw-guide"><h4>{{ language === 'zh' ? '查询命令' : 'Query commands' }}</h4><div class="aw-command-shortcuts"><button v-for="command in AGENT_MENU_COMMANDS" :key="command.key" type="button" @click="chooseCommand(command.key)"><code>/{{ command.key }}</code><span>{{ language === 'zh' ? command.zh : command.en }}</span></button></div></section>
       </aside>
     </section>
   </main>
