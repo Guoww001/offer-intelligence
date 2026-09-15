@@ -45,6 +45,16 @@ def test_context_and_scope_are_bounded():
     assert arguments["window"] == WINDOW
     assert arguments["limit"] == 25
 
+    later_window = {**WINDOW, "startDate": "2026-09-10", "endDate": "2026-09-16"}
+    later_context, error = validate_promotion_context({**CONTEXT, "window": later_window})
+    assert error is None
+    arguments, error = validate_promotion_arguments({"attachmentId": "attachment-a", "view": "merchants"}, later_context)
+    assert error is None
+    assert arguments["window"] == later_window
+    for bad_window in ({**later_window, "beforeEnd": "2026-09-09"}, {**later_window, "startDate": "2026-09-06", "endDate": "2026-09-12"}):
+        _, error = validate_promotion_context({**CONTEXT, "window": bad_window})
+        assert error is not None
+
 
 def test_planning_rejects_promotion_tool_without_uploaded_context():
     request, error = agent_contract.validate_planning_request({

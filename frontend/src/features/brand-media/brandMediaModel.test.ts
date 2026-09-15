@@ -133,4 +133,16 @@ describe("brandMediaModel", () => {
     expect(cumulative.svg).toContain("brand-media-click-bar is-cumulative");
     expect(brandMediaColor(0)).not.toBe(brandMediaColor(1));
   });
+  it("隐藏总订单线只重算可见纵轴，不改变单个媒体或汇总数据", () => {
+    const overlapping = { ...payload, publishers: payload.publishers.map(publisher => ({ ...publisher, points: [{ date: "2026-05-01", orders: publisher.userId === 9 ? 3 : 4, revenue: 10, clicks: 0 }] })) };
+    const all = buildBrandMediaChartModel(overlapping, overlapping.publishers)!;
+    const hidden = buildBrandMediaChartModel(overlapping, overlapping.publishers, { showAllOrderLine: false })!;
+    expect(hidden.showAllOrderLine).toBe(false);
+    expect(hidden.svg).not.toContain('class="brand-media-total-series"');
+    expect(hidden.svg.match(/class="brand-media-series"/g)).toHaveLength(2);
+    expect(hidden.dailyOrderTotals).toEqual(all.dailyOrderTotals);
+    expect(hidden.allDailyRevenueTotals).toEqual(all.allDailyRevenueTotals);
+    expect(all.maxOrders).toBe(7);
+    expect(hidden.maxOrders).toBe(4);
+  });
 });
