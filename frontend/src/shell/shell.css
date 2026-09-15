@@ -70,6 +70,8 @@ body[data-oi-theme="dark"] .modern-application {
   letter-spacing: -.06em;
 }
 .modern-shell-brand-mark span { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border: 2px solid var(--modern-shell-surface); border-radius: 50%; background: #6bdbc1; }
+.modern-shell-brand-trigger { padding: 0; border: 0; cursor: pointer; }
+.modern-shell-brand-trigger:hover { transform: translateY(-1px); box-shadow: 0 7px 16px rgb(40 94 203 / 24%); }
 .modern-shell-brand-copy { display: grid; min-width: 0; gap: 4px; }
 .modern-shell-brand-copy strong { font-size: 15px; font-weight: 750; letter-spacing: -.04em; }
 .modern-shell-brand-copy span { color: var(--modern-shell-muted); font-size: 10px; line-height: 1.4; }

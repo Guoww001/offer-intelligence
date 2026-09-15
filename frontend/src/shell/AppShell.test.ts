@@ -35,6 +35,23 @@ describe("AppShell", () => {
     wrapper.unmount();
   });
 
+  it("桌面收缩时显示电源图标，点击 YP Logo 可重新展开侧边栏", async () => {
+    const wrapper = mount(AppShell, { props: { initialPage: "agent", userLevel: 0, language: "zh", navigate: vi.fn(), storage: storageFixture() } });
+
+    await wrapper.get("[data-shell-dock]").trigger("click");
+
+    expect(wrapper.find('[data-shell-logout-icon="power"]').exists()).toBe(true);
+    expect(wrapper.find('[data-shell-logout-icon="sign-out"]').exists()).toBe(false);
+    expect(wrapper.get("[data-shell-brand-expand]").attributes("aria-label")).toBe("展开导航面板");
+
+    await wrapper.get("[data-shell-brand-expand]").trigger("click");
+
+    expect(wrapper.get(".modern-shell").classes()).not.toContain("is-docked");
+    expect(wrapper.find('[data-shell-logout-icon="sign-out"]').exists()).toBe(true);
+    expect(wrapper.find('[data-shell-logout-icon="power"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("移动端导航在选择页面后解除工作区 inert，并将焦点还给菜单按钮", async () => {
     const query = vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     vi.stubGlobal("matchMedia", query);

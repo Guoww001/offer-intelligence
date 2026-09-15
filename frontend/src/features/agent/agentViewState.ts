@@ -4,6 +4,7 @@ import type { AgentMemoryState, AgentRunStatus, AgentTimelineStep } from "./agen
 export interface AgentViewSnapshot {
   readonly messages: readonly { readonly id: string; readonly role: "user" | "assistant"; readonly content: string }[];
   readonly timeline: readonly AgentTimelineStep[];
+  readonly elapsedMs?: number;
   readonly status: Exclude<AgentRunStatus, "running">;
   readonly response: string;
   readonly partial: boolean;

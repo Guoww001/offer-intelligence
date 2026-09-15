@@ -28,5 +28,9 @@ assert(/memoryText/.test(agentSession), "Agent Runtime 必须继续携带结构�
 assert(/trend-interact|setTrendColumns/.test(deepWindow + deepWindowStore), "Deep Window 必须保留趋势控件");
 assert(/renderMarkdownToHtml/.test(agentPage), "Agent 必须使用受控 Markdown renderer");
 assert(/\.agent-workspace \.aw-message\.aw-message-user \.chat-stream-text\s*\{[^}]*color:\s*#fff;[^}]*background:\s*linear-gradient/i.test(agentWorkspace), "Agent 用户提问气泡必须保持蓝底白字，并覆盖通用消息文字样式");
+const contentWidth = Number(agentWorkspace.match(/--aw-content-width:\s*(\d+)px/)?.[1]);
+const logWidth = Number(agentWorkspace.match(/--aw-log-content-width:\s*(\d+)px/)?.[1]);
+assert(Number.isFinite(contentWidth) && Number.isFinite(logWidth) && logWidth < contentWidth, "Agent 对话内容区必须比用户提问区更窄");
+assert(/\.agent-workspace \.aw-log-content\s*\{[^}]*width:\s*min\(100%,\s*var\(--aw-log-content-width\)\)[^}]*margin:\s*0 auto/s.test(agentWorkspace), "Agent 对话内容区必须保持水平居中");
 assert(/dashboard:\s*chatbotFactory/.test(entry) && /agent:\s*agentFactory/.test(entry), "Chatbot/Agent factory 必须注册");
 console.log("PASS: M6 behavior remains in the modern runtime");
