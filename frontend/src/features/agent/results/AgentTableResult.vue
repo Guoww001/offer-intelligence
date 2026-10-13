@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import type { UiLanguage } from "../../../shared/i18n";
 import type { AgentResultView } from "../../../shared/contracts/agentResult";
+import { agentToolLabel, agentStatusLabel } from "../agentResultPresentation";
 
 const props = defineProps<{
   readonly language: UiLanguage;
@@ -23,10 +24,10 @@ const tables = computed(() => {
   <section v-for="table in tables" :key="table.title" class="agent-modern-result-card" :aria-label="table.title">
     <header class="agent-modern-result-header">
       <div>
-        <span class="agent-modern-eyebrow">{{ view.toolName }}</span>
+        <span class="agent-modern-eyebrow">{{ agentToolLabel(view.toolName, language) }}</span>
         <strong>{{ table.title }}</strong>
       </div>
-      <span class="agent-modern-result-status">{{ view.status }}</span>
+      <span class="agent-modern-result-status">{{ agentStatusLabel(view.status, language) }}</span>
     </header>
     <div class="agent-modern-result-table-wrap">
       <table class="agent-modern-result-table">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UiLanguage } from "../../../shared/i18n";
 import type { AgentResultView } from "../../../shared/contracts/agentResult";
+import { agentToolLabel, agentStatusLabel } from "../agentResultPresentation";
 
 defineProps<{
   readonly language: UiLanguage;
@@ -12,10 +13,10 @@ defineProps<{
   <section class="agent-modern-result-card" :aria-label="language === 'zh' ? '工具结果摘要' : 'Tool result summary'">
     <header class="agent-modern-result-header">
       <div>
-        <span class="agent-modern-eyebrow">{{ view.toolName }}</span>
+        <span class="agent-modern-eyebrow">{{ agentToolLabel(view.toolName, language) }}</span>
         <strong>{{ view.title }}</strong>
       </div>
-      <span class="agent-modern-result-status">{{ view.status }}</span>
+      <span class="agent-modern-result-status">{{ agentStatusLabel(view.status, language) }}</span>
     </header>
     <p v-if="view.message" class="agent-modern-result-message">{{ view.message }}</p>
     <small v-if="view.dataAsOf || view.estimated">

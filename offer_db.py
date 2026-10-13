@@ -1999,6 +1999,26 @@ def asin_payload(
     return result
 
 
+def monthly_sum_expr(table_alias: str, columns: set[str], candidates: list[str], alias: str) -> str:
+    """仅商户月度查询保留缺列及全 NULL，避免占位零覆盖其他来源。"""
+    column = pick_column(columns, candidates)
+    if not column:
+        return f"NULL AS {q(alias)}"
+    return f"SUM({qualified(table_alias, column)}) AS {q(alias)}"
+
+
+def format_monthly_metric_row(row: dict[str, Any]) -> dict[str, Any]:
+    output = format_metric_row({key: value for key, value in row.items() if value is not None})
+    output.update({key: None for key, value in row.items() if key != "month" and value is None})
+    return output
+
+
+def monthly_ratio(numerator: Any, denominator: Any) -> float | None:
+    if numerator is None or denominator is None or to_float(denominator) <= 0:
+        return None
+    return round(to_float(numerator) / to_float(denominator), 6)
+
+
 def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[dict[str, Any]]:
     order_cols = table_columns(conn, "cnpscy_amazon_order")
     id_column = pick_column(order_cols, ["advert_id", "merchant_id"])
@@ -2010,7 +2030,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
         # orders = SUM(total_purchases)，dpv/atc 取 order 表 detail_page_views/add_to_carts。
         # 若 total_purchases 列缺失，回退为明细行数 COUNT(*)，避免查询报错。
         orders_expr = (
-            f"SUM(COALESCE(o.total_purchases, 0)) AS {q('orders')}"
+            f"SUM(o.total_purchases) AS {q('orders')}"
             if "total_purchases" in order_cols
             else f"COUNT(*) AS {q('orders')}"
         )
@@ -2019,14 +2039,14 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             f"""
             SELECT {month_sql} AS month,
                    {orders_expr},
-                   {sum_expr("o", order_cols, ["amount", "sales_amount", "revenue"], "revenue")},
-                   {sum_expr("o", order_cols, ["payout", "commission"], "payout")},
-                   {sum_expr("o", order_cols, ["aff_payout", "affiliate_payout"], "affiliatePayout")},
-                   {sum_expr("o", order_cols, ["total_clicks", "clicks", "click_num"], "clicks")},
-                   {sum_expr("o", order_cols, ["detail_page_views", "dpv", "dpv_num"], "dpv")},
-                   {sum_expr("o", order_cols, ["add_to_carts", "atc", "atc_num"], "atc")},
-                   {sum_expr("o", order_cols, ["direct_sales", "directSales", "direct_sale_amount"], "directSales")},
-                   {sum_expr("o", order_cols, ["halo_sales", "haloSales", "halo_sale_amount"], "haloSales")}
+                   {monthly_sum_expr("o", order_cols, ["amount", "sales_amount", "revenue"], "revenue")},
+                   {monthly_sum_expr("o", order_cols, ["payout", "commission"], "payout")},
+                   {monthly_sum_expr("o", order_cols, ["aff_payout", "affiliate_payout"], "affiliatePayout")},
+                   {monthly_sum_expr("o", order_cols, ["total_clicks", "clicks", "click_num"], "clicks")},
+                   {monthly_sum_expr("o", order_cols, ["detail_page_views", "dpv", "dpv_num"], "dpv")},
+                   {monthly_sum_expr("o", order_cols, ["add_to_carts", "atc", "atc_num"], "atc")},
+                   {monthly_sum_expr("o", order_cols, ["direct_sales", "directSales", "direct_sale_amount"], "directSales")},
+                   {monthly_sum_expr("o", order_cols, ["halo_sales", "haloSales", "halo_sale_amount"], "haloSales")}
             FROM {q("cnpscy_amazon_order")} o
             WHERE o.{q(id_column)} = %s
             GROUP BY month
@@ -2036,7 +2056,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             (merchant_id,),
         )
         for row in rows:
-            formatted = format_metric_row(row)
+            formatted = format_monthly_metric_row(row)
             by_month[formatted["month"]] = formatted
 
     # click 子查询仅用于 order 表 clicks 为 0 时的兜底（与 Tier Sheet 同规则）
@@ -2049,7 +2069,7 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             conn,
             f"""
             SELECT {month_sql} AS month,
-                   {sum_expr("c", click_cols, ["click", "clicks", "click_num"], "rawClicks")}
+                   {monthly_sum_expr("c", click_cols, ["click", "clicks", "click_num"], "rawClicks")}
             FROM {q("cnpscy_amazon_click")} c
             WHERE c.{q(click_id)} = %s
             GROUP BY month
@@ -2059,21 +2079,18 @@ def merchant_amazon_metrics(conn, merchant_id: str, months: int = 12) -> list[di
             (merchant_id,),
         )
         for row in rows:
-            formatted = format_metric_row(row)
+            formatted = format_monthly_metric_row(row)
             month = formatted["month"]
             target = by_month.setdefault(month, {"month": month})
-            if not to_float(target.get("clicks")) and to_float(formatted.get("rawClicks")):
+            if not to_float(target.get("clicks")) and formatted.get("rawClicks") is not None:
                 target["clicks"] = formatted["rawClicks"]
 
     for row in by_month.values():
-        clicks = to_float(row.get("clicks"))
-        orders = to_float(row.get("orders"))
-        revenue = to_float(row.get("revenue"))
-        row["allEpc"] = round(commission_amount_epc(row.get("payout"), clicks), 6)
-        row["affEpc"] = round(commission_amount_epc(row.get("affiliatePayout"), clicks), 6)
+        row["allEpc"] = monthly_ratio(row.get("payout"), row.get("clicks"))
+        row["affEpc"] = monthly_ratio(row.get("affiliatePayout"), row.get("clicks"))
         row["epc"] = row["affEpc"]
-        row["aov"] = round(revenue / orders, 6) if orders else 0
-        row["conversionRate"] = round(orders / clicks, 6) if clicks else 0
+        row["aov"] = monthly_ratio(row.get("revenue"), row.get("orders"))
+        row["conversionRate"] = monthly_ratio(row.get("orders"), row.get("clicks"))
     return sorted(by_month.values(), key=lambda row: row.get("month") or "", reverse=True)
 
 
@@ -2089,10 +2106,10 @@ def merchant_aggregate_metrics(conn, merchant_id: str, months: int = 12) -> list
         f"""
         SELECT {month_sql} AS month,
                COUNT(*) AS aggregateRows,
-               {sum_expr("a", columns, ["amount", "sales_amount", "revenue"], "revenue")},
-               {sum_expr("a", columns, ["payout", "commission"], "payout")},
-               {sum_expr("a", columns, ["order_num", "orders"], "orders")},
-               {sum_expr("a", columns, ["click_num", "clicks"], "clicks")}
+               {monthly_sum_expr("a", columns, ["amount", "sales_amount", "revenue"], "revenue")},
+               {monthly_sum_expr("a", columns, ["payout", "commission"], "payout")},
+               {monthly_sum_expr("a", columns, ["order_num", "orders"], "orders")},
+               {monthly_sum_expr("a", columns, ["click_num", "clicks"], "clicks")}
         FROM {q("cnpscy_order_new_aggregate")} a
         WHERE a.{q(id_column)} = %s
         GROUP BY month
@@ -2101,7 +2118,7 @@ def merchant_aggregate_metrics(conn, merchant_id: str, months: int = 12) -> list
         """,
         (merchant_id,),
     )
-    return [format_metric_row(row) for row in rows]
+    return [format_monthly_metric_row(row) for row in rows]
 
 
 def merchant_payload(
@@ -2129,7 +2146,7 @@ def merchant_payload(
                 "merchant": None,
                 "products": [],
                 "monthlyAmazonMetrics": merchant_amazon_metrics(conn, merchant_id, months),
-                "monthlyAggregateMetrics": [],
+                "monthlyAggregateMetrics": merchant_aggregate_metrics(conn, merchant_id, months),
             }
         else:
             merchant = merchant_base(conn, merchant_id)

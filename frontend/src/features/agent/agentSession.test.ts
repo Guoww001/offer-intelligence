@@ -253,7 +253,7 @@ describe("createAgentSession", () => {
     const synthesis = calls.find((call) => call.url === "/api/chat/stream");
     expect((synthesis?.body.toolResults as Array<Record<string, unknown>>)[0]).toMatchObject({ toolName: "keyword_search", result: { data: { rows: [{ affCommission: 50 }] } } });
     expect(result.response).toContain("Vac One");
-    expect(result.response).toContain("affCommission");
+    expect(result.response).toContain("Affiliate commission");
     expect(result.response).toContain("50");
   });
 
@@ -454,7 +454,7 @@ describe("createAgentSession", () => {
       expect(sent[4]?.result.data?.asinRanking.status).toBe("empty");
       expect(sent[5]?.result.ok).toBe(false);
       expect(result.response).toContain("未提供");
-      expect(result.response).toContain("数据不可用");
+      expect(result.response).toContain("未找到");
     }
   });
 
@@ -647,7 +647,7 @@ describe("createAgentSession", () => {
     });
 
     const result = await session.submit({
-      prompt: "查询当前推广数据",
+      prompt: "EPC 是什么",
       language: "zh",
       history: [],
       memoryText: "",
@@ -894,7 +894,7 @@ describe("createAgentSession", () => {
       orders: "936",
       revenue: "87,290.46",
       commission: "9,931.64",
-      epc: "1.945",
+      epc: "0.221",
       aov: "93.26",
       conversionRate: "2.09%"
     });

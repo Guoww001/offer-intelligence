@@ -19,6 +19,8 @@ from agent_contract import (
     AGENT_CONTRACT_VERSION,
     AGENT_MAX_TOOL_CALLS,
     build_synthesis_messages,
+    AGENT_RETRY_ERROR_CODES,
+    requires_verifiable_data as _requires_verifiable_data,
     public_agent_error_payload,
     validate_bound_tool_results,
     validate_synthesis_request,
@@ -37,14 +39,6 @@ AGUI_MAX_REQUEST_BYTES = 128 * 1024
 AGUI_BATCH_SIZE = 4
 AGUI_STATE_VERSION = 1
 INTERNAL_TOKEN_HEADER = "X-OI-Copilot-Token"
-_DATA_PATTERN = re.compile(
-    r"当前|最新|最近|本月|上月|多少|数值|数据|查询|统计|列出|展示|提供|每个|分别|哪些|名单|列表|排名|"
-    r"top\s*\d+|分析|表现|趋势|付款|收入|销售额|订单|点击|佣金|商户|商家|品牌|品类|tier|payment|"
-    r"revenue|sales|orders|clicks|trend|epc|aov|cvr|merchant|category|keyword|brand\s+recommendation",
-    re.I,
-)
-_CONCEPT_PATTERN = re.compile(r"什么是|是什么意思|定义|含义|解释|如何计算|怎么算|怎么计算|what is|meaning|definition|how to calculate", re.I)
-_CONCRETE_PATTERN = re.compile(r"多少|数值|数据|查询|统计|列出|展示|提供|每个|分别|哪些|名单|列表|排名|top\s*\d+", re.I)
 _INITIAL_PLANNING_RETRYABLE_ERRORS = {"agent_planning_unavailable"}
 
 
@@ -129,18 +123,11 @@ def _planning_fallback(body: dict, planning: dict) -> Iterable[dict]:
     yield _run_finished(body, {"status": "direct", "authority": "python-registry"})
 
 
-def _requires_verifiable_data(question: str) -> bool:
-    if not question:
-        return False
-    if _CONCEPT_PATTERN.search(question) and not _CONCRETE_PATTERN.search(question):
-        return False
-    return bool(_DATA_PATTERN.search(question))
-
 
 def _missing_data_text(language: str) -> str:
     if language == "en":
-        return "I do not have a verifiable data source for this specific question yet. Please add a merchant, time range, and metric, or retry the lookup."
-    return "当前没有可验证的数据来源，无法直接给出具体数据结论。请补充商户、时间范围和指标，或重试以执行数据查询。"
+        return "I do not have a verifiable data source for this specific question yet. Planning did not produce a verifiable lookup; retry this question."
+    return "当前没有可验证的数据来源，无法直接给出具体数据结论。规划没有生成可验证的查询，请重试当前问题。"
 
 
 def _run_started(body: dict) -> dict:
@@ -199,7 +186,7 @@ def _public_state(
         "agentRunId": _text(planning.get("agentRunId"), 128),
         "planProofs": list(proofs or ([planning.get("planProof")] if planning.get("planProof") else []))[:2],
         "calls": list(calls or planning.get("toolCalls") or [])[:AGENT_MAX_TOOL_CALLS],
-        "round": round_number,
+        "round": max(round_number, int(planning.get("round") or 1)),
         "legacyParity": legacy_parity,
     }
     if promotion_context:
@@ -279,13 +266,15 @@ def _planning_events(body: dict, request_bytes: int, state_seed: dict) -> Iterab
         "language": language,
         "enabledTools": enabled_tools,
         "asinContext": state_seed.get("asinContext", []),
+        "context": {"memory": memory, "history": history},
         **({"promotionContext": promotion_context} if promotion_context else {}),
     }
     status, planning = plan_agent_request(planning_request, request_bytes)
     code = _text(planning.get("errorCode"), 80) or "agent_planning_unavailable"
-    if status == 200 and planning.get("ok") is not True and code in _INITIAL_PLANNING_RETRYABLE_ERRORS:
+    if (status == 200 and planning.get("ok") is not True and code in _INITIAL_PLANNING_RETRYABLE_ERRORS
+            and int(planning.get("round") or 1) < 2):
         yield _timeline("planning-retry", "planning", "running", "Retry planning", "A single controlled retry is allowed")
-        status, planning = plan_agent_request(planning_request, request_bytes)
+        status, planning = plan_agent_request(planning_request, request_bytes, planning_round=2)
         retry_code = _text(planning.get("errorCode"), 80) or "agent_planning_unavailable"
         yield _timeline(
             "planning-retry",
@@ -369,12 +358,14 @@ def _continuation_events(
     round_number = int(state.get("round") or 1)
     proofs = [item for item in state.get("planProofs", []) if isinstance(item, str)][:2]
     omitted_targets = list(state.get("omittedTargets") or [])[:20]
-    if failed and round_number < 2 and proofs and len(calls) < AGENT_MAX_TOOL_CALLS:
+    retryable = [item for item in failed if item["result"].get("errorCode") in AGENT_RETRY_ERROR_CODES]
+    if retryable and round_number < 2 and proofs and len(calls) < AGENT_MAX_TOOL_CALLS:
         yield _timeline("replan", "planning", "running", "Replanning", "Retrying failed calls with canonical error codes")
         status, planning = plan_agent_request({
             "contractVersion": AGENT_CONTRACT_VERSION,
             "question": state.get("question"),
             "asinContext": state.get("asinContext", []),
+            "context": {"memory": state.get("memory") or "", "history": state.get("history") or []},
             "language": state.get("language"),
             "enabledTools": [name for name in AGENT_TOOL_NAMES if state.get("promotionContext") or name != "promotion_analysis"],
             **({"promotionContext": state.get("promotionContext")} if isinstance(state.get("promotionContext"), dict) else {}),
@@ -383,7 +374,7 @@ def _continuation_events(
                 "previousPlanProof": proofs[-1],
                 "failedCalls": [
                     {"callId": item["callId"], "errorCode": item["result"].get("errorCode") or "tool_error"}
-                    for item in failed
+                    for item in retryable
                 ],
             },
         }, request_bytes)

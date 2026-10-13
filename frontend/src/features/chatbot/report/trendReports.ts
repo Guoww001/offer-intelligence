@@ -149,23 +149,24 @@ const LEGACY_DEFAULT_VISIBLE_COLUMNS = [
 function metricAvailability(row: Readonly<Record<string, unknown>>, metric: TrendMetric): boolean {
   if (metric === "salesAmount" || metric === "revenue") return ["salesAmount", "revenue", "sales"].some((key) => row[key] !== undefined && row[key] !== null);
   if (metric === "affiliatePayout" || metric === "affCommission") return ["affiliatePayout", "affCommission", "commission"].some((key) => row[key] !== undefined && row[key] !== null);
-  if (metric === "epc") return ["epc", "affEpc", "affCommission", "affiliatePayout"].some((key) => row[key] !== undefined && row[key] !== null);
-  if (metric === "allEpc") return ["allEpc", "allCommission", "payout"].some((key) => row[key] !== undefined && row[key] !== null);
-  if (metric === "aov") return ["aov", "salesAmount", "revenue", "orders"].some((key) => row[key] !== undefined && row[key] !== null);
-  if (metric === "conversionRate") return ["conversionRate", "cvr", "orders", "clicks"].some((key) => row[key] !== undefined && row[key] !== null);
+  const ratioBasis: Partial<Record<TrendMetric, readonly [readonly string[], readonly string[]]>> = {
+    epc: [["affiliatePayout", "affCommission"], ["clicks"]],
+    allEpc: [["payout", "allCommission"], ["clicks"]],
+    aov: [["salesAmount", "revenue"], ["orders", "orderCount"]],
+    conversionRate: [["orders", "orderCount"], ["clicks"]]
+  };
+  const basis = ratioBasis[metric];
+  if (basis) {
+    // 归一化行中的显式 null 表示缺少同月分子/分母，不回退为零。
+    if (Object.prototype.hasOwnProperty.call(row, metric)) return numeric(row[metric]) !== null;
+    const numerator = firstNumeric(row, basis[0]), denominator = firstNumeric(row, basis[1]);
+    return numerator !== null && denominator !== null && denominator > 0;
+  }
   return row[metric] !== undefined && row[metric] !== null;
 }
 
 function round4(value: number): number {
   return Math.round(value * 10_000) / 10_000;
-}
-
-function clicksFor(metrics: ReadonlyMap<TrendMetric, number>): number {
-  return metrics.get("clicks") || 0;
-}
-
-function ordersFor(metrics: ReadonlyMap<TrendMetric, number>): number {
-  return metrics.get("orders") || 0;
 }
 
 function records(value: unknown): readonly Readonly<Record<string, unknown>>[] {
@@ -181,14 +182,39 @@ export function mergeMerchantMonths(payload: unknown): readonly ReportRow[] {
   const merchant = isRecord(payload.merchant) ? payload.merchant : {};
   const base = { ...merchant };
   const merchantId = text(payload.merchantId ?? merchant.merchantId ?? merchant.merchant_id ?? merchant.id);
-  const monthMap = new Map<string, Readonly<Record<string, unknown>>>();
-  [payload.monthlyAmazonMetrics, payload.monthlyAggregateMetrics, payload.monthly, merchant.monthly]
-    .flatMap(records)
-    .forEach((row) => {
-      const month = monthKey(row.month ?? row.reportMonthKey ?? row.reportMonth);
-      if (!month) return;
-      monthMap.set(month, { ...(monthMap.get(month) || {}), ...row, month });
-    });
+  const monthMap = new Map<string, Record<string, unknown>>();
+  const merge = (row: Readonly<Record<string, unknown>>, aggregate: boolean) => {
+    const month = monthKey(row.month ?? row.reportMonthKey ?? row.reportMonth);
+    if (!month) return;
+    const target = monthMap.get(month) || { month };
+    for (const [key, value] of Object.entries(row)) {
+      if (value === null || value === undefined || String(value).trim() === "") continue;
+      if (["epc", "affEpc", "allEpc", "aov", "conversionRate", "cvr"].includes(key)) continue;
+      if (aggregate && key === "clicks") target.aggregateClicks = value;
+      else if (key !== "month") target[key] = value;
+    }
+    const aliases = [
+      ["revenue", "salesAmount", "sales"], ["orders", "orderCount"],
+      ["payout", "allCommission", "commission"], ["affiliatePayout", "affCommission"]
+    ];
+    for (const keys of aliases) {
+      const value = firstNumeric(row, keys);
+      if (value !== null) keys.slice(0, 2).forEach((key) => { target[key] = value; });
+    }
+    monthMap.set(month, target);
+  };
+  [payload.monthlyAmazonMetrics, payload.monthly, merchant.monthly].flatMap(records).forEach((row) => merge(row, false));
+  records(payload.monthlyAggregateMetrics).forEach((row) => merge(row, true));
+  for (const row of monthMap.values()) {
+    const ratio = (numerator: unknown, denominator: unknown): number | null => {
+      const n = numeric(numerator), d = numeric(denominator);
+      return n !== null && d !== null && d > 0 ? n / d : null;
+    };
+    row.epc = row.affEpc = ratio(row.affiliatePayout, row.clicks);
+    row.allEpc = ratio(row.payout, row.clicks);
+    row.aov = ratio(row.revenue, row.orders);
+    row.conversionRate = ratio(row.orders, row.clicks);
+  }
   if (!Object.keys(base).length && !merchantId && !monthMap.size) return [];
   return [{
     ...base,
@@ -243,34 +269,51 @@ export function buildTrendReport(query: ReportQuery, offers: readonly ReportRow[
   const requestedMonths = Math.max(2, Math.min(24, rangeMonths || query.months || 3));
   const real = new Map<string, number>();
   const realMetrics = new Map<string, Map<TrendMetric, number>>();
+  const observedMonths = new Map<string, Readonly<Record<string, unknown>>[]>();
   rows.forEach((row) => monthlyRows(row).forEach((month) => {
     const key = monthKey(month.month ?? month.reportMonthKey ?? month.reportMonth);
     if (!key) return;
     if (rangeStart && key < rangeStart) return;
     if (rangeEnd && key > rangeEnd) return;
-    if (!metricAvailability(month, metric)) return;
-    real.set(key, (real.get(key) || 0) + monthlyValue(month, metric));
+    const observed = observedMonths.get(key) || [];
+    observed.push(month);
+    observedMonths.set(key, observed);
     const metrics = realMetrics.get(key) || new Map<TrendMetric, number>();
     FULL_TREND_METRICS.forEach((metricName) => {
       if (!metricAvailability(month, metricName)) return;
       metrics.set(metricName, (metrics.get(metricName) || 0) + monthlyValue(month, metricName));
     });
     realMetrics.set(key, metrics);
+    if (!metricAvailability(month, metric)) return;
+    real.set(key, (real.get(key) || 0) + monthlyValue(month, metric));
   }));
-  real.forEach((_value, key) => {
-    const metrics = realMetrics.get(key);
-    if (!metrics) return;
-    const clicks = metrics.get("clicks") || 0;
-    const orders = metrics.get("orders") || 0;
-    const sales = metrics.get("salesAmount") || 0;
-    const affiliatePayout = metrics.get("affiliatePayout") || 0;
-    const payout = metrics.get("payout") || 0;
-    if (metric === "epc" && metrics.has("affiliatePayout") && metrics.has("clicks")) real.set(key, clicks > 0 ? affiliatePayout / clicks : 0);
-    if (metric === "allEpc" && metrics.has("payout") && metrics.has("clicks")) real.set(key, clicks > 0 ? payout / clicks : 0);
-    if (metric === "aov" && metrics.has("salesAmount") && metrics.has("orders")) real.set(key, orders > 0 ? sales / orders : 0);
-    if (metric === "conversionRate" && metrics.has("orders") && metrics.has("clicks")) real.set(key, clicks > 0 ? orders / clicks : 0);
+  const ratioFields = {
+    epc: [["affiliatePayout", "affCommission"], ["clicks"]],
+    allEpc: [["payout", "allCommission"], ["clicks"]],
+    aov: [["revenue", "salesAmount"], ["orders", "orderCount"]],
+    conversionRate: [["orders", "orderCount"], ["clicks"]]
+  } as const;
+  const monthlyRatios = new Map<string, Record<string, number | null>>();
+  observedMonths.forEach((months, key) => {
+    const ratios: Record<string, number | null> = {};
+    Object.entries(ratioFields).forEach(([field, [numeratorKeys, denominatorKeys]]) => {
+      let numerator = 0, denominator = 0, complete = true;
+      months.forEach((month) => {
+        const n = firstNumeric(month, numeratorKeys), d = firstNumeric(month, denominatorKeys);
+        // 群体比率代表完整集合；任何商户缺输入都不能只贡献分子或分母。
+        if (n === null || d === null || d <= 0) complete = false;
+        else { numerator += n; denominator += d; }
+      });
+      ratios[field] = complete && denominator > 0 ? numerator / denominator : null;
+    });
+    monthlyRatios.set(key, ratios);
+    if (Object.prototype.hasOwnProperty.call(ratioFields, metric)) {
+      const value = ratios[metric];
+      if (value === null || value === undefined) real.delete(key);
+      else real.set(key, value);
+    }
   });
-  const hasAggregateBasis = rows.some((row) => metricAvailability(row as Readonly<Record<string, unknown>>, metric));
+  const hasAggregateBasis = !observedMonths.size && rows.some((row) => metricAvailability(row as Readonly<Record<string, unknown>>, metric));
   if (!real.size && !hasAggregateBasis) return {
     rows: [], metric, estimated: false,
     categoryOptions: Array.from(new Set(rows.flatMap((row) => rowCategories(row as Readonly<Record<string, unknown>>)))),
@@ -278,17 +321,20 @@ export function buildTrendReport(query: ReportQuery, offers: readonly ReportRow[
     title: language === "zh" ? "月度趋势" : "Monthly trend",
     note: language === "zh" ? "当前数据没有可用的月度指标。" : "No monthly metric is available in the current data."
   };
-  const estimated = real.size < 2 || real.size < requestedMonths;
+  const needsFill = real.size < 2 || real.size < requestedMonths;
   const sortedRealKeys = [...real.keys()].sort();
   const keys = rangeStart && rangeEnd
     ? Array.from({ length: requestedMonths }, (_, index) => addMonths(rangeStart, index))
-      : estimated
-      ? Array.from({ length: requestedMonths }, (_, index) => addMonths(sortedRealKeys.at(-1) || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`, index - requestedMonths + 1))
+      : needsFill
+      ? Array.from({ length: requestedMonths }, (_, index) => addMonths([...observedMonths.keys()].sort().at(-1) || sortedRealKeys.at(-1) || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`, index - requestedMonths + 1))
       : sortedRealKeys.slice(-requestedMonths);
   const aggregateTotal = rows.reduce((sum, row) => sum + monthlyValue(row as Readonly<Record<string, unknown>>, metric), 0);
   const realAverage = real.size ? [...real.values()].reduce((sum, value) => sum + value, 0) / real.size : 0;
   const estimateBase = realAverage || aggregateTotal / requestedMonths;
-  const points = keys.map((key, index) => {
+  // 已有月度行但指标不可用的月份省略，不生成估算点。
+  const visibleKeys = keys.filter((key) => real.has(key) || !observedMonths.has(key));
+  const estimated = visibleKeys.some((key) => !real.has(key));
+  const points = visibleKeys.map((key, index) => {
     const isEstimatedPoint = !real.has(key);
     const value = real.has(key)
       ? real.get(key) || 0
@@ -299,23 +345,27 @@ export function buildTrendReport(query: ReportQuery, offers: readonly ReportRow[
       const available = metrics.has(metricName);
       metricValues[metricName] = available ? Math.round((metrics.get(metricName) || 0) * 10000) / 10000 : null;
     });
-    if (metrics.has("affiliatePayout") && metrics.has("clicks")) metricValues.epc = clicksFor(metrics) > 0 ? round4(metrics.get("affiliatePayout")! / clicksFor(metrics)) : 0;
-    if (metrics.has("payout") && metrics.has("clicks")) metricValues.allEpc = clicksFor(metrics) > 0 ? round4(metrics.get("payout")! / clicksFor(metrics)) : 0;
-    if (metrics.has("salesAmount") && metrics.has("orders")) metricValues.aov = ordersFor(metrics) > 0 ? round4(metrics.get("salesAmount")! / ordersFor(metrics)) : 0;
-    if (metrics.has("orders") && metrics.has("clicks")) metricValues.conversionRate = clicksFor(metrics) > 0 ? round4(metrics.get("orders")! / clicksFor(metrics)) : 0;
+    const ratios = monthlyRatios.get(key);
+    Object.keys(ratioFields).forEach((field) => {
+      metricValues[field] = ratios?.[field] == null ? null : round4(ratios[field]!);
+    });
     if (metric === "revenue") metricValues.salesAmount = round4(value);
     metricValues[metric] = round4(value);
     return { month: key, value: round4(value), estimated: isEstimatedPoint, ...metricValues };
   });
   const trendRows = points.map((point, index) => {
-    const previousValue = index ? points[index - 1]!.value : null;
+    const previousValue = index && addMonths(points[index - 1]!.month, 1) === point.month ? points[index - 1]!.value : null;
     const delta = previousValue === null ? null : Math.round((point.value - previousValue) * 10000) / 10000;
     const deltaPct = previousValue === null || previousValue === 0 ? null : Math.round((point.value - previousValue) / Math.abs(previousValue) * 10000) / 10000;
     return { ...point, previousValue, delta, deltaPct };
   });
-  const note = estimated
+  const incompleteRatios = [...monthlyRatios.values()].some((ratios) => Object.values(ratios).some((value) => value === null));
+  const missingNote = incompleteRatios
+    ? (language === "zh" ? " 部分同月指标缺少完整输入，比率显示未提供；所选指标缺失的月份不生成估算点。" : " Some monthly inputs are incomplete; ratios are unavailable and months missing the selected metric are omitted.")
+    : "";
+  const note = (estimated
     ? (language === "zh" ? "⚡ estimated：当前数据没有足够的真实月度记录，趋势仅用于方向参考。" : "⚡ estimated: insufficient real monthly records; use this trend directionally only.")
-    : (language === "zh" ? "真实月度数据：按月份聚合，首月不计算环比。" : "Real monthly data: aggregated by month; the first month has no delta.");
+    : (language === "zh" ? "真实月度数据：按月份聚合，首月不计算环比。" : "Real monthly data: aggregated by month; the first month has no delta.")) + missingNote;
   const categories = Array.from(new Set(rows.flatMap((row) => rowCategories(row as Readonly<Record<string, unknown>>))));
   return {
     rows: trendRows,

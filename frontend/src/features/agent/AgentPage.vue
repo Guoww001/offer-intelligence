@@ -168,6 +168,7 @@ const copy = computed(() => props.language === "zh" ? {
   stopped: "本次 Agent 执行已停止。",
   failed: "本次查询未完成。可以重试，或调整问题后再次发送。",
   failedFeedback: "反馈本次失败",
+  stoppedFeedback: "反馈本次停止",
   failureFeedbackPrompt: "本次执行遇到了问题，请点击下方按钮反馈，帮助我们排查。",
   toolFeedbackPrompt: "数据查询或工具调用遇到了问题，请点击下方按钮反馈，帮助我们排查。",
   details: "查询详情", closeDetails: "收起详情", conversation: "当前对话", you: "你", answer: "Agent",
@@ -205,6 +206,7 @@ const copy = computed(() => props.language === "zh" ? {
   stopped: "This Agent run was stopped.",
   failed: "This query could not be completed. Try again, or adjust your question.",
   failedFeedback: "Report this failed run",
+  stoppedFeedback: "Report this stopped run",
   failureFeedbackPrompt: "This run encountered a problem. Click the button below to report it and help us investigate.",
   toolFeedbackPrompt: "A data query or tool call encountered a problem. Click the button below to report it and help us investigate.",
   details: "Query details", closeDetails: "Close details", conversation: "Current conversation", you: "You", answer: "Agent",
@@ -912,7 +914,7 @@ onBeforeUnmount(() => {
             <div v-if="error || runStatus === 'stopped'" class="aw-notice" :class="{ 'aw-notice-error': error }" :role="error ? 'alert' : 'status'">
               <p>{{ error || copy.stopped }}</p>
               <div class="aw-notice-actions">
-                <ChatAnswerActions v-if="failedFeedback" :language="language" :refresh-key="feedbackRefreshKey" :feedback="failedFeedback" :feedback-label="copy.failedFeedback" :feedback-prompt="runStatus === 'error' ? feedbackPrompt : ''" />
+                <ChatAnswerActions v-if="failedFeedback" :language="language" :refresh-key="feedbackRefreshKey" :feedback="failedFeedback" :feedback-label="runStatus === 'stopped' ? copy.stoppedFeedback : copy.failedFeedback" :feedback-prompt="runStatus === 'error' ? feedbackPrompt : ''" />
                 <button v-if="lastPrompt" type="button" class="aw-button" data-agent-action="retry" @click="handleExample(lastPrompt)">{{ copy.retry }}</button>
               </div>
             </div>

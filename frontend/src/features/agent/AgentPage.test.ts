@@ -11,6 +11,24 @@ import { clearAgentViewSnapshot } from "./agentViewState";
 describe("AgentPage", () => {
   beforeEach(() => clearAgentViewSnapshot("modern-agent"));
 
+  it("主动停止使用停止反馈文案，不显示运行失败", async () => {
+    const previousRuntime = window.OI_MODERN_RUNTIME;
+    const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body || "{}"));
+      return new Response(JSON.stringify(payload.action === "create" ? { recordId: "stopped-record" } : { ok: true }));
+    };
+    window.OI_MODERN_RUNTIME = { createAgentActivity: () => createAgentActivity({ fetcher }) } as never;
+    const run: AgentRunner = async () => ({ ok: false, status: "stopped", response: "", steps: [] });
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    try {
+      await wrapper.get('[data-agent-input]').setValue("查询商户");
+      await wrapper.get('[data-agent-form]').trigger("submit");
+      await flushPromises();
+      expect(wrapper.get('.aw-notice [data-feedback-action="open"]').text()).toContain("停止");
+      expect(wrapper.get('.aw-notice [data-feedback-action="open"]').text()).not.toContain("失败");
+    } finally { wrapper.unmount(); window.OI_MODERN_RUNTIME = previousRuntime; }
+  });
+
   it.each(["error", "throw", "tool-error", "tool-timeout"])("%s 场景主动显示提醒气泡并提交本轮反馈", async (scenario) => {
     const previousRuntime = window.OI_MODERN_RUNTIME;
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
