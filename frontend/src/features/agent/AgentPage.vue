@@ -44,6 +44,7 @@ export interface AgentRunRequest {
   readonly memory: AgentMemoryState;
   readonly memoryText: string;
   readonly asinContext?: readonly string[];
+  readonly questionEventId?: string;
   readonly signal: AbortSignal;
   readonly promotionAttachment?: AgentPromotionAttachment;
   readonly onToken?: (token: string) => void;
@@ -653,6 +654,7 @@ async function submit(): Promise<void> {
       language: requestLanguage,
       history: currentHistory,
       asinContext,
+      questionEventId: activeAnswerId || undefined,
       memory: initialMemory,
       memoryText: agentMemoryPromptText(initialMemory, requestLanguage),
       signal: abortController.signal,
