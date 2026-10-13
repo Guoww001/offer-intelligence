@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import type { UiLanguage } from "../../../shared/i18n";
 import type { AgentResultView, AgentTrendData } from "../../../shared/contracts/agentResult";
+import { agentMetricLabel, agentToolLabel } from "../agentResultPresentation";
 
 const props = defineProps<{ readonly language: UiLanguage; readonly view: AgentResultView }>();
 const metric = ref(props.view.trend?.metric || "revenue");
@@ -9,19 +10,7 @@ watch(() => props.view.id, () => { metric.value = props.view.trend?.metric || "r
 
 const trend = computed<AgentTrendData | undefined>(() => props.view.trend);
 const metricLabel = computed(() => {
-  const labels: Record<string, { zh: string; en: string }> = {
-    revenue: { zh: "收入", en: "Revenue" },
-    orders: { zh: "订单", en: "Orders" },
-    epc: { zh: "EPC", en: "EPC" },
-    aov: { zh: "AOV", en: "AOV" },
-    clicks: { zh: "点击", en: "Clicks" },
-    conversionRate: { zh: "转化率", en: "Conversion" },
-    affiliatePayout: { zh: "联盟佣金", en: "Affiliate payout" },
-    payout: { zh: "付款", en: "Payout" },
-    dpv: { zh: "详情页浏览", en: "DPV" },
-    atc: { zh: "加购", en: "ATC" }
-  };
-  return labels[metric.value]?.[props.language] || metric.value;
+  return agentMetricLabel(metric.value, props.language);
 });
 
 const rows = computed(() => {
@@ -30,7 +19,7 @@ const rows = computed(() => {
     const raw = row[key];
     const value = typeof raw === "number" ? raw : Number(raw);
     const month = String(row.month || "").trim();
-    return month && Number.isFinite(value) ? [{ month, value }] : [];
+    return month && typeof raw === "number" && Number.isFinite(value) ? [{ month, value }] : [];
   });
 });
 
@@ -57,6 +46,7 @@ const chart = computed(() => {
 
 function formatValue(value: number): string {
   if (!Number.isFinite(value)) return "—";
+  if (metric.value === "conversionRate") return `${(value * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
   if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
   return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 }
@@ -69,10 +59,10 @@ function selectMetric(event: MouseEvent): void {
 </script>
 
 <template>
-  <section v-if="trend && chart" class="agent-modern-result-card agent-trend-result" :aria-label="language === 'zh' ? '工具趋势结果' : 'Tool trend result'">
+  <section v-if="trend" class="agent-modern-result-card agent-trend-result" :aria-label="language === 'zh' ? '工具趋势结果' : 'Tool trend result'">
     <header class="agent-modern-result-header">
       <div>
-        <span class="agent-modern-eyebrow">{{ view.toolName }}</span>
+        <span class="agent-modern-eyebrow">{{ agentToolLabel(view.toolName, language) }}</span>
         <strong>{{ view.title }}</strong>
       </div>
       <span class="agent-modern-result-status">{{ metricLabel }}</span>
@@ -84,9 +74,9 @@ function selectMetric(event: MouseEvent): void {
         type="button"
         :data-agent-trend-metric="option"
         :class="{ active: metric === option }"
-      >{{ option }}</button>
+      >{{ agentMetricLabel(option, language) }}</button>
     </div>
-    <div class="agent-trend-chart-wrap">
+    <div v-if="chart" class="agent-trend-chart-wrap">
       <svg class="agent-trend-chart" :viewBox="`0 0 ${chart.width} ${chart.height}`" role="img" :aria-label="`${metricLabel} ${trend.target}`">
         <g class="agent-trend-grid" aria-hidden="true">
           <line v-for="line in chart.grid" :key="line.y" :x1="chart.left" :x2="chart.width - 18" :y1="line.y" :y2="line.y" />
@@ -103,10 +93,21 @@ function selectMetric(event: MouseEvent): void {
         </g>
       </svg>
     </div>
+    <p v-else role="status">{{ language === 'zh' ? '该指标不足两个可比较的月份，缺失值不补零。' : 'Fewer than two comparable months; missing values are not zero.' }}</p>
+    <details class="agent-trend-monthly-details">
+      <summary>{{ language === 'zh' ? '月度明细' : 'Monthly details' }}</summary>
+      <div class="agent-modern-result-table-wrap">
+        <table class="agent-modern-result-table">
+          <thead><tr><th scope="col">{{ language === 'zh' ? '月份' : 'Month' }}</th><th scope="col">{{ metricLabel }}</th></tr></thead>
+          <tbody><tr v-for="row in trend.months" :key="String(row.month)"><th scope="row">{{ row.month }}</th><td>{{ typeof row[metric] === 'number' ? formatValue(row[metric] as number) : (language === 'zh' ? '未提供' : 'Not provided') }}</td></tr></tbody>
+        </table>
+      </div>
+    </details>
     <footer class="agent-modern-result-meta">
-      <span>{{ language === "zh" ? "范围" : "Range" }}: {{ formatValue(chart.min) }} – {{ formatValue(chart.max) }}</span>
+      <span v-if="chart">{{ language === "zh" ? "范围" : "Range" }}: {{ formatValue(chart.min) }} – {{ formatValue(chart.max) }}</span>
       <span v-if="view.dataAsOf">{{ language === "zh" ? "数据截至" : "Data as of" }} {{ view.dataAsOf }}</span>
       <span v-if="view.estimated">{{ language === "zh" ? "估算" : "Estimated" }}</span>
+      <span v-if="view.message">{{ view.message }}</span>
     </footer>
   </section>
   <p v-else role="status">{{ language === 'zh' ? '暂无可绘制的月度趋势数据。' : 'No monthly trend data to plot.' }}</p>

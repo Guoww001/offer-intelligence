@@ -2,7 +2,8 @@ import type { UiLanguage } from "../../shared/i18n";
 import { notifyAuthFailure } from "../../shared/api/client";
 import { mergeMerchantMonths } from "../chatbot/report/trendReports";
 import { createReportDataProvider } from "../chatbot/report/reportDataProvider";
-import { searchAgentKeywords } from "./agentKeywordSearch";
+import { parseAgentKeywordConstraints, searchAgentKeywords } from "./agentKeywordSearch";
+import { agentMetricLabel } from "./agentResultPresentation";
 import { consumeSseResponse } from "../../shared/stream/sse";
 import {
   normalizeAgentResultView,
@@ -197,6 +198,7 @@ interface AgentPlan {
   readonly planProof?: string;
   readonly content: string;
   readonly toolCalls: readonly AgentToolCall[];
+  readonly round: number;
 }
 
 interface AgentToolResult {
@@ -260,6 +262,7 @@ const ENABLED_ERROR_CODES = new Set([
 const KNOWN_ERROR_CODES = new Set([
   ...ENABLED_ERROR_CODES,
   "agent_planning_unavailable",
+  "agent_no_tool_plan",
   "network_error",
   "provider_error",
 ]);
@@ -269,6 +272,7 @@ const INITIAL_PLANNING_RETRYABLE_ERROR_CODES = new Set([
   "provider_error",
   "llm_timeout",
 ]);
+const RETRYABLE_TOOL_ERROR_CODES = new Set(["tool_error", "tool_timeout", "llm_timeout"]);
 const ASIN_PATTERN = /^B[0-9A-Z]{9}$/i;
 const MAX_ASINS_PER_QUERY = 5;
 
@@ -318,6 +322,13 @@ function numberFor(row: Row, keys: readonly string[]): number {
   return numberValue(firstValue(row, keys));
 }
 
+function nullableNumberFor(row: Row, keys: readonly string[]): number | null {
+  const raw = firstValue(row, keys);
+  if (raw === undefined || typeof raw === "boolean") return null;
+  const parsed = Number(String(raw).replace(/[$,%]/g, "").replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function merchantId(row: Row): string {
   return text(firstValue(row, ["merchantId", "merchant_id", "Merchant ID", "MerchantID", "id"]), 80).replace(/\.0$/, "");
 }
@@ -350,28 +361,29 @@ function rowMatchesCategory(row: Row, category: string): boolean {
   });
 }
 
-function metricValues(row: Row): Record<string, number> {
-  const clicks = numberFor(row, ["clicks", "Clicks", "totalClicks"]);
-  const orders = numberFor(row, ["orders", "orderCount", "Order count", "Order Count"]);
-  const revenue = numberFor(row, ["salesAmount", "revenue", "Revenue", "revenueMade"]);
-  const commission = numberFor(row, ["affCommission", "commissionMade", "AFF Commission", "affiliatePayout", "payout"]);
-  const epcRaw = numberFor(row, ["epc", "EPC"]);
-  const aovRaw = numberFor(row, ["aov", "AOV"]);
-  const conversionRaw = numberFor(row, ["conversionRate", "conversion", "CVR"]);
+function metricValues(row: Row): Record<string, number | null> {
+  const clicks = nullableNumberFor(row, ["clicks", "Clicks", "totalClicks"]);
+  const orders = nullableNumberFor(row, ["orders", "orderCount", "Order count", "Order Count"]);
+  const revenue = nullableNumberFor(row, ["salesAmount", "revenue", "Revenue", "revenueMade"]);
+  const commission = nullableNumberFor(row, ["affCommission", "commissionMade", "AFF Commission", "affiliatePayout"]);
+  const epcRaw = nullableNumberFor(row, ["epc", "affEpc", "EPC", "EPC(Aff)"]);
+  const aovRaw = nullableNumberFor(row, ["aov", "AOV"]);
+  const conversionRaw = nullableNumberFor(row, ["conversionRate", "conversion", "CVR"]);
   return {
     clicks,
     orders,
     revenue,
     commission,
-    epc: epcRaw || (clicks ? revenue / clicks : 0),
-    aov: aovRaw || (orders ? revenue / orders : 0),
-    conversionRate: conversionRaw || (clicks ? orders / clicks : 0)
+    epc: epcRaw ?? (clicks !== null && clicks > 0 && commission !== null ? commission / clicks : null),
+    aov: aovRaw ?? (orders !== null && orders > 0 && revenue !== null ? revenue / orders : null),
+    conversionRate: conversionRaw ?? (clicks !== null && clicks > 0 && orders !== null ? orders / clicks : null)
   };
 }
 
 function aggregate(rows: readonly Row[]): Record<string, unknown> {
-  const totals = rows.map(metricValues).reduce((result, item) => {
-    Object.entries(item).forEach(([key, value]) => { result[key] = (result[key] || 0) + value; });
+  const values = rows.map(metricValues);
+  const totals = values.reduce((result, item) => {
+    Object.entries(item).forEach(([key, value]) => { if (value !== null) result[key] = (result[key] || 0) + value; });
     return result;
   }, {} as Record<string, number>);
   const clicks = totals.clicks || 0;
@@ -379,13 +391,13 @@ function aggregate(rows: readonly Row[]): Record<string, unknown> {
   const revenue = totals.revenue || 0;
   return {
     merchantCount: new Set(rows.map(merchantId).filter(Boolean)).size || rows.length,
-    clicks,
-    orders,
-    revenue,
-    commission: totals.commission || 0,
-    epc: clicks ? revenue / clicks : 0,
-    aov: orders ? revenue / orders : 0,
-    conversionRate: clicks ? orders / clicks : 0
+    clicks: Object.hasOwn(totals, "clicks") ? clicks : null,
+    orders: Object.hasOwn(totals, "orders") ? orders : null,
+    revenue: Object.hasOwn(totals, "revenue") ? revenue : null,
+    commission: Object.hasOwn(totals, "commission") ? totals.commission : null,
+    epc: clicks > 0 && values.every(row => row.commission !== null && row.clicks !== null) ? (totals.commission || 0) / clicks : null,
+    aov: orders > 0 && values.every(row => row.revenue !== null && row.orders !== null) ? revenue / orders : null,
+    conversionRate: clicks > 0 && values.every(row => row.orders !== null && row.clicks !== null) ? orders / clicks : null
   };
 }
 
@@ -400,7 +412,7 @@ function merchantData(row: Row): Record<string, unknown> {
     merchant: merchantObject(row),
     ...(rowTier(row) ? { tier: rowTier(row) } : {}),
     ...(categories[0] ? { category: categories[0] } : {}),
-    metrics: Object.fromEntries(Object.entries(metricValues(row)).map(([key, value]) => [key, rounded(value)]))
+    metrics: Object.fromEntries(Object.entries(metricValues(row)).map(([key, value]) => [key, value === null ? null : rounded(value)]))
   };
 }
 
@@ -479,7 +491,7 @@ function asinSummaryRow(row: Row): Record<string, unknown> | null {
     ...(optionalAsinText(row, ["category", "Category"]) ? { category: optionalAsinText(row, ["category", "Category"]) } : {}),
     ...(optionalAsinNumber(row, ["commissionRate"]) !== undefined ? { commissionRate: optionalAsinNumber(row, ["commissionRate"]) } : {}),
     ...(optionalAsinText(row, ["updatedAt"], 80) ? { updatedAt: optionalAsinText(row, ["updatedAt"], 80) } : {}),
-    ...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, rounded(value)]))
+    ...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, value === null ? null : rounded(value)]))
   };
 }
 
@@ -496,7 +508,7 @@ function asinMonthlyRow(row: Row, fallbackAsin: string, fallbackMerchantName: st
     ...(id ? { merchantId: id } : {}),
     ...(name ? { merchantName: name } : {}),
     month,
-    ...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, rounded(value)]))
+    ...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, value === null ? null : rounded(value)]))
   };
 }
 
@@ -579,8 +591,9 @@ function clipHistory(history: readonly AgentHistoryMessage[]): AgentHistoryMessa
 function isDataQuestion(prompt: string): boolean {
   const value = text(prompt, 4_000);
   if (!value) return false;
-  if (/(?:what is|definition|meaning|how to calculate|\u4ec0\u4e48\u662f|\u542b\u4e49|\u5982\u4f55\u8ba1\u7b97)/i.test(value)
-    && !/(?:current|latest|how many|show|list|data|\u5f53\u524d|\u6700\u65b0|\u591a\u5c11|\u67e5\u8be2|\u5217\u51fa|\u6570\u636e)/i.test(value)) return false;
+  const definitionCue = /什么是|是什么|定义|含义|解释|如何计算|怎么算|怎么计算|what is|meaning|definition|formula|explain|how to calculate/i;
+  const metricDefinition = /^\s*(?:(?:什么是|解释|如何计算|怎么算|怎么计算|what is|explain|how to calculate)\s*)?(?:(?:联盟|平均|加权|总|affiliate|average|weighted|total)\s*)?(?:EPC|CVR|AOV|收入趋势|收入|销售额|订单|点击|联盟佣金|佣金|转化率|客单价|关键词搜索|revenue trend|revenue|sales|orders|clicks|commission|conversion rate|average order value|keyword search)\s*(?:的\s*)?(?:是什么|是什么意思|定义|含义|公式|如何计算|怎么算|怎么计算|definition|meaning|formula)?\s*[？?。.]?\s*$/i;
+  if (definitionCue.test(value) && metricDefinition.test(value)) return false;
   return isKeywordDataQuestion(value) || /(?:\basin\b|\bB[0-9A-Z]{9}\b|epc|aov|cvr|conversion|revenue|sales|orders|clicks|commission|payout|payment|trend|monthly|merchant|category|tier|report|data|\u4ed8\u6b3e|\u6536\u5165|\u8ba2\u5355|\u70b9\u51fb|\u8d8b\u52bf|\u6708\u5ea6|\u5546\u6237|\u54c1\u7c7b|\u5c42\u7ea7|\u6570\u636e)/i.test(value);
 }
 
@@ -603,16 +616,22 @@ function keywordFailureMessage(errorCode: string | undefined, language: UiLangua
     : `“${keyword}”的关键词数据暂不可用，这不代表数据库中没有相关商户。`;
 }
 
-function hasVerifiableContext(prompt: string, memory: string, history: readonly AgentHistoryMessage[]): boolean {
-  const value = `${prompt} ${memory} ${history.map((item) => item.content).join(" ")}`;
-  return /(?:\b(?:epc|aov|cvr|revenue|sales|orders|clicks|commission|payout|payment|trend|monthly)\b|\u4ed8\u6b3e|\u6536\u5165|\u8ba2\u5355|\u70b9\u51fb|\u8d8b\u52bf|\u6708\u5ea6|\u6570\u636e)\s*(?:is|=|:|\u662f|\u4e3a)/i.test(value)
-    || /(?:\b(?:epc|aov|cvr|revenue|sales|orders|clicks)\b)\s*[-+]?\d+(?:[.,]\d+)?/i.test(value);
+function toolFailureMessage(result: AgentToolResult, language: UiLanguage, target: string): string {
+  if (result.resolution?.status === "invalid_filter" && Array.isArray(result.resolution.candidates)) {
+    const candidates = result.resolution.candidates.filter(isRecord).map(row => text(row.name || row.id, 120)).filter(Boolean);
+    if (candidates.length) return language === "zh" ? `“${target}”对应多个商户，请选择：${candidates.join("、")}。` : `Choose a merchant for "${target}": ${candidates.join(", ")}.`;
+  }
+  if (result.errorCode === "not_found") return language === "zh"
+    ? (result.resolution?.field === "months" ? `“${target}”没有足够的月度数据，暂时无法生成趋势。` : `当前可用数据中未找到“${target}”，请核对目标名称或编号。`)
+    : `No matching data is available for "${target}". Check the target or period.`;
+  if (["invalid_arguments", "invalid_filter"].includes(result.errorCode || "")) return language === "zh" ? "查询条件暂不支持，请核对目标、指标或筛选条件。" : "Check the target, metric or filters for this query.";
+  return language === "zh" ? `“${target}”的数据查询暂不可用，请稍后重试。` : `Data for "${target}" is temporarily unavailable. Please retry.`;
 }
 
-function missingDataResponse(language: UiLanguage): string {
+function missingDataResponse(language: UiLanguage, reason = "agent_no_tool_plan"): string {
   return language === "en"
-    ? "I do not have a verifiable data source for this specific question yet. Please provide the merchant, time range, and metric, or retry so I can run a data lookup."
-    : "\u5f53\u524d\u6ca1\u6709\u53ef\u9a8c\u8bc1\u7684\u6570\u636e\u6765\u6e90\uff0c\u65e0\u6cd5\u76f4\u63a5\u7ed9\u51fa\u5177\u4f53\u6570\u636e\u7ed3\u8bba\u3002\u8bf7\u8865\u5145\u5546\u6237\u3001\u65f6\u95f4\u8303\u56f4\u548c\u6307\u6807\uff0c\u6216\u91cd\u8bd5\u4ee5\u6267\u884c\u6570\u636e\u67e5\u8be2\u3002";
+    ? `I do not have a verifiable data source for this request. ${reason === "agent_no_tool_plan" ? "No executable data lookup was planned." : "The planning service is temporarily unavailable."} Retry this question or use a query command.`
+    : `本次尚未取得可验证的数据来源。${reason === "agent_no_tool_plan" ? "未生成可执行的数据查询计划。" : "规划服务暂时不可用。"}请重试当前问题，或使用查询命令。`;
 }
 
 function rowMonth(row: Row): string {
@@ -622,12 +641,12 @@ function rowMonth(row: Row): string {
 }
 
 function monthlyData(row: Row, metric?: string): Record<string, unknown> {
-  const values = metricValues(row);
-  const result: Record<string, unknown> = {
-    month: rowMonth(row),
-    metrics: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, rounded(value)]))
-  };
-  if (metric) result.value = rounded(metricValue(row, metric));
+  const result = merchantMonthlyData(row);
+  const values = result.metrics as Record<string, number>;
+  if (metric) {
+    const key = metric === "affiliatePayout" ? "commission" : metric;
+    result.value = typeof values[key] === "number" ? values[key] : null;
+  }
   return result;
 }
 
@@ -637,7 +656,8 @@ function merchantMonthlyData(row: Row): Record<string, unknown> {
     clicks: ["clicks", "Clicks", "totalClicks"], orders: ["orders", "orderCount"],
     revenue: ["salesAmount", "revenue"], commission: ["affCommission", "affiliatePayout"],
     payout: ["allCommission", "payout"], epc: ["epc", "affEpc"], allEpc: ["allEpc"],
-    aov: ["aov"], conversionRate: ["conversionRate"], dpv: ["dpv"], atc: ["atc"]
+    aov: ["aov"], conversionRate: ["conversionRate"], dpv: ["dpv"], atc: ["atc"],
+    directSales: ["directSales", "direct_sales"], haloSales: ["haloSales", "halo_sales"]
   };
   const metrics: Record<string, number> = {};
   Object.entries(fields).forEach(([key, aliases]) => {
@@ -729,15 +749,6 @@ function metricKey(value: unknown): string | null {
     ? key : null;
 }
 
-function metricValue(row: Row, metric: string): number {
-  if (metric === "affiliatePayout" || metric === "payout") return numberFor(row, [metric, "affCommission", "commissionMade", "payout"]);
-  if (metric === "directSales") return numberFor(row, ["directSales", "direct_sales"]);
-  if (metric === "haloSales") return numberFor(row, ["haloSales", "halo_sales"]);
-  if (metric === "dpv") return numberFor(row, ["dpv", "detailPageViews"]);
-  if (metric === "atc") return numberFor(row, ["atc", "addToCart"]);
-  return metricValues(row)[metric] || 0;
-}
-
 function trendRows(rows: readonly Row[], requestedMonths: number, metric: string): Record<string, unknown>[] {
   const grouped = new Map<string, Row[]>();
   rows.forEach((row) => {
@@ -745,22 +756,28 @@ function trendRows(rows: readonly Row[], requestedMonths: number, metric: string
     if (!/^20\d{2}-\d{2}$/.test(month)) return;
     grouped.set(month, [...(grouped.get(month) || []), row]);
   });
-  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-requestedMonths).map(([month, monthRows]) => ({
-    month,
-    value: rounded(monthRows.reduce((sum, row) => sum + metricValue(row, metric), 0)),
-    metrics: aggregate(monthRows)
-  }));
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-requestedMonths).map(([month, monthRows]) => {
+    const metrics = aggregate(monthRows);
+    const additional: Record<string, string[]> = { payout: ["payout", "allCommission"], directSales: ["directSales", "direct_sales"], haloSales: ["haloSales", "halo_sales"], dpv: ["dpv", "detailPageViews"], atc: ["atc", "addToCart"] };
+    Object.entries(additional).forEach(([key, aliases]) => {
+      const values = monthRows.map(row => nullableNumberFor(row, aliases)).filter((value): value is number => value !== null);
+      metrics[key] = values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+    });
+    const value = metrics[metric === "affiliatePayout" ? "commission" : metric];
+    return { month, value: typeof value === "number" ? rounded(value) : null, metrics };
+  });
 }
 
 function trendSummary(rows: readonly Record<string, unknown>[]): Record<string, unknown> {
-  const values = rows.map((row) => numberValue(row.value));
-  const first = values[0] || 0;
-  const latest = values.at(-1) || 0;
+  const first = typeof rows[0]?.value === "number" ? rows[0].value as number : null;
+  const latest = typeof rows.at(-1)?.value === "number" ? rows.at(-1)!.value as number : null;
   return {
-    first: rounded(first),
-    latest: rounded(latest),
-    change: rounded(latest - first),
-    changeRate: first ? rounded((latest - first) / first) : 0
+    first: first === null ? null : rounded(first),
+    latest: latest === null ? null : rounded(latest),
+    startMonth: text(rows[0]?.month, 10),
+    endMonth: text(rows.at(-1)?.month, 10),
+    change: first === null || latest === null ? null : rounded(latest - first),
+    changeRate: first === null || latest === null || first === 0 ? null : Math.round(((latest - first) / first) * 1_000_000) / 1_000_000
   };
 }
 
@@ -793,6 +810,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let steps: AgentTimelineStep[] = [];
   let resultViews: AgentResultView[] = [];
   let planningAsins: readonly string[] = [];
+  let planningContext: { memory: string; history: AgentHistoryMessage[] } = { memory: "", history: [] };
   let response = "";
   let partial = false;
   let omittedTargets: string[] = [];
@@ -873,6 +891,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (!result.ok || (isRecord(payload) && payload.ok === false)) {
         const error = new Error(safeErrorCode(isRecord(payload) ? payload.errorCode : undefined));
         (error as Error & { code?: string }).code = safeErrorCode(isRecord(payload) ? payload.errorCode : undefined);
+        if (url === "/api/chat/agent" && isRecord(payload) && (payload.round === 1 || payload.round === 2)) {
+          (error as Error & { round?: number }).round = payload.round;
+        }
         throw error;
       }
       return (isRecord(payload) ? payload : {}) as T;
@@ -1033,11 +1054,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     trace: TraceContext,
     promotionAttachment?: AgentPromotionAttachment,
     retry?: Record<string, unknown>,
+    planningRound = 1,
   ): Record<string, unknown> {
     const body: Record<string, unknown> = {
       contractVersion: "v2",
+      planningRound,
       question: text(question, 4_000),
       asinContext: planningAsins,
+      context: planningContext,
       language,
       enabledTools: AGENT_TOOL_NAMES.filter((name) => promotionAttachment || name !== "promotion_analysis"),
       trace: { runId: trace.runId, questionEventId: trace.questionEventId, tracePhase: "planning" }
@@ -1064,6 +1088,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
     return {
       agentRunId,
+      round: payload.round === 2 ? 2 : 1,
       ...(text(payload.planProof, 8_192) ? { planProof: text(payload.planProof, 8_192) } : {}),
       content: text(payload.content, 8_000),
       toolCalls
@@ -1076,21 +1101,22 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     trace: TraceContext,
     signal: AbortSignal,
     promotionAttachment?: AgentPromotionAttachment,
-    retry?: Record<string, unknown>
-  ): Promise<{ readonly plan?: AgentPlan; readonly errorCode?: string }> {
+    retry?: Record<string, unknown>,
+    planningRound = 1
+  ): Promise<{ readonly plan?: AgentPlan; readonly errorCode?: string; readonly round?: number }> {
     try {
       const payload = await requestJson<JsonPayload>("/api/chat/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
-        body: JSON.stringify(buildPlanningBody(question, language, trace, promotionAttachment, retry))
+        body: JSON.stringify(buildPlanningBody(question, language, trace, promotionAttachment, retry, planningRound))
       }, signal);
       const parsed = parsePlan(payload);
-      if (!parsed) return { errorCode: safeErrorCode(payload.errorCode || "agent_planning_unavailable") };
+      if (!parsed) return { errorCode: safeErrorCode(payload.errorCode || "agent_planning_unavailable"), round: payload.round === 2 ? 2 : planningRound };
       if (parsed.toolCalls.length && !parsed.planProof) return { errorCode: "agent_signing_unavailable" };
-      return { plan: parsed };
+      return { plan: { ...parsed, round: planningRound === 2 ? 2 : parsed.round } };
     } catch (error) {
       if (isAbortError(error, signal)) throw error;
-      return { errorCode: text((error as Error & { code?: string }).code, 64) || "agent_planning_unavailable" };
+      return { errorCode: text((error as Error & { code?: string }).code, 64) || "agent_planning_unavailable", round: (error as Error & { round?: number }).round === 2 ? 2 : planningRound };
     }
   }
 
@@ -1106,7 +1132,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return { rows, checkedAt: text(payload.checkedAt, 80) || null, ...(isRecord(payload.merchant) ? { merchant: payload.merchant } : {}) };
       }
       const rows = Array.isArray(payload.monthlyAmazonMetrics)
-        ? payload.monthlyAmazonMetrics.filter(isRecord)
+        ? (mergeMerchantMonths(payload)[0]?.monthly as Row[] || [])
         : Array.isArray(payload.monthlyMetrics)
           ? payload.monthlyMetrics.filter(isRecord)
           : [];
@@ -1251,8 +1277,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       monthly,
       monthlyDataAvailable: monthly.length > 0,
       monthlyDataSource: monthly.length ? "database" : "unavailable",
-      monthlyNote: monthly.length ? "Monthly rows are loaded from the database." : "Monthly data is unavailable; cached offer metrics are retained.",
-      headline: name + " merchant analysis",
+      monthlyNote: currentLanguage === "zh"
+        ? (monthly.length ? "月度数据来自数据库，缺失指标显示为未提供。" : "月度数据暂不可用，当前指标来自商户缓存。")
+        : (monthly.length ? "Monthly data is loaded from the database; missing metrics are not provided." : "Monthly data is unavailable; current metrics use the offer cache."),
+      headline: name + (currentLanguage === "zh" ? " · 商户分析" : " merchant analysis"),
       note: "Merchant details and merged monthly rows use the full database endpoint; missing merchant fields and comparisons use the current offer cache."
     };
     return success(data, monthly.length ? "mixed" : "cache", monthlyResult.checkedAt || options.dataAsOf || null);
@@ -1298,15 +1326,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const entities = rows.map((row) => ({ merchant: merchantObject(row), tier: rowTier(row), category: rowCategories(row)[0] || null, metrics: metricValues(row) }));
     const deltas = entities.map((entity) => ({
       merchant: entity.merchant,
-      metrics: Object.fromEntries(Object.entries(entity.metrics).map(([key, value]) => [key, rounded(value - (base[key] || 0))]))
+      metrics: Object.fromEntries(Object.entries(entity.metrics).map(([key, value]) => [key, value === null || base[key] === null || base[key] === undefined ? null : rounded(value - base[key])]))
     }));
     return success({
       entities,
       notFound: [],
       deltas,
       pairwiseDeltas: deltas,
-      headline: "Merchant comparison",
-      note: "Comparison values are calculated from cached offer rows."
+      headline: currentLanguage === "zh" ? "商户对比" : "Merchant comparison",
+      note: currentLanguage === "zh" ? "指标来自当前商户快照，完整对比见结果表；缺失指标显示未提供。" : "Metrics use the current offer snapshot; see the result table for the full comparison. Missing metrics are not provided."
     }, "cache", options.dataAsOf || null);
   }
 
@@ -1437,7 +1465,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       return failure("invalid_filter", offers.length ? "cache" : "unavailable", { status: "invalid_filter", field: "entityType" });
     }
     if (trend.length < 2) return failure("not_found", dataSource, { status: "not_found", field: "months", value: months });
+    trend.sort((left, right) => String(left.month).localeCompare(String(right.month)));
     const summary = trendSummary(trend);
+    const asOfMonth = dataAsOf?.slice(0, 7);
+    summary.latestMonthComplete = asOfMonth ? String(summary.endMonth) < asOfMonth : null;
     return success({
       entityType,
       target: label,
@@ -1446,8 +1477,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       metrics: summary,
       months: trend,
       summary,
-      headline: label + " trend",
-      note: estimated ? "Trend points are estimated from dated cached rows." : "Trend points are loaded from monthly database data."
+      headline: label + (currentLanguage === "zh" ? " · 月度趋势" : " trend"),
+      note: currentLanguage === "zh"
+        ? `${estimated ? "来自带月份的缓存记录。" : "月度数据来自数据库。"}${summary.latestMonthComplete === false ? "最新月份尚未结束，不能直接与完整月份比较。" : ""}`
+        : `${estimated ? "Trend points are estimated from dated cached rows." : "Trend points are loaded from monthly database data."}${summary.latestMonthComplete === false ? " The latest month is incomplete." : ""}`
     }, dataSource, dataAsOf, estimated);
   }
 
@@ -1456,10 +1489,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const mode = args.mode === undefined ? "search" : args.mode;
     const limit = args.limit === undefined ? 10 : args.limit;
     const alternatives = args.semanticAlternatives === undefined ? [] : args.semanticAlternatives;
+    const constraints = parseAgentKeywordConstraints(args);
     if (keyword.length < 2 || keyword.length > 120 || (mode !== "search" && mode !== "recommendation")
       || !Number.isInteger(limit) || Number(limit) < 1 || Number(limit) > 20
       || !Array.isArray(alternatives) || alternatives.length > 3
-      || alternatives.some((value) => typeof value !== "string" || value.trim().length < 2 || value.trim().length > 120)) {
+      || alternatives.some((value) => typeof value !== "string" || value.trim().length < 2 || value.trim().length > 120)
+      || !constraints || Object.keys(args).some(key => !["keyword", "mode", "limit", "semanticAlternatives", "tiers", "metricFilters", "metricSort"].includes(key))) {
       return failure("invalid_arguments", "unavailable", { status: "invalid_filter", field: "keyword" });
     }
     const provider = createReportDataProvider({
@@ -1488,7 +1523,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     if (keywordUnavailable && !offerRows.length) {
       return failure("tool_error", "unavailable", { status: "unavailable", field: "keywords" });
     }
-    const data = searchAgentKeywords(keyword, mode, Number(limit), offerRows, keywordUnavailable ? {} : productKeywords, currentLanguage, keywordUnavailable, alternatives);
+    const data = searchAgentKeywords(keyword, mode, Number(limit), offerRows, keywordUnavailable ? {} : productKeywords, currentLanguage, keywordUnavailable, alternatives, constraints);
     const source = provider.snapshot();
     const dataSource: DataSource = source.offersLoadedFrom === "db" ? "mixed" : "cache";
     const rawCheckedAt = isRecord(productKeywords) && typeof productKeywords.checkedAt === "string" ? productKeywords.checkedAt : "";
@@ -1580,21 +1615,23 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     promotionAttachment?: AgentPromotionAttachment,
   ): Promise<AgentToolExecution[]> {
     const started = new Map<string, number>();
-    calls.forEach((call) => {
-      started.set(call.id, Date.now());
-      emitStep(makeStep("tool-" + call.id, "tool", "running", stepLabel("tool", toolTarget(call)), started.get(call.id)!));
-    });
-    const results = await Promise.all(calls.map(async (call) => {
-      const result = await executeTool(call, prompt, signal, promotionAttachment);
-      const stepStatus: AgentTimelineStep["status"] = result.ok ? "done" : result.errorCode === "tool_timeout" ? "timeout" : "error";
-      const step = makeStep("tool-" + call.id, "tool", stepStatus, stepLabel("tool", toolTarget(call)), started.get(call.id) || Date.now(), result);
-      emitStep(step);
-      appendTraceStep(trace, step, steps.findIndex((item) => item.id === step.id) + 1);
-      const execution = { call, result };
-      const view = result.resultView || resultViewFromExecution(execution);
-      if (view) emitResultView(view);
-      return execution;
-    }));
+    const results: AgentToolExecution[] = [];
+    for (let offset = 0; offset < calls.length; offset += 4) {
+      const batch = await Promise.all(calls.slice(offset, offset + 4).map(async (call) => {
+        started.set(call.id, Date.now());
+        emitStep(makeStep("tool-" + call.id, "tool", "running", stepLabel("tool", toolTarget(call)), started.get(call.id)!));
+        const result = await executeTool(call, prompt, signal, promotionAttachment);
+        const stepStatus: AgentTimelineStep["status"] = result.ok ? "done" : result.errorCode === "tool_timeout" ? "timeout" : "error";
+        const step = makeStep("tool-" + call.id, "tool", stepStatus, stepLabel("tool", toolTarget(call)), started.get(call.id) || Date.now(), result);
+        emitStep(step);
+        appendTraceStep(trace, step, steps.findIndex((item) => item.id === step.id) + 1);
+        const execution = { call, result };
+        const view = result.resultView || resultViewFromExecution(execution);
+        if (view) emitResultView(view);
+        return execution;
+      }));
+      results.push(...batch);
+    }
     return results;
   }
 
@@ -1646,6 +1683,38 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (typeof value === "string" || typeof value === "boolean") return text(value, 120);
       return "";
     };
+    if (result.ok && item.call.name === "trend" && Array.isArray(data.months)) {
+      const sourceMonths = data.months.filter(isRecord).sort((left, right) => String(left.month).localeCompare(String(right.month)));
+      const metric = text(data.metric, 40) || "revenue";
+      const chartKey = (key: string) => key === "commission" ? "affiliatePayout" : key;
+      const months: Record<string, string | number | null>[] = sourceMonths.map(row => ({
+        month: text(row.month, 10),
+        ...Object.fromEntries(Object.entries(isRecord(row.metrics) ? row.metrics : {}).map(([key, value]) => [chartKey(key), typeof value === "number" ? value : null])),
+        [metric]: typeof row.value === "number" ? row.value : null
+      }));
+      const available = months.flatMap(row => Object.keys(row).filter(key => key !== "month" && typeof row[key] === "number"));
+      const metrics = [...new Set([metric, ...available])];
+      const summary = Object.fromEntries(metrics.map(key => {
+        const first = months[0]?.[key];
+        const last = months.at(-1)?.[key];
+        return [key, { pct: typeof first === "number" && typeof last === "number" && first !== 0 ? (last - first) / first : null }];
+      }));
+      return normalizeAgentResultView({ id: item.call.id, toolName: item.call.name, kind: "trend", status: "done",
+        title: text(data.headline, 180), source: result.source.dataSource, dataAsOf: result.source.dataAsOf,
+        estimated: result.source.estimated, partial: false, metrics: [], columns: [], rows: [], message: text(data.note, 800),
+        trend: { target: text(data.target, 180), metric, metrics, months, summary, estimated: result.source.estimated } });
+    }
+    if (result.ok && item.call.name === "merchant_comparison" && Array.isArray(data.entities)) {
+      const keys = ["tier", "revenue", "epc", "conversionRate", "orders", "clicks", "aov", "commission"];
+      const columns = currentLanguage === "zh" ? ["Tier", "销售额", "联盟 EPC", "转化率", "订单", "点击", "客单价", "联盟佣金"]
+        : ["Tier", "Revenue", "Affiliate EPC", "CVR", "Orders", "Clicks", "AOV", "Affiliate commission"];
+      return normalizeAgentResultView({ id: item.call.id, toolName: item.call.name, kind: "table", status: "done",
+        title: currentLanguage === "zh" ? "商户对比" : "Merchant comparison", source: result.source.dataSource, dataAsOf: result.source.dataAsOf,
+        estimated: false, partial: false, metrics: [], columns,
+        rows: data.entities.filter(isRecord).map(entity => ({ label: isRecord(entity.merchant) ? text(entity.merchant.name, 120) : "",
+          values: keys.map(key => scalar(key, key === "tier" ? entity.tier : isRecord(entity.metrics) ? entity.metrics[key] : undefined) || (currentLanguage === "zh" ? "未提供" : "Not provided")) })),
+        message: currentLanguage === "zh" ? "使用当前商户快照的同口径指标进行对比。" : "Compared using the current offer snapshot." });
+    }
     if (item.call.name === "keyword_search") {
       const sourceRows = Array.isArray(data.rows) ? data.rows.filter(isRecord) : [];
       const recommendation = data.mode === "recommendation";
@@ -1663,7 +1732,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         title: text(data.headline, 180) || toolTarget(item.call),
         source: result.source.dataSource, dataAsOf: result.source.dataAsOf,
         estimated: false, partial: data.partial === true || data.truncated === true,
-        metrics: [], columns, rows,
+        metrics: [], columns: currentLanguage === "zh" ? columns.map(key => ({ merchantId: "商户 ID", matchedField: "匹配字段", matchedText: "命中依据", salesAmount: "销售额", orders: "订单", conversionRate: "转化率", aov: "客单价", epc: "联盟 EPC", affCommission: "联盟佣金", clicks: "点击" }[key] || key)) : columns, rows,
         message: result.ok ? text(data.note, 800) : keywordFailureMessage(result.errorCode, currentLanguage, toolTarget(item.call))
       });
     }
@@ -1751,7 +1820,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       metrics,
       columns,
       rows,
-      message: result.ok ? text(data.note, 800) : result.errorCode || "tool_error"
+      message: result.ok ? text(data.note, 800) : toolFailureMessage(result, currentLanguage, toolTarget(item.call))
     });
   }
 
@@ -1781,7 +1850,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (!item.result.ok) {
         lines.push(item.call.name === "keyword_search"
           ? keywordFailureMessage(item.result.errorCode, language, toolTarget(item.call))
-          : (language === "en" ? "Data unavailable for " : "\u6570\u636e\u4e0d\u53ef\u7528\uff1a") + toolTarget(item.call) + ".");
+          : toolFailureMessage(item.result, language, toolTarget(item.call)));
         return;
       }
       if (item.call.name === "asin_analysis" && Array.isArray(data.rows)) {
@@ -1804,7 +1873,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         const metrics = ["salesAmount", "orders", "conversionRate", "aov", "epc", "affCommission", "clicks"]
           .filter((field) => data.mode === "recommendation" && sourceRows.some((row) => typeof row[field] === "number"));
         const headings = language === "zh" ? ["排名", "商户", "Merchant ID", "命中字段", "命中依据"] : ["Rank", "Merchant", "Merchant ID", "Matched field", "Evidence"];
-        const columns = [...(data.mode === "recommendation" ? headings : headings.slice(1)), ...metrics];
+        const columns = [...(data.mode === "recommendation" ? headings : headings.slice(1)), ...metrics.map(key => agentMetricLabel(key, language))];
         lines.push(`| ${columns.join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |`);
         const cell = (value: unknown, maxLength: number): string => text(value, maxLength).replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
         sourceRows.forEach((row) => {
@@ -1862,25 +1931,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         lines.push(text(data.note, 800));
       } else if (item.call.name === "merchant_analysis" && isRecord(data.metrics)) {
         const metrics = data.metrics;
-        lines.push("Merchant: " + (isRecord(data.merchant) ? text(data.merchant.name, 120) : toolTarget(item.call))
-          + "; EPC " + numberValue(metrics.epc).toFixed(3)
-          + "; conversion " + (numberValue(metrics.conversionRate) * 100).toFixed(2) + "%.");
-        if (Array.isArray(data.monthly) && data.monthly.length) {
-          lines.push("| Month | Value |\n| --- | --- |");
-          data.monthly.forEach((row) => {
-            if (isRecord(row)) lines.push("| " + text(row.month, 20) + " | " + (text(isRecord(row.metrics) ? row.metrics.revenue : row.value, 40) || (language === "en" ? "Not provided" : "未提供")) + " |");
-          });
-        }
+        lines.push(["revenue", "epc", "conversionRate"].map(key => `${agentMetricLabel(key, language)}：${typeof metrics[key] === "number" ? formatAgentResultNumber(key, metrics[key]) : (language === "zh" ? "未提供" : "Not provided")}`).join("；"));
+        if (Array.isArray(data.monthly) && data.monthly.length) lines.push(language === "zh" ? "完整月度指标见上方数据表。" : "See the result table for all monthly metrics.");
       } else if (item.call.name === "tier_analysis" && Array.isArray(data.merchants)) {
-        lines.push("| Merchant | EPC | Conversion |\n| --- | --- | --- |");
+        lines.push(language === "zh" ? "| 商户 | 联盟 EPC | 转化率 |\n| --- | --- | --- |" : "| Merchant | Affiliate EPC | CVR |\n| --- | --- | --- |");
         data.merchants.forEach((row) => {
           if (!isRecord(row)) return;
           const merchant = isRecord(row.merchant) ? text(row.merchant.name, 120) : "";
           const metrics = isRecord(row.metrics) ? row.metrics : {};
-          lines.push("| " + merchant + " | " + numberValue(metrics.epc).toFixed(3) + " | " + (numberValue(metrics.conversionRate) * 100).toFixed(2) + "% |");
+          const value = (key: string) => typeof metrics[key] === "number" ? formatAgentResultNumber(key, metrics[key]) : (language === "zh" ? "未提供" : "Not provided");
+          lines.push("| " + merchant + " | " + value("epc") + " | " + value("conversionRate") + " |");
         });
       } else if (isRecord(data.summary)) {
-        lines.push(JSON.stringify(data.summary));
+        const summary = data.summary;
+        const keys = item.call.name === "trend" ? ["first", "latest", "changeRate"] : Object.keys(summary);
+        const labels: Record<string, string> = language === "zh" ? { first: "起点", latest: "最新值", changeRate: "变化率" } : { first: "First", latest: "Latest", changeRate: "Change" };
+        lines.push(keys.filter(key => typeof summary[key] === "number" || summary[key] === null).map(key => {
+          const value = summary[key];
+          return `${labels[key] || agentMetricLabel(key, language)}：${typeof value === "number" ? formatAgentResultNumber(key === "changeRate" ? "conversionRate" : text(data.metric) || key, value) : (language === "zh" ? "未提供" : "Not provided")}`;
+        }).join("；"));
       } else if (text(data.note, 500)) {
         lines.push(text(data.note, 500));
       }
@@ -2060,7 +2129,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
     currentLanguage = request.language === "en" ? "en" : "zh";
     planningAsins = request.asinContext ?? (status === "done" ? asinContextFromViews(resultViews) : []);
-    const baseHistory = history.length ? history.slice(-MAX_HISTORY) : clipHistory(request.history).slice(-MAX_HISTORY);
+    const baseHistory = Array.isArray(request.history) ? request.history.slice(-MAX_HISTORY) : history.slice(-MAX_HISTORY);
+    planningContext = { memory: text(request.memoryText, MAX_MEMORY_TEXT), history: clipHistory(baseHistory) };
     history = baseHistory.slice();
     messages = [...baseHistory, { role: "user", content: prompt }, { role: "assistant", content: "" }];
     steps = [];
@@ -2087,10 +2157,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const planningId = "planning";
       emitStep(makeStep(planningId, "planning", "running", stepLabel("planning", ""), started));
       let firstPlan = await plan(prompt, currentLanguage, trace, combined.signal, request.promotionAttachment);
-      if (!firstPlan.plan && INITIAL_PLANNING_RETRYABLE_ERROR_CODES.has(firstPlan.errorCode || "") && !combined.signal.aborted) {
+      if (!firstPlan.plan && firstPlan.round !== 2 && INITIAL_PLANNING_RETRYABLE_ERROR_CODES.has(firstPlan.errorCode || "") && !combined.signal.aborted) {
         const retryStarted = Date.now();
         emitStep(makeStep("planning-retry", "planning", "running", stepLabel("planning", ""), retryStarted));
-        firstPlan = await plan(prompt, currentLanguage, trace, combined.signal, request.promotionAttachment);
+        firstPlan = await plan(prompt, currentLanguage, trace, combined.signal, request.promotionAttachment, undefined, 2);
         emitStep(makeStep("planning-retry", "planning", firstPlan.plan ? "done" : "error", stepLabel("planning", ""), retryStarted));
       }
       if (!firstPlan.plan) {
@@ -2098,7 +2168,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         emitStep(planningStep);
         appendTraceStep(trace, planningStep, ++traceSequence);
         if (isDataQuestion(prompt)) {
-          const safeResponse = isKeywordDataQuestion(prompt) ? keywordMissingDataResponse(currentLanguage) : missingDataResponse(currentLanguage);
+          const safeResponse = isKeywordDataQuestion(prompt) ? keywordMissingDataResponse(currentLanguage) : missingDataResponse(currentLanguage, firstPlan.errorCode);
           const result = commitDone(baseHistory, prompt, safeResponse, false, [], [], "no_verifiable_source");
           completeTrace(trace, { status: "done", partial: false, stopped: false, fallback: true, planned: 0, executed: 0, failed: 0, errorCode: "no_verifiable_source" });
           await completeQuestion("success");
@@ -2121,8 +2191,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       emitStep(planningStep);
       appendTraceStep(trace, planningStep, ++traceSequence);
       if (!activePlan.toolCalls.length) {
-        const direct = isKeywordDataQuestion(prompt) ? keywordMissingDataResponse(currentLanguage) : activePlan.content || (isDataQuestion(prompt) && !hasVerifiableContext(prompt, request.memoryText, baseHistory)
-          ? missingDataResponse(currentLanguage) : missingDataResponse(currentLanguage));
+        const direct = isKeywordDataQuestion(prompt) ? keywordMissingDataResponse(currentLanguage)
+          : isDataQuestion(prompt) ? missingDataResponse(currentLanguage)
+          : activePlan.content || missingDataResponse(currentLanguage);
         const result = commitDone(baseHistory, prompt, direct, false, [], [], activePlan.content ? undefined : "no_verifiable_source");
         completeTrace(trace, { status: "done", partial: false, stopped: false, fallback: !activePlan.content, planned: 0, executed: 0, failed: 0, errorCode: activePlan.content ? null : "no_verifiable_source" });
         await completeQuestion("success");
@@ -2144,8 +2215,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       failedCount += allExecutions.filter((item) => !item.result.ok).length;
       const proofs: string[] = activePlan.planProof ? [activePlan.planProof] : [];
 
-      const failedCalls = allExecutions.filter((item) => !item.result.ok && ENABLED_ERROR_CODES.has(item.result.errorCode || ""));
-      if (failedCalls.length && activePlan.planProof && executedCount < MAX_TOOL_CALLS && !combined.signal.aborted) {
+      const failedCalls = allExecutions.filter((item) => !item.result.ok && RETRYABLE_TOOL_ERROR_CODES.has(item.result.errorCode || ""));
+      if (failedCalls.length && activePlan.round < 2 && activePlan.planProof && executedCount < MAX_TOOL_CALLS && !combined.signal.aborted) {
         const retryBody = {
           agentRunId: activePlan.agentRunId,
           previousPlanProof: activePlan.planProof,

@@ -225,8 +225,8 @@ def test_synthesis_prompt_language():
     zh = chat_agent_http.agent_synthesis_system_prompt("zh")
     en = chat_agent_http.agent_synthesis_system_prompt("en")
     assert zh != en and "不要" in zh and "do not" in en.lower()
-    assert "monthly" in zh and "每一行" in zh and "不能只回答最新月份" in zh
-    assert "monthly" in en.lower() and "every row" in en.lower() and "latest month" in en.lower()
+    assert "monthly" in zh and "本地组件" in zh and "关键数字" in zh
+    assert "monthly" in en.lower() and "local components" in en.lower() and "key numbers" in en.lower()
     assert "asin_analysis" in zh and "monthly" in zh
     assert "asin_analysis" in en and "monthly" in en.lower()
 

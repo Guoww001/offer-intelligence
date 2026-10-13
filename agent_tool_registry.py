@@ -39,6 +39,8 @@ AGENT_TOOL_NAMES = (
     "promotion_analysis",
 )
 AGENT_TIER_NAMES = ("Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER")
+AGENT_KEYWORD_METRICS = ("salesAmount", "orders", "conversionRate", "aov", "epc", "affCommission", "clicks")
+AGENT_FILTER_OPERATORS = (">", ">=", "<", "<=", "=")
 AGENT_PAYMENT_STATUSES = ("paid", "pending", "unpaid", "overdue", "partial")
 AGENT_TREND_METRICS = (
     "revenue",
@@ -92,6 +94,7 @@ AGENT_RESULT_FIELDS = {
     "keyword_search": (
         "keyword", "matchedKeyword", "matchType", "mode", "rows", "matchedCount", "returnedCount",
         "truncated", "unrankedCount", "headline", "note", "partial", "keywordCheckedAt",
+        "appliedFilters", "eligibleCount", "excludedMissingMetricsCount", "matchSetComplete",
     ),
     "promotion_analysis": tuple(PROMOTION_RESULT_FIELDS),
 }
@@ -328,12 +331,15 @@ def _build_specs() -> dict[str, dict[str, Any]]:
                     "keyword": _text_property("产品关键词，不包含推荐等意图词。", "Product keyword without recommendation intent words.", 120),
                     "semanticAlternatives": {"type": "array", "items": {"type": "string", "minLength": 2, "maxLength": 120}, "minItems": 1, "maxItems": 3},
                     "mode": {"type": "string", "enum": ["search", "recommendation"], "default": "search"},
+                    "tiers": {"type": "array", "items": {"type": "string", "enum": list(AGENT_TIER_NAMES)}, "maxItems": 5},
+                    "metricFilters": {"type": "array", "maxItems": 6, "items": {"type": "object", "properties": {"field": {"type": "string", "enum": list(AGENT_KEYWORD_METRICS)}, "operator": {"type": "string", "enum": list(AGENT_FILTER_OPERATORS)}, "value": {"type": "number"}}, "required": ["field", "operator", "value"], "additionalProperties": False}},
+                    "metricSort": {"type": "object", "properties": {"field": {"type": "string", "enum": list(AGENT_KEYWORD_METRICS)}, "direction": {"type": "string", "enum": ["asc", "desc"]}}, "required": ["field", "direction"], "additionalProperties": False},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
                 },
                 "required": ["keyword"],
                 "additionalProperties": False,
             },
-            "argument_fields": ("keyword", "semanticAlternatives", "mode", "limit"),
+            "argument_fields": ("keyword", "semanticAlternatives", "mode", "limit", "tiers", "metricFilters", "metricSort"),
         },
         "promotion_analysis": {
             "description_zh": "基于用户上传的商家清单，查询推广前后商家、按商家统计媒体数量、媒体、链接、品类或历史表现；没有上传清单时不要调用。",
@@ -394,6 +400,43 @@ def get_agent_tool_definitions(language: str, enabled_tools: object) -> list[dic
             }
         )
     return definitions
+
+
+def _validate_keyword_filters(value: object) -> tuple[dict | None, dict | None]:
+    """关键词筛选保持比例数值，并拒绝非白名单条件。"""
+    if not isinstance(value, dict) or any(key not in {"tiers", "metricFilters", "metricSort"} for key in value):
+        return None, _error("invalid_filter", "appliedFilters")
+    cleaned = copy.deepcopy(value)
+    if "tiers" in value:
+        tiers = value["tiers"]
+        if not isinstance(tiers, list) or len(tiers) > 5 or any(tier not in AGENT_TIER_NAMES for tier in tiers):
+            return None, _error("invalid_filter", "tiers")
+        cleaned["tiers"] = list(dict.fromkeys(tiers))
+    if "metricFilters" in value:
+        filters = value["metricFilters"]
+        if not isinstance(filters, list) or len(filters) > 6:
+            return None, _error("invalid_filter", "metricFilters")
+        for item in filters:
+            if (not isinstance(item, dict) or set(item) != {"field", "operator", "value"}
+                    or item["field"] not in AGENT_KEYWORD_METRICS or item["operator"] not in AGENT_FILTER_OPERATORS
+                    or not _finite_filter_number(item["value"])):
+                return None, _error("invalid_filter", "metricFilters")
+    if "metricSort" in value:
+        sort = value["metricSort"]
+        if (not isinstance(sort, dict) or set(sort) != {"field", "direction"}
+                or sort["field"] not in AGENT_KEYWORD_METRICS or sort["direction"] not in ("asc", "desc")):
+            return None, _error("invalid_filter", "metricSort")
+    return cleaned, None
+
+
+def _finite_filter_number(value: object) -> bool:
+    """拒绝无法表达为前端有限数值的筛选门槛。"""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def validate_tool_arguments(tool_name: str, arguments: object) -> tuple[dict | None, dict | None]:
@@ -478,6 +521,10 @@ def validate_tool_arguments(tool_name: str, arguments: object) -> tuple[dict | N
             if error or any(len(item) < 2 for item in alternatives or []):
                 return None, _error("invalid_arguments", "semanticAlternatives")
             cleaned["semanticAlternatives"] = alternatives
+        filters, error = _validate_keyword_filters({key: arguments[key] for key in ("tiers", "metricFilters", "metricSort") if key in arguments})
+        if error:
+            return None, error
+        cleaned.update(filters)
     elif tool_name == "promotion_analysis":
         cleaned, error = validate_promotion_arguments(arguments)
         if error:
@@ -646,6 +693,13 @@ def _normalize_keyword(value: str) -> str:
 
 
 def _validate_keyword_data(data: dict) -> bool:
+    if "appliedFilters" in data and _validate_keyword_filters(data["appliedFilters"])[1]:
+        return False
+    for field in ("eligibleCount", "excludedMissingMetricsCount"):
+        if field in data and (type(data[field]) is not int or data[field] < 0):
+            return False
+    if "matchSetComplete" in data and type(data["matchSetComplete"]) is not bool:
+        return False
     rows = data.get("rows")
     if not isinstance(rows, list) or len(rows) > 20:
         return False

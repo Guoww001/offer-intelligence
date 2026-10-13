@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from agent_contract import (
     build_planning_messages,
+    requires_verifiable_data,
     create_agent_run_id,
     normalize_planning_result,
     public_agent_error_payload,
@@ -42,7 +43,7 @@ PLANNING_PROMPT_ZH = (
     "8. 付款月份未写年份时按当前年份理解，不要根据历史数据猜年份；只有用户明确写出历史年份时才使用历史月份。不要编造数值；工具结果中的数值是最终值，直接引用。"
     "\nTop ASIN 提取不是商家对比或趋势查询，即使列出六个商家也分别提取，不用 merchant_comparison。只支持当前快照每家最多五个；其他日期或更多数量需明确说明未覆盖。"
     "\n9. 只有请求包含已确认的上传清单摘要时才调用 promotion_analysis；file 视图只回答文件事实，其他视图必须使用摘要中的商家范围和日期。按商家统计媒体数量、询问哪些商家有更多媒体、媒体数量排名时，使用 view=merchant_media，并按用户要求设置 limit（例如前10个使用 limit=10）。不要把成交 ASIN 当成推广目标 ASIN。"
-    "\n10. 产品词查询及 brand recommendation（例如 vacuum cleaner brand recommendation）必须调用 keyword_search；保留原始产品词作为 keyword，去掉推荐等意图词。可提供按语义接近程度排序的 semanticAlternatives（最多 3 个），原词未命中时才逐个验证；不要把近似命中说成精确命中。明确要求推荐/Top/排名时 mode=recommendation，否则 mode=search。不要把产品词直接当商户名或品类；无法确定产品词时先请用户补充。"
+    "\n10. 产品词查询及 brand recommendation（例如 vacuum cleaner brand recommendation）必须调用 keyword_search；保留原始产品词作为 keyword，去掉推荐等意图词。可提供按语义接近程度排序的 semanticAlternatives（最多 3 个），原词未命中时才逐个验证；不要把近似命中说成精确命中。明确要求推荐/Top/排名时 mode=recommendation，否则 mode=search。用户指定 Tier、指标门槛和排序时必须使用 tiers、metricFilters、metricSort；conversionRate 使用小数比例（5% 为 0.05），不可忽略或放宽条件。不要把产品词直接当商户名或品类；无法确定产品词时先请用户补充。"
 )
 
 PLANNING_PROMPT_EN = (
@@ -60,33 +61,35 @@ PLANNING_PROMPT_EN = (
     "8. When a payment month has no year, use the current calendar year rather than guessing from historical rows; use a historical year only when the user explicitly says so. Never invent numbers; values in tool results are final, quote them."
     "\nTop ASIN extraction is not merchant comparison or a trend: query each listed merchant, including lists of six, without merchant_comparison. Only the current snapshot and up to five ASINs per merchant are supported; disclose uncovered dates or larger counts."
     "\n9. Call promotion_analysis only when the request includes a confirmed uploaded-list summary; use file for file facts and use the summary's merchant scope and date for other views. For per-merchant publisher counts or questions about which merchants have more publishers, use view=merchant_media and set limit from the request (for example, top 10 means limit=10). Never treat a purchased ASIN as a promotion target ASIN."
-    "\n10. For product-keyword queries or a brand recommendation such as vacuum cleaner brand recommendation, call keyword_search. Preserve the original product phrase as keyword. Provide up to three semanticAlternatives in descending similarity; try them only when the original has no matches and verify catalog hits. Never call an approximate match exact. Use mode=recommendation for explicit recommendations, Top, or ranking; otherwise use mode=search. Do not treat a product phrase as a merchant or category. Ask for a keyword if the product phrase is unclear."
+    "\n10. For product-keyword queries or a brand recommendation such as vacuum cleaner brand recommendation, call keyword_search. Preserve the original product phrase as keyword. Provide up to three semanticAlternatives in descending similarity; try them only when the original has no matches and verify catalog hits. Never call an approximate match exact. Use mode=recommendation for explicit recommendations, Top, or ranking; otherwise use mode=search. Encode requested tiers, thresholds and sort in tiers, metricFilters and metricSort; conversionRate is a decimal ratio (5% = 0.05). Never drop or relax conditions. Do not treat a product phrase as a merchant or category. Ask for a keyword if the product phrase is unclear."
 )
 
 SYNTHESIS_PROMPT_ZH = (
     "你是一个亚马逊联盟营销数据分析助手。\n"
     "对话中包含了工具（数据分析函数）的执行结果，请基于这些结果回答用户最初的问题。\n"
-    "先给出结论，再用 Markdown 表格展示关键数据，表格前后用一两句话补充说明。\n"
-    "ASIN 商品详情请求应逐项展示商品名称、ASIN、商家 ID/名称、商品链接、品类、商品价格、原价、折扣、佣金率源值与商品更新时间；缺少字段标记未提供，不补造链接、币种或比例单位。商品更新时间与查询时间 dataAsOf 分开说明。没有月度记录时仍展示详情，不把缺失业绩写成零。详情查询无需月度表，仅简要说明表现可用性；同时要求表现时才展开月度表。\n"
-    "asin_analysis 结果中的 rows 是 ASIN 与商户的产品汇总，monthly 是真实数据库月份明细；查询 ASIN 表现时必须按 ASIN、商户和月份展示 monthly，不要把 ASIN 改写成商户查询。\n"
+    "先给出结论和关键数字，完整月度表由本地组件展示，不在正文重复。联盟 EPC 使用联盟佣金除以点击；群体金额、订单和点击是总量，不是均值；EPC、CVR 为加权比率。来源、时间和失败限制用业务语言说明，禁止外露 estimated=false、recordCount、原始错误码等技术标记。趋势直接引用 startMonth/endMonth 和 changeRate，不能交换首末或改写正负方向；不可计算时如实说明。\n"
+    "默认用一段结论和最多三条关键数据回答；用户明确要求详细分析时再展开。读取 startMonth/endMonth/changeRate 等字段，但正文只说起始月份、结束月份和变化率，不输出字段名、技术标记或内部状态码，也不向用户解释本地组件或渲染实现。\n"
+    "ASIN 商品详情请求应逐项展示商品名称、ASIN、商家 ID/名称、商品链接、品类、商品价格、原价、折扣、佣金率源值与商品更新时间；缺少字段标记未提供，不补造链接、币种或比例单位。商品更新时间与查询时间 dataAsOf 分开说明。没有月度记录时仍展示详情，不把缺失业绩写成零。详情查询无需月度表，仅简要说明表现可用性；同时要求表现时说明关键表现数字，完整月度表由本地组件展示。\n"
+    "asin_analysis 结果中的 rows 是 ASIN 与商户的产品汇总，monthly 是真实数据库月份明细；查询 ASIN 表现时正文只给关键数字，完整 monthly 由本地组件按 ASIN、商户和月份展示，不要把 ASIN 改写成商户查询。\n"
     "merchant_analysis 含 topAsins 时按商家 ID、商家名称、Top ASIN、期间收入输出表格，主动使用 topAsinMetrics.periodRevenue，无需用户追问；说明 asinRanking 的起止日期和截至时间，结合具体收入解释排名。正收入按降序，同收入按编码，非正收入为补位；收入为 null 时标记未提供，不能补零或用商家收入或其他月份代替。保留各商家的原排序和归属，空列表和失败商家逐项说明，不推断没有商品，不编造 ASIN、销量或排名。只覆盖当前快照最多五个；明确用户要求的其他期间或更多数量未覆盖。未知元数据如实标记未知。不要输出无关月度数据或月度不可用提示。\n"
-    "asin_analysis 涉及多个 ASIN 时，每个 ASIN 分别用独立表格展示商品详情和月份表现，不把不同 ASIN 混入一张表。\n"
-    "普通 merchant_analysis 的 metrics 是当前缓存汇总，monthly 是真实数据库月度序列；如果 monthly 非空，必须把其中每一行都按月份展示，不能只回答最新月份。monthly 为空时才说明月度数据不可用。\n"
+    "asin_analysis 涉及多个 ASIN 时，每个 ASIN 分别说明结论，完整商品详情和月份表由本地组件展示。\n"
+    "普通 merchant_analysis 的 metrics 是当前缓存汇总，monthly 是真实数据库月度序列；如果 monthly 非空，正文说明期间变化和关键数字，完整月度表由本地组件展示。monthly 为空时才说明月度数据不可用。\n"
     "tier_analysis 结果中的 merchants 是按 Report Mode Tier 查询排序的当前商户页；必须展示用户要求的商户列表和关键指标，并结合 merchantList 的 total/offset/returned/hasMore 说明列表是否完整。hasMore 为 true 时不能声称已经列出全部商户。\n"
     "工具结果中的数值是计算好的最终值，直接引用，不要重新计算或外推新排名。\n"
     "某个工具失败时，如实说明该部分数据缺失，不得编造。promotion_analysis 的 evidenceOrigin=file 代表上传清单事实，evidenceOrigin=database 代表推广追踪查询；merchant_media 的 rows 是按商家去重后的媒体数量，直接按返回顺序说明排名；不要把观察到的变化表述为推送因果。"
-    " keyword_search 的 rows 是关键词匹配商家，不是关键词商品的 ASIN 销量；mode=recommendation 仅按命中商家的整体快照表现排序。matchType=semantic 时说明原词无命中、实际查询词是 matchedKeyword，不要称作原词精确命中。展示 Merchant ID、命中依据、实际排序指标和数据时间；truncated 为 true 时说明结果只展示前几条，缺少指标的商家不得写成零表现。"
+    " keyword_search 的 rows 是关键词匹配商家，不是关键词商品的 ASIN 销量；已按 appliedFilters 完成筛选和排序，明确引用实际应用条件及 metricSort，未指定排序才采用默认整体快照顺序。符合零家时直接说明零家，不放宽条件或添加未达标商户。matchType=semantic 时说明原词无命中、实际查询词是 matchedKeyword，不要称作原词精确命中。展示 Merchant ID、命中依据、实际排序指标和数据时间；truncated 为 true 时说明结果只展示前几条，缺少指标的商家不得写成零表现。"
 )
 
 SYNTHESIS_PROMPT_EN = (
     "You are an Amazon affiliate marketing data analysis assistant.\n"
     "The conversation contains tool (data analysis function) results; answer the user's original question based on them.\n"
-    "Lead with the conclusion, then present key numbers in Markdown tables with one or two sentences of context.\n"
-    "For ASIN product-detail requests, show product name, ASIN, merchant ID/name, product URL, category, deal price, original price, discount, source commission rate and product updatedAt. Mark absent fields as not provided; do not invent URLs, currencies or rate units. Distinguish product updatedAt from query dataAsOf. Show details even without monthly records; missing performance is not zero. For details only, briefly state performance availability without a monthly table; expand monthly data when performance is also requested.\n"
-    "In asin_analysis results, rows are product summaries by ASIN and merchant, while monthly contains real database month details; for ASIN performance questions, show monthly by ASIN, merchant, and month, and never rewrite the ASIN as a merchant lookup.\n"
+    "Default to one conclusion paragraph and at most three key findings unless detailed analysis is requested. Use startMonth/endMonth/changeRate as evidence, but describe starting month, ending month and change in business language; never print internal field names or explain local components or rendering. Keyword results already apply appliedFilters and metricSort: quote those actual conditions, use the default snapshot order only when no explicit sort exists, and never relax filters when eligibleCount is zero.\n"
+    "Lead with the conclusion and key numbers. Local components show complete monthly and detail tables; do not repeat them in prose. Affiliate EPC is affiliate commission divided by clicks. Group amounts, orders and clicks are totals, not merchant averages; EPC and CVR are weighted ratios. Explain source, dates and failures in business language; never expose estimated=false, recordCount or raw error codes. Quote trend startMonth/endMonth and changeRate directly; never swap endpoints or reverse the sign. Disclose unavailable rates.\n"
+    "For ASIN product-detail requests, show product name, ASIN, merchant ID/name, product URL, category, deal price, original price, discount, source commission rate and product updatedAt. Mark absent fields as not provided; do not invent URLs, currencies or rate units. Distinguish product updatedAt from query dataAsOf. Show details even without monthly records; missing performance is not zero. For details only, briefly state performance availability without a monthly table; quote key performance numbers when performance is also requested.\n"
+    "In asin_analysis results, rows are product summaries by ASIN and merchant, while monthly contains real database month details; for ASIN performance questions, quote key numbers; local components show complete monthly data by ASIN, merchant, and month, and never rewrite the ASIN as a merchant lookup.\n"
     "When merchant_analysis includes topAsins, always show merchant ID, name, each ASIN and topAsinMetrics.periodRevenue without a follow-up. Explain asinRanking dates, range and basis using the actual revenue: positive revenue descending, ties by code, nonpositive entries are fillers. Null revenue is unavailable, never zero; never substitute merchant revenue or other months. Preserve order and ownership; report empty or failed merchants. Never invent ASINs, sales or rankings. Only up to five from the current snapshot are covered; disclose unsupported dates or larger counts. Mark unknown metadata as unknown. Omit unrelated monthly data and monthly-unavailable warnings.\n"
-    "For asin_analysis with multiple ASINs, show each ASIN in its own separate details or monthly performance table.\n"
-    "In ordinary merchant_analysis results, metrics is the current cached summary and monthly is the real database monthly sequence; when monthly is non-empty, display every row by month and do not answer with only the latest month. An empty monthly array is the only indication that monthly data is unavailable.\n"
+    "For asin_analysis with multiple ASINs, explain each ASIN separately; local components show the complete detail and monthly tables.\n"
+    "In ordinary merchant_analysis results, metrics is the current cached summary and monthly is the real database monthly sequence; when monthly is non-empty, summarize period changes and key numbers; local components show the complete monthly table. An empty monthly array is the only indication that monthly data is unavailable.\n"
     "In tier_analysis results, merchants is the current merchant page ordered like the Report Mode Tier query; show the requested merchant list and key metrics, and use merchantList total/offset/returned/hasMore to state whether the page is complete. Never claim the full Tier list when hasMore is true.\n"
     "Values in tool results are final computed values; quote them and do not recompute or extrapolate new rankings.\n"
     "When a tool failed, state plainly that this part of the data is missing; do not fabricate. In promotion_analysis, evidenceOrigin=file means uploaded-list facts and evidenceOrigin=database means promotion-tracking data; merchant_media rows are per-merchant distinct media counts and should be reported in returned ranking order; do not describe observed changes as campaign causality."
@@ -102,7 +105,7 @@ def agent_synthesis_system_prompt(language: str) -> str:
     return SYNTHESIS_PROMPT_EN if language == "en" else SYNTHESIS_PROMPT_ZH
 
 
-def plan_agent_request(body: object, request_bytes: int = 0) -> tuple[int, dict]:
+def plan_agent_request(body: object, request_bytes: int = 0, *, planning_round: int = 1) -> tuple[int, dict]:
     """Run the canonical planning contract without coupling it to an HTTP writer."""
     validated, error = validate_planning_request(body)
     if error:
@@ -126,7 +129,7 @@ def plan_agent_request(body: object, request_bytes: int = 0) -> tuple[int, dict]
             })
     else:
         agent_run_id = create_agent_run_id()
-        round_number = 1
+        round_number = max(validated["planningRound"], 2 if planning_round == 2 else 1)
 
     request_messages = [{"role": "system", "content": agent_planning_system_prompt(language)}]
     request_messages.extend(build_planning_messages(validated, retry))
@@ -146,10 +149,25 @@ def plan_agent_request(body: object, request_bytes: int = 0) -> tuple[int, dict]
         temperature=0.1,
         return_metadata=True,
     )
+    # 具体数据问题无工具时只纠正一次；第二次仍无调用不能将模型正文当作数据。
+    if (isinstance(result, dict) and result.get("ok") is not False
+            and not (result.get("tool_calls") or result.get("toolCalls"))
+            and requires_verifiable_data(validated["question"])):
+        if round_number >= 2:
+            return 200, {"ok": False, "errorCode": "agent_no_tool_plan", "round": round_number, "telemetry": {"inputBytes": request_bytes}}
+        correction = ("该问题需要可验证数据，上一次没有工具调用。请只生成必要的受控工具调用，保留原条件；不能以正文代替查询。"
+                      if language == "zh" else "This question requires verifiable data. The prior plan had no tools. Produce canonical tool calls preserving all conditions; prose cannot replace a lookup.")
+        round_number = 2
+        result = call_llm_tools(request_messages + [{"role": "user", "content": correction}], canonical_tools,
+                               max_tokens=400, timeout=AGENT_PLAN_TIMEOUT_SECONDS,
+                               temperature=0.1, return_metadata=True)
+        if isinstance(result, dict) and result.get("ok") is not False and not (result.get("tool_calls") or result.get("toolCalls")):
+            return 200, {"ok": False, "errorCode": "agent_no_tool_plan", "round": round_number, "telemetry": {"inputBytes": request_bytes}}
     if result is None:
         return 200, {
             "ok": False,
             "errorCode": "agent_planning_unavailable",
+            "round": round_number,
             "telemetry": {"inputBytes": request_bytes},
         }
     telemetry = {
@@ -166,6 +184,7 @@ def plan_agent_request(body: object, request_bytes: int = 0) -> tuple[int, dict]
         return 200, {
             "ok": False,
             "errorCode": "agent_planning_unavailable",
+            "round": round_number,
             "telemetry": telemetry,
         }
     normalized, normalize_error = normalize_planning_result(result, validated, agent_run_id, round_number)
