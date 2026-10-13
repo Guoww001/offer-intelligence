@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAgentSession, type AgentSessionOptions } from "./agentSession";
 import { searchAgentKeywords } from "./agentKeywordSearch";
 
@@ -16,6 +16,33 @@ function monthlySession(rows: readonly Record<string, unknown>[]) {
 }
 
 describe("Agent 线上可靠性回归", () => {
+  it("规划超过10秒但仍在服务端预算内时不提前终止", async () => {
+    vi.useFakeTimers();
+    try {
+      const agent = session({ fetcher: async (_url, init) => new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(json({ ok: true, agentRunId: "ar_slow_plan_1234", content: "EPC定义", toolCalls: [] })), 12_000);
+        init?.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("超时", "AbortError")); }, { once: true });
+      }) });
+      const pending = agent.submit({ prompt: "EPC是什么", language: "zh", history: [], memoryText: "", signal: signal() });
+      await vi.advanceTimersByTimeAsync(12_100);
+      expect(await pending).toMatchObject({ ok: true, status: "done", response: "EPC定义" });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("规划请求超时标记失败而不是用户停止，并共享最多两轮", async () => {
+    vi.useFakeTimers();
+    try {
+      let plans = 0;
+      const agent = session({ fetcher: async (_url, init) => { plans++; return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("超时", "AbortError")), { once: true });
+      }); } });
+      const pending = agent.submit({ prompt: "Shokz收入趋势", language: "zh", history: [], memoryText: "", signal: signal() });
+      await vi.advanceTimersByTimeAsync(100_100);
+      expect(await pending).toMatchObject({ ok: false, status: "error", errorCode: "llm_timeout" });
+      expect(plans).toBe(2);
+      expect(agent.getState().history).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
   it("倒序月份先按时间排序，再计算趋势方向和变化率", async () => {
     const agent = monthlySession([{ month: "2026-10", revenue: 60 }, { month: "2026-09", revenue: 100 }]);
     const result = await agent.executeTool({ callId: "trend", toolName: "trend", arguments: { target: "1001", metric: "revenue", months: 2 }, prompt: "最近两个月收入趋势", signal: signal() });
@@ -26,6 +53,11 @@ describe("Agent 线上可靠性回归", () => {
     const agent = monthlySession([{ month: "2026-09", revenue: 0 }, { month: "2026-10", revenue: 60 }]);
     const result = await agent.executeTool({ callId: "trend", toolName: "trend", arguments: { target: "1001", metric: "revenue", months: 2 }, prompt: "收入趋势", signal: signal() });
     expect(result.toolResult.result).toMatchObject({ data: { summary: { changeRate: null } } });
+  });
+
+  it("变化率超过100%时提供已格式化百分比，避免模型少乘100", async () => {
+    const result = await monthlySession([{ month: "2026-09", revenue: 100 }, { month: "2026-10", revenue: 4300 }]).executeTool({ callId: "trend", toolName: "trend", arguments: { target: "1001", months: 2 }, prompt: "收入趋势", signal: signal() });
+    expect(result.toolResult.result).toMatchObject({ data: { summary: { changeRate: 42, changeRateDisplay: "4200.00%" } } });
   });
 
   it("联盟 EPC 汇总用联盟佣金而不是收入", async () => {
@@ -135,6 +167,26 @@ describe("Agent 线上可靠性回归", () => {
     const result = await agent.submit({ prompt: "查询甲商户收入", language: "zh", history: [], memoryText: "", signal: signal() });
     expect(plans).toBe(1);
     expect(result.response).toContain("未生成可执行");
+    expect(result).toMatchObject({ ok: false, status: "error", errorCode: "agent_no_tool_plan" });
+    expect(agent.getState().history).toHaveLength(0);
+  });
+
+  it("截断规划返回真实失败且不再次请求或执行数据查询", async () => {
+    const urls: string[] = [];
+    const agent = session({ fetcher: async input => { urls.push(String(input)); return json({ ok: false, round: 2, errorCode: "agent_plan_truncated" }); } });
+    const result = await agent.submit({ prompt: "分析甲商户最近12个月收入、订单、CVR和EPC", language: "zh", history: [], memoryText: "", signal: signal() });
+    expect(result).toMatchObject({ ok: false, status: "error", errorCode: "agent_plan_truncated" });
+    expect(result.response).toContain("尚未执行");
+    expect(result.response).not.toContain("补充商户");
+    expect(urls).toEqual(["/api/chat/agent"]);
+    expect(agent.getState().history).toHaveLength(0);
+  });
+
+  it("请求12个月但只有2个月数据时保留覆盖和四个指标", async () => {
+    const agent = monthlySession([{ month: "2026-09", revenue: 100, clicks: 100, orders: 10, affCommission: 20 }, { month: "2026-10", revenue: 0, clicks: 20, orders: 0, affCommission: 0 }]);
+    const result = await agent.executeTool({ callId: "trend", toolName: "trend", arguments: { target: "1001", months: 12 }, prompt: "收入、订单、CVR和EPC趋势", signal: signal() });
+    expect(result.toolResult.result).toMatchObject({ data: { summary: { requestedMonths: 12, availableMonths: 2, startMonth: "2026-09", endMonth: "2026-10" }, months: [{ metrics: { revenue: 100, orders: 10, conversionRate: 0.1, epc: 0.2 } }, { metrics: { revenue: 0, orders: 0, conversionRate: 0, epc: 0 } }] } });
+    expect(result.resultView?.message).toContain("实际有2个月");
   });
 
   it("解释具体商户近期趋势仍需要数据查询", async () => {

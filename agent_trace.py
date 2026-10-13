@@ -38,6 +38,9 @@ TRACE_ERROR_CODES = frozenset(
         "tool_timeout",
         "synthesis_unavailable",
         "no_verifiable_source",
+        "agent_plan_truncated",
+        "agent_no_tool_plan",
+        "agent_planning_unavailable",
         "stopped_by_user",
         "trace_write_failed",
     }

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from agent_trend_comparison import build_trend_comparison
+
 import base64
 import hashlib
 import hmac
@@ -413,6 +415,9 @@ def normalize_planning_result(
 ) -> tuple[dict | None, dict | None]:
     if not isinstance(result, dict):
         return None, _error("invalid_agent_contract", "providerResult")
+    # 即使已经输出部分调用，截断的规划也不能获得执行凭据。
+    if result.get("finishReason") in {"length", "max_tokens"}:
+        return None, _error("agent_plan_truncated", "finishReason")
     raw_calls = result.get("tool_calls")
     if raw_calls is None:
         raw_calls = result.get("toolCalls")
@@ -651,6 +656,10 @@ def build_synthesis_messages(request: dict, validated_results: list[dict]) -> li
         "role": "user",
         "content": result_label + "\n" + _canonical_json(result_payload),
     })
+    comparison = build_trend_comparison(validated_results)
+    if comparison is not None:
+        label = "[共同完整月份汇总：只按这些月份比较，缺失不计零]" if request["language"] == "zh" else "[Common complete months: compare only these months; missing is not zero]"
+        messages.append({"role": "user", "content": label + "\n" + _canonical_json(comparison)})
 
     expected_count = 0
     for proof in request.get("planProofs", []):

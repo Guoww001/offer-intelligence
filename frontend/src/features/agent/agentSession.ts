@@ -265,6 +265,7 @@ const KNOWN_ERROR_CODES = new Set([
   ...ENABLED_ERROR_CODES,
   "agent_planning_unavailable",
   "agent_no_tool_plan",
+  "agent_plan_truncated",
   "network_error",
   "provider_error",
 ]);
@@ -630,7 +631,10 @@ function toolFailureMessage(result: AgentToolResult, language: UiLanguage, targe
   return language === "zh" ? `“${target}”的数据查询暂不可用，请稍后重试。` : `Data for "${target}" is temporarily unavailable. Please retry.`;
 }
 
-function missingDataResponse(language: UiLanguage, reason = "agent_no_tool_plan"): string {
+export function missingDataResponse(language: UiLanguage, reason = "agent_no_tool_plan"): string {
+  if (reason === "agent_plan_truncated") return language === "zh"
+    ? "本次未能完成查询计划，数据查询尚未执行。请重试当前问题；商户、时间范围和指标条件已保留。"
+    : "The query plan could not be completed, so no data lookup was executed. Retry this question; the targets, period and metrics have been preserved.";
   return language === "en"
     ? `I do not have a verifiable data source for this request. ${reason === "agent_no_tool_plan" ? "No executable data lookup was planned." : "The planning service is temporarily unavailable."} Retry this question or use a query command.`
     : `本次尚未取得可验证的数据来源。${reason === "agent_no_tool_plan" ? "未生成可执行的数据查询计划。" : "规划服务暂时不可用。"}请重试当前问题，或使用查询命令。`;
@@ -773,13 +777,15 @@ function trendRows(rows: readonly Row[], requestedMonths: number, metric: string
 function trendSummary(rows: readonly Record<string, unknown>[]): Record<string, unknown> {
   const first = typeof rows[0]?.value === "number" ? rows[0].value as number : null;
   const latest = typeof rows.at(-1)?.value === "number" ? rows.at(-1)!.value as number : null;
+  const changeRate = first === null || latest === null || first === 0 ? null : Math.round(((latest - first) / first) * 1_000_000) / 1_000_000;
   return {
     first: first === null ? null : rounded(first),
     latest: latest === null ? null : rounded(latest),
     startMonth: text(rows[0]?.month, 10),
     endMonth: text(rows.at(-1)?.month, 10),
     change: first === null || latest === null ? null : rounded(latest - first),
-    changeRate: first === null || latest === null || first === 0 ? null : Math.round(((latest - first) / first) * 1_000_000) / 1_000_000
+    changeRate,
+    changeRateDisplay: changeRate === null ? null : `${(changeRate * 100).toFixed(2)}%`
   };
 }
 
@@ -899,6 +905,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         throw error;
       }
       return (isRecord(payload) ? payload : {}) as T;
+    } catch (error) {
+      if (controller.signal.aborted && !signal?.aborted) {
+        const timeout = new Error("请求超时") as Error & { code?: string };
+        timeout.code = url === "/api/chat/agent" ? "llm_timeout" : "tool_timeout";
+        throw timeout;
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutId);
       linked.dispose();
@@ -1111,7 +1124,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify(buildPlanningBody(question, language, trace, promotionAttachment, retry, planningRound))
-      }, signal);
+      // 首次 HTTP 规划可在服务端消耗两轮，每轮最多30秒；第二轮仅剩一次。
+      }, signal, planningRound === 2 || retry ? 35_000 : 65_000);
       const parsed = parsePlan(payload);
       if (!parsed) return { errorCode: safeErrorCode(payload.errorCode || "agent_planning_unavailable"), round: payload.round === 2 ? 2 : planningRound };
       if (parsed.toolCalls.length && !parsed.planProof) return { errorCode: "agent_signing_unavailable" };
@@ -1469,6 +1483,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     if (trend.length < 2) return failure("not_found", dataSource, { status: "not_found", field: "months", value: months });
     trend.sort((left, right) => String(left.month).localeCompare(String(right.month)));
     const summary = trendSummary(trend);
+    summary.requestedMonths = months;
+    summary.availableMonths = trend.length;
     const asOfMonth = dataAsOf?.slice(0, 7);
     summary.latestMonthComplete = asOfMonth ? String(summary.endMonth) < asOfMonth : null;
     return success({
@@ -1481,8 +1497,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       summary,
       headline: label + (currentLanguage === "zh" ? " · 月度趋势" : " trend"),
       note: currentLanguage === "zh"
-        ? `${estimated ? "来自带月份的缓存记录。" : "月度数据来自数据库。"}${summary.latestMonthComplete === false ? "最新月份尚未结束，不能直接与完整月份比较。" : ""}`
-        : `${estimated ? "Trend points are estimated from dated cached rows." : "Trend points are loaded from monthly database data."}${summary.latestMonthComplete === false ? " The latest month is incomplete." : ""}`
+        ? `${estimated ? "来自带月份的缓存记录。" : "月度数据来自数据库。"}请求最近${months}个月，实际有${trend.length}个月（${summary.startMonth}至${summary.endMonth}）；缺少月份不计为零。${summary.latestMonthComplete === false ? "最新月份尚未结束，不能直接与完整月份比较。" : ""}`
+        : `${estimated ? "Trend points are estimated from dated cached rows." : "Trend points are loaded from monthly database data."} Requested ${months} months; ${trend.length} available (${summary.startMonth} to ${summary.endMonth}). Missing months are not zero.${summary.latestMonthComplete === false ? " The latest month is incomplete." : ""}`
     }, dataSource, dataAsOf, estimated);
   }
 
@@ -2053,6 +2069,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     return streamError ? { response: content, errorCode: streamError } : { response: content };
   }
 
+  function commitPlanningFailure(baseHistory: readonly AgentHistoryMessage[], failureResponse: string, code: string): AgentSessionResult {
+    response = failureResponse;
+    status = "error";
+    errorCode = code;
+    lastResultOk = false;
+    messages = baseHistory.slice();
+    setQuestionAnswer(response);
+    notify();
+    return { ok: false, status: "error", response, steps: steps.slice(), memoryEvents: [], errorCode };
+  }
+
   function commitDone(
     baseHistory: readonly AgentHistoryMessage[],
     prompt: string,
@@ -2170,19 +2197,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         const planningStep = makeStep(planningId, "planning", "error", stepLabel("planning", ""), started);
         emitStep(planningStep);
         appendTraceStep(trace, planningStep, ++traceSequence);
-        if (isDataQuestion(prompt)) {
-          const safeResponse = isKeywordDataQuestion(prompt) ? keywordMissingDataResponse(currentLanguage) : missingDataResponse(currentLanguage, firstPlan.errorCode);
-          const result = commitDone(baseHistory, prompt, safeResponse, false, [], [], "no_verifiable_source");
-          completeTrace(trace, { status: "done", partial: false, stopped: false, fallback: true, planned: 0, executed: 0, failed: 0, errorCode: "no_verifiable_source" });
-          await completeQuestion("success");
-          return result;
-        }
-        status = "error";
-        messages = baseHistory.slice();
-        errorCode = firstPlan.errorCode || "agent_planning_unavailable";
-        lastResultOk = false;
-        notify();
-        const failedResult: AgentSessionResult = { ok: false, status: "error", response: "", steps: steps.slice(), memoryEvents: [], errorCode };
+        const code = firstPlan.errorCode || "agent_planning_unavailable";
+        const safeResponse = isDataQuestion(prompt) ? missingDataResponse(currentLanguage, code) : "";
+        const failedResult = commitPlanningFailure(baseHistory, safeResponse, code);
         completeTrace(trace, { status: "error", partial: false, stopped: false, fallback: false, planned: 0, executed: 0, failed: 0, errorCode });
         await completeQuestion("failed");
         return failedResult;
@@ -2194,6 +2211,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       emitStep(planningStep);
       appendTraceStep(trace, planningStep, ++traceSequence);
       if (!activePlan.toolCalls.length) {
+        if (isDataQuestion(prompt)) {
+          const failed = commitPlanningFailure(baseHistory, missingDataResponse(currentLanguage), "agent_no_tool_plan");
+          completeTrace(trace, { status: "error", partial: false, stopped: false, fallback: false, planned: 0, executed: 0, failed: 0, errorCode });
+          await completeQuestion("failed");
+          return failed;
+        }
         const direct = isKeywordDataQuestion(prompt) ? keywordMissingDataResponse(currentLanguage)
           : isDataQuestion(prompt) ? missingDataResponse(currentLanguage)
           : activePlan.content || missingDataResponse(currentLanguage);

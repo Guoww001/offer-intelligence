@@ -32,6 +32,19 @@ function fixture(bypassPlanning = false) {
 }
 
 describe("CopilotKit behavior parity", () => {
+  it.each([false, true])("截断规划失败展示未执行提示，不触发备用规划（SDK抛错=%s）", async rejects => {
+    const f = fixture();
+    sdk.run.mockImplementation(async () => {
+      events.onRunErrorEvent?.({ event: { code: "agent_plan_truncated" } });
+      if (rejects) throw new Error("规划失败");
+    });
+    const result = await f.run(f.request);
+    expect(result).toMatchObject({ ok: false, status: "error", errorCode: "agent_plan_truncated" });
+    expect(result.response).toContain("尚未执行");
+    expect(f.session.direct).not.toHaveBeenCalled();
+    expect(f.session.complete).not.toHaveBeenCalled();
+    f.wrapper.unmount();
+  });
   it("将上一轮 ASIN 引用传入 AG-UI 规划状态", async () => {
     const f = fixture();
     sdk.run.mockResolvedValue(undefined);

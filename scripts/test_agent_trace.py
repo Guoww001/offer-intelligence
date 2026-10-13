@@ -116,6 +116,8 @@ def test_trace_contract_validation():
         "retryCount": 0,
     }
     assert agent_trace.normalize_trace_step(base)["phase"] == "tool"
+    for code in ("agent_plan_truncated", "agent_no_tool_plan", "agent_planning_unavailable"):
+        assert agent_trace.normalize_trace_step(dict(base, phase="planning", status="failed", errorCode=code))["errorCode"] == code
     for phase in ("running", "prompt", "Planning"):
         invalid = dict(base, phase=phase)
         assert_raises(ValueError, lambda invalid=invalid: agent_trace.normalize_trace_step(invalid), f"phase {phase}")

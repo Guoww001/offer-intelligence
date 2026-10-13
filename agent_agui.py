@@ -286,9 +286,7 @@ def _planning_events(body: dict, request_bytes: int, state_seed: dict) -> Iterab
     if status != 200 or planning.get("ok") is not True:
         code = _text(planning.get("errorCode"), 80) or "agent_planning_unavailable"
         yield _timeline("planning", "planning", "error", "Planning failed", code)
-        if state_seed.get("legacyParity") and code == "agent_planning_unavailable":
-            yield from _planning_fallback(body, planning)
-            return
+        # 已用尽的规划预算不能通过备用执行重新取得。
         yield _event("RUN_ERROR", message="Agent planning is unavailable.", code=code)
         return
     yield _timeline("planning", "planning", "done", "Plan ready")

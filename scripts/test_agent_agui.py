@@ -114,14 +114,15 @@ class AgentAguiTests(unittest.TestCase):
         self.assertEqual(events[-1]["type"], "RUN_FINISHED")
 
     @patch("agent_agui.plan_agent_request")
-    def test_parity_preserves_unavailable_planner_fallback(self, planning):
+    def test_unavailable_planning_cannot_reset_budget_for_conceptual_question(self, planning):
         planning.return_value = (200, {"ok": False, "errorCode": "agent_planning_unavailable"})
         body = self.body()
+        body["messages"] = [{"role": "user", "content": "什么是EPC"}]
         body["state"]["offerIntelligence"]["legacyParity"] = True
         events = list(agent_agui.generate_agui_events(body))
-        self.assertTrue(any(event.get("name") == "oi.planning_fallback" for event in events))
+        self.assertFalse(any(event.get("name") == "oi.planning_fallback" for event in events))
         self.assertEqual(planning.call_count, 2)
-        self.assertEqual(events[-1]["type"], "RUN_FINISHED")
+        self.assertEqual(events[-1]["type"], "RUN_ERROR")
 
     @patch("agent_agui.plan_agent_request")
     def test_initial_planning_retries_once_after_a_transient_unavailable_result(self, planning):
