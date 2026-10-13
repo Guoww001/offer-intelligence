@@ -755,6 +755,8 @@ CLAUDE.md                                   ← app.js 聊天相关行号索引
 - 首次新手引导（`onboarding_tour.js`）为 5 步：布局介绍 → Report 提问 → 等待报告 → 点「加入对话」→ Chat 提问。最小化 + 拖拽保留为高级用法（见 Chat Mode 使用说明）。
 
 ## 17. 提问日志与导出
+- **现代 Agent 日志归属修复（2026-10-13，尚未发布）：** 页面已登记提问时，将同一个 `questionEventId` 传入备用 `agentSession`；备用链不再创建或完成另一条日志，由页面统一完成原记录并提供反馈。备用 Trace 与规划使用该事件关联。独立 session 调用仍自行登记；斜杠命令回退保留页面记录的原始命令，模型查询使用转换后的问题。用户再次提交相同内容会生成新的提问事件，历史重复数据不在本次修复中删除。
+- 验证：新增 9 条跨页面、CopilotKit 和备用 session 的回归，先复现重复登记再修复，覆盖正常/回退/失败/停止/再次提问及反馈与 Trace 关联；全量前端 118 文件、737 用例及类型检查、构建通过。本地 BrowserAct 开启验收进程的日志写入后，3 次提交对应数据库 3 个不同事件（1 次失败、2 次成功）；斜杠命令仅记录原始命令，6 个日志 HTTP 请求对应 3 次创建与 3 次完成。
 - 本地可在 `.env` 中设置 `OI_CHATBOT_QUESTION_LOGGING=0`（也支持 `false`、`no`、`off`）关闭提问日志的 MySQL 写入；未设置时默认开启。关闭开关只影响提问日志 POST，回答流程继续执行，已有日志仍可只读导出。
 
 - `applyPrompt()` 与独立 Agent 页的 `handleAgentPageSubmit()` 在用户提交时异步调用现有 `POST /api/chat/stream?operation=questions` 创建日志，回答结束后再异步更新为 `success` 或 `failed`；日志失败不阻断原有问答。Agent 的中止也会完成为 `failed`。

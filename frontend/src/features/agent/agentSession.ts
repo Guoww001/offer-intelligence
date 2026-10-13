@@ -78,6 +78,8 @@ export interface AgentSessionRequest {
   readonly history: readonly AgentHistoryMessage[];
   readonly memoryText: string;
   readonly asinContext?: readonly string[];
+  // 页面已登记的提问事件：备用执行复用关联，日志创建及完成仍由页面负责。
+  readonly questionEventId?: string;
   readonly signal: AbortSignal;
   readonly promotionAttachment?: AgentPromotionAttachment;
 }
@@ -2144,9 +2146,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     activeController = new AbortController();
     const linked = linkSignal(options.signal, request.signal);
     const combined = linkSignal(linked.signal, activeController.signal);
-    const questionEventId = randomUuid();
+    const questionEventId = request.questionEventId || randomUuid();
     const trace = beginTrace(questionEventId);
-    beginQuestion(prompt, questionEventId);
+    if (request.questionEventId) currentQuestion = null;
+    else beginQuestion(prompt, questionEventId);
     const started = Date.now();
     let plannedCount = 0;
     let executedCount = 0;
