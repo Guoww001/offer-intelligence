@@ -121,6 +121,21 @@ describe("一次 Agent 提问仅登记一次日志", () => {
     } finally { f.wrapper.unmount(); f.session.dispose?.(); }
   });
 
+  it("数据规划失败仅完成原事件为 failed，并保留反馈关联", async () => {
+    const f = fixture(true, "failed");
+    sdk.run.mockRejectedValue(new TypeError("模拟传输失败"));
+    try {
+      await f.submit("分析Shokz最近12个月收入、订单、CVR和EPC");
+      const created = f.questionRequests("create");
+      expect(created).toHaveLength(1);
+      expect(f.questionRequests("complete")).toHaveLength(1);
+      expect(f.questionRequests("complete")[0]!.body).toMatchObject({ recordId: created[0]!.body.eventId, status: "failed" });
+      expect(f.session.getState().history).toHaveLength(0);
+      expect(await f.activity.feedbackForAnswer(created[0]!.body.eventId)!.submit("not_answered")).toEqual({ ok: true });
+      expect(f.requests.find(row => row.url.includes("operation=feedback"))!.body.questionEventId).toBe(created[0]!.body.eventId);
+    } finally { f.wrapper.unmount(); f.session.dispose?.(); }
+  });
+
   it("用户再次提交相同问题仍记录为新的独立提问", async () => {
     const f = fixture();
     sdk.run.mockRejectedValue(new TypeError("模拟传输失败"));

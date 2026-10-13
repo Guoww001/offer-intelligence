@@ -284,8 +284,8 @@ def _build_specs() -> dict[str, dict[str, Any]]:
             "argument_fields": ("status", "month", "tier", "merchant"),
         },
         "trend": {
-            "description_zh": "查询商户、品类或 Tier 的月度趋势和逐月数据。",
-            "description_en": "Get monthly trends and month-by-month data for a merchant, category, or Tier.",
+            "description_zh": "查询商户、品类或 Tier 的月度趋势。一次返回收入、订单、点击、联盟佣金、CVR、EPC 等全部指标；metric 只指定主图指标，多商户分别调用，不按指标重复查询。",
+            "description_en": "Get monthly trends for a merchant, category or Tier. One call returns all metrics including revenue, orders, clicks, affiliate commission, CVR and EPC; metric selects the chart only. Call once per merchant, not per metric.",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -3,6 +3,7 @@ import { useAgent, useCopilotKit } from "@copilotkit/vue/v2";
 
 import type { UiLanguage } from "../../shared/i18n";
 import type { AgentToolExecutionResponse } from "./agentSession";
+import { missingDataResponse } from "./agentSession";
 import type { AgentResultView } from "../../shared/contracts/agentResult";
 import { normalizeAgentResultView, normalizeAgentResultViews } from "../../shared/contracts/agentResult";
 import type { AgentMemoryEvent, AgentTimelineStep } from "./agentModel";
@@ -163,6 +164,9 @@ const run: AgentRunner = async (request: AgentRunRequest): Promise<AgentRunResul
     },
     onRunErrorEvent: ({ event }) => {
       errorCode = text(event.code, 80) || "copilotkit_runtime_error";
+      if (["agent_plan_truncated", "agent_no_tool_plan", "agent_planning_unavailable"].includes(errorCode)) {
+        response = missingDataResponse(request.language, errorCode);
+      }
     }
   });
   const stop = () => {

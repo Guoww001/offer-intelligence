@@ -559,7 +559,8 @@ def call_llm_tools(
             normalized = normalize_tool_response("deepseek", response.choices[0].message)
             if not return_metadata:
                 return normalized
-            metadata = _llm_metadata(provider, model, getattr(response, "usage", None), ok=True)
+            metadata = _llm_metadata(provider, model, getattr(response, "usage", None), ok=True,
+                                     finish_reason=getattr(response.choices[0], "finish_reason", None))
             metadata.update(normalized or {"content": None, "tool_calls": []})
             return metadata
 
@@ -595,7 +596,8 @@ def call_llm_tools(
         normalized = normalize_tool_response("claude", message.content)
         if not return_metadata:
             return normalized
-        metadata = _llm_metadata(provider, model, getattr(message, "usage", None), ok=True)
+        metadata = _llm_metadata(provider, model, getattr(message, "usage", None), ok=True,
+                                 finish_reason=getattr(message, "stop_reason", None))
         metadata.update(normalized or {"content": None, "tool_calls": []})
         return metadata
     except Exception as exc:
