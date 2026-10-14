@@ -76,10 +76,16 @@ describe("一次 Agent 提问仅登记一次日志", () => {
       expect(completed).toHaveLength(1);
       expect(created[0]!.body.prompt).toBe(prompt);
       expect(completed[0]!.body.recordId).toBe(created[0]!.body.eventId);
-      const plan = f.requests.find(row => row.url === "/api/chat/agent")!;
-      expect(plan.body.question).toBe(question);
-      expect(plan.body.trace.questionEventId).toBe(created[0]!.body.eventId);
-      expect(f.requests.filter(row => row.url.includes("operation=agent_trace"))).not.toHaveLength(0);
+      const plan = f.requests.find(row => row.url === "/api/chat/agent");
+      if (scenario === "综合失败回退") {
+        expect(plan).toBeUndefined();
+        expect(f.fallbackRun).not.toHaveBeenCalled();
+        expect(completed[0]!.body.status).toBe("failed");
+      } else {
+        expect(plan!.body.question).toBe(question);
+        expect(plan!.body.trace.questionEventId).toBe(created[0]!.body.eventId);
+        expect(f.requests.filter(row => row.url.includes("operation=agent_trace"))).not.toHaveLength(0);
+      }
       expect(f.requests.filter(row => row.url.includes("operation=agent_trace")).every(row => row.body.questionEventId === created[0]!.body.eventId)).toBe(true);
       const feedback = f.wrapper.findComponent({ name: "AgentPage" }).props("session");
       expect(feedback).toBeUndefined();

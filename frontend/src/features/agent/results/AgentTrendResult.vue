@@ -2,9 +2,11 @@
 import { computed, ref, watch } from "vue";
 import type { UiLanguage } from "../../../shared/i18n";
 import type { AgentResultView, AgentTrendData } from "../../../shared/contracts/agentResult";
+import { formatAgentMetric } from "../agentMetricFormatting";
 import { agentMetricLabel, agentToolLabel } from "../agentResultPresentation";
 
-const props = defineProps<{ readonly language: UiLanguage; readonly view: AgentResultView }>();
+const props = defineProps<{ readonly language: UiLanguage; readonly view: AgentResultView; readonly expanded?: boolean }>();
+const chartOpen = ref(Boolean(props.expanded));
 const metric = ref(props.view.trend?.metric || "revenue");
 watch(() => props.view.id, () => { metric.value = props.view.trend?.metric || "revenue"; });
 
@@ -44,12 +46,7 @@ const chart = computed(() => {
   return { width, height, left, bottom, points, linePoints, areaPoints, grid, toY, min, max };
 });
 
-function formatValue(value: number): string {
-  if (!Number.isFinite(value)) return "—";
-  if (metric.value === "conversionRate") return `${(value * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
-  if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-}
+function formatValue(value: number): string { return formatAgentMetric(metric.value, value, props.language); }
 
 function selectMetric(event: MouseEvent): void {
   const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-agent-trend-metric]") : null;
@@ -69,14 +66,19 @@ function selectMetric(event: MouseEvent): void {
     </header>
     <div class="agent-trend-metrics" @click="selectMetric">
       <button
-        v-for="option in trend.metrics"
+        v-for="option in [trend.metric]"
         :key="option"
         type="button"
         :data-agent-trend-metric="option"
         :class="{ active: metric === option }"
       >{{ agentMetricLabel(option, language) }}</button>
     </div>
-    <div v-if="chart" class="agent-trend-chart-wrap">
+    <details class="agent-trend-more-metrics" data-agent-more-metrics @click="selectMetric">
+      <summary>{{ language === 'zh' ? '更多指标' : 'More metrics' }}</summary>
+      <button v-for="option in trend.metrics.filter(option => option !== trend?.metric)" :key="option" type="button" :data-agent-trend-metric="option" :class="{ active: metric === option }">{{ agentMetricLabel(option, language) }}</button>
+    </details>
+    <button type="button" class="aw-button" data-agent-trend-toggle :aria-expanded="chartOpen" @click="chartOpen = !chartOpen">{{ language === 'zh' ? (chartOpen ? '收起趋势图' : '查看趋势图') : (chartOpen ? 'Hide trend chart' : 'View trend chart') }}</button>
+    <div v-show="chartOpen" v-if="chart" class="agent-trend-chart-wrap">
       <svg class="agent-trend-chart" :viewBox="`0 0 ${chart.width} ${chart.height}`" role="img" :aria-label="`${metricLabel} ${trend.target}`">
         <g class="agent-trend-grid" aria-hidden="true">
           <line v-for="line in chart.grid" :key="line.y" :x1="chart.left" :x2="chart.width - 18" :y1="line.y" :y2="line.y" />

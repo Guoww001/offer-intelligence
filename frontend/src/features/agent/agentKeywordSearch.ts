@@ -198,7 +198,9 @@ export function searchAgentKeywords(
     ...(appliedFilters.tiers.length ? [`Tier: ${appliedFilters.tiers.join(language === "zh" ? "、" : ", ")}.`] : []),
     ...appliedFilters.metricFilters.map(filter => `${agentMetricLabel(filter.field, language)} ${filter.operator} ${filter.field === "conversionRate" ? `${filter.value * 100}%` : filter.value}.`),
     ...(appliedFilters.metricSort ? [`${agentMetricLabel(appliedFilters.metricSort.field, language)} ${language === "zh" ? (appliedFilters.metricSort.direction === "asc" ? "升序" : "降序") : appliedFilters.metricSort.direction}.`] : []),
-    mode === "recommendation"
+    appliedFilters.metricSort
+      ? (language === "zh" ? "按所选指标排序，不代表该关键词商品销量。" : "Sorted by the selected metric, not product sales.")
+      : mode === "recommendation"
       ? (language === "zh" ? "按命中商家的整体快照表现排序，不代表该关键词商品销量。" : "Ranked by matched merchants' overall snapshot performance, not product sales.")
       : (language === "zh" ? "按产品关键词及商户搜索字段匹配，未按表现排序。" : "Matched search fields; not ranked by performance."),
     ...(unrankedCount ? [language === "zh" ? `${unrankedCount} 家仅在关键词目录中命中，未参与排序。` : `${unrankedCount} catalog-only merchants were not ranked.`] : []),

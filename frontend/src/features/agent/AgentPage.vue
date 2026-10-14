@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId,
 
 import type { UiLanguage } from "../../shared/i18n";
 import { renderMarkdownToHtml } from "../../shared/markdown/markdown";
+import { agentAnswerDisplayMode, presentAgentAnswerHtml } from "./agentAnswerPresentation";
 import type { AgentResultView as AgentResultViewModel } from "../../shared/contracts/agentResult";
 import { normalizeAgentResultViews } from "../../shared/contracts/agentResult";
 import ChatAnswerActions from "../chatbot/ChatAnswerActions.vue";
@@ -47,6 +48,7 @@ export interface AgentRunRequest {
   readonly questionEventId?: string;
   readonly signal: AbortSignal;
   readonly promotionAttachment?: AgentPromotionAttachment;
+  readonly reuseResult?: boolean;
   readonly onToken?: (token: string) => void;
   readonly onTimeline?: (step: AgentTimelineStep) => void;
   readonly onResultView?: (view: AgentResultViewModel) => void;
@@ -76,6 +78,8 @@ const props = withDefaults(defineProps<{
   readonly stateKey?: string;
   readonly attachmentStore?: AgentAttachmentStore;
   readonly readFile?: typeof readMerchantWorkbook;
+  readonly canContinue?: () => boolean;
+  readonly clearReusableResults?: () => void;
 }>(), {
   storage: undefined,
   session: undefined,
@@ -98,6 +102,8 @@ const response = ref("");
 const partial = ref(false);
 const omittedTargets = ref<string[]>([]);
 const resultViews = ref<AgentResultViewModel[]>([]);
+// 停止或失败轮的来源独立保留，下一轮的临时展示不能清除它们。
+const retainedResultViews = ref<AgentResultViewModel[]>([]);
 const memory = ref<AgentMemoryState>(emptyAgentMemory());
 const error = ref("");
 const feedbackRefreshKey = ref(0);
@@ -116,6 +122,7 @@ const inputCommandHighlight = computed(() => splitAgentCommandInput(input.value)
 const composerCollapsed = ref(false);
 const localSessionOverride = ref(false);
 let lastScrollTop = 0;
+let answerScrollTarget: number | null = null;
 const activity = window.OI_MODERN_RUNTIME?.createAgentActivity?.();
 const feedback = computed(() => !localSessionOverride.value && props.session ? props.session.feedback : activity?.feedback);
 let activeAnswerId = "";
@@ -132,6 +139,7 @@ const hasLogDownloads = computed(() => Boolean(props.session?.downloadLogs || ac
 const followingLatest = ref(true);
 const stopping = ref(false);
 const lastPrompt = ref("");
+const canContinue = computed(() => { void runStatus.value; void resultViews.value; return runStatus.value !== "running" && Boolean(props.canContinue?.()); });
 const workspaceId = useId();
 let resizeObserver: ResizeObserver | undefined;
 let scrollFrame = 0;
@@ -230,14 +238,14 @@ interface AgentSuggestion {
 }
 
 const suggestions = computed<AgentSuggestion[]>(() => props.language === "zh" ? [
-  { key: "merchant", title: "了解一个商户", detail: "核心指标与表现", prompt: "/merchant Tapo" },
+  { key: "merchant", title: "了解一个商户", detail: "核心指标与表现", prompt: `/merchant ${memory.value.focus.merchants.length === 1 ? memory.value.focus.merchants[0]!.name : "Tapo"}` },
   { key: "asin", title: "查询一个 ASIN", detail: "产品信息与月份表现", prompt: "/asin B0D2HKCMBP" },
   { key: "trend", title: "查看趋势变化", detail: "多月趋势与指标切换", prompt: "/trend Tapo（ID398679）最近 6 个月的收入、订单和 EPC 趋势" },
   { key: "tier", title: "分析 Tier 商户", detail: "分层概览与商户列表", prompt: "/tier Tier 2" },
   { key: "payments", title: "核对付款状态", detail: "付款记录与待支付款项", prompt: "/payment Tapo（ID398679）" },
   { key: "promotion-tracking", title: "推广追踪", detail: "按商家统计媒体数量", prompt: "/promotion 按商家统计媒体数量", isNew: true }
 ] : [
-  { key: "merchant", title: "Explore a merchant", detail: "Key metrics and performance", prompt: "/merchant Tapo" },
+  { key: "merchant", title: "Explore a merchant", detail: "Key metrics and performance", prompt: `/merchant ${memory.value.focus.merchants.length === 1 ? memory.value.focus.merchants[0]!.name : "Tapo"}` },
   { key: "asin", title: "Look up an ASIN", detail: "Product details and monthly performance", prompt: "/asin B0D2HKCMBP" },
   { key: "trend", title: "Follow a trend", detail: "Monthly trends and metric switching", prompt: "/trend Tapo (ID398679) over the last 6 months for revenue, orders, and EPC" },
   { key: "tier", title: "Analyze a tier", detail: "Tier overview and merchant list", prompt: "/tier Tier 2" },
@@ -257,10 +265,22 @@ const statusLabel = computed(() => stopping.value ? copy.value.stopping : ({ idl
 const activePhase = computed(() => [...timeline.value].reverse().find((step) => step.status === "running")?.phase || (response.value ? "synthesis" : "planning"));
 const activeDetail = computed(() => [...timeline.value].reverse().find((step) => step.status === "running")?.label || (response.value ? copy.value.receiving : copy.value.preparing));
 const resultIndex = computed(() => [
-  ...messages.value.flatMap((message) => (message.resultViews || []).map((view, index) => ({ target: `${workspaceId}-${message.id}-${index}`, title: view.title }))),
-  ...resultViews.value.map((view, index) => ({ target: `${workspaceId}-current-${index}`, title: view.title }))
+  ...visibleMessages.value.flatMap((message) => (message.resultViews || []).map((view, index) => ({ target: `${workspaceId}-${message.id}-${index}`, title: view.title }))),
+  ...visibleResultViews.value.map((view, index) => ({ target: `${workspaceId}-current-${index}`, title: view.title }))
 ]);
-const visibleMessages = computed(() => messages.value.filter((message, index) => !(props.session && !localSessionOverride.value && runStatus.value === 'running' && message.role === 'assistant' && index === messages.value.length - 1)));
+const resultIdentity = (view: AgentResultViewModel) => JSON.stringify(view);
+const visibleMessages = computed(() => {
+  const seen = new Set<string>();
+  return messages.value.filter((message, index) => !(props.session && !localSessionOverride.value && runStatus.value === 'running' && message.role === 'assistant' && index === messages.value.length - 1)).map((message) => ({
+    ...message, resultViews: (message.resultViews || []).filter((view) => { const identity = resultIdentity(view); if (seen.has(identity)) return false; seen.add(identity); return true; })
+  }));
+});
+const visibleResultViews = computed(() => {
+  const seen = new Set(visibleMessages.value.flatMap((message) => (message.resultViews || []).map(resultIdentity)));
+  return [...retainedResultViews.value, ...resultViews.value].filter((view) => { const identity = resultIdentity(view); if (seen.has(identity)) return false; seen.add(identity); return true; });
+});
+
+const zeroMatch = computed(() => runStatus.value === "done" && [...(messages.value.at(-1)?.resultViews || []), ...resultViews.value].some(view => view.toolName === "keyword_search" && view.status === "done" && !view.rows.length && /(?:0 家符合|0 merchants meet)/.test(view.message)));
 const hasToolFailure = computed(() => timeline.value.some((step) => step.phase === "tool"
   && (step.status === "error" || step.status === "timeout" || step.dataSource === "unavailable")));
 const feedbackPrompt = computed(() => hasToolFailure.value ? copy.value.toolFeedbackPrompt : copy.value.failureFeedbackPrompt);
@@ -268,6 +288,15 @@ function feedbackPromptForMessage(id: string): string {
   const latestAnswer = messages.value.slice().reverse().find((message) => message.role === "assistant");
   const failedStep = timeline.value.some((step) => step.status === "error" || step.status === "timeout");
   return runStatus.value === "done" && latestAnswer?.id === id && (failedStep || hasToolFailure.value) ? feedbackPrompt.value : "";
+}
+
+function promptForMessage(id: string): string {
+  const index = messages.value.findIndex(message => message.id === id);
+  return messages.value.slice(0, index).reverse().find(message => message.role === "user")?.content || "";
+}
+
+function requestedDetailsForMessage(id: string): boolean {
+  return agentAnswerDisplayMode(promptForMessage(id)) === "detailed";
 }
 
 function resizeInput(): void {
@@ -377,7 +406,9 @@ function trackScroll(): void {
   if (!log) return;
   followingLatest.value = log.scrollHeight - log.scrollTop - log.clientHeight < 96;
   const delta = log.scrollTop - lastScrollTop;
-  if (runStatus.value !== "running" && !input.value.trim() && messages.value.length && Math.abs(delta) > 10) {
+  const answerNavigation = answerScrollTarget !== null && Math.abs(log.scrollTop - answerScrollTarget) < 2;
+  answerScrollTarget = null;
+  if (!answerNavigation && runStatus.value !== "running" && !input.value.trim() && messages.value.length && Math.abs(delta) > 10) {
     composerCollapsed.value = !followingLatest.value;
     if (composerCollapsed.value) inputRef.value?.blur();
   }
@@ -392,9 +423,9 @@ function scrollLatest(): void {
   logRef.value?.scrollTo?.({ top: logRef.value.scrollHeight, behavior: "auto" });
 }
 function followStream(): void {
-  if (runStatus.value === "idle" && !messages.value.length) return;
+  if (runStatus.value !== "running") return;
   if (!followingLatest.value || scrollFrame) return;
-  scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (followingLatest.value) scrollLatest(); });
+  scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (followingLatest.value && runStatus.value === "running") scrollLatest(); });
 }
 function jumpToResult(target: string): void {
   followingLatest.value = false;
@@ -452,15 +483,28 @@ function handleKeydown(event: KeyboardEvent): void {
   if (runStatus.value !== "running") void submit();
 }
 watch(input, () => nextTick(() => { resizeInput(); syncInputScroll(); }));
-watch([response, messages, resultViews, timeline, runStatus], () => nextTick(followStream), { deep: true });
+watch([response, messages, resultViews, timeline], () => nextTick(followStream), { deep: true });
+watch(runStatus, (status, previous) => {
+  if (status === "stopped") timeline.value = timeline.value.map((step) => step.status === "running" ? { ...step, status: "stopped" } : step);
+  if (previous === "running" && status === "done" && followingLatest.value) nextTick(() => {
+    if (!followingLatest.value) return;
+    const answers = logRef.value?.querySelectorAll<HTMLElement>("[data-agent-answer-anchor]");
+    const answer = answers?.[answers.length - 1];
+    if (answer && logRef.value) {
+      answerScrollTarget = Math.max(0, Math.min(answer.offsetTop - logRef.value.offsetTop, logRef.value.scrollHeight - logRef.value.clientHeight));
+      logRef.value.scrollTo?.({ top: answerScrollTarget, behavior: "auto" });
+    }
+  });
+});
 
 function nextId(prefix: string): string {
   idCounter += 1;
   return `${prefix}-${idCounter}`;
 }
 
-function renderAssistant(content: string): string {
-  return renderMarkdownToHtml(content);
+function renderAssistant(content: string, prompt = lastPrompt.value, staticAnswer = runStatus.value !== "running"): string {
+  const html = renderMarkdownToHtml(content);
+  return staticAnswer ? presentAgentAnswerHtml(html, prompt, props.language) : html;
 }
 
 function userPromptCommand(content: string): { key: string; label: string; value: string } | null {
@@ -535,7 +579,10 @@ function handleExample(prompt = copy.value.example): void {
   nextTick(() => inputRef.value?.focus());
 }
 
-async function submit(): Promise<void> {
+async function submit(reuseResult = false): Promise<void> {
+  if (runStatus.value === "stopped" || runStatus.value === "error") {
+    retainedResultViews.value = [...new Map([...retainedResultViews.value, ...resultViews.value.filter(view => view.status === "done" || view.status === "partial")].map(view => [resultIdentity(view), view])).values()];
+  }
   if (runStatus.value === "running") {
     return;
   }
@@ -605,6 +652,7 @@ async function submit(): Promise<void> {
         asinContext,
         memoryText: agentMemoryPromptText(memory.value, props.language),
         signal: abortController.signal,
+        reuseResult,
         promotionAttachment
       }, {
         onToken: (token) => {
@@ -658,6 +706,7 @@ async function submit(): Promise<void> {
       memory: initialMemory,
       memoryText: agentMemoryPromptText(initialMemory, requestLanguage),
       signal: abortController.signal,
+      reuseResult,
       promotionAttachment,
       onToken: (token) => { response.value += token; },
       onTimeline: updateTimelineStep,
@@ -724,6 +773,7 @@ watch(runStatus, (status) => { if (status !== "running") stopping.value = false;
 
 function newConversation(): void {
   if (runStatus.value === "running") return;
+  retainedResultViews.value = [];
   finishElapsedTimer();
   runElapsedMs.value = 0;
   stopping.value = false;
@@ -732,6 +782,7 @@ function newConversation(): void {
   replayComparison.value = null;
   diagnosticsOpen.value = false;
   composerCollapsed.value = false;
+  props.clearReusableResults?.();
   activity?.clear();
   failedFeedback.value = null;
   activeAnswerId = "";
@@ -759,6 +810,12 @@ function newConversation(): void {
   clearAgentViewSnapshot(props.stateKey);
   clearAgentMemory(props.storage);
   nextTick(() => inputRef.value?.focus());
+}
+
+function continueFromResults(): void {
+  if (!canContinue.value) return;
+  if (!input.value.trim()) input.value = props.language === "zh" ? "基于已查询的原结果继续整理，说明未完成部分，不重新查询数据。" : "Continue from the original queried results, explain incomplete parts, without querying again.";
+  void submit(true);
 }
 
 function replay(turn: AgentDiagnosticTurn): void {
@@ -814,7 +871,7 @@ onBeforeUnmount(() => {
         response: response.value,
         partial: partial.value,
         omittedTargets: omittedTargets.value.slice(),
-        resultViews: normalizeAgentResultViews(resultViews.value),
+        resultViews: normalizeAgentResultViews([...retainedResultViews.value, ...resultViews.value]),
         memory: normalizeAgentMemory(memory.value),
         error: error.value
       });
@@ -880,10 +937,10 @@ onBeforeUnmount(() => {
               <div class="aw-more-suggestions"><span>{{ copy.more }}</span><button v-for="suggestion in moreSuggestions" :key="suggestion.title" type="button" @click="handleExample(suggestion.prompt)">{{ suggestion.title }} <span aria-hidden="true">→</span></button></div>
             </div>
 
-            <article v-for="message in visibleMessages" :key="message.id" class="aw-message" :class="`aw-message-${message.role}`">
+            <article v-for="message in visibleMessages" :key="message.id" class="aw-message" :class="`aw-message-${message.role}`" :data-agent-answer-anchor="message.role === 'assistant' ? '' : undefined">
               <div class="aw-message-author"><span v-if="message.role === 'assistant'" class="aw-avatar" aria-hidden="true">YP</span>{{ message.role === 'user' ? copy.you : copy.answer }}</div>
               <ChatbotResultView v-if="message.report" :language="language" :result="message.report" @download="downloadReport" />
-              <div v-else-if="message.role === 'assistant'" class="chat-stream-text" data-agent-response v-html="renderAssistant(message.content)"></div>
+              <div v-else-if="message.role === 'assistant'" class="chat-stream-text" data-agent-response v-html="renderAssistant(message.content, promptForMessage(message.id), true)"></div>
               <div v-else class="chat-stream-text aw-user-prompt" data-agent-user-prompt>
                 <template v-if="userPromptCommand(message.content)">
                   <div class="aw-user-command-row">
@@ -895,7 +952,7 @@ onBeforeUnmount(() => {
                 <p v-else>{{ message.content }}</p>
               </div>
               <section v-if="message.resultViews?.length" class="agent-modern-results" :aria-label="copy.results">
-                <div v-for="(view, index) in message.resultViews" :id="`${workspaceId}-${message.id}-${index}`" :key="view.id" class="aw-result-anchor"><AgentResultView :language="language" :view="view" /></div>
+                <div v-for="(view, index) in message.resultViews" :id="`${workspaceId}-${message.id}-${index}`" :key="view.id" class="aw-result-anchor"><AgentResultView :language="language" :view="view" :expanded="requestedDetailsForMessage(message.id)" /></div>
               </section>
               <ChatAnswerActions v-if="message.role === 'assistant' && feedbackForMessage(message.id)" :language="language" :answer-id="message.id" :feedback-state="message.feedbackState || 'available'" :feedback="feedbackForMessage(message.id)" :feedback-prompt="feedbackPromptForMessage(message.id)" />
             </article>
@@ -905,17 +962,22 @@ onBeforeUnmount(() => {
               <div class="aw-progress-phases"><span v-for="phase in (['planning', 'tool', 'synthesis'] as const)" :key="phase" :class="{ 'is-active': phase === activePhase }">{{ copy[phase] }}</span></div>
               <div v-if="!response && !resultViews.length" class="aw-loading-lines" aria-hidden="true"><i></i><i></i></div>
             </div>
-            <article v-if="runStatus !== 'done' && response" class="aw-message aw-message-assistant" data-agent-streaming-response>
+            <article v-if="runStatus !== 'done' && response" class="aw-message aw-message-assistant" data-agent-streaming-response data-agent-answer-anchor>
               <div class="aw-message-author"><span class="aw-avatar" aria-hidden="true">YP</span>{{ copy.answer }}</div>
               <div class="chat-stream-text" v-html="renderAssistant(response)"></div>
             </article>
-            <section v-if="resultViews.length" class="agent-modern-results" :aria-label="copy.results">
-              <div v-for="(view, index) in resultViews" :id="`${workspaceId}-current-${index}`" :key="view.id" class="aw-result-anchor"><AgentResultView :language="language" :view="view" /></div>
+            <section v-if="visibleResultViews.length" class="agent-modern-results" :aria-label="copy.results">
+              <div v-for="(view, index) in visibleResultViews" :id="`${workspaceId}-current-${index}`" :key="view.id" class="aw-result-anchor"><AgentResultView :language="language" :view="view" :expanded="agentAnswerDisplayMode(lastPrompt) === 'detailed'" /></div>
             </section>
+            <div v-if="zeroMatch" class="aw-notice-actions" data-agent-zero-match>
+              <button type="button" class="aw-button" data-agent-action="adjust-filters" @click="handleExample(lastPrompt)">{{ language === 'zh' ? '调整筛选条件' : 'Adjust filters' }}</button>
+              <button type="button" class="aw-button" data-agent-action="original-scope" @click="handleExample(language === 'zh' ? `查看以下查询应用指标门槛前的原匹配范围，保留原关键词与 Tier：${lastPrompt}` : `Show the original keyword and Tier match scope before metric thresholds: ${lastPrompt}`)">{{ language === 'zh' ? '查看原匹配范围' : 'View original match scope' }}</button>
+            </div>
             <AgentTimeline v-if="timeline.length || runStatus !== 'idle'" :language="language" :status="runStatus" :steps="timeline" :elapsed-ms="runElapsedMs" :partial="partial" :omitted-targets="omittedTargets" />
             <div v-if="error || runStatus === 'stopped'" class="aw-notice" :class="{ 'aw-notice-error': error }" :role="error ? 'alert' : 'status'">
               <p>{{ error || copy.stopped }}</p>
               <div class="aw-notice-actions">
+                <button v-if="canContinue" type="button" class="aw-button" data-agent-action="continue" @click="continueFromResults">{{ language === "zh" ? "基于已有结果继续" : "Continue from existing results" }}</button>
                 <ChatAnswerActions v-if="failedFeedback" :language="language" :refresh-key="feedbackRefreshKey" :feedback="failedFeedback" :feedback-label="runStatus === 'stopped' ? copy.stoppedFeedback : copy.failedFeedback" :feedback-prompt="runStatus === 'error' ? feedbackPrompt : ''" />
                 <button v-if="lastPrompt" type="button" class="aw-button" data-agent-action="retry" @click="handleExample(lastPrompt)">{{ copy.retry }}</button>
               </div>
@@ -932,9 +994,9 @@ onBeforeUnmount(() => {
           <button v-if="!followingLatest" class="aw-jump-latest" type="button" data-agent-action="latest" @click="scrollLatest">{{ copy.latest }} <span aria-hidden="true">↓</span></button>
           <button v-if="composerCollapsed" type="button" class="aw-composer-restore" data-agent-action="expand-composer" @click="expandComposer"><span>{{ input || (language === 'zh' ? '继续提问…' : 'Continue the conversation…') }}</span><span>{{ language === 'zh' ? '展开 ↑' : 'Expand ↑' }}</span></button>
           <div class="aw-composer-expandable" :inert="composerCollapsed || undefined">
-          <form class="aw-composer" data-agent-form @submit.prevent="submit" @focusin="composerCollapsed = false">
+          <form class="aw-composer" data-agent-form @submit.prevent="submit()" @focusin="composerCollapsed = false">
             <ChatbotCommandMenu ref="commandMenu" :language="language" :input="input" :options="AGENT_MENU_COMMANDS" @select="chooseCommand" />
-            <AgentAttachment :language="language" :store="attachmentStore" :read-file="readFile" :busy="runStatus === 'running'" />
+            <AgentAttachment :language="language" :store="attachmentStore" :read-file="readFile" :busy="runStatus === 'running'" :expanded="parseAgentCommand(input)?.command.key === 'promotion'" />
             <label class="aw-sr-only" :for="`${workspaceId}-input`">{{ copy.composer }}</label>
             <div class="aw-composer-input">
               <div v-if="inputCommandHighlight" class="aw-composer-input-highlight" :style="{ transform: `translateY(-${inputScrollTop}px)` }" aria-hidden="true">

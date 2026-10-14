@@ -6,6 +6,7 @@ import { resolveAgentResultComponent } from "./agentResultRegistry";
 const props = defineProps<{
   readonly language: UiLanguage;
   readonly view: AgentResultViewModel;
+  readonly expanded?: boolean;
 }>();
 </script>
 
@@ -16,6 +17,6 @@ const props = defineProps<{
     :data-result-kind="view.kind"
     :data-result-status="view.status"
   >
-    <component :is="resolveAgentResultComponent(view.kind)" :language="props.language" :view="props.view" />
+    <component :is="resolveAgentResultComponent(view.kind)" :language="props.language" :view="props.view" v-bind="view.kind === 'trend' ? { expanded: props.expanded } : {}" />
   </article>
 </template>

@@ -4,6 +4,16 @@ import { normalizeAgentResultView } from "../../../shared/contracts/agentResult"
 import AgentTrendResult from "./AgentTrendResult.vue";
 
 describe("Agent trend component", () => {
+  it("图表默认折叠，所问指标优先且保留更多指标", async () => {
+    const view = normalizeAgentResultView({ id: "trend-ui", toolName: "trend", kind: "trend", status: "done", title: "趋势", trend: { target: "Shokz", metric: "conversionRate", metrics: ["revenue", "conversionRate", "epc"], months: [{ month: "2026-08", conversionRate: 0.072 }, { month: "2026-09", conversionRate: 0.1 }] } })!;
+    const wrapper = mount(AgentTrendResult, { props: { language: "zh", view } });
+    expect(wrapper.get('[data-agent-trend-toggle]').attributes("aria-expanded")).toBe("false");
+    expect(wrapper.get('[data-agent-more-metrics]').find('[data-agent-trend-metric="epc"]').exists()).toBe(true);
+    expect(wrapper.get("table").text()).toContain("7.20%");
+    await wrapper.get('[data-agent-trend-toggle]').trigger("click");
+    expect(wrapper.get('[data-agent-trend-toggle]').attributes("aria-expanded")).toBe("true");
+    wrapper.unmount();
+  });
   it("switches metrics through the local SVG renderer", async () => {
     const view = normalizeAgentResultView({ id: "trend-1", toolName: "trend", kind: "trend", status: "done", title: "Monthly trend", trend: {
       target: "Fixture", metric: "revenue", metrics: ["revenue", "orders"], months: [

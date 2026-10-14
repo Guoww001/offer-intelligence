@@ -488,7 +488,7 @@ describe("createAgentSession", () => {
     } });
     expect(result.resultView).toMatchObject({ kind: "table", source: "cache", rows: [
       { label: "1", values: ["362448", "Midland Radio", "B09PFBWV55", "1,234.56"] },
-      { label: "2", values: ["362448", "Midland Radio", "B000000001", "0"] }
+      { label: "2", values: ["362448", "Midland Radio", "B000000001", "0.00"] }
     ] });
     expect(JSON.stringify(result.memoryEvent)).not.toContain("B09PFBWV55");
     expect(fetcher).not.toHaveBeenCalled();

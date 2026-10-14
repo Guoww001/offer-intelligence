@@ -1,3 +1,5 @@
+import { formatAgentMetric } from "./agentMetricFormatting";
+import { createAgentResultReuse, type ReusableAgentResult } from "./agentResultReuse";
 import type { UiLanguage } from "../../shared/i18n";
 import { notifyAuthFailure } from "../../shared/api/client";
 import { mergeMerchantMonths } from "../chatbot/report/trendReports";
@@ -80,6 +82,7 @@ export interface AgentSessionRequest {
   readonly asinContext?: readonly string[];
   // 页面已登记的提问事件：备用执行复用关联，日志创建及完成仍由页面负责。
   readonly questionEventId?: string;
+  readonly reuseResult?: boolean;
   readonly signal: AbortSignal;
   readonly promotionAttachment?: AgentPromotionAttachment;
 }
@@ -164,6 +167,11 @@ export interface AgentViewSession {
 export interface AgentSession extends AgentViewSession {
   submit(request: AgentSessionRequest, callbacks?: AgentSessionCallbacks): Promise<AgentSessionResult>;
   executeTool(request: AgentToolExecutionRequest): Promise<AgentToolExecutionResponse>;
+  getReusableResult(): ReusableAgentResult | null;
+  retainReusableResult(result: ReusableAgentResult): void;
+  markReusableStopped(): void;
+  canReuseResult(prompt: string, explicit?: boolean): boolean;
+  clearReusableResults(): void;
 }
 
 export interface AgentSessionOptions {
@@ -302,15 +310,7 @@ function resultMetricKey(label: string): string {
 
 function formatAgentResultNumber(label: string, value: number): string {
   const key = resultMetricKey(label);
-  if (key === "conversionrate" || key === "cvr" || key === "commissionrate" || key.endsWith("percentage")) {
-    const percentage = Math.abs(value) <= 1 ? value * 100 : value;
-    return `${percentage.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
-  }
-  if (key === "epc") return value.toLocaleString("en-US", { maximumFractionDigits: 3 });
-  if (key.endsWith("count") || ["clicks", "orders", "dpv", "atc", "returned", "unpaid", "pending", "paid", "overdue"].includes(key)) {
-    return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  }
-  return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return formatAgentMetric(key === "conversionrate" || key === "cvr" || key === "commissionrate" ? "conversionRate" : key.endsWith("count") || ["returned", "unpaid", "pending", "paid", "overdue"].includes(key) ? "count" : key, value, "zh");
 }
 
 function firstValue(row: Row, keys: readonly string[]): unknown {
@@ -415,7 +415,7 @@ function merchantData(row: Row): Record<string, unknown> {
     merchant: merchantObject(row),
     ...(rowTier(row) ? { tier: rowTier(row) } : {}),
     ...(categories[0] ? { category: categories[0] } : {}),
-    metrics: Object.fromEntries(Object.entries(metricValues(row)).map(([key, value]) => [key, value === null ? null : rounded(value)]))
+    metrics: metricValues(row)
   };
 }
 
@@ -494,7 +494,7 @@ function asinSummaryRow(row: Row): Record<string, unknown> | null {
     ...(optionalAsinText(row, ["category", "Category"]) ? { category: optionalAsinText(row, ["category", "Category"]) } : {}),
     ...(optionalAsinNumber(row, ["commissionRate"]) !== undefined ? { commissionRate: optionalAsinNumber(row, ["commissionRate"]) } : {}),
     ...(optionalAsinText(row, ["updatedAt"], 80) ? { updatedAt: optionalAsinText(row, ["updatedAt"], 80) } : {}),
-    ...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, value === null ? null : rounded(value)]))
+    ...metrics
   };
 }
 
@@ -511,7 +511,7 @@ function asinMonthlyRow(row: Row, fallbackAsin: string, fallbackMerchantName: st
     ...(id ? { merchantId: id } : {}),
     ...(name ? { merchantName: name } : {}),
     month,
-    ...Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, value === null ? null : rounded(value)]))
+    ...metrics
   };
 }
 
@@ -620,6 +620,7 @@ function keywordFailureMessage(errorCode: string | undefined, language: UiLangua
 }
 
 function toolFailureMessage(result: AgentToolResult, language: UiLanguage, target: string): string {
+  if (result.errorCode === "tool_timeout") return language === "zh" ? `“${target}”的数据查询超时，请稍后重试。` : `The data query for "${target}" timed out. Please retry.`;
   if (result.resolution?.status === "invalid_filter" && Array.isArray(result.resolution.candidates)) {
     const candidates = result.resolution.candidates.filter(isRecord).map(row => text(row.name || row.id, 120)).filter(Boolean);
     if (candidates.length) return language === "zh" ? `“${target}”对应多个商户，请选择：${candidates.join("、")}。` : `Choose a merchant for "${target}": ${candidates.join(", ")}.`;
@@ -670,7 +671,7 @@ function merchantMonthlyData(row: Row): Record<string, unknown> {
     const raw = firstValue(row, aliases);
     if (raw === undefined) return;
     const value = Number(String(raw).replace(/[$,%]/g, "").replace(/,/g, ""));
-    if (Number.isFinite(value)) metrics[key] = rounded(value);
+    if (Number.isFinite(value)) metrics[key] = value;
   });
   return { month: rowMonth(row), metrics };
 }
@@ -696,8 +697,15 @@ function categorySummary(rows: readonly Row[], category: string): Record<string,
 
 function resolveMerchant(input: string, offers: readonly Row[]): { row?: Row; result?: AgentToolResult } {
   const resolution = resolveChatbotMerchant(input, offers);
-  if (resolution.status === "resolved" && resolution.matches[0]?.offer) return { row: resolution.matches[0].offer };
-  const candidates = resolution.matches.slice(0, 10).map((match) => {
+  const query = normalizeChatbotText(input);
+  // 工具参数是明确实体名，不能沿用全文搜索的内部短词命中。
+  const matches = resolution.matches.filter(match => {
+    if (match.score >= 110) return true;
+    const name = normalizeChatbotText(merchantName(match.offer));
+    return match.score >= 90 && !(query.startsWith(name) && query !== name && !/^\s/.test(query.slice(name.length)));
+  });
+  if (resolution.status === "resolved" && matches[0]?.offer) return { row: matches[0].offer };
+  const candidates = matches.slice(0, 10).map((match) => {
     const row = match.offer;
     return {
       merchantId: merchantId(row),
@@ -770,7 +778,7 @@ function trendRows(rows: readonly Row[], requestedMonths: number, metric: string
       metrics[key] = values.length ? values.reduce((sum, value) => sum + value, 0) : null;
     });
     const value = metrics[metric === "affiliatePayout" ? "commission" : metric];
-    return { month, value: typeof value === "number" ? rounded(value) : null, metrics };
+    return { month, value: typeof value === "number" ? value : null, metrics };
   });
 }
 
@@ -779,8 +787,8 @@ function trendSummary(rows: readonly Record<string, unknown>[]): Record<string, 
   const latest = typeof rows.at(-1)?.value === "number" ? rows.at(-1)!.value as number : null;
   const changeRate = first === null || latest === null || first === 0 ? null : Math.round(((latest - first) / first) * 1_000_000) / 1_000_000;
   return {
-    first: first === null ? null : rounded(first),
-    latest: latest === null ? null : rounded(latest),
+    first,
+    latest,
     startMonth: text(rows[0]?.month, 10),
     endMonth: text(rows.at(-1)?.month, 10),
     change: first === null || latest === null ? null : rounded(latest - first),
@@ -1136,7 +1144,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
   }
 
-  async function merchantMonthlyRows(row: Row, months: number, signal: AbortSignal, full = false): Promise<{ rows: Row[]; checkedAt: string | null; merchant?: Row }> {
+  async function merchantMonthlyRows(row: Row, months: number, signal: AbortSignal, full = false): Promise<{ rows: Row[]; checkedAt: string | null; merchant?: Row; errorCode?: "tool_timeout" | "tool_error" }> {
     const id = merchantId(row);
     if (!id) return { rows: [], checkedAt: null };
     const query = new URLSearchParams({ merchantId: id, months: String(months), ...(full ? { limit: "50" } : { minimal: "1" }) });
@@ -1155,7 +1163,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       return { rows, checkedAt: text(payload.checkedAt, 80) || null };
     } catch (error) {
       if (isAbortError(error, signal)) throw error;
-      return { rows: [], checkedAt: null };
+      return { rows: [], checkedAt: null, errorCode: (error as Error & { code?: string }).code === "tool_timeout" ? "tool_timeout" : "tool_error" };
     }
   }
 
@@ -1454,11 +1462,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     let dataAsOf = options.dataAsOf || null;
     let estimated = true;
     let label = target;
+    let monthlyError: "tool_timeout" | "tool_error" | undefined;
     if (entityType === "merchant") {
       const resolved = resolveMerchant(target, offers);
       if (!resolved.row) return resolved.result || failure("not_found");
       label = merchantName(resolved.row);
       const monthlyResult = await merchantMonthlyRows(resolved.row, months, signal);
+      monthlyError = monthlyResult.errorCode;
       trend = monthlyResult.rows.map((row) => monthlyData(row, metric)).filter((row) => /^20\d{2}-\d{2}$/.test(String(row.month)));
       dataAsOf = monthlyResult.checkedAt || dataAsOf;
       if (trend.length >= 2) {
@@ -1480,6 +1490,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     } else {
       return failure("invalid_filter", offers.length ? "cache" : "unavailable", { status: "invalid_filter", field: "entityType" });
     }
+    if (trend.length < 2 && monthlyError) return failure(monthlyError, "unavailable", { status: "unavailable", field: "monthly_data", value: target });
     if (trend.length < 2) return failure("not_found", dataSource, { status: "not_found", field: "months", value: months });
     trend.sort((left, right) => String(left.month).localeCompare(String(right.month)));
     const summary = trendSummary(trend);
@@ -1625,6 +1636,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     };
   }
 
+  const reusableResults = createAgentResultReuse();
+  let pendingSource: ReusableAgentResult | null = null;
+  let pendingCallCount = 0;
+
   async function executeCalls(
     calls: readonly AgentToolCall[],
     prompt: string,
@@ -1646,6 +1661,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         const execution = { call, result };
         const view = result.resultView || resultViewFromExecution(execution);
         if (view) emitResultView(view);
+        if (pendingSource && result.ok && !signal.aborted && !disposed) {
+          pendingSource.toolResults = [...pendingSource.toolResults.filter(item => item.callId !== call.id), projectedToolResult(execution)].slice(0, MAX_TOOL_CALLS);
+          pendingSource.partial = pendingSource.toolResults.length < pendingCallCount;
+          pendingSource.resultViews = normalizeAgentResultViews(resultViews.filter(view => pendingSource!.toolResults.some(item => item.callId === view.id)));
+          reusableResults.retain(pendingSource);
+        }
         return execution;
       }));
       results.push(...batch);
@@ -2077,7 +2098,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     messages = baseHistory.slice();
     setQuestionAnswer(response);
     notify();
-    return { ok: false, status: "error", response, steps: steps.slice(), memoryEvents: [], errorCode };
+    return { ok: false, status: "error", response, steps: steps.slice(), resultViews: normalizeAgentResultViews(resultViews), memoryEvents: [], errorCode };
   }
 
   function commitDone(
@@ -2126,6 +2147,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
   function commitStopped(baseHistory: readonly AgentHistoryMessage[], trace: TraceContext, planned: number, executed: number, failed: number): AgentSessionResult {
     status = "stopped";
+    reusableResults.markStopped();
     response = "";
     partial = false;
     omittedTargets = [];
@@ -2136,6 +2158,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       ok: false,
       status: "stopped",
       response: "",
+      resultViews: normalizeAgentResultViews(resultViews),
       steps: steps.slice(),
       partial: false,
       omittedTargets: [],
@@ -2156,6 +2179,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       return { ok: false, status: "error", response: "", steps: [], memoryEvents: [], errorCode: "agent_disabled" };
     }
 
+    const retainedSourceViews = status === "stopped" || status === "error" ? resultViews.slice() : [];
     currentLanguage = request.language === "en" ? "en" : "zh";
     planningAsins = request.asinContext ?? (status === "done" ? asinContextFromViews(resultViews) : []);
     const baseHistory = Array.isArray(request.history) ? request.history.slice(-MAX_HISTORY) : history.slice(-MAX_HISTORY);
@@ -2163,7 +2187,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     history = baseHistory.slice();
     messages = [...baseHistory, { role: "user", content: prompt }, { role: "assistant", content: "" }];
     steps = [];
-    resultViews = [];
+    resultViews = retainedSourceViews;
     response = "";
     partial = false;
     omittedTargets = [];
@@ -2177,6 +2201,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const trace = beginTrace(questionEventId);
     if (request.questionEventId) currentQuestion = null;
     else beginQuestion(prompt, questionEventId);
+    const reuseDecision = reusableResults.decide(prompt, request.reuseResult, (options.getOffers?.() || offers).flatMap(row => [merchantName(row), merchantId(row)]));
+    pendingSource = null;
     const started = Date.now();
     let plannedCount = 0;
     let executedCount = 0;
@@ -2184,6 +2210,35 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     let fallbackDelivered = false;
     let traceSequence = 0;
     try {
+      if (reuseDecision.kind === "unavailable") {
+        const failed = commitPlanningFailure(baseHistory, currentLanguage === "zh" ? "已有结果不可用、已过期或未覆盖这次请求。请重新查询所需范围。" : "Existing results are unavailable, expired, or do not cover this request. Query the required scope again.", "agent_reuse_scope_unavailable");
+        completeTrace(trace, { status: "error", partial: false, stopped: false, fallback: false, planned: 0, executed: 0, failed: 0, errorCode });
+        await completeQuestion("failed"); return failed;
+      }
+      if (reuseDecision.kind === "reuse") {
+        const source = reuseDecision.source;
+        emitStep(makeStep("synthesis", "synthesis", "running", stepLabel("synthesis", ""), started));
+        const synthesized = await streamSynthesis({ contractVersion: "v2", agentRunId: source.agentRunId,
+          planProofs: source.planProofs, question: prompt, language: currentLanguage,
+          context: { memory: text(request.memoryText, MAX_MEMORY_TEXT), history: clipHistory(baseHistory) },
+          toolResults: source.toolResults,
+          reuse: { originalQuestion: source.originalQuestion, sourceQuestionEventId: source.sourceQuestionEventId, scope: reuseDecision.scope },
+          trace: { runId: trace.runId, questionEventId, tracePhase: "synthesis" }
+        }, combined.signal, token => { response += token; callbacks.onToken?.(token); notify(); });
+        if (synthesized.errorCode || !synthesized.response.trim()) {
+          emitStep(makeStep("synthesis", "synthesis", "error", stepLabel("synthesis", ""), started));
+          const failed = commitPlanningFailure(baseHistory, currentLanguage === "zh" ? "已有数据仍保留，但本次综合未完成。可以重试继续，或重新查询。" : "Existing data is retained, but synthesis did not complete. Retry continuing or query again.", synthesized.errorCode || "synthesis_unavailable");
+          completeTrace(trace, { status: "error", partial: false, stopped: false, fallback: false, planned: 0, executed: 0, failed: 0, errorCode });
+          await completeQuestion("failed"); return failed;
+        }
+        emitStep(makeStep("synthesis", "synthesis", "done", stepLabel("synthesis", ""), started));
+        if (source.restoreViews) resultViews = source.resultViews;
+        const sourcePartial = source.partial === true;
+        const result = commitDone(baseHistory, prompt, synthesized.response.trim(), sourcePartial, [], []);
+        reusableResults.markPresented();
+        completeTrace(trace, { status: "done", partial: sourcePartial, stopped: false, fallback: false, planned: 0, executed: 0, failed: 0, errorCode: null });
+        await completeQuestion("success"); return result;
+      }
       const planningId = "planning";
       emitStep(makeStep(planningId, "planning", "running", stepLabel("planning", ""), started));
       let firstPlan = await plan(prompt, currentLanguage, trace, combined.signal, request.promotionAttachment);
@@ -2227,15 +2282,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
 
       if (isKeywordDataQuestion(prompt) && !activePlan.toolCalls.some((call) => call.name === "keyword_search")) {
-        const result = commitDone(baseHistory, prompt, keywordMissingDataResponse(currentLanguage), false, [], [], "no_verifiable_source");
-        completeTrace(trace, { status: "done", partial: false, stopped: false, fallback: true, planned: plannedCount, executed: 0, failed: 0, errorCode: "no_verifiable_source" });
-        await completeQuestion("success");
-        return result;
+        const failed = commitPlanningFailure(baseHistory, keywordMissingDataResponse(currentLanguage), "no_verifiable_source");
+        completeTrace(trace, { status: "error", partial: false, stopped: false, fallback: false, planned: plannedCount, executed: 0, failed: 0, errorCode });
+        await completeQuestion("failed"); return failed;
       }
 
       let allExecutions: AgentToolExecution[] = [];
       const omitted: string[] = activePlan.toolCalls.slice(MAX_TOOL_CALLS).map(toolTarget);
       let firstCalls = activePlan.toolCalls.slice(0, MAX_TOOL_CALLS);
+      pendingSource = { originalQuestion: prompt, sourceQuestionEventId: questionEventId, agentRunId: activePlan.agentRunId,
+        planProofs: activePlan.planProof ? [activePlan.planProof] : [], toolResults: [], resultViews: [] };
+      pendingCallCount = activePlan.toolCalls.length;
       allExecutions = await executeCalls(firstCalls, prompt, combined.signal, trace, request.promotionAttachment);
       executedCount += allExecutions.length;
       failedCount += allExecutions.filter((item) => !item.result.ok).length;
@@ -2251,7 +2308,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         const retryPlanResult = await plan(prompt, currentLanguage, trace, combined.signal, request.promotionAttachment, retryBody);
         if (retryPlanResult.plan) {
           const retryPlan = retryPlanResult.plan;
+          pendingCallCount += retryPlan.toolCalls.length;
           if (retryPlan.planProof) proofs.push(retryPlan.planProof);
+          pendingSource.planProofs = proofs.slice(0, MAX_PLAN_PROOFS);
           plannedCount += retryPlan.toolCalls.length;
           const remaining = MAX_TOOL_CALLS - executedCount;
           const retryCalls = retryPlan.toolCalls.slice(0, remaining);
@@ -2266,15 +2325,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
       omittedTargets = omitted.slice(0, 20);
       partial = Boolean(omitted.length || failedCount);
-      if (isKeywordDataQuestion(prompt) && !allExecutions.some((item) => item.call.name === "keyword_search" && item.result.ok)) {
-        const keywordExecutions = allExecutions.filter((item) => item.call.name === "keyword_search");
-        const safeResponse = keywordExecutions.length
-          ? fallbackAnswer(keywordExecutions, currentLanguage, [])
-          : keywordMissingDataResponse(currentLanguage);
-        const result = commitDone(baseHistory, prompt, safeResponse, partial, omitted, [], "no_verifiable_source");
-        completeTrace(trace, { status: "done", partial, stopped: false, fallback: true, planned: plannedCount, executed: executedCount, failed: failedCount, errorCode: "no_verifiable_source" });
-        await completeQuestion("success");
-        return result;
+      if (!allExecutions.some(item => item.result.ok)) {
+        const failed = commitPlanningFailure(baseHistory, fallbackAnswer(allExecutions, currentLanguage, omitted), allExecutions[0]?.result.errorCode || "no_verifiable_source");
+        completeTrace(trace, { status: "error", partial, stopped: false, fallback: true, planned: plannedCount, executed: executedCount, failed: failedCount, errorCode });
+        await completeQuestion("failed"); return { ...failed, resultViews: normalizeAgentResultViews(resultViews) };
       }
       const synthesisStarted = Date.now();
       const synthesisId = "synthesis";
@@ -2302,9 +2356,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         notify();
       });
       let finalResponse = synthesisResult.response.trim();
-      if (!finalResponse) {
+      if (!finalResponse || synthesisResult.errorCode) {
         finalResponse = fallbackAnswer(allExecutions, currentLanguage, omitted);
         fallbackDelivered = true;
+      }
+      if (synthesisResult.errorCode && allExecutions.some(item => item.call.name === "trend")) {
+        emitStep(makeStep(synthesisId, "synthesis", "error", stepLabel("synthesis", ""), synthesisStarted));
+        const failed = commitPlanningFailure(baseHistory, currentLanguage === "zh" ? "查询结果已保留，但本次趋势综合未完成。可基于已有结果继续，或重新查询。" : "Query results are retained, but trend synthesis did not complete. Continue with existing results or query again.", synthesisResult.errorCode);
+        completeTrace(trace, { status: "error", partial, stopped: false, fallback: false, planned: plannedCount, executed: executedCount, failed: failedCount, errorCode });
+        await completeQuestion("failed"); return failed;
       }
       const synthesisStep = makeStep(synthesisId, "synthesis", finalResponse ? "done" : "error", stepLabel("synthesis", ""), synthesisStarted);
       emitStep(synthesisStep);
@@ -2410,6 +2470,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
   function newConversation(): void {
     if (status === "running") return;
+    reusableResults.clear();
+    resultViews = [];
     history = [];
     messages = [];
     steps = [];
@@ -2450,6 +2512,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    reusableResults.clear();
     activeController?.abort();
     activeController = null;
     listeners.clear();
@@ -2457,6 +2520,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
 
   return {
     getState: state,
+    getReusableResult: reusableResults.get,
+    retainReusableResult: result => { if (!disposed) reusableResults.retain(result); },
+    markReusableStopped: reusableResults.markStopped,
+    canReuseResult: (prompt, explicit = false) => reusableResults.decide(prompt, explicit, (options.getOffers?.() || offers).flatMap(row => [merchantName(row), merchantId(row)])).kind !== "query",
+    clearReusableResults: reusableResults.clear,
     setLanguage,
     submit,
     stop,

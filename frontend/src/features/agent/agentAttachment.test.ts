@@ -5,6 +5,13 @@ import AgentAttachment from "./AgentAttachment.vue";
 import { createAgentAttachmentStore } from "./agentAttachment";
 
 describe("AgentAttachment", () => {
+  it("默认收起说明且附件入口可以展开", async () => {
+    const wrapper = mount(AgentAttachment, { props: { language: "zh", store: createAgentAttachmentStore() } });
+    expect(wrapper.get('[data-agent-attachment-toggle]').attributes("aria-expanded")).toBe("false");
+    await wrapper.get('[data-agent-attachment-toggle]').trigger("click");
+    expect(wrapper.get('[data-agent-attachment-toggle]').attributes("aria-expanded")).toBe("true");
+    wrapper.unmount();
+  });
   it("accepts one dropped merchant file and shows the parsed merchant count", async () => {
     const store = createAgentAttachmentStore();
     const wrapper = mount(AgentAttachment, {

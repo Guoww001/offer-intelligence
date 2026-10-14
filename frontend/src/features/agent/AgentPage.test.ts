@@ -9,6 +9,93 @@ import { createAgentActivity } from "./agentActivity";
 import { clearAgentViewSnapshot } from "./agentViewState";
 
 describe("AgentPage", () => {
+  it("只在静态回答折叠全文，按当前问句展开且保留原回答数据", async () => {
+    const answer = "结论：表现不同。\n\n共同完整期间：2026-06 至 2026-09。\n\n| 商户 | 收入 |\n| --- | --- |\n| Shokz | 100 |\n\n- 发现一\n- 发现二\n- 发现三\n\n额外完整累计说明。";
+    let resolveRun: ((result: AgentRunResult) => void) | undefined;
+    const run = vi.fn<AgentRunner>((request) => { request.onToken?.(answer); return new Promise(resolve => { resolveRun = resolve; }); });
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("详细分析三家"); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises();
+    expect(wrapper.find('.agent-answer-details').exists()).toBe(false);
+    resolveRun?.({ ok: true, status: "done", response: answer, steps: [] }); await flushPromises();
+    expect(wrapper.find('.agent-answer-details').exists()).toBe(false);
+    await wrapper.get('[data-agent-input]').setValue("同范围只整理为一张对比表"); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises();
+    expect(wrapper.find('.agent-answer-details').exists()).toBe(false);
+    resolveRun?.({ ok: true, status: "done", response: answer, steps: [] }); await flushPromises();
+    const second = wrapper.findAll('[data-agent-response]')[1]!;
+    expect(second.get('.agent-answer-details').text()).toContain("额外完整累计说明");
+    expect(second.findAll(':scope > ul')).toHaveLength(0);
+    expect(run.mock.calls[1]?.[0].history.at(-1)?.content).toBe(answer);
+    expect(wrapper.findAll('.agent-answer-details')).toHaveLength(1);
+    wrapper.unmount();
+  });
+  it("停止来源在下一轮运行和失败后仍可查看", async () => {
+    const source = normalizeAgentResultView({ id: "retained-source", kind: "table", toolName: "merchant_analysis", status: "done", title: "Shokz 数据", columns: ["收入"], rows: [{ label: "九月", values: ["100.00"] }] })!;
+    let resolve: (value: Awaited<ReturnType<AgentRunner>>) => void = () => {};
+    const run = vi.fn<AgentRunner>().mockResolvedValueOnce({ ok: false, status: "stopped", response: "已停止", steps: [], resultViews: [source] }).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("查询 Shokz"); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises();
+    await wrapper.get('[data-agent-input]').setValue("继续"); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises();
+    expect(wrapper.find('[data-result-id="retained-source"]').exists()).toBe(true);
+    resolve({ ok: false, status: "error", response: "综合暂不可用", steps: [] }); await flushPromises();
+    expect(wrapper.find('[data-result-id="retained-source"]').exists()).toBe(true);
+    await wrapper.get('[data-agent-action="new"]').trigger("click"); expect(wrapper.find('[data-result-id="retained-source"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it("零匹配恢复入口由用户点击预填，不擅自发起放宽查询", async () => {
+    const view = normalizeAgentResultView({ id: "zero", kind: "table", toolName: "keyword_search", status: "done", title: "vacuum", message: "Tier 1；转化率 >= 5%；联盟 EPC 降序；应用全部筛选条件后 0 家符合", rows: [] })!;
+    const run = vi.fn<AgentRunner>(async () => ({ ok: true, status: "done", response: "无符合条件结果", steps: [], resultViews: [view] }));
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("Tier 1 vacuum，CVR至少5%，EPC降序"); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises();
+    expect(run).toHaveBeenCalledOnce();
+    await wrapper.get('[data-agent-action="adjust-filters"]').trigger("click");
+    expect((wrapper.get('[data-agent-input]').element as HTMLTextAreaElement).value).toContain("CVR至少5%");
+    expect(run).toHaveBeenCalledOnce();
+    await wrapper.get('[data-agent-action="original-scope"]').trigger("click");
+    expect((wrapper.get('[data-agent-input]').element as HTMLTextAreaElement).value).toContain("原匹配范围");
+    expect(run).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+  it("明确详细请求展开图表", async () => {
+    const view = normalizeAgentResultView({ id: "detail-trend", kind: "trend", toolName: "trend", status: "done", title: "趋势", trend: { target: "Shokz", metric: "revenue", metrics: ["revenue"], months: [{ month: "2026-08", revenue: 1 }, { month: "2026-09", revenue: 2 }] } })!;
+    const run = vi.fn<AgentRunner>(async () => ({ ok: true, status: "done", response: "详细说明", steps: [], resultViews: [view] }));
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    await wrapper.get('[data-agent-input]').setValue("详细分析 Shokz 趋势"); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises();
+    expect(wrapper.get('[data-agent-trend-toggle]').attributes("aria-expanded")).toBe("true");
+    wrapper.unmount();
+  });
+  it("同源视图不重复，不同期间仍保留，完成后不跟随展开变化", async () => {
+    const source = normalizeAgentResultView({ id: "same-call", kind: "table", toolName: "merchant_comparison", status: "done", title: "对比", dataAsOf: "2026-09", columns: [], rows: [] })!;
+    const run = vi.fn<AgentRunner>().mockResolvedValueOnce({ ok: true, status: "done", response: "结论一", steps: [], resultViews: [source] }).mockResolvedValueOnce({ ok: true, status: "done", response: "结论二", steps: [], resultViews: [source, { ...source, id: "different-period", dataAsOf: "2026-10" }] });
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false } });
+    const log = wrapper.get('[data-agent-log]').element as HTMLElement;
+    const scrollTo = vi.fn(); Object.defineProperty(log, "scrollTo", { value: scrollTo });
+    Object.defineProperty(log, "scrollHeight", { value: 2000 });
+    for (const prompt of ["第一轮", "第二轮"]) { await wrapper.get('[data-agent-input]').setValue(prompt); await wrapper.get('[data-agent-form]').trigger("submit"); await flushPromises(); }
+    expect(wrapper.findAll('[data-result-id]')).toHaveLength(2);
+    if (!wrapper.find('[data-agent-details]').exists()) await wrapper.get('[data-agent-action="details"]').trigger("click");
+    expect(wrapper.findAll('.aw-result-index button')).toHaveLength(2);
+    expect(scrollTo.mock.calls.at(-1)?.[0].top).not.toBe(2000);
+    scrollTo.mockClear();
+    await wrapper.get('[data-agent-action="details"]').trigger("click"); await flushPromises();
+    expect(scrollTo).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it("停止后继续明确复用原结果并在新对话清除", async () => {
+    const run = vi.fn<AgentRunner>(async () => ({ ok: false, status: "stopped", response: "已停止", steps: [{ id: "synthesis", phase: "synthesis", status: "running", label: "整理" }] }));
+    const clearReusableResults = vi.fn();
+    const wrapper = mount(AgentPage, { props: { language: "zh", run, autoFocus: false, canContinue: () => true, clearReusableResults } });
+    await wrapper.get('[data-agent-input]').setValue("查询 Shokz");
+    await wrapper.get('[data-agent-form]').trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[data-agent-action="continue"]').exists()).toBe(true);
+    expect(wrapper.find('[data-step-status="running"]').exists()).toBe(false);
+    await wrapper.get('[data-agent-action="continue"]').trigger("click");
+    await flushPromises();
+    expect(run.mock.calls.at(-1)?.[0]).toMatchObject({ reuseResult: true });
+    await wrapper.get('[data-agent-action="new"]').trigger("click");
+    expect(clearReusableResults).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
   beforeEach(() => clearAgentViewSnapshot("modern-agent"));
 
   it("主动停止使用停止反馈文案，不显示运行失败", async () => {

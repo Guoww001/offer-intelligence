@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from agent_trend_comparison import build_trend_comparison
+from agent_trend_comparison import build_trend_comparison, build_trend_summary
 
 import base64
+import copy
 import hashlib
 import hmac
 import json
@@ -41,7 +42,9 @@ AGENT_CALL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 AGENT_RETRY_ERROR_CODES = {"tool_error", "tool_timeout", "llm_timeout"}
 _ALLOWED_TRACE_KEYS = {"runId", "questionEventId", "tracePhase"}
 _ALLOWED_PLANNING_KEYS = {"contractVersion", "question", "language", "enabledTools", "trace", "retry", "promotionContext", "asinContext", "context", "planningRound"}
-_ALLOWED_SYNTHESIS_KEYS = {"contractVersion", "agentRunId", "planProofs", "question", "language", "context", "toolResults", "trace"}
+_ALLOWED_SYNTHESIS_KEYS = {"contractVersion", "agentRunId", "planProofs", "question", "language", "context", "toolResults", "trace", "reuse"}
+_REUSE_METRICS = {"revenue", "orders", "clicks", "commission", "payout", "epc", "aov", "conversionRate", "commissionRate", "roas"}
+_REUSE_METRIC_ALIASES = {"affiliatePayout": "payout", "cvr": "conversionRate"}
 _SIGNING_PURPOSE = "agent-tools-v2:"
 
 
@@ -527,6 +530,35 @@ def _validate_context(value: Any) -> tuple[dict | None, dict | None]:
     return {"memory": memory.strip(), "history": cleaned_history, "promotionContext": promotion_context}, None
 
 
+def _validate_reuse(value: Any) -> tuple[dict | None, dict | None]:
+    if value is None:
+        return None, None
+    if not isinstance(value, dict) or set(value) != {"originalQuestion", "sourceQuestionEventId", "scope"}:
+        return None, _error("invalid_agent_contract", "reuse")
+    original, error = _safe_text(value["originalQuestion"], "reuse.originalQuestion", AGENT_PROMPT_MAX_CHARS)
+    if error:
+        return None, error
+    event, error = _safe_text(value["sourceQuestionEventId"], "reuse.sourceQuestionEventId", 128)
+    if error:
+        return None, error
+    scope = value["scope"]
+    if not isinstance(scope, dict) or set(scope) != {"targets", "months", "metrics"}:
+        return None, _error("invalid_agent_contract", "reuse.scope")
+    cleaned = {}
+    for field, maximum in (("targets", 100), ("months", 24), ("metrics", len(_REUSE_METRICS))):
+        items = scope[field]
+        if not isinstance(items, list) or len(items) > maximum:
+            return None, _error("invalid_agent_contract", "reuse.scope." + field)
+        values = []
+        for item in items:
+            text, error = _safe_text(item, "reuse.scope." + field, 200)
+            if error or (field == "months" and not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", text or "")) or (field == "metrics" and text not in _REUSE_METRICS):
+                return None, _error("invalid_agent_contract", "reuse.scope." + field)
+            values.append(text)
+        cleaned[field] = list(dict.fromkeys(values))
+    return {"originalQuestion": original, "sourceQuestionEventId": event, "scope": cleaned}, None
+
+
 def validate_synthesis_request(body: object) -> tuple[dict | None, dict | None]:
     if not isinstance(body, dict):
         return None, _error("invalid_agent_contract", "body")
@@ -543,6 +575,9 @@ def validate_synthesis_request(body: object) -> tuple[dict | None, dict | None]:
     language = body.get("language", "zh")
     if language not in ("zh", "en"):
         return None, _error("invalid_agent_contract", "language")
+    reuse, error = _validate_reuse(body.get("reuse"))
+    if error:
+        return None, error
     proofs = body.get("planProofs", [])
     if not isinstance(proofs, list) or len(proofs) > AGENT_MAX_PLAN_PROOFS:
         return None, _error("invalid_agent_contract", "planProofs")
@@ -593,6 +628,7 @@ def validate_synthesis_request(body: object) -> tuple[dict | None, dict | None]:
         "context": context,
         "toolResults": cleaned_results,
         "trace": trace,
+        "reuse": reuse,
     }, None
 
 
@@ -600,7 +636,8 @@ def validate_bound_tool_results(request: dict) -> tuple[list[dict] | None, dict 
     proofs = request.get("planProofs") or []
     proof_calls: dict[str, dict] = {}
     for proof in proofs:
-        payload = verify_plan_proof(proof, request["agentRunId"], request["question"])
+        binding_question = (request.get("reuse") or {}).get("originalQuestion", request["question"])
+        payload = verify_plan_proof(proof, request["agentRunId"], binding_question)
         if payload is None:
             return None, _error("run_binding_failed", "planProofs", 409)
         for call in payload["calls"]:
@@ -618,7 +655,119 @@ def validate_bound_tool_results(request: dict) -> tuple[list[dict] | None, dict 
         if expected["argumentsHash"] != _hash_value(item["arguments"]):
             return None, _error("run_binding_failed", "toolResults.arguments", 409)
         validated.append(item)
+    if request.get("reuse"):
+        scope = request["reuse"]["scope"]
+        projected, error = _select_reuse_results(validated, scope)
+        if error:
+            return None, error
+        # 用户选择少数对象不代表少执行调用；按投影前的真实返回集合判断部分完成。
+        request["_reuseBoundResultCount"] = len(validated)
+        # 比率汇总先保留分子分母计算，模型载荷再限制到所选指标。
+        computation_results, error = _select_reuse_results(validated, {**scope, "metrics": []})
+        if error:
+            return None, error
+        summary = build_trend_summary(computation_results, request["language"])
+        if summary is not None and scope["metrics"]:
+            requested_metrics = set(scope["metrics"])
+            summary["metricLeaders"] = {key: value for key, value in summary["metricLeaders"].items()
+                                       if _REUSE_METRIC_ALIASES.get(key, key) in requested_metrics}
+            for entity in summary["entities"]:
+                for field in ("availablePeriodMetrics", "commonCompleteMetrics", "commonCompleteTrends",
+                              "availablePeriodMetricsDisplay", "commonCompleteMetricsDisplay", "commonCompleteTrendsDisplay"):
+                    entity[field] = {key: value for key, value in entity[field].items()
+                                     if _REUSE_METRIC_ALIASES.get(key, key) in requested_metrics}
+        request["_reuseTrendSummary"] = summary
+        return projected, None
     return validated, None
+
+
+def _result_targets(item: dict) -> set[str]:
+    data = item["result"].get("data", {})
+    target = data.get("target")
+    if isinstance(target, str) and target.strip():
+        return {target.strip()}
+    arguments = item["arguments"]
+    for key in ("target", "merchant", "category", "tier", "keyword", "merchants", "categories", "asins"):
+        value = arguments.get(key)
+        if isinstance(value, str):
+            return {value}
+        if isinstance(value, list) and value:
+            return set(value)
+    return set()
+
+
+def _scope_rows(data: dict) -> list[dict]:
+    """覆盖只来自实际结果行，不把 arguments.months 的数量当作已覆盖月份。"""
+    rows = []
+    def visit(value):
+        if isinstance(value, dict):
+            if isinstance(value.get("month"), str) and re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", value["month"]):
+                rows.append(value)
+            for child in value.values():
+                if isinstance(child, (dict, list)):
+                    visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+    visit(data)
+    return rows
+
+
+def _provided_metrics(row: dict) -> set[str]:
+    values = row.get("metrics") if isinstance(row.get("metrics"), dict) else row
+    return {_REUSE_METRIC_ALIASES.get(key, key) for key, value in values.items()
+            if _REUSE_METRIC_ALIASES.get(key, key) in _REUSE_METRICS
+            and isinstance(value, (int, float)) and not isinstance(value, bool)}
+
+
+def _select_reuse_results(results: list[dict], scope: dict) -> tuple[list[dict] | None, dict | None]:
+    unavailable = _error("agent_reuse_scope_unavailable", "reuse.scope", 409)
+    if not results or any(not item["result"]["ok"] for item in results):
+        return None, unavailable
+    requested_targets, months, metrics = (set(scope[key]) for key in ("targets", "months", "metrics"))
+    available_targets = set().union(*(_result_targets(item) for item in results))
+    if not requested_targets <= available_targets:
+        return None, unavailable
+    selected = [item for item in results if not requested_targets or _result_targets(item) & requested_targets]
+    for item in selected:
+        targets = _result_targets(item)
+        # 多对象工具不能仅凭全局指标集合证明某一对象已覆盖，避免混入未选择对象。
+        if requested_targets and not targets <= requested_targets:
+            return None, unavailable
+        rows = _scope_rows(item["result"].get("data", {}))
+        by_month = {}
+        for row in rows:
+            by_month.setdefault(row["month"], []).append(row)
+        if not months <= set(by_month):
+            return None, unavailable
+        checked = [row for row in rows if not months or row["month"] in months]
+        if not rows:
+            checked = [item["result"].get("data", {})]
+        if metrics and (not checked or any(not metrics <= _provided_metrics(row) for row in checked)):
+            return None, unavailable
+    projected = copy.deepcopy(selected)
+    def project(value):
+        if isinstance(value, dict):
+            for key in list(value):
+                canonical = _REUSE_METRIC_ALIASES.get(key, key)
+                if metrics and canonical in _REUSE_METRICS and canonical not in metrics:
+                    del value[key]
+                elif key in {"summary", "headline"} and (months or metrics):
+                    # 原期间结论不能套用到缩小范围；完整性标记仍保留供共同月份计算使用。
+                    value[key] = {"latestMonthComplete": value[key].get("latestMonthComplete")} if key == "summary" and isinstance(value[key], dict) else None
+                else:
+                    value[key] = project(value[key])
+        elif isinstance(value, list):
+            return [project(child) for child in value if not (months and isinstance(child, dict) and "month" in child and child["month"] not in months)]
+        return value
+    for item in projected:
+        original_rows = _scope_rows(item["result"]["data"])
+        summary = item["result"]["data"].get("summary")
+        if months and original_rows and isinstance(summary, dict) and summary.get("latestMonthComplete") is False:
+            if max(row["month"] for row in original_rows) not in months:
+                summary["latestMonthComplete"] = True
+        item["result"]["data"] = project(item["result"]["data"])
+    return projected, None
 
 
 def _context_text(context: dict, language: str) -> str:
@@ -643,6 +792,9 @@ def build_synthesis_messages(request: dict, validated_results: list[dict]) -> li
 
     question_label = "[当前问题]" if request["language"] == "zh" else "[Current question]"
     messages.append({"role": "user", "content": question_label + "\n" + request["question"]})
+    if request.get("reuse"):
+        reuse_label = "[已有结果复用范围：仅回答下列范围，未覆盖范围明确说明不可回答；数据截至时间保持来源值]" if request["language"] == "zh" else "[Reused result scope: answer only within this scope, disclose uncovered requests; preserve source data timestamps]"
+        messages.append({"role": "user", "content": reuse_label + "\n" + _canonical_json(request["reuse"]["scope"])})
 
     result_payload = []
     for item in validated_results:
@@ -656,9 +808,13 @@ def build_synthesis_messages(request: dict, validated_results: list[dict]) -> li
         "role": "user",
         "content": result_label + "\n" + _canonical_json(result_payload),
     })
-    comparison = build_trend_comparison(validated_results)
+    comparison = request.get("_reuseTrendSummary") if request.get("reuse") else build_trend_summary(validated_results, request["language"])
     if comparison is not None:
         label = "[共同完整月份汇总：只按这些月份比较，缺失不计零]" if request["language"] == "zh" else "[Common complete months: compare only these months; missing is not zero]"
+        instruction = ("任何指标的最高或最低只能引用该指标对应的 metricLeaders，不能把 EPC 排名套用于 CVR 或其他指标。并列对象全部保留；有 unavailableTargets 时只在已提供数据的对象之间比较，不能声称覆盖全部对象；最高/最低为空时不可排名。"
+                       if request["language"] == "zh" else
+                       "Any highest or lowest claim must use that metric's own metricLeaders; never apply EPC ranks to CVR or another metric. Preserve all ties. If unavailableTargets is nonempty, compare only targets with provided data, never claim complete coverage; null highest/lowest means no ranking is available.")
+        messages.append({"role": "user", "content": instruction})
         messages.append({"role": "user", "content": label + "\n" + _canonical_json(comparison)})
 
     expected_count = 0
@@ -666,7 +822,8 @@ def build_synthesis_messages(request: dict, validated_results: list[dict]) -> li
         payload = _decode_and_verify_proof(proof)
         if payload and isinstance(payload.get("calls"), list):
             expected_count += len(payload["calls"])
-    if expected_count > len(validated_results):
+    returned_count = request.get("_reuseBoundResultCount", len(validated_results)) if request.get("reuse") else len(validated_results)
+    if expected_count > returned_count:
         partial = (
             "工具执行结果不完整；只能引用已返回的结果，并明确说明缺少数据。"
             if request["language"] == "zh"
