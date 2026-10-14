@@ -16,6 +16,37 @@ function monthlySession(rows: readonly Record<string, unknown>[]) {
 }
 
 describe("Agent 线上可靠性回归", () => {
+  it("月度服务超时不能误报为商户缺少历史月份", async () => {
+    const agent = session({ fetcher: async () => { throw Object.assign(new Error("受控超时"), { code: "tool_timeout" }); } });
+    const result = await agent.executeTool({ callId: "month-timeout", toolName: "trend", arguments: { target: "1001", months: 12 }, prompt: "收入趋势", signal: signal() });
+    expect(result.toolResult.result).toMatchObject({ ok: false, errorCode: "tool_timeout", source: { dataSource: "unavailable" } });
+    expect(result.resultView?.message).toContain("超时");
+    expect(result.resultView?.message).not.toContain("足够的月度");
+  });
+  it("展示小数位不降低工具原始指标精度", async () => {
+    const agent = session({ offers: [
+      { merchantId: "1001", merchantName: "高精度甲", salesAmount: 12.34567, conversionRate: 0.072345, epc: 0.123456 },
+      { merchantId: "1002", merchantName: "高精度乙", salesAmount: 1, conversionRate: 0.01, epc: 0.1 }
+    ] });
+    const result = await agent.executeTool({ callId: "precise", toolName: "merchant_comparison", arguments: { merchants: ["1001", "1002"] }, prompt: "比较", signal: signal() });
+    expect(result.toolResult.result).toMatchObject({ data: { entities: [{ metrics: { revenue: 12.34567, conversionRate: 0.072345, epc: 0.123456 } }, { metrics: { revenue: 1 } }] } });
+    expect(result.resultView?.rows[0]?.values).toEqual(expect.arrayContaining(["12.35", "7.23%", "0.123"]));
+  });
+  it("商户快照工具保留完整原始比例与金额", async () => {
+    const agent = session({ offers: [{ merchantId: "1001", merchantName: "高精度", salesAmount: 12.34567, conversionRate: 0.072345, epc: 0.123456 }], fetcher: async () => json({ ok: true, monthlyAmazonMetrics: [] }) });
+    const result = await agent.executeTool({ callId: "snapshot-precise", toolName: "merchant_analysis", arguments: { merchant: "1001" }, prompt: "商户分析", signal: signal() });
+    expect(result.toolResult.result).toMatchObject({ data: { metrics: { revenue: 12.34567, conversionRate: 0.072345, epc: 0.123456 } } });
+  });
+  it.each([
+    { target: "MoonVacuumXYZ2026", merchant: "YZ" },
+    { target: "ShokzUnknown2026", merchant: "Shokz" }
+  ])("明确商户名称 $target 不命中内部短词或拼接名称", async ({ target, merchant }) => {
+    const fetcher = vi.fn(async () => json({ ok: true, monthlyAmazonMetrics: [] }));
+    const agent = session({ offers: [{ merchantId: "368717", merchantName: merchant }], fetcher });
+    const result = await agent.executeTool({ callId: "unknown", toolName: "trend", arguments: { target, months: 12 }, prompt: target, signal: signal() });
+    expect(result.toolResult.result).toMatchObject({ ok: false, resolution: { field: "merchant", candidates: [] } });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("规划超过10秒但仍在服务端预算内时不提前终止", async () => {
     vi.useFakeTimers();
     try {
@@ -86,7 +117,7 @@ describe("Agent 线上可靠性回归", () => {
   it("商户对比保留收入、联盟 EPC 和 CVR 列", async () => {
     const result = await session().executeTool({ callId: "comparison", toolName: "merchant_comparison", arguments: { merchants: ["1001", "1002"] }, prompt: "比较收入、EPC和CVR", signal: signal() });
     expect(result.resultView?.columns).toEqual(expect.arrayContaining(["销售额", "联盟 EPC", "转化率"]));
-    expect(result.resultView?.rows[0]?.values).toEqual(expect.arrayContaining(["1,000", "1", "6%"]));
+    expect(result.resultView?.rows[0]?.values).toEqual(expect.arrayContaining(["1,000.00", "1.000", "6.00%"]));
   });
 
   it("带月份的 Tier 趋势使用加权比率，缺失输入不补零", async () => {

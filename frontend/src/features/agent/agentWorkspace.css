@@ -578,3 +578,12 @@ body[data-oi-theme="dark"] .agent-workspace .agent-modern-result-table thead th 
 @keyframes aw-message-in { from { opacity: 0; transform: translate3d(0, 10px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 @keyframes aw-details-in { from { opacity: 0; transform: translate3d(10px, 0, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 @keyframes aw-breathe { 50% { opacity: .58; transform: scale(1.12); } }
+
+.agent-workspace .agent-attachment-collapsed { display: flex; align-items: center; gap: 8px; }
+.agent-workspace .agent-attachment-collapsed .agent-attachment-dropzone { flex: 1; padding: 0; border: 0; background: none; justify-content: flex-end; }
+.agent-workspace .agent-trend-more-metrics { margin-block: 8px; }
+.agent-workspace .aw-message .chat-stream-text p { margin-block: .55em; }
+.agent-workspace .agent-answer-details { margin-top: 12px; border-top: 1px solid var(--aw-line); padding-top: 10px; }
+.agent-workspace .agent-answer-details > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.agent-workspace .agent-answer-details[open] > summary { margin-bottom: 12px; }
+.agent-workspace .aw-message-assistant .chat-stream-text { white-space: normal; }

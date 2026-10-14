@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 
 import type { UiLanguage } from "../../shared/i18n";
 import { readMerchantWorkbook, type MerchantWorkbookError } from "../../shared/import/merchantWorkbook";
@@ -11,12 +11,15 @@ const props = withDefaults(defineProps<{
   readonly store: AgentAttachmentStore;
   readonly readFile?: typeof readMerchantWorkbook;
   readonly busy?: boolean;
+  readonly expanded?: boolean;
 }>(), {
   readFile: undefined,
   busy: false,
 });
 
 const attachment = ref<AgentPromotionAttachment | null>(props.store.get());
+const opened = ref(false);
+const expanded = computed(() => opened.value || props.expanded || Boolean(attachment.value));
 const launchDate = ref(attachment.value?.manifest.window?.launchDate || "");
 const startDate = ref(attachment.value?.manifest.window?.startDate || "");
 const endDate = ref(attachment.value?.manifest.window?.endDate || "");
@@ -58,6 +61,7 @@ async function acceptFile(file: File | undefined): Promise<void> {
     error.value = errorText({ code: "MERCHANT_FILE_FORMAT" });
     return;
   }
+  opened.value = true;
   reading.value = true;
   try {
     const tables = await reader(file);
@@ -152,7 +156,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="agent-attachment" data-agent-attachment>
+  <section class="agent-attachment" :class="{ 'agent-attachment-collapsed': !expanded }" data-agent-attachment>
+    <button type="button" class="aw-button" data-agent-attachment-toggle :aria-expanded="Boolean(expanded)" @click="opened = !opened">{{ t("推广附件", "Promotion attachment") }}</button>
     <div
       class="agent-attachment-dropzone"
       :class="{ 'is-dragging': dragging, 'is-disabled': busy || reading }"
@@ -165,8 +170,8 @@ onBeforeUnmount(() => {
       @drop="drop"
     >
       <input ref="fileInput" hidden type="file" accept=".xlsx,.xls,.csv,.tsv" :disabled="busy || reading" data-agent-attachment-input @change="choose" />
-      <span class="agent-attachment-icon" aria-hidden="true">↥</span>
-      <div class="agent-attachment-copy">
+      <span v-show="expanded || dragging" class="agent-attachment-icon" aria-hidden="true">↥</span>
+      <div v-show="expanded || dragging" class="agent-attachment-copy">
         <strong>{{ attachment?.manifest.fileName || t("上传推广清单", "Upload promotion list") }}</strong>
         <small>{{ reading ? t("正在读取…", "Reading…") : t("XLSX · XLS · CSV · TSV，可从文件夹拖入", "XLSX · XLS · CSV · TSV · Drop from a folder") }}</small>
       </div>

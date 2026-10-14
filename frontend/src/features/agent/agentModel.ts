@@ -1,3 +1,5 @@
+import { agentMetricLabel } from "./agentResultPresentation";
+
 export type AgentRunStatus = "idle" | "running" | "done" | "stopped" | "error";
 export type AgentTimelinePhase = "planning" | "tool" | "synthesis";
 export type AgentTimelineStepStatus = "running" | "done" | "error" | "stopped" | "timeout";
@@ -271,8 +273,8 @@ export function agentMemoryDisplayText(memory: AgentMemoryState, language: "zh" 
     ...state.focus.merchants.map((item) => item.name),
     ...state.focus.categories,
     ...state.focus.tiers,
-    state.query.startMonth || state.query.endMonth || (state.query.months ? `${state.query.months} months` : ""),
-    ...state.query.metrics
+    state.query.startMonth && state.query.endMonth ? `${state.query.startMonth} — ${state.query.endMonth}` : state.query.startMonth || state.query.endMonth || (state.query.months ? (language === "zh" ? `最近 ${state.query.months} 个月` : `${state.query.months} months`) : ""),
+    ...state.query.metrics.map((key) => agentMetricLabel(key, language))
   ].filter(Boolean);
   if (!items.length && state.candidates.pending.length) {
     items.push(`${language === "zh" ? "待确认候选：" : "Pending candidates: "}${state.candidates.pending.map((item) => item.name).join(language === "zh" ? "、" : ", ")}`);

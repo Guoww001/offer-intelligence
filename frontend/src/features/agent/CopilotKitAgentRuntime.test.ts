@@ -32,6 +32,17 @@ function fixture(bypassPlanning = false) {
 }
 
 describe("CopilotKit behavior parity", () => {
+  it("已取得原生规划后传输中断也不启动第二条规划链", async () => {
+    const f = fixture(); Object.assign(f.session, { hasPlanned: () => true });
+    sdk.run.mockRejectedValue(new TypeError("规划后连接中断"));
+    expect(await f.run(f.request)).toMatchObject({ ok: false, status: "error" });
+    expect(f.session.direct).not.toHaveBeenCalled(); f.wrapper.unmount();
+  });
+  it("原生运行时未建立会话且未规划时进入一次备用链", async () => {
+    const f = fixture(); sdk.run.mockResolvedValue(undefined);
+    expect((await f.run(f.request)).response).toBe("历史上下文解释");
+    expect(f.session.direct).toHaveBeenCalledOnce(); expect(f.session.complete).not.toHaveBeenCalled(); f.wrapper.unmount();
+  });
   it.each([false, true])("截断规划失败展示未执行提示，不触发备用规划（SDK抛错=%s）", async rejects => {
     const f = fixture();
     sdk.run.mockImplementation(async () => {
@@ -111,4 +122,16 @@ describe("CopilotKit behavior parity", () => {
     expect(sdk.stop).toHaveBeenCalled();
     f.wrapper.unmount();
   });
+});
+
+it("尊重综合校验的失败状态，提示文字不能冒充成功", async () => {
+ const f = fixture(); f.session.complete.mockResolvedValue({ ok: false, status: "error", response: "未找到商户", steps: [], fallbackDelivered: false, partial: false, omittedTargets: [], memoryEvents: [], resultViews: [] } as never);
+ sdk.run.mockImplementation(async () => { events.onTextMessageContentEvent?.({ event: { delta: "无法回答" } }); });
+ expect(await f.run(f.request)).toMatchObject({ ok: false, status: "error", response: "未找到商户" }); f.wrapper.unmount();
+});
+it("停止后终止仍在运行的综合节点", async () => {
+ const f = fixture(); const controller = new AbortController();
+ sdk.run.mockImplementation(async () => { events.onCustomEvent?.({ event: { name: "oi.timeline", value: { step: { id: "synthesis", phase: "synthesis", status: "running" } } } }); controller.abort(); });
+ const result = await f.run({ ...f.request, signal: controller.signal });
+ expect(result.status).toBe("stopped"); expect((result.steps[0] as { status: string }).status).toBe("stopped"); f.wrapper.unmount();
 });

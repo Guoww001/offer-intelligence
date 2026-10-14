@@ -10,6 +10,46 @@ vi.mock("@copilotkit/vue/v2", () => ({ CopilotKitProvider: { name: "Provider", p
 vi.mock("./CopilotKitAgentRuntime.vue", () => ({ default: { name: "Runtime", props: ["beginRun"], template: "<div />" } }));
 
 describe("CopilotKit local result projection", () => {
+  it("登出后迟到工具不能回写来源缓存", async () => {
+    const shared = createAgentSession({ offers: [], language: "zh", enableTrace: false, enableQuestionLogging: false });
+    let release: (value: AgentToolExecutionResponse) => void = () => {};
+    const toolExecutor = vi.fn(() => new Promise<AgentToolExecutionResponse>(resolve => { release = resolve; }));
+    const wrapper = mount(CopilotKitAgentHost, { props: { language: "zh", endpoint: "/api/copilotkit", enabled: true, fallbackSession: shared, fallbackRun: vi.fn(), toolExecutor } });
+    const source = wrapper.findComponent({ name: "Runtime" }).props("beginRun")({ prompt: "分析 Shokz", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "", signal: new AbortController().signal });
+    source.setPlanningState({ agentRunId: "ar_native_12345678", planProofs: ["proof"] });
+    const pending = source.execute({ callId: "r1c1", toolName: "trend", arguments: { target: "Shokz", months: 12 } });
+    source.dispose(); shared.dispose?.();
+    release({ toolResult: { callId: "r1c1", toolName: "trend", arguments: {}, result: { ok: true, data: { target: "Shokz" } } } });
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" }); expect(shared.getReusableResult()).toBeNull(); wrapper.unmount();
+  });
+  it("趋势综合失败仅保留来源，不把标题作为成功答案", async () => {
+    const fallbackRun = vi.fn();
+    const toolExecutor = vi.fn(async () => ({ toolResult: { callId: "r1c1", toolName: "trend", arguments: { target: "Shokz" }, result: { ok: true, data: { target: "Shokz" } } }, resultView: { id: "trend", toolName: "trend", kind: "trend", status: "done", title: "Shokz 趋势", source: "cache", dataAsOf: null, estimated: false, partial: false, metrics: [], rows: [], columns: [], message: "来源说明" } } as AgentToolExecutionResponse));
+    const wrapper = mount(CopilotKitAgentHost, { props: { language: "zh", endpoint: "/api/copilotkit", enabled: true, fallbackRun, toolExecutor } });
+    const source = wrapper.findComponent({ name: "Runtime" }).props("beginRun")({ prompt: "分析 Shokz", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "", signal: new AbortController().signal });
+    await source.execute({ callId: "r1c1", toolName: "trend", arguments: { target: "Shokz" } });
+    expect(await source.complete("", { synthesisFailed: true, partial: false, omittedTargets: [] })).toMatchObject({ ok: false, status: "error", errorCode: "synthesis_unavailable" });
+    expect(fallbackRun).not.toHaveBeenCalled(); wrapper.unmount();
+  });
+  it("原生链的规划凭据与成功结果进入同一临时缓存，停止后可绕过规划", async () => {
+    const shared = createAgentSession({ offers: [], language: "zh", enableTrace: false, enableQuestionLogging: false });
+    const toolExecutor = vi.fn(async () => ({ toolResult: { callId: "r1c1", toolName: "trend", arguments: { target: "Shokz", months: 12 }, result: { ok: true, data: { target: "Shokz", months: [] } } } }));
+    const fallbackRun = vi.fn(async () => ({ ok: true, status: "done" as const, response: "已有结果", steps: [] }));
+    const wrapper = mount(CopilotKitAgentHost, { props: { language: "zh", endpoint: "/api/copilotkit", enabled: true, fallbackSession: shared, fallbackRun, toolExecutor } });
+    const begin = wrapper.findComponent({ name: "Runtime" }).props("beginRun");
+    const request = { prompt: "分析 Shokz 和 Roborock", questionEventId: "q-original", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "", signal: new AbortController().signal };
+    const source = begin(request);
+    source.setPlanningState({ agentRunId: "ar_native_12345678", planProofs: ["original-proof"], calls: [
+      { id: "r1c1", name: "trend", arguments: { target: "Shokz", months: 12 } },
+      { id: "r1c2", name: "trend", arguments: { target: "Roborock", months: 12 } }
+    ] });
+    await source.execute({ callId: "r1c1", toolName: "trend", arguments: { target: "Shokz", months: 12 } });
+    source.stop(); source.dispose();
+    expect(shared.getReusableResult()).toMatchObject({ originalQuestion: "分析 Shokz 和 Roborock", sourceQuestionEventId: "q-original", restoreViews: true, partial: true });
+    const continued = begin({ ...request, prompt: "继续使用已有结果，不要重新查询", reuseResult: true });
+    expect(continued.bypassPlanning).toBe(true); await continued.direct(); expect(toolExecutor).toHaveBeenCalledTimes(1);
+    shared.newConversation(); expect(shared.getReusableResult()).toBeNull(); wrapper.unmount();
+  });
   it("关键词推荐没有工具结果时不展示模型直接生成的品牌", async () => {
     const wrapper = mount(CopilotKitAgentHost, { props: {
       language: "en", endpoint: "/api/copilotkit", enabled: true,

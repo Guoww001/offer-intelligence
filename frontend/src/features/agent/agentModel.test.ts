@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyAgentMemoryEvents,
+  agentMemoryDisplayText,
   createAgentRunState,
   emptyAgentMemory,
   normalizeAgentTimelineStep,
@@ -9,6 +10,13 @@ import {
 } from "./agentModel";
 
 describe("agentModel", () => {
+  it("上下文显示完整月份和业务指标名称", () => {
+    const memory = applyAgentMemoryEvents(emptyAgentMemory(), [{ kind: "tool_success", focus: { merchants: [{ name: "Shokz" }] }, query: { startMonth: "2026-06", endMonth: "2026-09", metrics: ["conversionRate", "epc"] } }]);
+    const text = agentMemoryDisplayText(memory, "zh");
+    expect(text).toContain("2026-06 — 2026-09");
+    expect(text).toContain("转化率");
+    expect(text).not.toContain("conversionRate");
+  });
   it("keeps timeline metadata bounded and drops answer/tool payloads", () => {
     const step = normalizeAgentTimelineStep({
       id: "tool-1",
