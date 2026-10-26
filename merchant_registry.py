@@ -46,6 +46,39 @@ DDL = f"""CREATE TABLE IF NOT EXISTS {TABLE} (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
 _ready = False
 _schema_lock = threading.Lock()
+META_DDL = f"""CREATE TABLE IF NOT EXISTS {META_TABLE} (
+    migrationKey VARCHAR(128) NOT NULL PRIMARY KEY,
+    appliedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+
+
+class RegistrySchemaUnavailable(db.OfferDbError):
+    """The database administrator has not provisioned the registry tables."""
+
+
+SCHEMA_SETUP_MESSAGE = (
+    "Merchant registry setup is pending. A database administrator must apply "
+    "docs/merchant-registry-schema.sql and grant SELECT, INSERT and UPDATE on the new tables, "
+    "then rerun Sync permanent merchant registry."
+)
+
+
+def ensure_registry_table(conn, table, ddl):
+    try:
+        db.fetch_one(conn, f"SELECT 1 FROM {table} LIMIT 0")
+        return
+    except Exception as error:
+        if error.args and error.args[0] == 1142:
+            raise RegistrySchemaUnavailable(SCHEMA_SETUP_MESSAGE) from error
+        if not error.args or error.args[0] != 1146:
+            raise
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(ddl)
+    except Exception as error:
+        if error.args and error.args[0] == 1142:
+            raise RegistrySchemaUnavailable(SCHEMA_SETUP_MESSAGE) from error
+        raise
 
 
 def name_key(value):
@@ -249,12 +282,8 @@ def ensure_schema(conn):
         if _ready:
             return
         db.ensure_monthly_new_merchants_schema(conn)
-        with conn.cursor() as cursor:
-            cursor.execute(DDL)
-            cursor.execute(f"""CREATE TABLE IF NOT EXISTS {META_TABLE} (
-                migrationKey VARCHAR(128) NOT NULL PRIMARY KEY,
-                appliedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
+        ensure_registry_table(conn, TABLE, DDL)
+        ensure_registry_table(conn, META_TABLE, META_DDL)
         with locked(conn):
             applied = {r["migrationKey"] for r in db.fetch_all(conn, f"SELECT migrationKey FROM {META_TABLE}")}
             for migration in ("legacy-monthly-v1", "alliance-workbook-20261026-v1"):
@@ -296,6 +325,18 @@ def payload(month=None):
         "count": len(records), "priorityCount": sum(bool(r.get("isPriority")) for r in records),
         "gmvTargetTotal": sum(float(r.get("gmvMonthlyTarget") or 0) for r in records),
         "gmvTargetCount": sum(r.get("gmvMonthlyTarget") is not None for r in records)}
+
+
+def report_snapshot(conn=None):
+    """Keep existing reports available while an administrator provisions tables.
+
+    Registry reads and writes remain strict. Only this specific setup error
+    permits reports to use their existing assignments until migration succeeds.
+    """
+    try:
+        return snapshot() if conn is None else snapshot(conn)
+    except RegistrySchemaUnavailable:
+        return [], "pending-schema"
 
 
 def invalidate_caches():

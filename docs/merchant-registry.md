@@ -51,3 +51,9 @@ npm --prefix frontend run build
 ```
 
 The registry integration suite uses persistent SQLite with an adapter for MySQL dialect and advisory locks. Actual production MySQL migration success is confirmed by the dedicated GitHub workflow, not inferred from local tests.
+
+## Database provisioning / 数据库建表
+
+The runtime database account may not have CREATE permission. An administrator must apply `docs/merchant-registry-schema.sql` in the configured database and grant the runtime account SELECT, INSERT and UPDATE on the two new tables. Rerun the synchronization workflow afterward. Existing tables are probed before DDL, so the runtime account does not need CREATE after provisioning.
+
+生产账号缺少建表权限时，请管理员执行上述 SQL，并授予运行账号新表的 SELECT、INSERT、UPDATE 权限，再重跑同步。在完成之前，档案接口明确提示初始化待完成，已有报表继续使用现有分级。此时不能视为已完成商家数据持久化或 Direct 分级切换。

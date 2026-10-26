@@ -1279,8 +1279,8 @@ def tier_summary_payload(month: str | None = None) -> dict[str, Any]:
     cnpscy_amazon_click. These are the same sources used by Report Overview,
     so the tier matrix reconciles with its headline metrics.
     """
-    from merchant_registry import snapshot
-    _, registry_revision = snapshot()
+    from merchant_registry import report_snapshot
+    _, registry_revision = report_snapshot()
     cache_key = f"tier_summary:{registry_revision}:{month or ''}"
     now = time.time()
     cached = _status_cache.get(cache_key)
@@ -3253,7 +3253,7 @@ def offers_payload(month=None, force_refresh=False, start_date=None, end_date=No
     if start_date or end_date:
         resolve_tier_report_date_range(start_date=start_date, end_date=end_date, month=month)
     import merchant_registry
-    _, revision = merchant_registry.snapshot()
+    _, revision = merchant_registry.report_snapshot()
     global _merchant_registry_version
     _merchant_registry_version = revision
     return _cached_offers_payload(month, force_refresh, start_date, end_date)
@@ -3364,8 +3364,8 @@ def chatbot_offers_payload() -> dict[str, Any]:
     then triggers a background rebuild so the next request within the TTL is
     returned from the chatbot's own short-TTL cache.
     """
-    from merchant_registry import snapshot
-    _, revision = snapshot()
+    from merchant_registry import report_snapshot
+    _, revision = report_snapshot()
     global _merchant_registry_version
     if revision != _merchant_registry_version:
         _chatbot_cache.clear()
@@ -3557,7 +3557,7 @@ def _build_offers_payload(
     """Internal: heavy DB query to build an offers payload from scratch."""
     with db_connection() as conn:
         import merchant_registry
-        registry_records, registry_revision = merchant_registry.snapshot(conn)
+        registry_records, registry_revision = merchant_registry.report_snapshot(conn)
         registry_by_id = {mid: r for r in registry_records for mid in merchant_registry.merchant_ids(r.get("merchantId"))}
         if month is None:
             row = fetch_one(conn, "SELECT MAX(order_time_day) AS d FROM cnpscy_amazon_order")
@@ -4295,7 +4295,7 @@ def tier_sheet_payload(
         raise ValueError(f"Invalid tier: {tier_name}. Must be one of {sorted(valid_tiers)}")
 
     import merchant_registry
-    registry_records, registry_revision = merchant_registry.snapshot()
+    registry_records, registry_revision = merchant_registry.report_snapshot()
     registry_by_id = {mid: r for r in registry_records for mid in merchant_registry.merchant_ids(r.get("merchantId"))}
     range_start, range_end = resolve_tier_report_date_range(start_date, end_date, month)
     start_key = range_start.isoformat()

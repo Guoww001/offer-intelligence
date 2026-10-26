@@ -182,6 +182,37 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(result["ourCommission"], 0)
         self.assertEqual(result["presetCommission"], 0)
 
+    def test_preprovisioned_tables_do_not_require_create_permission(self):
+        original = Cursor.execute
+        def no_create(cursor, sql, params=()):
+            if sql.startswith("CREATE TABLE"):
+                raise RuntimeError(1142, "CREATE denied")
+            return original(cursor, sql, params)
+        with patch.object(Cursor, "execute", no_create):
+            self.assertEqual(registry.payload()["count"], 47)
+
+    def test_missing_table_without_create_permission_has_setup_error(self):
+        with patch.object(db, "fetch_one", side_effect=RuntimeError(1146, "Table missing")):
+            with patch.object(Cursor, "execute", side_effect=RuntimeError(1142, "CREATE denied")):
+                with db.db_connection() as conn:
+                    with self.assertRaisesRegex(registry.RegistrySchemaUnavailable, "merchant-registry-schema.sql"):
+                        registry.ensure_registry_table(conn, registry.TABLE, registry.DDL)
+
+    def test_missing_select_grant_has_setup_error(self):
+        with patch.object(db, "fetch_one", side_effect=RuntimeError(1142, "SELECT denied")):
+            with db.db_connection() as conn:
+                with self.assertRaisesRegex(registry.RegistrySchemaUnavailable, "grant SELECT"):
+                    registry.ensure_registry_table(conn, registry.TABLE, registry.DDL)
+
+    def test_only_setup_errors_allow_existing_reports_to_continue(self):
+        with patch.object(registry, "snapshot", side_effect=registry.RegistrySchemaUnavailable("Setup pending")):
+            self.assertEqual(registry.report_snapshot(), ([], "pending-schema"))
+            with self.assertRaises(registry.RegistrySchemaUnavailable):
+                registry.payload()
+        with patch.object(registry, "snapshot", side_effect=RuntimeError("Unexpected write failure")):
+            with self.assertRaisesRegex(RuntimeError, "Unexpected write failure"):
+                registry.report_snapshot()
+
     def test_conflicting_id_survives_reimport_without_changing_original(self):
         first = self.save(merchantId="999901", merchantName="Alpha", platform="Direct")["record"]
         second = self.save(merchantId="999901", merchantName="Beta", platform="Direct")["record"]

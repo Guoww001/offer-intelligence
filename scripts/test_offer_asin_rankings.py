@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import offer_db
+import merchant_registry
 
 
 class OfferAsinRankingTests(unittest.TestCase):
@@ -104,8 +105,11 @@ class OfferAsinRankingTests(unittest.TestCase):
 
     def test_old_snapshots_are_rebuilt_even_when_memory_and_file_are_fresh(self):
         stale = {"asinRankingVersion": 2, "offers": [{"topAsins": ["B000000001"]}]}
-        ranked = {"asinRankingVersion": offer_db.OFFER_ASIN_RANKING_VERSION, "offers": []}
-        with patch.object(offer_db, "_offers_memory_cache", (time.time(), stale)), patch.object(
+        ranked = {"asinRankingVersion": offer_db.OFFER_ASIN_RANKING_VERSION,
+                  "merchantRegistryVersion": "test-registry", "offers": []}
+        with patch.object(merchant_registry, "report_snapshot", return_value=([], "test-registry")), patch.object(
+            offer_db, "_offers_memory_cache", (time.time(), stale)
+        ), patch.object(
             offer_db, "_load_any_cache", return_value=stale
         ), patch.object(offer_db, "_build_offers_payload", return_value=ranked) as build, patch.object(
             offer_db, "_save_cache"
@@ -136,3 +140,4 @@ class OfferAsinRankingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
