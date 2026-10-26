@@ -51,6 +51,8 @@ def _clean_move(record):
     target_tier = _canonical_tier(record.get("targetTier") or record.get("target_tier"))
     if source_tier not in TIER_MOVE_TARGETS or target_tier not in TIER_MOVE_TARGETS:
         return None
+    if "Tier 1" in {source_tier, target_tier}:
+        return None
     if source_tier == target_tier:
         return None
     merchant_id = re.sub(r"\.0$", "", str(record.get("merchantId") or record.get("merchant_id") or "").strip())
@@ -197,7 +199,7 @@ def handle_tier_moves(target, method):
     if method == "GET":
         status, payload = _call_webhook("GET")
         payload.setdefault("configured", bool(_webhook_url()))
-        payload.setdefault("moves", [])
+        payload["moves"] = _clean_moves(payload.get("moves", []))
         _send_json(target, status, payload)
         return
 
@@ -228,6 +230,13 @@ def handle_tier_moves(target, method):
         _send_json(target, 413, {"ok": False, "error": "Too many tier move records"})
         return
 
+    if any(isinstance(move, dict) and "Tier 1" in {
+        _canonical_tier(move.get("sourceTier") or move.get("source_tier")),
+        _canonical_tier(move.get("targetTier") or move.get("target_tier")),
+    } for move in raw_moves):
+        _send_json(target, 400, {"ok": False, "error": "Tier 1 is managed by Direct merchant profiles."})
+        return
+
     payload = {
         "action": action,
         "moves": _clean_moves(raw_moves),
@@ -248,3 +257,4 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         handle_tier_moves(self, "POST")
+

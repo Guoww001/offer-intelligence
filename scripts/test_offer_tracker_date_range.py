@@ -6,7 +6,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import offer_db
+import merchant_registry
 
+
+original_snapshot = merchant_registry.snapshot
+merchant_registry.snapshot = lambda: ([], "registry-fixture")
 
 original_builder = offer_db._build_offers_payload
 original_cache = dict(offer_db._offers_range_cache)
@@ -28,6 +32,7 @@ def fake_builder(
     })
     return {
         "ok": True,
+        "merchantRegistryVersion": "registry-fixture",
         "month": month,
         "startDate": start_date,
         "endDate": end_date,
@@ -59,9 +64,11 @@ try:
     else:
         raise AssertionError("reversed date ranges should be rejected")
 finally:
+    merchant_registry.snapshot = original_snapshot
     offer_db._build_offers_payload = original_builder  # type: ignore[assignment]
     offer_db._offers_range_cache.clear()
     offer_db._offers_range_cache.update(original_cache)
 
 
 print("Offer Tracker date range checks passed")
+

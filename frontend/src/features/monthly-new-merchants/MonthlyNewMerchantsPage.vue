@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
-
-import MonthPicker from "../../shared/components/MonthPicker.vue";
-
 import { translateMessage, type UiLanguage } from "../../shared/i18n";
 import {
   buildMonthlyNewMerchantPayload,
   formatMonthlyNewMerchantMoney,
-  monthlyNewMerchantMonthLabel,
   monthlyNewMerchantUpdatedText,
   normalizeMonthlyNewMerchantRecord,
   parseMonthlyNewMerchantTable,
@@ -81,6 +77,17 @@ interface MonthlyNewMerchantFormState {
   businessManager: string;
   program: string;
   platform: string;
+  site: string;
+  contractNumber: string;
+  notes: string;
+  contactName: string;
+  category: string;
+  onboardingDate: string;
+  sourceSection: string;
+  sourceFile: string;
+  merchantStatus: string;
+  sourceMerchantId: string;
+
   gmvRequirement: string;
   gmvMonthlyTarget: string;
   pastMonthPurchase: string;
@@ -101,6 +108,17 @@ function blankForm(reportMonth: string): MonthlyNewMerchantFormState {
     businessManager: "",
     program: "",
     platform: "",
+    site: "",
+    contractNumber: "",
+    notes: "",
+    contactName: "",
+    category: "",
+    onboardingDate: "",
+    sourceSection: "",
+    sourceFile: "",
+    merchantStatus: "",
+    sourceMerchantId: "",
+
     gmvRequirement: "",
     gmvMonthlyTarget: "",
     pastMonthPurchase: "",
@@ -120,14 +138,24 @@ function message(key: string, fallback: string): string {
 }
 
 const copy = computed(() => ({
+  site: props.language === "zh" ? "站点" : "Site",
+  contractNumber: props.language === "zh" ? "合同" : "Contract",
+  notes: props.language === "zh" ? "备注" : "Notes",
+  contactName: props.language === "zh" ? "对接人" : "Contact",
+  category: props.language === "zh" ? "品类" : "Category",
+  onboardingDate: props.language === "zh" ? "对接日期" : "Onboarding date",
+  sourceSection: props.language === "zh" ? "来源分类" : "Source section",
+  sourceFile: props.language === "zh" ? "来源文件" : "Source file",
+  merchantStatus: props.language === "zh" ? "状态" : "Status",
+  sourceMerchantId: props.language === "zh" ? "原始商家 ID" : "Original Merchant ID",
   basics: message("monthlyNewMerchants.basics", "Merchant details"),
   goals: message("monthlyNewMerchants.goals", "Targets and performance"),
   commissions: message("monthlyNewMerchants.commissions", "Commission and incentives"),
   gmvPlaceholder: message("monthlyNewMerchants.gmvPlaceholder", "e.g. $100,000 or profitability"),
   fileHint: message("monthlyNewMerchants.fileHint", "CSV, TSV, XLS or XLSX · Preview before importing"),
   pastePlaceholder: message("monthlyNewMerchants.pastePlaceholder", "Brand\tProgram\tPlatform\tGMV target"),
-  title: message("monthlyNewMerchants.title", "Monthly new merchants"),
-  subtitle: message("monthlyNewMerchants.subtitle", "Add this month's merchants manually and save every entry to the database"),
+  title: message("monthlyNewMerchants.title", "Merchant registry"),
+  subtitle: message("monthlyNewMerchants.subtitle", "Keep merchant profiles, contacts and contracts in one permanent directory"),
   month: message("monthlyNewMerchants.month", "Month"),
   add: message("monthlyNewMerchants.add", "Add merchant"),
   import: message("monthlyNewMerchants.import", "Import table"),
@@ -170,8 +198,8 @@ const copy = computed(() => ({
   importValid: message("monthlyNewMerchants.importValid", "Import valid rows"),
   importing: message("monthlyNewMerchants.importing", "Importing…"),
   loading: message("monthlyNewMerchants.loading", "Loading new merchants from the database…"),
-  emptyTitle: message("monthlyNewMerchants.emptyTitle", "No new merchants have been added for this month"),
-  emptyBody: message("monthlyNewMerchants.emptyBody", "No newly added merchants were found in the backend database for this month."),
+  emptyTitle: message("monthlyNewMerchants.emptyTitle", "No merchants have been added"),
+  emptyBody: message("monthlyNewMerchants.emptyBody", "Import a workbook or add a merchant to start your directory."),
   noMatchesTitle: message("monthlyNewMerchants.noMatchesTitle", "No merchants match your search"),
   noMatchesBody: message("monthlyNewMerchants.noMatchesBody", "Try a different merchant, ID, or BD."),
   databaseError: message("monthlyNewMerchants.databaseError", "The database is temporarily unavailable."),
@@ -191,7 +219,7 @@ const copy = computed(() => ({
 
 const countSummary = computed(() => {
   const rows = monthly.filteredRecords.value;
-  const label = monthlyNewMerchantMonthLabel(monthly.month.value, props.language);
+  const label = (props.language === "zh" ? "全部商家" : "All merchants");
   const count = props.language === "zh"
     ? `${label} · ${rows.length} 个商家`
     : `${label} · ${rows.length} merchant${rows.length === 1 ? "" : "s"}`;
@@ -243,6 +271,17 @@ function resetForm(record: MonthlyNewMerchantRecord | null): void {
       businessManager: record.businessManager,
       program: record.program,
       platform: record.platform,
+      site: record.site,
+      contractNumber: record.contractNumber,
+      notes: record.notes,
+      contactName: record.contactName,
+      category: record.category,
+      onboardingDate: record.onboardingDate,
+      sourceSection: record.sourceSection,
+      sourceFile: record.sourceFile,
+      merchantStatus: record.merchantStatus,
+      sourceMerchantId: record.sourceMerchantId,
+
       gmvRequirement: record.gmvRequirement,
       gmvMonthlyTarget: record.gmvMonthlyTarget === null ? "" : String(record.gmvMonthlyTarget),
       pastMonthPurchase: record.pastMonthPurchase,
@@ -298,11 +337,6 @@ function closeImport(restoreFocus = true): void {
   if (target) focusAfterClose(target);
 }
 
-function changeMonth(value: string): void {
-  if (value === monthly.month.value) return;
-  monthly.setMonth(value);
-  if (props.autoLoad) void monthly.loadMonth(true);
-}
 
 function setSearch(event: Event): void {
   monthly.setSearch((event.target as HTMLInputElement).value);
@@ -354,6 +388,17 @@ async function submitForm(event: Event): Promise<void> {
     businessManager: form.businessManager,
     program: form.program,
     platform: form.platform,
+    site: form.site,
+    contractNumber: form.contractNumber,
+    notes: form.notes,
+    contactName: form.contactName,
+    category: form.category,
+    onboardingDate: form.onboardingDate,
+    sourceSection: form.sourceSection,
+    sourceFile: form.sourceFile,
+    merchantStatus: form.merchantStatus,
+    sourceMerchantId: form.sourceMerchantId,
+
     gmvRequirement: form.gmvRequirement,
     gmvMonthlyTarget: form.gmvMonthlyTarget,
     pastMonthPurchase: form.pastMonthPurchase,
@@ -511,10 +556,6 @@ onUnmounted(() => {
         <p>{{ copy.subtitle }}</p>
       </div>
       <div class="monthly-new-merchants-header-actions">
-        <div class="monthly-new-merchants-month-control">
-          <span>{{ copy.month }}</span>
-          <MonthPicker :model-value="monthly.month.value" :language="language" :label="copy.month" :today="today" @update:model-value="changeMonth" />
-        </div>
         <button ref="importButton" class="monthly-new-merchants-import" type="button" data-modern-action="import" @click="openImport">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
           <span>{{ copy.import }}</span>
@@ -568,6 +609,16 @@ onUnmounted(() => {
               <th>{{ copy.brand }}</th>
               <th>{{ copy.program }}</th>
               <th>{{ copy.platform }}</th>
+              <th>{{ copy.site }}</th>
+              <th>{{ copy.contractNumber }}</th>
+              <th>{{ copy.notes }}</th>
+              <th>{{ copy.contactName }}</th>
+              <th>{{ copy.category }}</th>
+              <th>{{ copy.onboardingDate }}</th>
+              <th>{{ copy.sourceSection }}</th>
+              <th>{{ copy.merchantStatus }}</th>
+              <th>{{ copy.sourceMerchantId }}</th>
+
               <th>{{ copy.gmvRequirement }}</th>
               <th>{{ copy.pastMonthPurchase }}</th>
               <th>{{ copy.independentWebsites }}</th>
@@ -600,9 +651,19 @@ onUnmounted(() => {
                 </button>
               </td>
               <td class="monthly-new-merchant-id-cell"><span :class="{ 'monthly-new-merchant-muted': !record.merchantId }">{{ tableText(record.merchantId) }}</span></td>
-              <td><div class="monthly-new-merchant-name"><strong>{{ record.merchantName || copy.merchantName }}</strong></div></td>
+              <td><div class="monthly-new-merchant-name"><strong>{{ record.merchantName || copy.merchantName }}</strong><small v-if="record.identityWarning" role="status">{{ record.identityWarning }}</small></div></td>
               <td><span :class="{ 'monthly-new-merchant-muted': !record.program }">{{ tableText(record.program) }}</span></td>
               <td><span :class="{ 'monthly-new-merchant-muted': !record.platform }">{{ tableText(record.platform) }}</span></td>
+              <td>{{ tableText(record.site) }}</td>
+              <td>{{ tableText(record.contractNumber) }}</td>
+              <td>{{ tableText(record.notes) }}</td>
+              <td>{{ tableText(record.contactName) }}</td>
+              <td>{{ tableText(record.category) }}</td>
+              <td>{{ tableText(record.onboardingDate) }}</td>
+              <td>{{ tableText(record.sourceSection) }}</td>
+              <td>{{ tableText(record.merchantStatus) }}</td>
+              <td>{{ tableText(record.sourceMerchantId) }}</td>
+
               <td><span :class="{ 'monthly-new-merchant-muted': !record.gmvRequirement && record.gmvMonthlyTarget === null }">{{ record.gmvRequirement || (record.gmvMonthlyTarget === null ? '—' : formatMonthlyNewMerchantMoney(record.gmvMonthlyTarget)) }}</span></td>
               <td><span :class="{ 'monthly-new-merchant-muted': !record.pastMonthPurchase }">{{ tableText(record.pastMonthPurchase) }}</span></td>
               <td><span :class="{ 'monthly-new-merchant-muted': !record.independentWebsites }">{{ tableText(record.independentWebsites) }}</span></td>
@@ -658,7 +719,7 @@ onUnmounted(() => {
               <h3 class="monthly-new-merchant-form-section">{{ copy.basics }}</h3>
               <label>
                 <span>{{ copy.merchantId }}</span>
-                <input v-model="form.merchantId" inputmode="numeric" maxlength="64" data-modern-field="merchant-id" />
+                <input v-model="form.merchantId" maxlength="64" data-modern-field="merchant-id" />
               </label>
               <label>
                 <span>{{ copy.merchantName }} <b>*</b></span>
@@ -667,6 +728,16 @@ onUnmounted(() => {
               <label><span>{{ copy.bd }}</span><input v-model="form.businessManager" maxlength="128" data-modern-field="business-manager" /></label>
               <label><span>{{ copy.program }}</span><input v-model="form.program" maxlength="128" data-modern-field="program" /></label>
               <label><span>{{ copy.platform }}</span><input v-model="form.platform" maxlength="128" data-modern-field="platform" /></label>
+              <label><span>{{ copy.site }}</span><input v-model="form.site" maxlength="128" data-modern-field="site" /></label>
+              <label><span>{{ copy.contractNumber }}</span><input v-model="form.contractNumber" maxlength="255" data-modern-field="contractNumber" /></label>
+              <label><span>{{ copy.notes }}</span><input v-model="form.notes" maxlength="4000" data-modern-field="notes" /></label>
+              <label><span>{{ copy.contactName }}</span><input v-model="form.contactName" maxlength="255" data-modern-field="contactName" /></label>
+              <label><span>{{ copy.category }}</span><input v-model="form.category" maxlength="255" data-modern-field="category" /></label>
+              <label><span>{{ copy.onboardingDate }}</span><input v-model="form.onboardingDate" maxlength="64" data-modern-field="onboardingDate" /></label>
+              <label><span>{{ copy.sourceSection }}</span><input v-model="form.sourceSection" maxlength="255" data-modern-field="sourceSection" /></label>
+              <label><span>{{ copy.sourceFile }}</span><input v-model="form.sourceFile" maxlength="255" data-modern-field="sourceFile" /></label>
+              <label><span>{{ copy.merchantStatus }}</span><input v-model="form.merchantStatus" maxlength="128" data-modern-field="merchantStatus" /></label>
+
               <h3 class="monthly-new-merchant-form-section">{{ copy.goals }}</h3>
               <label><span>{{ copy.gmvRequirement }}</span><input v-model="form.gmvRequirement" maxlength="255" :placeholder="copy.gmvPlaceholder" data-modern-field="gmv-requirement" /></label>
               <label><span>{{ copy.gmvTarget }}</span><input v-model="form.gmvMonthlyTarget" type="number" inputmode="decimal" min="0" max="9999999999999999.99" step="0.01" placeholder="0.00" data-modern-field="gmv-target" /></label>
@@ -763,3 +834,4 @@ onUnmounted(() => {
     </div>
     </Teleport>
 </template>
+

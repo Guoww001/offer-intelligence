@@ -159,7 +159,7 @@ function movesFromRecords(records: readonly unknown[]): TierMoveMap {
     const parsed = validTierMoveMap({ [key]: candidate });
     if (parsed[key]) result[key] = parsed[key];
   });
-  return result;
+  return validTierMoveMap(result);
 }
 
 function readStoredMoves(storage: TierStorage | undefined): TierMoveMap {
@@ -429,11 +429,11 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
   }
 
   function defaultMoveTarget(): TierName | "" {
-    return TIER_NAMES.find((tier) => tier !== selectedTier.value) || "";
+    return TIER_NAMES.find((tier) => tier !== selectedTier.value && tier !== "Tier 1") || "";
   }
 
   function openMoveDialog(): boolean {
-    if (!selectedCount.value) return false;
+    if (!selectedCount.value || selectedTier.value === "Tier 1") return false;
     moveTarget.value = defaultMoveTarget();
     moveDialogOpen.value = true;
     moveStatus.value = "";
@@ -446,7 +446,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
 
   function setMoveTarget(target: string): void {
     const canonical = canonicalTierName(target);
-    if (isTierName(canonical) && canonical !== selectedTier.value) moveTarget.value = canonical;
+    if (isTierName(canonical) && canonical !== selectedTier.value && canonical !== "Tier 1") moveTarget.value = canonical;
   }
 
   function movePayload(): readonly Readonly<Record<string, unknown>>[] {
@@ -483,7 +483,7 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
 
   async function moveSelectedRows(): Promise<boolean> {
     const target = moveTarget.value;
-    if (moveSyncing.value || !target || target === selectedTier.value || !selectedRows.value.length) return false;
+    if (moveSyncing.value || !target || target === "Tier 1" || selectedTier.value === "Tier 1" || target === selectedTier.value || !selectedRows.value.length) return false;
     const movedCount = selectedRows.value.length;
     const next: Record<string, TierMove> = { ...manualMoves.value };
     selectedRows.value.forEach((row) => {
@@ -751,3 +751,4 @@ export function useTierSheet(options: UseTierSheetOptions = {}) {
     dispose
   };
 }
+

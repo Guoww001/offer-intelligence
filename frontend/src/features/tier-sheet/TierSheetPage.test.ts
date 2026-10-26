@@ -29,13 +29,13 @@ const report = {
 describe("TierSheetPage", () => {
   it("switches the complete report chrome between Chinese and English while retaining raw sort keys", async () => {
     const wrapper = mount(TierSheetPage, { props: { language: "zh", reportData: report, autoLoad: false } });
-    expect(wrapper.get(".tier-header").text()).toContain("添加商家");
+    expect(wrapper.get(".tier-header").text()).toContain("平台为 Direct");
     expect(wrapper.get(".tier-summary").text()).toContain("总点击量");
     expect(wrapper.get(".tier-category-header").text()).toContain("个品类");
     expect(wrapper.get('[data-tier-sort="Merchant Name"]').text()).toContain("商家名称");
     expect(wrapper.get('[data-tier-date="start"]').attributes("aria-label")).toBe("开始日期");
     await wrapper.setProps({ language: "en" });
-    expect(wrapper.get(".tier-header").text()).toContain("Add merchant");
+    expect(wrapper.get(".tier-header").text()).toContain("Platform set to Direct");
     expect(wrapper.get('[data-tier-sort="Merchant Name"]').text()).toContain("Merchant Name");
     wrapper.unmount();
   });
@@ -83,10 +83,8 @@ describe("TierSheetPage", () => {
     });
     await wrapper.get('[data-tier-select-row="merchant:101:Tier 1"]').setValue(true);
     await wrapper.get('[data-tier-action="move"]').trigger("click");
-    expect(wrapper.find(".tier-move-dialog").exists()).toBe(true);
-    await wrapper.get('[data-tier-move-target="Tier 2"]').trigger("click");
-    await wrapper.get('[data-tier-action="confirm-move"]').trigger("click");
-    expect(wrapper.text()).toContain("Tier 2");
+    expect(wrapper.find(".tier-move-dialog").exists()).toBe(false);
+    expect(wrapper.find(".tier1-add-merchant-button").exists()).toBe(false);
 
     await wrapper.get('[data-tier-action="columns"]').trigger("click");
     expect(wrapper.find(".column-picker-panel").exists()).toBe(true);
@@ -153,3 +151,4 @@ describe("TierSheetPage", () => {
   });
 
 });
+

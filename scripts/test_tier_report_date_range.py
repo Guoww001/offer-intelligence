@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import offer_db
+import merchant_registry
 from scripts import build_db_static_snapshot
 
 
@@ -176,6 +177,8 @@ def test_report_payload():
             return base_rows
         raise AssertionError(f"Unexpected SQL: {sql}")
 
+    original_snapshot = merchant_registry.snapshot
+    merchant_registry.snapshot = lambda: ([], "registry-fixture")
     original_connection = offer_db.db_connection
     original_fetch_all = offer_db.fetch_all
     offer_db.db_connection = fake_connection
@@ -190,6 +193,7 @@ def test_report_payload():
             compact=True,
         )
     finally:
+        merchant_registry.snapshot = original_snapshot
         offer_db.db_connection = original_connection
         offer_db.fetch_all = original_fetch_all
         offer_db.TABLE_COLUMNS_CACHE.clear()
@@ -271,3 +275,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

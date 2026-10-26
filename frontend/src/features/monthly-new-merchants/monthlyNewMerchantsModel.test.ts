@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMonthlyNewMerchantPayload,
+  combineMerchantWorkbookTables,
   filterMonthlyNewMerchantRecords,
   monthlyNewMerchantImportRows,
   monthlyNewMerchantTargetTotal,
@@ -17,7 +18,7 @@ const offers = [
 ];
 
 describe("monthlyNewMerchantsModel", () => {
-  it("normalizes manual records and resolves a missing merchant ID from offers", () => {
+  it("normalizes profiles without assigning an unconfirmed ID from another data source", () => {
     expect(normalizeMonthlyNewMerchantRecord({
       recordId: "12",
       reportMonth: "2026-08",
@@ -29,7 +30,7 @@ describe("monthlyNewMerchantsModel", () => {
       gmvMonthlyTarget: "12500.50"
     }, offers)).toMatchObject({
       recordId: 12,
-      merchantId: "380945",
+      merchantId: "",
       merchantName: "Merach",
       ourCommission: 35,
       presetCommission: 20,
@@ -57,11 +58,10 @@ describe("monthlyNewMerchantsModel", () => {
     expect(result.recognizedHeaders).toBe(5);
     expect(result.rows[0]?.payload.gmvMonthlyTarget).toBe(100000);
     expect(result.rows[1]?.errors).toEqual(expect.arrayContaining([
-      "Merchant ID must be numeric.",
-      "Commission must be between 0% and 100%: 125%",
-      "Duplicate brand in this import."
+      "Commission must be between 0% and 100%: 125%"
     ]));
-    expect(result.rows[0]?.errors).toContain("Duplicate brand in this import.");
+    expect(result.rows[0]?.errors).toEqual([]);
+    expect(result.rows[1]?.payload.merchantId).toBe("bad-id");
   });
 
   it("filters the visible fields and totals only numeric GMV targets", () => {
@@ -90,7 +90,7 @@ describe("monthlyNewMerchantsModel", () => {
       ourCommission: "35%",
       presetCommission: "20",
       isPriority: true
-    })).toEqual({
+    })).toMatchObject({
       action: "upsert",
       recordId: 8,
       reportMonth: "2026-08",
@@ -110,4 +110,32 @@ describe("monthlyNewMerchantsModel", () => {
       completionReward: ""
     });
   });
+  it("maps all alliance workbook layouts and preserves account and contact fields", () => {
+    const table = combineMerchantWorkbookTables([
+      [["", "Merchant ID", "站点", "Brand Name", "Contract", "平台", "Target", "备注", "BD"],
+       ["offline", "123", "us", "Acme", "YP001", "Direct", "10-20W USD", "Agency", "Bryan"]],
+      [["编号", "品牌", "平台", "日期", "BD"], ["456", "Acme", "impact", "26.09.23", "ian"]],
+      [["品牌名", "对接人", "品类"], ["百拓", "Karo", "大件家具"]]
+    ]);
+    const imported = monthlyNewMerchantImportRows(table, "2026-10");
+    expect(imported.errors).toEqual([]);
+    expect(imported.rows).toHaveLength(3);
+    expect(imported.rows[0]?.payload).toMatchObject({ merchantId: "123", site: "us", contractNumber: "YP001", notes: "Agency", platform: "Direct", gmvRequirement: "10-20W USD", merchantStatus: "offline" });
+    expect(imported.rows[1]?.payload).toMatchObject({ merchantId: "456", onboardingDate: "26.09.23", businessManager: "ian" });
+    expect(imported.rows[2]?.payload).toMatchObject({ merchantName: "百拓", contactName: "Karo", category: "大件家具" });
+  });
+
+  it("deduplicates identical rows, fills missing metadata and retains distinct IDs and conflicts", () => {
+    const result = monthlyNewMerchantImportRows([
+      ["Brand Name", "Merchant ID", "Contract", "备注"],
+      ["Alpha", "101", "YP001", ""],
+      [" alpha ", "101", "", "Owner note"],
+      ["Alpha", "102", "YP002", ""],
+      ["Beta", "101", "YP003", ""]
+    ], "2026-10");
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows.every((row) => row.errors.length === 0)).toBe(true);
+    expect(result.rows[0]?.payload).toMatchObject({ merchantName: "Alpha", contractNumber: "YP001", notes: "Owner note", mergeOnly: true });
+  });
 });
+

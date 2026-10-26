@@ -60,6 +60,7 @@ import MonthlyNewMerchantsPage, {
   type MonthlyNewMerchantFileReader
 } from "./features/monthly-new-merchants/MonthlyNewMerchantsPage.vue";
 import { readMerchantWorkbook } from "./shared/import/merchantWorkbook";
+import { combineMerchantWorkbookTables } from "./features/monthly-new-merchants/monthlyNewMerchantsModel";
 import type { MonthlyNewMerchantPayload } from "./features/monthly-new-merchants/monthlyNewMerchantsModel";
 import type { MonthlyNewMerchantLoadRequest } from "./features/monthly-new-merchants/useMonthlyNewMerchants";
 import TargetsPage from "./features/targets/TargetsPage.vue";
@@ -420,7 +421,7 @@ async function addTier1Merchant(request: Tier1MerchantAddRequest): Promise<unkno
 
 const readMonthlyMerchantFile: MonthlyNewMerchantFileReader = async (file) => {
   const tables = await readMerchantWorkbook(file);
-  return tables[0] || [];
+  return combineMerchantWorkbookTables(tables).map((row, index) => [...row, index === 0 ? "来源文件" : file.name]);
 };
 
 function revenueFlowInitialState(element: HTMLElement): {
@@ -1096,3 +1097,4 @@ window.OI_MODERN_RUNTIME = {
     return false;
   }
 };
+

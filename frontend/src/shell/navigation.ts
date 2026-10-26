@@ -55,7 +55,7 @@ export const NAVIGATION_GROUPS: readonly NavigationGroup[] = [
     hint: text("运营与分层", "Operations & tiers"),
     items: [
       { page: "sheets", label: text("目标", "Targets"), hint: text("目标与趋势", "Goals & trends"), icon: "targets" },
-      { page: "monthly-new-merchants", label: text("上新商家", "New merchants"), hint: text("月度商家", "Monthly records"), icon: "calendar" },
+      { page: "monthly-new-merchants", label: text("商家档案", "Merchant registry"), hint: text("长期维护", "Permanent profiles"), icon: "calendar" },
       { page: "payments", label: text("付款", "Payments"), hint: text("周期与状态", "Cycles & status"), icon: "payments" },
       { page: "tier", label: text("Tier", "Tier"), hint: text("商家分层", "Merchant tiers"), icon: "tier" }
     ]
@@ -94,7 +94,7 @@ const PAGE_LABELS: Readonly<Record<ModernPageName, LocalizedText>> = {
   dashboard: text("Chatbot", "Chatbot"),
   payments: text("付款", "Payments"),
   publishers: text("Publishers", "Publishers"),
-  "monthly-new-merchants": text("上新商家", "New merchants"),
+  "monthly-new-merchants": text("商家档案", "Merchant registry"),
   "brand-media": text("品牌媒体", "Brand media"),
   "revenue-flow": text("营收流", "Revenue flow"),
   "google-ads": text("Google Ads", "Google Ads"),
@@ -125,3 +125,4 @@ export function pageLabel(page: ModernPageName, language: UiLanguage): string {
 export function pageTitle(page: ModernPageName, language: UiLanguage): string {
   return `${pageLabel(page, language)} · YeahPromos`;
 }
+

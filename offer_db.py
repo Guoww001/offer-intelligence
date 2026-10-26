@@ -35,7 +35,7 @@ DEFAULT_DAILY_TREND_DAYS = 14
 DEFAULT_MONTHLY_TREND_MONTHS = 6
 MAX_TIER_REPORT_RANGE_DAYS = 366
 MAX_BRAND_MEDIA_TREND_RANGE_DAYS = 731
-TIER1_MANUAL_SOURCE = "offer-intelligence-tier1-add"
+TIER1_MANUAL_SOURCE = "merchant-registry-direct"
 TIER1_NAME = "Tier 1"
 DEFAULT_AFF_PROPORTION = 0.75
 MANAGED_TIER_NAMES = {"Tier 1", "Tier 2", "Tier 3", "Tier 4", "BLACK TIER"}
@@ -1279,7 +1279,9 @@ def tier_summary_payload(month: str | None = None) -> dict[str, Any]:
     cnpscy_amazon_click. These are the same sources used by Report Overview,
     so the tier matrix reconciles with its headline metrics.
     """
-    cache_key = f"tier_summary:{month or ''}"
+    from merchant_registry import snapshot
+    _, registry_revision = snapshot()
+    cache_key = f"tier_summary:{registry_revision}:{month or ''}"
     now = time.time()
     cached = _status_cache.get(cache_key)
     if cached is not None and now - cached[0] < STATUS_CACHE_TTL:
@@ -2327,151 +2329,8 @@ def add_merchant_to_tier1(
     expected_tier: str | None = None,
 ) -> dict[str, Any]:
     """Assign an active YeahPromos merchant to Tier 1 with provenance."""
-    merchant_id = str(merchant_id or "").strip()
-    if not DIGITS_RE.match(merchant_id):
-        raise ValueError("merchantId must be numeric")
-
-    expected_tier = str(expected_tier or "").strip()
-    updated_by = str(updated_by or "offer-intelligence-ui").strip()[:128] or "offer-intelligence-ui"
-    moved_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-
-    with db_connection() as conn:
-        try:
-            conn.begin()
-            merchant = fetch_one(
-                conn,
-                """
-                SELECT
-                    CAST(a.advert_id AS CHAR) AS merchantId,
-                    a.advert_name AS merchantName,
-                    COALESCE(NULLIF(TRIM(at.advert_type_name), ''), 'Unknown') AS network
-                FROM cnpscy_advert a
-                LEFT JOIN cnpscy_advert_type at
-                    ON a.advert_advertiser = at.advert_type_id
-                    AND at.advert_type_parent_id = 53
-                WHERE a.advert_id = %s
-                  AND a.advert_isdel = 1
-                LIMIT 1
-                FOR UPDATE
-                """,
-                (merchant_id,),
-            )
-            if not merchant:
-                conn.rollback()
-                return {
-                    "ok": False,
-                    "code": "merchant_not_found",
-                    "error": "Merchant was not found or is inactive.",
-                }
-
-            assignment = fetch_one(
-                conn,
-                """
-                SELECT merchantId, tier
-                FROM cnpscy_oi_tier_assignments
-                WHERE merchantId = %s
-                LIMIT 1
-                FOR UPDATE
-                """,
-                (merchant_id,),
-            )
-            current_tier = str((assignment or {}).get("tier") or "").strip()
-            merchant = {
-                **merchant,
-                "currentTier": current_tier,
-            }
-
-            if current_tier and current_tier not in MANAGED_TIER_NAMES:
-                conn.rollback()
-                return {
-                    "ok": False,
-                    "code": "unsupported_tier",
-                    "error": f"Merchant has an unsupported current tier: {current_tier}.",
-                    "merchant": compact_api_row(merchant),
-                }
-
-            if expected_tier != current_tier:
-                conn.rollback()
-                return {
-                    "ok": False,
-                    "code": "tier_changed",
-                    "error": "Merchant tier changed after search. Search again before confirming.",
-                    "merchant": compact_api_row(merchant),
-                }
-
-            if current_tier == TIER1_NAME:
-                conn.rollback()
-                return {
-                    "ok": False,
-                    "code": "already_tier1",
-                    "error": "Merchant is already in Tier 1.",
-                    "merchant": compact_api_row(merchant),
-                }
-
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO cnpscy_oi_tier_assignments
-                        (merchantId, tier, source, movedFromTier, movedAt, updatedBy)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        tier = VALUES(tier),
-                        source = VALUES(source),
-                        movedFromTier = VALUES(movedFromTier),
-                        movedAt = VALUES(movedAt),
-                        updatedBy = VALUES(updatedBy)
-                    """,
-                    (
-                        merchant_id,
-                        TIER1_NAME,
-                        TIER1_MANUAL_SOURCE,
-                        current_tier or None,
-                        moved_at,
-                        updated_by,
-                    ),
-                )
-                cursor.execute(
-                    """
-                    INSERT INTO cnpscy_oi_tier_move_history
-                        (merchantId, merchantName, sourceTier, targetTier, source, movedAt, movedBy)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        merchant_id,
-                        str(merchant.get("merchantName") or "").strip() or None,
-                        current_tier or None,
-                        TIER1_NAME,
-                        TIER1_MANUAL_SOURCE,
-                        moved_at,
-                        updated_by,
-                    ),
-                )
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-
-    _tier_sheet_cache.clear()
-    return {
-        "ok": True,
-        "tier": TIER1_NAME,
-        "merchant": compact_api_row({
-            **merchant,
-            "previousTier": current_tier,
-            "currentTier": TIER1_NAME,
-            "addedAt": moved_at,
-            "addedBy": updated_by,
-        }),
-        "migration": compact_api_row({
-            "merchantId": merchant_id,
-            "merchantName": merchant.get("merchantName"),
-            "sourceTier": current_tier,
-            "targetTier": TIER1_NAME,
-            "movedAt": moved_at,
-            "movedBy": updated_by,
-            "source": TIER1_MANUAL_SOURCE,
-        }),
-    }
+    return {"ok": False, "code": "tier1_managed_by_registry",
+            "error": "Tier 1 is managed automatically. Set Platform to Direct in the merchant registry."}
 
 
 def normalize_monthly_new_merchant_month(value: Any = None) -> str:
@@ -3000,7 +2859,7 @@ def _monthly_new_merchant_merged_record(
     return _monthly_new_merchant_api_record(record) or {}
 
 
-def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
+def _legacy_monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
     report_month = normalize_monthly_new_merchant_month(month)
     with db_connection() as conn:
         ensure_monthly_new_merchants_schema(conn)
@@ -3059,7 +2918,7 @@ def monthly_new_merchants_payload(month: Any = None) -> dict[str, Any]:
     }
 
 
-def upsert_monthly_new_merchant(
+def _legacy_upsert_monthly_new_merchant(
     payload: dict[str, Any],
     *,
     updated_by: str,
@@ -3232,7 +3091,7 @@ def upsert_monthly_new_merchant(
     }
 
 
-def delete_monthly_new_merchant(
+def _legacy_delete_monthly_new_merchant(
     record_id: Any,
     *,
     deleted_by: str,
@@ -3300,6 +3159,22 @@ def delete_monthly_new_merchant(
         "deletedBy": actor,
         "record": _monthly_new_merchant_api_record(record),
     }
+
+
+
+def monthly_new_merchants_payload(month=None):
+    from merchant_registry import payload
+    return payload(month)
+
+
+def upsert_monthly_new_merchant(payload, *, updated_by):
+    from merchant_registry import upsert
+    return upsert(payload, updated_by=updated_by)
+
+
+def delete_monthly_new_merchant(record_id, *, deleted_by):
+    from merchant_registry import delete
+    return delete(record_id, deleted_by=deleted_by)
 
 
 # ?? payload cache ????????????????????????????????????????????????????
@@ -3374,7 +3249,20 @@ def _save_cache(path: Path, payload: dict[str, Any]) -> None:
             pass
 
 
-def offers_payload(
+def offers_payload(month=None, force_refresh=False, start_date=None, end_date=None):
+    if start_date or end_date:
+        resolve_tier_report_date_range(start_date=start_date, end_date=end_date, month=month)
+    import merchant_registry
+    _, revision = merchant_registry.snapshot()
+    global _merchant_registry_version
+    _merchant_registry_version = revision
+    return _cached_offers_payload(month, force_refresh, start_date, end_date)
+
+
+_merchant_registry_version = ""
+
+
+def _cached_offers_payload(
     month: str | None = None,
     force_refresh: bool = False,
     start_date: str | None = None,
@@ -3403,7 +3291,7 @@ def offers_payload(
         cached_range = _offers_range_cache.get(cache_key)
         if not force_refresh and cached_range is not None:
             ts, payload = cached_range
-            if now - ts < CACHE_TTL_SECONDS:
+            if now - ts < CACHE_TTL_SECONDS and payload.get("merchantRegistryVersion") == _merchant_registry_version:
                 return payload
         payload = _build_offers_payload(
             month=range_end.strftime("%Y-%m"),
@@ -3417,14 +3305,14 @@ def offers_payload(
     # Memory cache ? avoid 23MB file read + json.loads on warm requests
     if not force_refresh and _offers_memory_cache is not None:
         ts, payload = _offers_memory_cache
-        if now - ts < CACHE_TTL_SECONDS and payload.get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION:
+        if now - ts < CACHE_TTL_SECONDS and payload.get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION and payload.get("merchantRegistryVersion") == _merchant_registry_version:
             return payload
         # TTL expired: fall through to file cache
 
     # File cache ? shared across Vercel instances
     if not force_refresh:
         cached = _load_any_cache(OFFERS_CACHE_FILE)
-        if cached is not None and cached.get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION:
+        if cached is not None and cached.get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION and cached.get("merchantRegistryVersion") == _merchant_registry_version:
             age = _cache_age(OFFERS_CACHE_FILE)
             if age is not None and age < CACHE_TTL_SECONDS:
                 _offers_memory_cache = (now, cached)
@@ -3458,7 +3346,7 @@ def offers_payload(
         # Double-check: ?????????????
         if not force_refresh and _offers_memory_cache is not None:
             ts, cached = _offers_memory_cache
-            if now - ts < CACHE_TTL_SECONDS and cached.get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION:
+            if now - ts < CACHE_TTL_SECONDS and cached.get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION and cached.get("merchantRegistryVersion") == _merchant_registry_version:
                 return cached
         payload = _build_offers_payload(month)
         _save_cache(OFFERS_CACHE_FILE, payload)
@@ -3476,6 +3364,12 @@ def chatbot_offers_payload() -> dict[str, Any]:
     then triggers a background rebuild so the next request within the TTL is
     returned from the chatbot's own short-TTL cache.
     """
+    from merchant_registry import snapshot
+    _, revision = snapshot()
+    global _merchant_registry_version
+    if revision != _merchant_registry_version:
+        _chatbot_cache.clear()
+        _merchant_registry_version = revision
     now = time.time()
     cached = _chatbot_cache.get("payload")
     if cached is not None and now - cached[0] < CHATBOT_CACHE_TTL:
@@ -3483,7 +3377,7 @@ def chatbot_offers_payload() -> dict[str, Any]:
 
     # Fast path: serve from the pre-warmed 24h memory cache immediately,
     # then rebuild in the background so chatbot data stays fresh.
-    if _offers_memory_cache is not None and _offers_memory_cache[1].get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION:
+    if _offers_memory_cache is not None and _offers_memory_cache[1].get("asinRankingVersion") == OFFER_ASIN_RANKING_VERSION and _offers_memory_cache[1].get("merchantRegistryVersion") == _merchant_registry_version:
         ts, mem_payload = _offers_memory_cache
         result = {
             "offers": mem_payload.get("offers", []),
@@ -3662,6 +3556,9 @@ def _build_offers_payload(
 ) -> dict[str, Any]:
     """Internal: heavy DB query to build an offers payload from scratch."""
     with db_connection() as conn:
+        import merchant_registry
+        registry_records, registry_revision = merchant_registry.snapshot(conn)
+        registry_by_id = {mid: r for r in registry_records for mid in merchant_registry.merchant_ids(r.get("merchantId"))}
         if month is None:
             row = fetch_one(conn, "SELECT MAX(order_time_day) AS d FROM cnpscy_amazon_order")
             d = str(row["d"] or "").strip() if row else ""
@@ -3804,7 +3701,12 @@ def _build_offers_payload(
         # ?? merge all into offers ??
         offers = []
         for o in core_offers:
-            mid = o["merchantId"]
+            mid = str(o["merchantId"])
+            profile = registry_by_id.get(mid) or {}
+            o["merchantName"] = o.get("merchantName") or profile.get("merchantName")
+            o["id"] = f"{o['tier']}::{mid}::{o.get('merchantName') or ''}"
+            for field in ("platform", "contractNumber", "site", "contactName", "notes", "sourceSection", "businessManager"):
+                o[field] = profile.get(field, "")
 
             # 指标：Tier Sheet 口径（最新月明细聚合），与 tier_sheet_payload 一致
             metrics = metrics_map.get(mid) or {}
@@ -4178,6 +4080,7 @@ def _build_offers_payload(
         result = {
             "ok": True,
             "asinRankingVersion": OFFER_ASIN_RANKING_VERSION,
+            "merchantRegistryVersion": registry_revision,
             "checkedAt": utc_now_iso(),
             "month": month,
             "startDate": range_start.isoformat(),
@@ -4391,12 +4294,15 @@ def tier_sheet_payload(
     if tier_name not in valid_tiers:
         raise ValueError(f"Invalid tier: {tier_name}. Must be one of {sorted(valid_tiers)}")
 
+    import merchant_registry
+    registry_records, registry_revision = merchant_registry.snapshot()
+    registry_by_id = {mid: r for r in registry_records for mid in merchant_registry.merchant_ids(r.get("merchantId"))}
     range_start, range_end = resolve_tier_report_date_range(start_date, end_date, month)
     start_key = range_start.isoformat()
     end_key = range_end.isoformat()
     start_day = int(range_start.strftime("%Y%m%d"))
     end_day = int(range_end.strftime("%Y%m%d"))
-    cache_key = f"tiersheet:{tier_name}:{start_key}:{end_key}:{'compact' if compact else 'full'}"
+    cache_key = f"{registry_revision}:tiersheet:{tier_name}:{start_key}:{end_key}:{'compact' if compact else 'full'}"
     now = time.time()
     cached = _tier_sheet_cache.get(cache_key)
     if cached is not None and now - cached[0] < TIER_REPORT_CACHE_TTL:
@@ -4489,6 +4395,15 @@ def tier_sheet_payload(
             """,
             (tier_name,),
             )
+        for row in base_rows:
+            profile = registry_by_id.get(str(row.get("Merchant ID"))) or {}
+            row["Merchant Name"] = row.get("Merchant Name") or profile.get("merchantName")
+            row["Brand"] = row.get("Brand") or profile.get("merchantName")
+            if profile:
+                row["BD"] = profile.get("businessManager") or row.get("BD")
+                row["COUNTRY"] = profile.get("site") or row.get("COUNTRY")
+                row["Platform"] = profile.get("platform", "")
+                row["Contract"] = profile.get("contractNumber", "")
         if tier_name != TIER1_NAME:
             for row in base_rows:
                 row.pop("BD", None)
@@ -5881,3 +5796,4 @@ def compact_api_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
             value = normalize_compact_date(value)
         output[key] = value
     return output
+

@@ -18,6 +18,17 @@ export interface MonthlyNewMerchantRecord {
   readonly businessManager: string;
   readonly program: string;
   readonly platform: string;
+  readonly site: string;
+  readonly contractNumber: string;
+  readonly notes: string;
+  readonly contactName: string;
+  readonly category: string;
+  readonly onboardingDate: string;
+  readonly sourceSection: string;
+  readonly sourceFile: string;
+  readonly merchantStatus: string;
+  readonly sourceMerchantId: string;
+
   readonly gmvRequirement: string;
   readonly pastMonthPurchase: string;
   readonly independentWebsites: string;
@@ -27,6 +38,8 @@ export interface MonthlyNewMerchantRecord {
   readonly isPriority: boolean;
   readonly gmvMonthlyTarget: number | null;
   readonly completionReward: string;
+  readonly identityWarning: string;
+  readonly tier1Eligible: boolean;
   readonly createdBy: string;
   readonly updatedBy: string;
   readonly createdAt: string;
@@ -35,6 +48,7 @@ export interface MonthlyNewMerchantRecord {
 
 export interface MonthlyNewMerchantPayload {
   readonly action: "upsert";
+  readonly mergeOnly?: boolean;
   readonly recordId?: number;
   readonly reportMonth: string;
   readonly merchantId: string;
@@ -42,6 +56,17 @@ export interface MonthlyNewMerchantPayload {
   readonly businessManager: string;
   readonly program: string;
   readonly platform: string;
+  readonly site: string;
+  readonly contractNumber: string;
+  readonly notes: string;
+  readonly contactName: string;
+  readonly category: string;
+  readonly onboardingDate: string;
+  readonly sourceSection: string;
+  readonly sourceFile: string;
+  readonly merchantStatus: string;
+  readonly sourceMerchantId: string;
+
   readonly gmvRequirement: string;
   readonly pastMonthPurchase: string;
   readonly independentWebsites: string;
@@ -68,24 +93,62 @@ export interface MonthlyNewMerchantImportResult {
   readonly errors: string[];
 }
 
-const IMPORT_HEADERS: Readonly<Record<string, string>> = {
+export const IMPORT_HEADERS: Readonly<Record<string, string>> = {
+  'brand name': "merchantName",
+  '品牌名': "merchantName",
+  '编号': "merchantId",
+  '站点': "site",
+  'site': "site",
+  'country': "site",
+  'contract': "contractNumber",
+  'contract number': "contractNumber",
+  'contractnumber': "contractNumber",
+  '合同': "contractNumber",
+  'target': "gmvRequirement",
+  '备注': "notes",
+  'notes': "notes",
+  '对接人': "contactName",
+  'contact': "contactName",
+  'contactname': "contactName",
+  '品类': "category",
+  'category': "category",
+  '日期': "onboardingDate",
+  'date': "onboardingDate",
+  'onboardingdate': "onboardingDate",
+  '来源分类': "sourceSection",
+  'sourcesection': "sourceSection",
+  '来源文件': "sourceFile",
+  'sourcefile': "sourceFile",
+  '状态': "merchantStatus",
+  'merchantstatus': "merchantStatus",
+  'sourcemerchantid': "sourceMerchantId",
+  'merchantname': "merchantName",
+  'merchantid': "merchantId",
+  'businessmanager': "businessManager",
+  'program': "program",
+  'platform': "platform",
+  'gmvrequirement': "gmvRequirement",
+  'pastmonthpurchase': "pastMonthPurchase",
+  'independentwebsites': "independentWebsites",
+  'reviewsummary': "reviewSummary",
+  'ourcommission': "ourCommission",
+  'presetcommission': "presetCommission",
+  'ispriority': "isPriority",
+  'gmvmonthlytarget': "gmvMonthlyTarget",
+  'completionreward': "completionReward",
   brand: "merchantName",
   merchant: "merchantName",
   "merchant name": "merchantName",
-  merchantname: "merchantName",
   "品牌": "merchantName",
   "商家": "merchantName",
   "商家名称": "merchantName",
   "merchant id": "merchantId",
-  merchantid: "merchantId",
   id: "merchantId",
   "商家 id": "merchantId",
   "商家id": "merchantId",
-  program: "program",
   "program name": "program",
   "项目": "program",
   "计划": "program",
-  platform: "platform",
   "平台": "platform",
   "gmv need to be reach": "gmvRequirement",
   "gmv need to be reached": "gmvRequirement",
@@ -274,6 +337,17 @@ export function normalizeMonthlyNewMerchantRecord(
     businessManager: text(source.businessManager),
     program: text(source.program),
     platform: text(source.platform),
+    site: text(source.site),
+    contractNumber: text(source.contractNumber),
+    notes: text(source.notes),
+    contactName: text(source.contactName),
+    category: text(source.category),
+    onboardingDate: text(source.onboardingDate),
+    sourceSection: text(source.sourceSection),
+    sourceFile: text(source.sourceFile),
+    merchantStatus: text(source.merchantStatus),
+    sourceMerchantId: text(source.sourceMerchantId),
+
     gmvRequirement: text(source.gmvRequirement),
     pastMonthPurchase: text(source.pastMonthPurchase),
     independentWebsites: text(source.independentWebsites),
@@ -283,12 +357,14 @@ export function normalizeMonthlyNewMerchantRecord(
     isPriority: source.isPriority === true || source.isPriority === 1 || source.isPriority === "1" || source.isPriority === "true",
     gmvMonthlyTarget: parsedTarget !== null && Number.isFinite(parsedTarget) ? parsedTarget : null,
     completionReward: text(source.completionReward),
+    identityWarning: text(source.identityWarning),
+    tier1Eligible: source.tier1Eligible === true,
     createdBy: text(source.createdBy),
     updatedBy: text(source.updatedBy),
     createdAt: text(source.createdAt),
     updatedAt: text(source.updatedAt)
   };
-  return { ...normalized, merchantId: resolveMonthlyNewMerchantId(normalized, offers) };
+  return normalized;
 }
 
 export function filterMonthlyNewMerchantRecords(
@@ -309,7 +385,18 @@ export function filterMonthlyNewMerchantRecords(
     record.pastMonthPurchase,
     record.independentWebsites,
     record.reviewSummary,
-    record.completionReward
+    record.completionReward,
+    record.site,
+    record.contractNumber,
+    record.notes,
+    record.contactName,
+    record.category,
+    record.onboardingDate,
+    record.sourceSection,
+    record.sourceFile,
+    record.merchantStatus,
+    record.sourceMerchantId,
+    record.identityWarning
   ].some((value) => value.toLowerCase().includes(query)));
 }
 
@@ -328,6 +415,7 @@ export function buildMonthlyNewMerchantPayload(source: RawRecord = {}): MonthlyN
   const presetCommission = parseMonthlyNewMerchantCommission(source.presetCommission);
   return {
     action: "upsert",
+    ...(source.mergeOnly ? { mergeOnly: true } : {}),
     ...(recordId ? { recordId } : {}),
     reportMonth: text(source.reportMonth),
     merchantId: text(source.merchantId),
@@ -335,6 +423,17 @@ export function buildMonthlyNewMerchantPayload(source: RawRecord = {}): MonthlyN
     businessManager: text(source.businessManager),
     program: text(source.program),
     platform: text(source.platform),
+    site: text(source.site),
+    contractNumber: text(source.contractNumber),
+    notes: text(source.notes),
+    contactName: text(source.contactName),
+    category: text(source.category),
+    onboardingDate: text(source.onboardingDate),
+    sourceSection: text(source.sourceSection),
+    sourceFile: text(source.sourceFile),
+    merchantStatus: text(source.merchantStatus),
+    sourceMerchantId: text(source.sourceMerchantId),
+
     gmvRequirement: text(source.gmvRequirement),
     pastMonthPurchase: text(source.pastMonthPurchase),
     independentWebsites: text(source.independentWebsites),
@@ -385,7 +484,7 @@ export function monthlyNewMerchantImportRows(
     return { headers: [], recognizedHeaders: 0, rows: [], errors: ["No table rows found."] };
   }
   const headers = (sourceRows[0] || []).map((value) => text(value));
-  const fields = headers.map((header) => IMPORT_HEADERS[normalizeMonthlyNewMerchantImportHeader(header)] || "");
+  const fields = merchantImportFields(sourceRows);
   const recognizedHeaders = fields.filter(Boolean).length;
   const errors: string[] = [];
   if (!fields.includes("merchantName")) errors.push("A Brand or Merchant header is required.");
@@ -398,7 +497,8 @@ export function monthlyNewMerchantImportRows(
     });
     const rowErrors: string[] = [];
     if (!mapped.merchantName) rowErrors.push("Brand is required.");
-    if (mapped.merchantId && !/^\d+$/.test(mapped.merchantId)) rowErrors.push("Merchant ID must be numeric.");
+    // Raw multi-ID and not-yet-connected values are preserved by the registry.
+
     const ownCommission = parseMonthlyNewMerchantCommission(mapped.ourCommission);
     const presetCommission = parseMonthlyNewMerchantCommission(mapped.presetCommission);
     if (ownCommission.error) rowErrors.push(ownCommission.error);
@@ -410,6 +510,18 @@ export function monthlyNewMerchantImportRows(
       rowNumber: index + 2,
       payload: buildMonthlyNewMerchantPayload({
         reportMonth,
+        mergeOnly: true,
+        site: mapped.site,
+        contractNumber: mapped.contractNumber,
+        notes: mapped.notes,
+        contactName: mapped.contactName,
+        category: mapped.category,
+        onboardingDate: mapped.onboardingDate,
+        sourceSection: mapped.sourceSection,
+        sourceFile: mapped.sourceFile,
+        merchantStatus: mapped.merchantStatus,
+        sourceMerchantId: mapped.sourceMerchantId,
+
         merchantId: mapped.merchantId,
         merchantName: mapped.merchantName,
         businessManager: mapped.businessManager,
@@ -431,33 +543,51 @@ export function monthlyNewMerchantImportRows(
     };
   });
 
-  const seenNames = new Map<string, MonthlyNewMerchantImportRow>();
-  const seenIds = new Map<string, MonthlyNewMerchantImportRow>();
+  // Only identical ID+brand rows are duplicates. Distinct IDs under one brand
+  // remain separate accounts; conflicting names under one ID reach the server
+  // as separate profiles and are explicitly marked for ID confirmation.
+  const unique = new Map<string, MonthlyNewMerchantImportRow>();
   rows.forEach((row) => {
-    const nameKey = row.payload.merchantName.toLowerCase();
-    if (nameKey) {
-      const previous = seenNames.get(nameKey);
-      if (previous) {
-        row.errors.push("Duplicate brand in this import.");
-        previous.errors.push("Duplicate brand in this import.");
-      } else {
-        seenNames.set(nameKey, row);
-      }
+    const identity = `${row.payload.merchantId.trim()}::${row.payload.merchantName.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim()}`;
+    const previous = unique.get(identity);
+    if (!previous || row.errors.length || previous.errors.length) {
+      unique.set(previous ? `${identity}::${row.rowNumber}` : identity, row);
+      return;
     }
-    const idKey = row.payload.merchantId;
-    if (idKey) {
-      const previous = seenIds.get(idKey);
-      if (previous) {
-        row.errors.push("Duplicate Merchant ID in this import.");
-        previous.errors.push("Duplicate Merchant ID in this import.");
-      } else {
-        seenIds.set(idKey, row);
-      }
-    }
+    const merged: Record<string, unknown> = { ...previous.payload };
+    Object.entries(row.payload).forEach(([field, value]) => {
+      if ((merged[field] === "" || merged[field] === null) && value !== "" && value !== null) merged[field] = value;
+    });
+    unique.set(identity, { ...previous, payload: buildMonthlyNewMerchantPayload(merged) });
   });
-  return { headers, recognizedHeaders, rows, errors };
+  const deduplicatedRows = [...unique.values()];
+  return { headers, recognizedHeaders, rows: deduplicatedRows, errors };
 }
 
 export function monthlyNewMerchantTemplateCsv(): string {
-  return "\uFEFFBrand,Merchant ID,Program,Platform,GMV need to be reach,Past Month Purchase,Independent Websites,Reviews Numbers,Our Commission,Preset Commission,BD,Priority,Completion Reward\r\n";
+  return "\uFEFFBrand,Merchant ID,Site,Contract,Platform,Target,Notes,BD,Contact,Category,Date,状态,来源分类,Program,Past Month Purchase,Independent Websites,Reviews Numbers,Our Commission,Preset Commission,Priority,Completion Reward\r\n";
+}
+
+
+export function combineMerchantWorkbookTables(tables: readonly (readonly unknown[][])[]): unknown[][] {
+  const fields: string[] = [];
+  const mappedTables = tables.map((table) => {
+    const nonempty = table.filter((row) => row.some((cell) => text(cell)));
+    const headers = merchantImportFields(nonempty);
+    if (!headers.includes("merchantName")) return { headers: [], rows: [] };
+    headers.forEach((field) => { if (field && !fields.includes(field)) fields.push(field); });
+    return { headers, rows: nonempty.slice(1) };
+  });
+  return [fields, ...mappedTables.flatMap(({ headers, rows }) => rows.map((row) => fields.map((field) => {
+    const index = headers.indexOf(field);
+    return index < 0 ? "" : row[index] ?? "";
+  })))];
+}
+
+function merchantImportFields(table: readonly (readonly unknown[])[]): string[] {
+  return (table[0] || []).map((cell, index) => {
+    const header = normalizeMonthlyNewMerchantImportHeader(cell);
+    if (!header && index === 0 && table.slice(1).some((row) => text(row[0]))) return "merchantStatus";
+    return IMPORT_HEADERS[header] || "";
+  });
 }

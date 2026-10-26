@@ -33,7 +33,7 @@ describe("共享 Shell 导航模型", () => {
     expect(navigationGroupForPage("google-ads")).toBe("google-ads");
     expect(navigationGroupForPage("category")).toBe("products");
     expect(navigationItemForPage("tier")?.label.zh).toBe("Tier");
-    expect(pageLabel("monthly-new-merchants", "zh")).toBe("上新商家");
+    expect(pageLabel("monthly-new-merchants", "zh")).toBe("商家档案");
   });
 
   it("生成稳定的中英文页面标题", () => {
@@ -42,3 +42,4 @@ describe("共享 Shell 导航模型", () => {
     expect(pageTitle("category", "zh")).toBe("分类 · YeahPromos");
   });
 });
+

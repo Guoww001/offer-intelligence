@@ -64,8 +64,8 @@ describe("MonthlyNewMerchantsPage", () => {
 
     expect(wrapper.find('[data-page="monthly-new-merchants"]').exists()).toBe(true);
     expect(wrapper.find(".monthly-new-merchants-header").exists()).toBe(true);
-    expect(wrapper.find(".month-picker-trigger").exists()).toBe(true);
-    expect(wrapper.findAll(".monthly-new-merchants-table thead th")).toHaveLength(14);
+    expect(wrapper.find(".month-picker-trigger").exists()).toBe(false);
+    expect(wrapper.findAll(".monthly-new-merchants-table thead th")).toHaveLength(23);
     expect(wrapper.findAll(".monthly-new-merchants-table tbody tr")).toHaveLength(2);
     expect(wrapper.find(".monthly-new-merchants-table tbody tr").classes()).toContain("is-priority");
     expect(wrapper.text()).toContain("2026");
@@ -82,7 +82,7 @@ describe("MonthlyNewMerchantsPage", () => {
 
     expect(wrapper.find(".monthly-new-merchants-table-wrap").exists()).toBe(false);
     expect(wrapper.find(".monthly-new-merchants-empty").exists()).toBe(true);
-    expect(wrapper.text()).toContain("本月还没有上新商家");
+    expect(wrapper.text()).toContain("还没有商家档案");
   });
 
   it("opens the add drawer, restores focus, and serializes a submitted record", async () => {
@@ -125,3 +125,4 @@ describe("MonthlyNewMerchantsPage", () => {
     expect(wrapper.get('[data-modern-action="import-save"]').attributes("disabled")).toBeDefined();
   });
 });
+

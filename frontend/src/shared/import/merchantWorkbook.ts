@@ -73,12 +73,16 @@ export async function readMerchantWorkbook(file: File): Promise<unknown[][][]> {
       const reader = await loadSpreadsheetReader();
       const workbook = reader.read(await file.arrayBuffer(), { type: "array" });
       return workbook.SheetNames.flatMap((name) => {
-        const table = reader.utils.sheet_to_json(workbook.Sheets[name], {
+        const sheet = repairMerchantSheetRange(workbook.Sheets[name]);
+        const table = reader.utils.sheet_to_json(sheet, {
           header: 1,
           raw: false,
           defval: "",
         });
-        return Array.isArray(table) ? [table.filter((row): row is unknown[] => Array.isArray(row))] : [];
+        if (!Array.isArray(table)) return [];
+        const rows = table.filter((row): row is unknown[] => Array.isArray(row));
+        const width = Math.max(0, ...rows.map((row) => row.length));
+        return [rows.map((row, index) => [...Array.from({ length: width }, (_, col) => row[col] ?? ""), index === 0 ? "来源分类" : name])];
       });
     }
     const table = parseMonthlyNewMerchantTable(await file.text(), fileExtension === "tsv" ? "\t" : "");
@@ -87,4 +91,26 @@ export async function readMerchantWorkbook(file: File): Promise<unknown[][][]> {
     if (error instanceof MerchantWorkbookError) throw error;
     throw new MerchantWorkbookError("MERCHANT_FILE_READ", "The merchant file could not be read.");
   }
+}
+
+
+export function repairMerchantSheetRange(sheet: unknown): unknown {
+  if (!sheet || typeof sheet !== "object" || Array.isArray(sheet)) return sheet;
+  const cells = sheet as Record<string, unknown>;
+  let maxColumn = 0;
+  let maxRow = 1;
+  Object.keys(cells).forEach((key) => {
+    const address = /^([A-Z]+)([1-9][0-9]*)$/.exec(key);
+    if (!address) return;
+    let column = 0;
+    for (const char of address[1] || "") column = column * 26 + char.charCodeAt(0) - 64;
+    maxColumn = Math.max(maxColumn, column);
+    maxRow = Math.max(maxRow, Number(address[2]));
+  });
+  if (!maxColumn) return sheet;
+  let columnName = "";
+  for (let column = maxColumn; column > 0; column = Math.floor((column - 1) / 26)) {
+    columnName = String.fromCharCode(65 + (column - 1) % 26) + columnName;
+  }
+  return { ...cells, "!ref": `A1:${columnName}${maxRow}` };
 }

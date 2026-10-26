@@ -126,6 +126,7 @@ def main():
     common_config = {
         "excludeFiles": no_protected_excludes,
         "maxDuration": 60,
+        "includeFiles": "merchant_registry_seed.json",
     }
     expected_function_config = {
         "api/auth/index.py": dict(common_config),
@@ -135,12 +136,12 @@ def main():
         "api/db/index.py": {
             "excludeFiles": common_excludes,
             "maxDuration": 180,
-            "includeFiles": "protected_data/**",
+            "includeFiles": "{protected_data/**,merchant_registry_seed.json}",
         },
         "api/levanta/payments.py": {
             "excludeFiles": levanta_excludes,
             "maxDuration": 60,
-            "includeFiles": "protected_data/db_offers_cache.json",
+            "includeFiles": "{protected_data/db_offers_cache.json,merchant_registry_seed.json}",
         },
         "api/tier_moves.py": dict(common_config),
     }
@@ -165,3 +166,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -36,7 +36,7 @@ const report = {
 };
 
 describe("tierSheetModel", () => {
-  it("keeps stable row keys and applies incoming manual moves", () => {
+  it("keeps stable row keys and ignores stale manual Tier 1 moves", () => {
     const moves = {
       "merchant:101:Tier 1": {
         sourceTier: "Tier 1",
@@ -48,10 +48,9 @@ describe("tierSheetModel", () => {
     const tierOne = buildTierRows(report, "Tier 1", undefined, moves);
     const tierTwo = buildTierRows(report, "Tier 2", undefined, moves);
 
-    expect(tierOne).toHaveLength(0);
+    expect(tierOne).toHaveLength(1);
     expect(tierTwo.map((row) => [row.key, row.merchantId, row.sourceTier, row.currentTier])).toEqual([
-      ["merchant:202:Tier 2", "202", "Tier 2", "Tier 2"],
-      ["merchant:101:Tier 1", "101", "Tier 1", "Tier 2"]
+      ["merchant:202:Tier 2", "202", "Tier 2", "Tier 2"]
     ]);
   });
 
@@ -127,3 +126,4 @@ describe("tierSheetModel", () => {
     })).toEqual(["Tier 2", "Tier 1", "Tier 4"]);
   });
 });
+

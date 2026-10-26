@@ -31,15 +31,19 @@ describe("useTierSheet", () => {
 
     tier.toggleRowSelection(tier.rows.value[0]?.key || "", true);
     expect(tier.selectedCount.value).toBe(1);
-    expect(tier.openMoveDialog()).toBe(true);
-    tier.setMoveTarget("Tier 2");
-    await tier.moveSelectedRows();
-    expect(tier.manualMoves.value["merchant:101:Tier 1"]?.targetTier).toBe("Tier 2");
-    expect(tier.rows.value).toHaveLength(0);
-    expect(JSON.parse(local.values.get("offerTierSheetManualMoves.v1") || "{}")["merchant:101:Tier 1"].targetTier).toBe("Tier 2");
-
+    expect(tier.openMoveDialog()).toBe(false);
+    expect(await tier.moveSelectedRows()).toBe(false);
+    expect(tier.manualMoves.value).toEqual({});
     tier.selectTier("Tier 2");
-    expect(tier.rows.value.map((row) => row.merchantId)).toEqual(["202", "101"]);
+    tier.toggleRowSelection(tier.rows.value[0]?.key || "", true);
+    expect(tier.openMoveDialog()).toBe(true);
+    tier.setMoveTarget("Tier 3");
+    await tier.moveSelectedRows();
+    expect(tier.manualMoves.value["merchant:202:Tier 2"]?.targetTier).toBe("Tier 3");
+    expect(tier.rows.value).toHaveLength(0);
+    expect(JSON.parse(local.values.get("offerTierSheetManualMoves.v2") || "{}")["merchant:202:Tier 2"].targetTier).toBe("Tier 3");
+    tier.selectTier("Tier 3");
+    expect(tier.rows.value.map((row) => row.merchantId)).toEqual(["202"]);
     tier.openOverlay();
     expect(tier.expanded.value).toBe(true);
     tier.closeOverlay();
@@ -118,13 +122,13 @@ describe("useTierSheet", () => {
     };
     const tier = useTierSheet({
       reportData: report,
-      initialTier: "Tier 1",
+      initialTier: "Tier 2",
       autoLoad: false,
       saveSharedMoves: () => new Promise((resolve) => { resolveSave = resolve; })
     });
     tier.toggleRowSelection(tier.rows.value[0]?.key || "", true);
     tier.openMoveDialog();
-    tier.setMoveTarget("Tier 2");
+    tier.setMoveTarget("Tier 3");
 
     const pending = tier.moveSelectedRows();
     expect(tier.moveSyncing.value).toBe(true);
@@ -149,3 +153,4 @@ describe("useTierSheet", () => {
     expect(tier.additionsOpen.value).toBe(false);
   });
 });
+

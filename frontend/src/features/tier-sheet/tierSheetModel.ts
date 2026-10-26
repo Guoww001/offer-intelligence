@@ -6,7 +6,7 @@ export { TIER_NAMES, isTierName };
 export type { TierName };
 
 export const TIER_EXPANDABLE_NAMES: readonly TierName[] = ["Tier 1", "Tier 2", "Tier 3", "Tier 4"];
-export const TIER_MOVE_STORAGE_KEY = "offerTierSheetManualMoves.v1";
+export const TIER_MOVE_STORAGE_KEY = "offerTierSheetManualMoves.v2";
 export const TIER_COLUMN_STORAGE_KEY = "offerTierVisibleColumns.v4";
 export const TIER_TABLE_PAGE_SIZE = 500;
 
@@ -277,7 +277,7 @@ export function buildTierRows(
     (sources.get(sourceTier) || []).forEach((raw, index) => {
       const key = rowKey(raw, sourceTier, index);
       const move = moves[key];
-      const targetTier = move ? asTierName(move.targetTier) : null;
+      const targetTier = move && sourceTier !== "Tier 1" && move.targetTier !== "Tier 1" ? asTierName(move.targetTier) : null;
       const currentTier = targetTier && targetTier !== sourceTier ? targetTier : sourceTier;
       if (currentTier !== selectedTier) return;
       const model: TierRow = {
@@ -527,7 +527,7 @@ export function validTierMoveMap(value: unknown): TierMoveMap {
     if (!isRecord(candidate)) return result;
     const sourceTier = asTierName(candidate.sourceTier);
     const targetTier = asTierName(candidate.targetTier);
-    if (!sourceTier || !targetTier || sourceTier === targetTier) return result;
+    if (!sourceTier || !targetTier || sourceTier === targetTier || sourceTier === "Tier 1" || targetTier === "Tier 1") return result;
     result[key] = {
       sourceTier,
       targetTier,
@@ -538,3 +538,4 @@ export function validTierMoveMap(value: unknown): TierMoveMap {
     return result;
   }, {});
 }
+
