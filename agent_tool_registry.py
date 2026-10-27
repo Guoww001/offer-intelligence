@@ -55,6 +55,9 @@ AGENT_TREND_METRICS = (
     "payout",
     "directSales",
     "haloSales",
+    "revenueMoM",
+    "clicksMoM",
+    "ordersDelta",
 )
 AGENT_DATA_SOURCES = ("database", "cache", "mixed", "unavailable", "unknown")
 AGENT_RESULT_MAX_BYTES = 6000
@@ -85,6 +88,7 @@ AGENT_RESULT_FIELDS = {
     "payment_status": ("filter", "summary", "rows", "headline", "note"),
     "trend": (
         "entityType", "target", "estimated", "metric", "metrics", "months",
+        "startMonth", "endMonth", "categories", "merchantCount",
         "summary", "headline", "note",
     ),
     "asin_analysis": (
@@ -292,12 +296,14 @@ def _build_specs() -> dict[str, dict[str, Any]]:
                     "entityType": {"type": "string", "enum": ["merchant", "category", "tier"]},
                     "target": _text_property("商户、品类或 Tier 名称。", "Merchant, category, or Tier name.", 80),
                     "months": {"type": "integer", "minimum": 2, "maximum": 24, "default": 12},
+                    "startMonth": {"type": "string", "pattern": r"^20\d{2}-(0[1-9]|1[0-2])$", "description": "明确区间的起始月份，须与 endMonth 一起提供。"},
+                    "endMonth": {"type": "string", "pattern": r"^20\d{2}-(0[1-9]|1[0-2])$", "description": "明确区间的结束月份，含首尾最多 24 个月。"},
                     "metric": {"type": "string", "enum": list(AGENT_TREND_METRICS)},
                 },
                 "required": ["target"],
                 "additionalProperties": False,
             },
-            "argument_fields": ("entityType", "target", "months", "metric"),
+            "argument_fields": ("entityType", "target", "months", "metric", "startMonth", "endMonth"),
         },
         "asin_analysis": {
             "description_zh": "查询一个或多个 ASIN 的产品、商户汇总和真实月份表现。",
@@ -567,6 +573,17 @@ def validate_tool_arguments(tool_name: str, arguments: object) -> tuple[dict | N
         if error:
             return None, error
         cleaned["months"] = months
+        if "startMonth" in arguments or "endMonth" in arguments:
+            for field in ("startMonth", "endMonth"):
+                value, error = _string(arguments.get(field), field, 7)
+                if error or not _MONTH_PATTERN.fullmatch(value or ""):
+                    return None, _error("invalid_arguments", field)
+                cleaned[field] = value
+            start = dt.date.fromisoformat(cleaned["startMonth"] + "-01")
+            end = dt.date.fromisoformat(cleaned["endMonth"] + "-01")
+            length = (end.year - start.year) * 12 + end.month - start.month + 1
+            if not 1 <= length <= 24:
+                return None, _error("invalid_arguments", "endMonth")
         if "metric" in arguments:
             metric, error = _enum(arguments["metric"], "metric", AGENT_TREND_METRICS)
             if error:

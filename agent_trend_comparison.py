@@ -116,10 +116,18 @@ def _build_trend_summary(results: list[dict], allow_single: bool, language: str)
             latest = _value(selected[-1], field) if selected else None
             trends[field] = {"first": first, "latest": latest, "changePercent":
                              (latest - first) / first * 100 if len(selected) >= 2 and first is not None and first != 0 and latest is not None else None}
+        arguments = item.get("arguments", {})
+        requested_months = arguments.get("months", 12)
+        item_summary = item["result"]["data"].get("summary")
+        start, end = arguments.get("startMonth"), arguments.get("endMonth")
+        if all(isinstance(value, str) and re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", value) for value in (start, end)):
+            requested_months = (int(end[:4]) - int(start[:4])) * 12 + int(end[5:]) - int(start[5:]) + 1
+        elif isinstance(item_summary, dict) and type(item_summary.get("requestedMonths")) is int and 1 <= item_summary["requestedMonths"] <= 24:
+            requested_months = item_summary["requestedMonths"]
         entities.append({
             "target": target,
-            "requestedMonths": item.get("arguments", {}).get("months", 12),
-            "availableMonths": len(rows),
+            "requestedMonths": requested_months,
+            "availableMonths": sum(any(_value(row, field) is not None for field in ("revenue", "orders", "clicks", "commission")) for row in rows.values()),
             "completeMonths": len(complete_sets[target]),
             "startMonth": min(rows),
             "endMonth": max(rows),

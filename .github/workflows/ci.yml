@@ -82,6 +82,9 @@ jobs:
           python scripts/test_agent_http.py
           python scripts/test_agent_planning_truncation.py
           python scripts/test_agent_trend_comparison.py
+          python scripts/test_agent_category_monthly.py
+          python scripts/test_agent_monthly_answer.py
+          python scripts/test_agent_result_reuse.py
           python scripts/test_chat_stream_agent_config.py
           python scripts/test_agent_trace.py
           python scripts/test_agent_trace_http.py

@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 from auth import _read_json_body, require_page_access
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
+from agent_monthly_answer import verified_monthly_answer
 from chatbot_question_log_http import handle_chatbot_question_logs
 from agent_trace_http import handle_agent_trace
 from agent_debug_http import handle_agent_debug
@@ -129,6 +130,7 @@ class handler(BaseHTTPRequestHandler):
                 request_bytes=length,
                 trace_context=trace_context,
                 agent_synthesis=True,
+                verified_answer=verified_monthly_answer(request, validated_results),
             )
             return
 
@@ -240,6 +242,7 @@ class handler(BaseHTTPRequestHandler):
         request_bytes=None,
         trace_context=None,
         agent_synthesis=False,
+        verified_answer=None,
     ):
         """SSE streaming for agent synthesis: full message list passthrough."""
         system_prompt = agent_synthesis_system_prompt(language)
@@ -257,14 +260,14 @@ class handler(BaseHTTPRequestHandler):
                 usage_metadata.update(metadata or {})
 
             token_count = 0
-            for token in stream_chat(
+            for token in ((verified_answer,) if verified_answer is not None else stream_chat(
                 "",
                 system_prompt,
                 max_tokens=AGENT_SYNTHESIS_MAX_TOKENS,
                 temperature=0.2,
                 messages=messages,
                 on_complete=on_complete,
-            ):
+            )):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()

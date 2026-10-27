@@ -11,6 +11,7 @@ const states: Record<string, [string, string]> = {
   running: ["查询中", "Running"], done: ["已完成", "Completed"], partial: ["部分完成", "Partial"], error: ["查询未完成", "Incomplete"]
 };
 const metrics: Record<string, [string, string]> = {
+  revenueMoM: ["GMV 环比", "GMV MoM"], clicksMoM: ["点击环比", "Clicks MoM"], ordersDelta: ["订单环比新增", "Order change"],
   revenue: ["收入", "Revenue"], salesAmount: ["销售额", "Revenue"], orders: ["订单", "Orders"], clicks: ["点击", "Clicks"],
   epc: ["联盟 EPC", "Affiliate EPC"], aov: ["客单价", "AOV"], conversionRate: ["转化率", "CVR"],
   commission: ["联盟佣金", "Affiliate commission"], affCommission: ["联盟佣金", "Affiliate commission"],

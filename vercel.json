@@ -6,6 +6,11 @@
   "outputDirectory": "public",
   "routes": [
     {
+      "src": "^/api/ui/db/category-monthly/?$",
+      "dest": "/api/db/index",
+      "transforms": [{ "type": "request.headers", "op": "set", "target": { "key": "x-oi-db-route" }, "args": "ui-category-monthly" }]
+    },
+    {
       "src": "^/(?:api/)?mcp/?$",
       "dest": "/api/db/index",
       "transforms": [{ "type": "request.headers", "op": "set", "target": { "key": "x-oi-db-route" }, "args": "mcp" }]

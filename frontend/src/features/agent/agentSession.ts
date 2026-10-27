@@ -1,4 +1,6 @@
 import { formatAgentMetric } from "./agentMetricFormatting";
+import { agentCategoryMatches, resolveAgentCategories } from "./agentCategoryModel";
+import { deriveAgentMonthlyMetrics, parseAgentMonthRange, selectAgentMonthRange } from "./agentMonthlyMetrics";
 import { createAgentResultReuse, type ReusableAgentResult } from "./agentResultReuse";
 import type { UiLanguage } from "../../shared/i18n";
 import { notifyAuthFailure } from "../../shared/api/client";
@@ -622,7 +624,7 @@ function keywordFailureMessage(errorCode: string | undefined, language: UiLangua
 function toolFailureMessage(result: AgentToolResult, language: UiLanguage, target: string): string {
   if (result.errorCode === "tool_timeout") return language === "zh" ? `“${target}”的数据查询超时，请稍后重试。` : `The data query for "${target}" timed out. Please retry.`;
   if (result.resolution?.status === "invalid_filter" && Array.isArray(result.resolution.candidates)) {
-    const candidates = result.resolution.candidates.filter(isRecord).map(row => text(row.name || row.id, 120)).filter(Boolean);
+    const candidates = result.resolution.candidates.filter(isRecord).map(row => [text(row.name, 120), text(row.merchantId || row.id, 80), text(row.tier, 40)].filter(Boolean).join(" · ")).filter(Boolean);
     if (candidates.length) return language === "zh" ? `“${target}”对应多个商户，请选择：${candidates.join("、")}。` : `Choose a merchant for "${target}": ${candidates.join(", ")}.`;
   }
   if (result.errorCode === "not_found") return language === "zh"
@@ -666,10 +668,10 @@ function merchantMonthlyData(row: Row): Record<string, unknown> {
     aov: ["aov"], conversionRate: ["conversionRate"], dpv: ["dpv"], atc: ["atc"],
     directSales: ["directSales", "direct_sales"], haloSales: ["haloSales", "halo_sales"]
   };
-  const metrics: Record<string, number> = {};
+  const metrics: Record<string, number | null> = {};
   Object.entries(fields).forEach(([key, aliases]) => {
     const raw = firstValue(row, aliases);
-    if (raw === undefined) return;
+    if (raw === undefined) { if (aliases.some(key => row[key] === null)) metrics[key] = null; return; }
     const value = Number(String(raw).replace(/[$,%]/g, "").replace(/,/g, ""));
     if (Number.isFinite(value)) metrics[key] = value;
   });
@@ -691,7 +693,7 @@ function categorySummary(rows: readonly Row[], category: string): Record<string,
     category,
     merchantCount: new Set(rows.map(merchantId).filter(Boolean)).size || rows.length,
     aggregates: aggregate(rows),
-    topMerchants: sorted.slice(0, 5).map((row) => ({ merchant: merchantObject(row), metrics: metricValues(row) }))
+    topMerchants: sorted.slice(0, 5).map((row) => ({ merchant: merchantObject(row), category: rowCategories(row).find(value => normalizeChatbotText(value) !== "uncategorized") || null, metrics: metricValues(row) }))
   };
 }
 
@@ -759,7 +761,7 @@ function paymentMerchantMatches(row: Row, merchant: Row): boolean {
 
 function metricKey(value: unknown): string | null {
   const key = text(value, 40);
-  return ["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate", "payout", "directSales", "haloSales"].includes(key)
+  return ["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate", "payout", "directSales", "haloSales", "revenueMoM", "clicksMoM", "ordersDelta"].includes(key)
     ? key : null;
 }
 
@@ -802,7 +804,7 @@ function requestedMetrics(prompt: string): string[] {
   const patterns: Array<[string, RegExp]> = [
     ["conversionRate", /cvr|conversion|\u8f6c\u5316/i],
     ["affiliatePayout", /affiliate|commission|payout|\u4f63\u91d1/i],
-    ["revenue", /revenue|sales|\u6536\u5165|\u9500\u552e/i],
+    ["revenue", /gmv|revenue|sales|\u6536\u5165|\u9500\u552e/i],
     ["orders", /orders?|\u8ba2\u5355/i],
     ["clicks", /clicks?|\u70b9\u51fb/i],
     ["epc", /\bepc\b/i],
@@ -947,12 +949,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       language: currentLanguage
     };
     enqueueTrace({
+      action: "start",
       runId: trace.runId,
       questionEventId: trace.questionEventId,
       sessionId: trace.sessionId,
       mode: "agent",
       language: trace.language,
-      status: "running",
       startedAt: trace.startedAt,
       planningBypassed: false,
       partial: false,
@@ -968,6 +970,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   function appendTraceStep(trace: TraceContext, step: AgentTimelineStep, sequence: number): void {
     const statusValue = step.status === "done" ? "success" : step.status === "stopped" ? "stopped" : step.status === "timeout" ? "timeout" : "failed";
     enqueueTrace({
+      action: "append",
       runId: trace.runId,
       questionEventId: trace.questionEventId,
       sessionId: trace.sessionId,
@@ -1005,6 +1008,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   ): void {
     const statusValue = result.status === "done" ? "success" : result.status === "stopped" ? "stopped" : result.status === "error" ? "failed" : "timeout";
     enqueueTrace({
+      action: "complete",
       runId: trace.runId,
       questionEventId: trace.questionEventId,
       sessionId: trace.sessionId,
@@ -1144,12 +1148,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }
   }
 
-  async function merchantMonthlyRows(row: Row, months: number, signal: AbortSignal, full = false): Promise<{ rows: Row[]; checkedAt: string | null; merchant?: Row; errorCode?: "tool_timeout" | "tool_error" }> {
+  async function merchantMonthlyRows(row: Row, months: number, signal: AbortSignal, full = false, range?: { startMonth: string; endMonth: string }): Promise<{ rows: Row[]; checkedAt: string | null; merchant?: Row; errorCode?: "tool_timeout" | "tool_error" }> {
     const id = merchantId(row);
     if (!id) return { rows: [], checkedAt: null };
     const query = new URLSearchParams({ merchantId: id, months: String(months), ...(full ? { limit: "50" } : { minimal: "1" }) });
+    if (range) { query.set("startMonth", range.startMonth); query.set("endMonth", range.endMonth); }
     try {
       const payload = await requestJson<JsonPayload>("/api/ui/db/merchant?" + query.toString(), {}, signal, full ? 30_000 : 10_000);
+      if (range && Array.isArray(payload.monthly)) return { rows: [payload.previousMonth, ...payload.monthly].filter(isRecord), checkedAt: text(payload.checkedAt, 80) || null };
       if (full) {
         const monthly = mergeMerchantMonths(payload)[0]?.monthly;
         const rows = Array.isArray(monthly) ? monthly.filter(isRecord).sort((a, b) => rowMonth(b).localeCompare(rowMonth(a))) : [];
@@ -1311,9 +1317,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   }
 
   function resolveCategoryRows(input: string, rows: readonly Row[]): { category?: string; rows: Row[] } {
-    const category = resolveChatbotCategory(input, normalizedCategories(rows));
-    if (!category) return { rows: [] };
-    return { category, rows: rows.filter((row) => rowMatchesCategory(row, category)) };
+    const categories = resolveAgentCategories(input, rows);
+    if (!categories.length) return { rows: [] };
+    return { category: categories.join("、"), rows: rows.filter((row) => agentCategoryMatches(row, categories)) };
   }
 
   async function executeCategoryAnalysis(args: Record<string, unknown>): Promise<AgentToolResult> {
@@ -1450,38 +1456,59 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     }, paymentRecords.length ? "cache" : "unavailable", options.dataAsOf || null);
   }
 
-  async function executeTrend(args: Record<string, unknown>, signal: AbortSignal): Promise<AgentToolResult> {
+  async function executeTrend(args: Record<string, unknown>, signal: AbortSignal, prompt: string): Promise<AgentToolResult> {
     const target = text(args.target, 80);
     if (!target) return failure("invalid_arguments", offers.length ? "cache" : "unavailable", { status: "invalid_filter", field: "target" });
     const monthsValue = Number(args.months);
     const months = Number.isInteger(monthsValue) && monthsValue >= 2 && monthsValue <= 24 ? monthsValue : 12;
     const metric = metricKey(args.metric) || "revenue";
     const entityType = text(args.entityType, 20).toLowerCase() || "merchant";
+    const hasRange = args.startMonth !== undefined || args.endMonth !== undefined;
+    const historyPrompts = planningContext.history.filter(item => item.role === "user").map(item => item.content);
+    const referenceMonth = (options.dataAsOf || new Date().toISOString()).slice(0, 7);
+    const range = hasRange
+      ? parseAgentMonthRange(`${text(args.startMonth)}至${text(args.endMonth)}`)
+      : parseAgentMonthRange(prompt, historyPrompts, referenceMonth)
+        || (!/20\d{2}|\d+\s*月|最近|近\s*\d|last\s+\d/i.test(prompt) && /接下来|接着|换成|试试|看看\s*\d|上述信息|上述维度/.test(prompt)
+          ? parseAgentMonthRange("同一期间", historyPrompts, referenceMonth) : null);
+    if (hasRange && (!range || range.startMonth !== args.startMonth || range.endMonth !== args.endMonth)) return failure("invalid_arguments", "unavailable", { status: "invalid_filter", field: "months" });
     let trend: Record<string, unknown>[] = [];
     let dataSource: DataSource = "cache";
     let dataAsOf = options.dataAsOf || null;
     let estimated = true;
     let label = target;
+    let categoryScope: Record<string, unknown> = {};
     let monthlyError: "tool_timeout" | "tool_error" | undefined;
     if (entityType === "merchant") {
       const resolved = resolveMerchant(target, offers);
       if (!resolved.row) return resolved.result || failure("not_found");
       label = merchantName(resolved.row);
-      const monthlyResult = await merchantMonthlyRows(resolved.row, months, signal);
+      const monthlyResult = await merchantMonthlyRows(resolved.row, months, signal, false, range || undefined);
       monthlyError = monthlyResult.errorCode;
       trend = monthlyResult.rows.map((row) => monthlyData(row, metric)).filter((row) => /^20\d{2}-\d{2}$/.test(String(row.month)));
       dataAsOf = monthlyResult.checkedAt || dataAsOf;
-      if (trend.length >= 2) {
+      if (trend.length >= (range ? 1 : 2)) {
         dataSource = "database";
         estimated = false;
       } else {
-        trend = trendRows([resolved.row], months, metric);
+        trend = range ? [] : trendRows([resolved.row], months, metric);
       }
     } else if (entityType === "category") {
-      const resolved = resolveCategoryRows(target, offers);
-      if (!resolved.category || !resolved.rows.length) return failure("not_found", offers.length ? "cache" : "unavailable", { status: "not_found", field: "category", value: target });
-      label = resolved.category;
-      trend = trendRows(resolved.rows, months, metric);
+      const categories = resolveAgentCategories(target, offers);
+      if (!categories.length) return failure("not_found", offers.length ? "cache" : "unavailable", { status: "not_found", field: "category", value: target });
+      label = categories.join("、");
+      const endMonth = range?.endMonth || (options.dataAsOf || new Date().toISOString()).slice(0, 7);
+      const endOrdinal = Number(endMonth.slice(0, 4)) * 12 + Number(endMonth.slice(5)) - 1;
+      const firstOrdinal = endOrdinal - months + 1;
+      const startMonth = range?.startMonth || `${Math.floor(firstOrdinal / 12)}-${String(firstOrdinal % 12 + 1).padStart(2, "0")}`;
+      const query = new URLSearchParams({ startMonth, endMonth });
+      categories.forEach(category => query.append("category", category));
+      const payload = await requestJson<JsonPayload>("/api/ui/db/category-monthly?" + query.toString(), {}, signal, 30_000);
+      if (payload.ok === false || !Array.isArray(payload.monthly)) return failure("tool_error", "unavailable", { status: "unavailable", field: "monthly_data" });
+      trend = [payload.previousMonth, ...payload.monthly].filter(isRecord).map(row => monthlyData(row, metric));
+      dataAsOf = text(payload.checkedAt, 80) || dataAsOf;
+      dataSource = "database"; estimated = false;
+      categoryScope = { categories, merchantCount: Number.isInteger(payload.merchantCount) ? payload.merchantCount : null };
     } else if (entityType === "tier") {
       const tier = validTier(target);
       if (!tier) return failure("invalid_filter", offers.length ? "cache" : "unavailable", { status: "invalid_filter", field: "tier", value: target });
@@ -1490,16 +1517,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     } else {
       return failure("invalid_filter", offers.length ? "cache" : "unavailable", { status: "invalid_filter", field: "entityType" });
     }
-    if (trend.length < 2 && monthlyError) return failure(monthlyError, "unavailable", { status: "unavailable", field: "monthly_data", value: target });
-    if (trend.length < 2) return failure("not_found", dataSource, { status: "not_found", field: "months", value: months });
+    trend = deriveAgentMonthlyMetrics(trend as { month: string; metrics: Record<string, unknown> }[]);
+    trend = trend.map(row => { const values = isRecord(row.metrics) ? row.metrics : {}; return { ...row, value: typeof values[metric === "affiliatePayout" ? "commission" : metric] === "number" ? values[metric === "affiliatePayout" ? "commission" : metric] : null }; });
+    if (range) trend = selectAgentMonthRange(trend, range);
+    else trend = trend.slice(-months);
+    if (!trend.some(row => isRecord(row.metrics) && ["revenue", "orders", "clicks", "commission", "payout"].some(key => typeof (row.metrics as Record<string, unknown>)[key] === "number"))) return failure(monthlyError || "not_found", monthlyError ? "unavailable" : dataSource, { status: monthlyError ? "unavailable" : "not_found", field: "monthly_data", value: target });
+    if (trend.length < (range ? 1 : 2) && monthlyError) return failure(monthlyError, "unavailable", { status: "unavailable", field: "monthly_data", value: target });
+    if (!trend.length || (!range && trend.length < 2)) return failure("not_found", dataSource, { status: "not_found", field: "months", value: months });
     trend.sort((left, right) => String(left.month).localeCompare(String(right.month)));
     const summary = trendSummary(trend);
-    summary.requestedMonths = months;
-    summary.availableMonths = trend.length;
+    if (["revenueMoM", "clicksMoM", "ordersDelta"].includes(metric)) { summary.changeRate = null; summary.changeRateDisplay = null; }
+    const requestedMonths = range ? (Number(range.endMonth.slice(0, 4)) - Number(range.startMonth.slice(0, 4))) * 12 + Number(range.endMonth.slice(5)) - Number(range.startMonth.slice(5)) + 1 : months;
+    const availableMonths = trend.filter(row => isRecord(row.metrics) && ["revenue", "orders", "clicks", "commission", "payout"].some(key => typeof (row.metrics as Record<string, unknown>)[key] === "number")).length;
+    summary.requestedMonths = requestedMonths;
+    summary.availableMonths = availableMonths;
     const asOfMonth = dataAsOf?.slice(0, 7);
     summary.latestMonthComplete = asOfMonth ? String(summary.endMonth) < asOfMonth : null;
     return success({
       entityType,
+      ...categoryScope,
       target: label,
       estimated,
       metric,
@@ -1508,8 +1544,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       summary,
       headline: label + (currentLanguage === "zh" ? " · 月度趋势" : " trend"),
       note: currentLanguage === "zh"
-        ? `${estimated ? "来自带月份的缓存记录。" : "月度数据来自数据库。"}请求最近${months}个月，实际有${trend.length}个月（${summary.startMonth}至${summary.endMonth}）；缺少月份不计为零。${summary.latestMonthComplete === false ? "最新月份尚未结束，不能直接与完整月份比较。" : ""}`
-        : `${estimated ? "Trend points are estimated from dated cached rows." : "Trend points are loaded from monthly database data."} Requested ${months} months; ${trend.length} available (${summary.startMonth} to ${summary.endMonth}). Missing months are not zero.${summary.latestMonthComplete === false ? " The latest month is incomplete." : ""}`
+        ? `${estimated ? "来自带月份的缓存记录。" : "月度数据来自数据库。"}${range ? `请求${range.startMonth}至${range.endMonth}共${requestedMonths}个月` : `请求最近${months}个月`}，实际有${availableMonths}个月数据（展示范围${summary.startMonth}至${summary.endMonth}）；缺失指标不计为零。${entityType === "category" ? "品类比例仅在参与商户的分子分母齐备时提供。" : ""}${summary.latestMonthComplete === false ? "最新月份尚未结束，不能直接与完整月份比较。" : ""}`
+        : `${estimated ? "Trend points are estimated from dated cached rows." : "Trend points are loaded from monthly database data."} Requested ${range ? `${range.startMonth} through ${range.endMonth} (${requestedMonths} months)` : `${months} months`}; ${availableMonths} months have data (display range ${summary.startMonth} to ${summary.endMonth}). Missing metrics are not zero.${entityType === "category" ? " Category ratios require complete numerator and denominator coverage." : ""}${summary.latestMonthComplete === false ? " The latest month is incomplete." : ""}`
     }, dataSource, dataAsOf, estimated);
   }
 
@@ -1596,7 +1632,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         );
         return { ...execution.result, ...(execution.resultView ? { resultView: execution.resultView } : {}) };
       }
-      return executeTrend(call.arguments, signal);
+      return executeTrend(call.arguments, signal, prompt);
     } catch (error) {
       if (isAbortError(error, signal)) throw error;
       return failure("tool_error", offers.length ? "cache" : "unavailable");
@@ -1722,6 +1758,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (typeof value === "string" || typeof value === "boolean") return text(value, 120);
       return "";
     };
+    if (result.ok && item.call.name === "category_analysis" && Array.isArray(data.topMerchants)) {
+      const keys = ["revenue", "orders", "clicks", "conversionRate"];
+      return normalizeAgentResultView({ id: item.call.id, toolName: item.call.name, kind: "table", status: "done",
+        title: text(data.headline, 180), source: result.source.dataSource, dataAsOf: result.source.dataAsOf,
+        columns: currentLanguage === "zh" ? ["商户 ID", "品类", "收入", "订单", "点击", "转化率"] : ["Merchant ID", "Category", "Revenue", "Orders", "Clicks", "CVR"],
+        rows: data.topMerchants.filter(isRecord).map(row => { const merchant = isRecord(row.merchant) ? row.merchant : {}; const values = isRecord(row.metrics) ? row.metrics : {};
+          return { label: text(merchant.name, 120), values: [text(merchant.id, 80), text(row.category || data.category, 120), ...keys.map(key => scalar(key, values[key]) || (currentLanguage === "zh" ? "未提供" : "Not provided"))] }; }),
+        metrics: [], message: text(data.note, 800), estimated: false, partial: false });
+    }
     if (result.ok && item.call.name === "trend" && Array.isArray(data.months)) {
       const sourceMonths = data.months.filter(isRecord).sort((left, right) => String(left.month).localeCompare(String(right.month)));
       const metric = text(data.metric, 40) || "revenue";

@@ -16,6 +16,18 @@ def trend(target, months, metrics=None, complete=False):
 
 
 class TrendComparisonTests(unittest.TestCase):
+    def test_全空月份不算实际覆盖(self):
+        item = trend("合成商户", ["2026-07", "2026-08", "2026-09"], complete=True)
+        item["result"]["data"]["months"][1]["metrics"] = {"revenue": None, "orders": None, "clicks": None, "commission": None}
+        result = comparison.build_trend_summary([item])
+        self.assertEqual(result["entities"][0]["availableMonths"], 2)
+
+    def test_明确区间不会被默认十二个月覆盖(self):
+        item = trend("合成商户", ["2026-07", "2026-08", "2026-09"], complete=True)
+        item["arguments"].update(startMonth="2026-07", endMonth="2026-09")
+        result = comparison.build_trend_summary([item])
+        self.assertEqual(result["entities"][0]["requestedMonths"], 3)
+
     def calculate(self, results):
         return contract.build_trend_comparison(results)
 

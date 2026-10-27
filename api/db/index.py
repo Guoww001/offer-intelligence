@@ -2,6 +2,7 @@ from http import HTTPStatus
 from io import BytesIO
 import json
 import logging
+from agent_category_monthly import category_monthly_payload, merchant_monthly_payload
 
 from mcp_http import handle_mcp
 from offer_performance import report as offer_performance_report
@@ -47,6 +48,7 @@ from offer_db import (
 PAGE_ACCESS_BY_ROUTE = {
     "ui-status": "dashboard",
     "ui-merchant": "dashboard",
+    "ui-category-monthly": "dashboard",
     "ui-asin": "dashboard",
     "ui-search": "dashboard",
     "ui-keywords": "dashboard",
@@ -170,6 +172,14 @@ def handle_ui_merchant(target, query):
         return
     if merchant_id not in set(read_static_merchant_ids()):
         send_json(target, 404, {"ok": False, "error": "merchantId is not in the public snapshot"})
+        return
+    if "startMonth" in query or "endMonth" in query:
+        try:
+            send_json(target, 200, merchant_monthly_payload(query))
+        except ValueError as error:
+            send_json(target, 400, {"ok": False, "error": str(error)})
+        except Exception as error:
+            send_db_error(target, error)
         return
     limit = int_query_value(query, "limit", 20, 1, 50)
     months = int_query_value(query, "months", 12, 1, 24)
@@ -563,6 +573,13 @@ def app(environ, start_response):
                 handle_ui_status(target, query)
             elif route == "ui-merchant":
                 handle_ui_merchant(target, query)
+            elif route == "ui-category-monthly":
+                try:
+                    send_json(target, 200, category_monthly_payload(query))
+                except ValueError as error:
+                    send_json(target, 400, {"ok": False, "error": str(error)})
+                except Exception as error:
+                    send_db_error(target, error)
             elif route == "ui-asin":
                 handle_ui_asin(target, query)
             elif route == "ui-search":

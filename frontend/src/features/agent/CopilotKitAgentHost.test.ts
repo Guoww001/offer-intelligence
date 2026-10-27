@@ -10,6 +10,22 @@ vi.mock("@copilotkit/vue/v2", () => ({ CopilotKitProvider: { name: "Provider", p
 vi.mock("./CopilotKitAgentRuntime.vue", () => ({ default: { name: "Runtime", props: ["beginRun"], template: "<div />" } }));
 
 describe("CopilotKit local result projection", () => {
+  it.each([false, true])("真实工具失败提供受控阶段回调（执行器抛错=%s）", async rejects => {
+    const onNativeToolStep = vi.fn();
+    const toolExecutor = vi.fn(async () => {
+      if (rejects) throw new Error("敏感异常");
+      return { toolResult: { result: { ok: false, errorCode: "tool_error", data: "敏感结果" } } } as AgentToolExecutionResponse;
+    });
+    const wrapper = mount(CopilotKitAgentHost, { props: { language: "zh", endpoint: "/api/copilotkit", enabled: true, fallbackRun: vi.fn(), toolExecutor } });
+    const source = wrapper.findComponent({ name: "Runtime" }).props("beginRun")({ prompt: "敏感问题", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "", signal: new AbortController().signal, onNativeToolStep });
+    await source.execute({ callId: "r1c1", toolName: "trend", arguments: { target: "敏感参数" } }).catch(() => undefined);
+    expect(onNativeToolStep.mock.calls.map(args => args[0])).toMatchObject([
+      { callId: "r1c1", toolName: "trend", status: "running" },
+      { callId: "r1c1", toolName: "trend", status: "error", errorCode: "tool_error" }
+    ]);
+    expect(JSON.stringify(onNativeToolStep.mock.calls)).not.toMatch(/敏感|arguments|data/);
+    wrapper.unmount();
+  });
   it("登出后迟到工具不能回写来源缓存", async () => {
     const shared = createAgentSession({ offers: [], language: "zh", enableTrace: false, enableQuestionLogging: false });
     let release: (value: AgentToolExecutionResponse) => void = () => {};

@@ -7,6 +7,7 @@ proof and return the same bounded v2 projections used by the legacy runner.
 """
 
 from __future__ import annotations
+from agent_monthly_answer import verified_monthly_answer
 
 import hmac
 import json
@@ -445,14 +446,15 @@ def _continuation_events(
     def on_complete(metadata: dict | None) -> None:
         usage.update(metadata or {})
 
-    for token in stream_factory(
+    verified_answer = verified_monthly_answer(validated, bound)
+    for token in ((verified_answer,) if verified_answer is not None else stream_factory(
         "",
         agent_synthesis_system_prompt(validated["language"]),
         max_tokens=AGENT_SYNTHESIS_MAX_TOKENS,
         temperature=0.1,
         messages=build_synthesis_messages(validated, bound),
         on_complete=on_complete,
-    ):
+    )):
         if token:
             yield _event("TEXT_MESSAGE_CONTENT", messageId=message_id, delta=str(token))
     yield _event("TEXT_MESSAGE_END", messageId=message_id)

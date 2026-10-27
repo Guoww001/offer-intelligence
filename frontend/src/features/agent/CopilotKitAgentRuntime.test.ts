@@ -1,6 +1,6 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { ref } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AgentPage, { type AgentRunRequest } from "./AgentPage.vue";
 import CopilotKitAgentRuntime from "./CopilotKitAgentRuntime.vue";
 import { emptyAgentMemory } from "./agentModel";
@@ -11,12 +11,16 @@ vi.mock("@copilotkit/vue/v2", () => ({
   useCopilotKit: () => ({ copilotkit: ref({ runAgent: sdk.run, stopAgent: sdk.stop }) })
 }));
 
-let events: Record<string, (payload: any) => void>;
+let events: Record<"onStateSnapshotEvent" | "onTextMessageContentEvent" | "onCustomEvent" | "onRunErrorEvent", (payload: any) => void>;
+const traceFetch = vi.fn(async () => new Response('{"ok":true}'));
 beforeEach(() => {
   vi.clearAllMocks();
   sdk.run.mockReset();
+  traceFetch.mockReset().mockResolvedValue(new Response('{"ok":true}'));
+  vi.stubGlobal("fetch", traceFetch);
   sdk.subscribe.mockImplementation((value) => { events = value; return { unsubscribe: sdk.unsubscribe }; });
 });
+afterEach(() => vi.unstubAllGlobals());
 
 function fixture(bypassPlanning = false) {
   const session = {
@@ -26,9 +30,11 @@ function fixture(bypassPlanning = false) {
     complete: vi.fn(async (response, options) => ({ ok: true, status: "done" as const, response: options.synthesisFailed ? "已保留工具数据" : response,
       steps: [], fallbackDelivered: options.synthesisFailed === true, partial: false, omittedTargets: [], memoryEvents: [], resultViews: [] }))
   };
-  const wrapper = mount(CopilotKitAgentRuntime, { props: { language: "zh", beginRun: () => session } });
-  const request: AgentRunRequest = { prompt: "分析商户", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "Tier 2", signal: new AbortController().signal };
-  return { session, wrapper, request, run: wrapper.findComponent(AgentPage).props("run") };
+  let nativeToolStep: ((step: unknown) => void) | undefined;
+  const wrapper = mount(CopilotKitAgentRuntime, { props: { language: "zh", beginRun: (request: any) => { nativeToolStep = request.onNativeToolStep; return session; } } });
+  let request: AgentRunRequest = { prompt: "分析商户", language: "zh", history: [], memory: emptyAgentMemory(), memoryText: "Tier 2", signal: new AbortController().signal };
+  request = { ...request, questionEventId: "11111111-1111-4111-8111-111111111111" };
+  return { session, wrapper, request, run: wrapper.findComponent(AgentPage).props("run"), toolStep: (step: unknown) => nativeToolStep?.(step) };
 }
 
 describe("CopilotKit behavior parity", () => {
@@ -121,6 +127,119 @@ describe("CopilotKit behavior parity", () => {
     expect(f.session.complete).not.toHaveBeenCalled();
     expect(sdk.stop).toHaveBeenCalled();
     f.wrapper.unmount();
+  });
+});
+
+function traceBodies(): Record<string, any>[] {
+  return traceFetch.mock.calls.map((args) => JSON.parse(String((args as unknown as [string, RequestInit])[1]?.body)));
+}
+
+describe("原生 Trace 闭环", () => {
+  it("成功关联原提问，阶段与执行计数去重且不记录正文", async () => {
+    const f = fixture();
+    sdk.run.mockImplementation(async () => {
+      events.onCustomEvent({ event: { name: "oi.timeline", value: { id: "planning", phase: "planning", status: "running", label: "敏感问题" } } });
+      events.onStateSnapshotEvent({ event: { snapshot: { offerIntelligence: { agentRunId: "native", calls: [{ id: "r1c1", name: "trend", arguments: { target: "敏感参数" } }] } } } });
+      f.toolStep({ callId: "r1c1", toolName: "trend", status: "running" });
+      f.toolStep({ callId: "r1c1", toolName: "trend", status: "done" });
+      for (let index = 0; index < 2; index++) events.onCustomEvent({ event: { name: "oi.timeline", value: { id: "r1c1", phase: "tool", status: "done", label: "trend", detail: "敏感结果" } } });
+      events.onCustomEvent({ event: { name: "oi.timeline", value: { id: "synthesis", phase: "synthesis", status: "running" } } });
+      events.onTextMessageContentEvent({ event: { delta: "敏感回答" } });
+    });
+    expect(await f.run(f.request)).toMatchObject({ ok: true, status: "done" });
+    await flushPromises();
+    const bodies = traceBodies();
+    expect(bodies[0]).toMatchObject({ action: "start", questionEventId: f.request.questionEventId });
+    expect(bodies.at(-1)).toMatchObject({ action: "complete", status: "success", plannedToolCalls: 1, executedToolCalls: 1, failedToolCalls: 0 });
+    const steps = bodies.flatMap(body => body.steps || []);
+    expect(steps.filter(step => step.phase === "tool")).toHaveLength(1);
+    expect(steps.every(step => step.usageAvailable === false && step.inputTokens === null && step.outputTokens === null && step.totalTokens === null)).toBe(true);
+    expect(JSON.stringify(bodies)).not.toMatch(/敏感|分析商户|Tier 2|arguments|response|prompt|messages/);
+    f.wrapper.unmount();
+  });
+
+  it.each(["agent_plan_truncated", "agent_no_tool_plan", "agent_planning_unavailable"])("规划失败 %s 保留原提问且闭环", async code => {
+    const f = fixture();
+    sdk.run.mockImplementation(async () => events.onRunErrorEvent({ event: { code } }));
+    expect(await f.run(f.request)).toMatchObject({ status: "error" });
+    await flushPromises();
+    expect(traceBodies().at(-1)).toMatchObject({ action: "complete", status: "failed", errorCode: code, executedToolCalls: 0 });
+    f.wrapper.unmount();
+  });
+
+  it("工具失败在 SDK 中断时准确计数并闭环", async () => {
+    const f = fixture(); Object.assign(f.session, { hasPlanned: () => true });
+    sdk.run.mockImplementation(async () => {
+      f.toolStep({ callId: "r1c1", toolName: "trend", status: "running" });
+      f.toolStep({ callId: "r1c1", toolName: "trend", status: "error", errorCode: "tool_error" });
+      throw new Error("敏感异常");
+    });
+    expect(await f.run(f.request)).toMatchObject({ status: "error" }); await flushPromises();
+    expect(traceBodies().at(-1)).toMatchObject({ action: "complete", status: "failed", plannedToolCalls: 1, executedToolCalls: 1, failedToolCalls: 1 });
+    expect(JSON.stringify(traceBodies())).not.toContain("敏感异常"); f.wrapper.unmount();
+  });
+
+  it("停止立即终结原生 Trace，即使 SDK 没有返回", async () => {
+    const f = fixture(); const controller = new AbortController(); let release: () => void = () => {};
+    sdk.run.mockImplementation(async () => {
+      events.onCustomEvent({ event: { name: "oi.timeline", value: { id: "planning", phase: "planning", status: "running" } } });
+      await new Promise<void>(resolve => { release = resolve; });
+    });
+    const pending = f.run({ ...f.request, signal: controller.signal }); controller.abort(); await flushPromises();
+    expect(traceBodies().at(-1)).toMatchObject({ action: "complete", status: "stopped", stoppedByUser: true, errorCode: "stopped_by_user" });
+    release(); expect(await pending).toMatchObject({ status: "stopped" }); await flushPromises();
+    expect(traceBodies().filter(body => body.action === "complete")).toHaveLength(1); f.wrapper.unmount();
+  });
+
+  it.each(["bypass", "empty", "fallback"])("直接备用执行 %s 不创建第二条 Trace", async mode => {
+    const f = fixture(mode === "bypass");
+    sdk.run.mockImplementation(async () => {
+      if (mode === "fallback") {
+        events.onCustomEvent({ event: { name: "oi.timeline", value: { id: "planning", phase: "planning", status: "done" } } });
+        events.onCustomEvent({ event: { name: "oi.planning_fallback", value: { content: "无需工具" } } });
+      }
+    });
+    await f.run(f.request); await flushPromises(); expect(traceFetch).not.toHaveBeenCalled(); f.wrapper.unmount();
+  });
+
+  it.each(["规划", "工具"])("已经建立%s后重规划无工具，只整理已有结果并闭环一条 Trace", async established => {
+    const f = fixture();
+    Object.assign(f.session, { hasPlanned: () => established === "规划" });
+    sdk.run.mockImplementation(async () => {
+      if (established === "规划") events.onStateSnapshotEvent({ event: { snapshot: { offerIntelligence: { agentRunId: "native", calls: [{ id: "r1c1", name: "trend" }] } } } });
+      else {
+        f.toolStep({ callId: "r1c1", toolName: "trend", status: "done" });
+        events.onCustomEvent({ event: { name: "oi.timeline", value: { id: "r1c1", phase: "tool", status: "done" } } });
+      }
+      events.onCustomEvent({ event: { name: "oi.planning_fallback", value: { content: "不可重新规划" } } });
+    });
+    expect(await f.run(f.request)).toMatchObject({ ok: true, status: "done", response: "已保留工具数据" });
+    expect(f.session.direct).not.toHaveBeenCalled();
+    expect(f.session.complete).toHaveBeenCalledWith("", { synthesisFailed: true, partial: false, omittedTargets: [] });
+    await flushPromises();
+    expect(traceBodies().filter(body => body.action === "start")).toHaveLength(1);
+    expect(traceBodies().filter(body => body.action === "complete")).toHaveLength(1);
+    expect(traceBodies().at(-1)).toMatchObject({ status: "success", fallbackDelivered: true }); f.wrapper.unmount();
+  });
+
+  it("已有工具结果但整理失败时保留失败状态和原生结果", async () => {
+    const f = fixture(); Object.assign(f.session, { hasPlanned: () => true });
+    f.session.complete.mockResolvedValue({ ok: false, status: "error", response: "已有查询结果仍保留", steps: [], fallbackDelivered: false, partial: false, omittedTargets: [], memoryEvents: [], resultViews: [], errorCode: "synthesis_unavailable" } as never);
+    sdk.run.mockImplementation(async () => events.onCustomEvent({ event: { name: "oi.planning_fallback", value: {} } }));
+    expect(await f.run(f.request)).toMatchObject({ ok: false, status: "error", response: "已有查询结果仍保留", errorCode: "agent_no_tool_plan" });
+    expect(f.session.direct).not.toHaveBeenCalled(); await flushPromises();
+    expect(traceBodies().at(-1)).toMatchObject({ action: "complete", status: "failed", errorCode: "agent_no_tool_plan" }); f.wrapper.unmount();
+  });
+
+  it("Trace 写入悬挂与失败都不阻塞回答和后续运行", async () => {
+    const f = fixture(); let release: (response: Response) => void = () => {};
+    traceFetch.mockImplementationOnce(() => new Promise<Response>(resolve => { release = resolve; }));
+    sdk.run.mockImplementation(async () => events.onTextMessageContentEvent({ event: { delta: "完成" } }));
+    expect(await f.run(f.request)).toMatchObject({ ok: true, response: "完成" });
+    release(new Response('{"ok":true}'));
+    traceFetch.mockRejectedValue(new Error("写入失败"));
+    expect(await f.run(f.request)).toMatchObject({ ok: true, response: "完成" });
+    await flushPromises(); f.wrapper.unmount();
   });
 });
 

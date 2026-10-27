@@ -23,7 +23,7 @@ beforeEach(() => {
   clearAgentViewSnapshot("modern-agent");
   localStorage.clear();
 });
-afterEach(() => { window.OI_MODERN_RUNTIME = originalRuntime; });
+afterEach(() => { window.OI_MODERN_RUNTIME = originalRuntime; vi.unstubAllGlobals(); });
 
 function fixture(enabled = true, outcome: "done" | "failed" | "stopped" = "done") {
   const requests: Request[] = [];
@@ -39,6 +39,7 @@ function fixture(enabled = true, outcome: "done" | "failed" | "stopped" = "done"
       : { ok: true, recordId: body.eventId || body.recordId };
     return new Response(JSON.stringify(payload), { headers: { "Content-Type": "application/json" } });
   });
+  vi.stubGlobal("fetch", fetcher);
   const activity = createAgentActivity({ fetcher, storage: localStorage });
   window.OI_MODERN_RUNTIME = { createAgentActivity: () => activity } as never;
   const session = createAgentSession({ offers: [], language: "zh", fetcher, storage: localStorage });

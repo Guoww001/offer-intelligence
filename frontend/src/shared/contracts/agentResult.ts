@@ -105,7 +105,7 @@ function normalizeRows(value: unknown, maximum = 120): AgentResultRow[] {
 export function normalizeAgentTrend(value: unknown): AgentTrendData | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const raw = value as Record<string, unknown>;
-  const allowed = new Set(["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate", "payout", "directSales", "haloSales"]);
+  const allowed = new Set(["revenue", "orders", "epc", "aov", "clicks", "affiliatePayout", "dpv", "atc", "conversionRate", "payout", "directSales", "haloSales", "revenueMoM", "clicksMoM", "ordersDelta"]);
   const metrics = safeList([raw.metric, ...(Array.isArray(raw.metrics) ? raw.metrics : [])], 12, 40).filter((key) => allowed.has(key));
   if (!metrics.length) return undefined;
   const months = (Array.isArray(raw.months) ? raw.months : []).slice(0, 24).flatMap((item) => {

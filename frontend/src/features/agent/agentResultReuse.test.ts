@@ -3,6 +3,29 @@ import { createAgentResultReuse } from "./agentResultReuse";
 const result = { callId: "c1", toolName: "trend", arguments: { target: "Shokz", months: 12 }, result: { ok: true, data: { target: "Shokz Official", months: [{ month: "2026-09", metrics: { revenue: 12, orders: 2, conversionRate: .07, epc: .2 } }] } } };
 const source = { originalQuestion: "分析 Shokz 收入订单 CVR EPC", sourceQuestionEventId: "q1", agentRunId: "r1", planProofs: ["proof"], toolResults: [result], resultViews: [] };
 describe("临时结果复用", () => {
+ it("GMV及月度派生指标按已计算字段选择复用范围", () => {
+  const cache = createAgentResultReuse();
+  cache.retain({ ...source, toolResults: [{ ...result, arguments: { target: "合成甲", months: 12 }, result: { ok: true, data: { target: "合成甲", months: [
+   { month: "2026-08", metrics: { revenue: 100, clicks: 20, orders: 3, revenueMoM: null, clicksMoM: null, ordersDelta: null } },
+   { month: "2026-09", metrics: { revenue: 150, clicks: 25, orders: 5, revenueMoM: .5, clicksMoM: .25, ordersDelta: 2 } }
+  ] } } }] });
+  for (const [label, metrics] of [["GMV", ["revenue"]], ["GMV环比", ["revenue", "revenueMoM"]], ["GMV MoM", ["revenue", "revenueMoM"]], ["点击环比", ["clicks", "clicksMoM"]], ["订单新增", ["orders", "ordersDelta"]]] as const) {
+   const decision = cache.decide(`把已有结果整理成表，只展示${label}，不要重新查询`);
+   expect(decision.kind, label).toBe("reuse");
+   if (decision.kind === "reuse") expect(decision.scope.metrics).toEqual(metrics);
+  }
+ });
+ it("未计算的派生字段及选中月份缺字段时不能伪装支持复用", () => {
+  const cache = createAgentResultReuse();
+  cache.retain({ ...source, toolResults: [{ ...result, result: { ok: true, data: { months: [
+   { month: "2026-08", metrics: { revenue: 100, revenueMoM: .5 } },
+   { month: "2026-09", metrics: { revenue: 150 } }
+  ] } } }] });
+  expect(cache.decide("把已有结果整理成GMV环比表，不要重新查询").kind).toBe("unavailable");
+  expect(cache.decide("把已有2026-09结果整理成GMV环比表，不要重新查询").kind).toBe("unavailable");
+  cache.retain(source);
+  expect(cache.decide("把已有结果整理成收入环比表，不要重新查询").kind).toBe("unavailable");
+ });
  it("连续月份范围包含中间月份，不只取端点", () => {
   const cache = createAgentResultReuse();
   cache.retain({ ...source, toolResults: [{ ...result, result: { ok: true, data: { target: "Shokz", months: ["2026-06", "2026-07", "2026-08", "2026-09"].map(month => ({ month, metrics: { revenue: 1 } })) } } }] });

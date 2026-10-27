@@ -44,6 +44,42 @@ class ReuseTests(unittest.TestCase):
         self.assertIsNone(error, error)
         return validated, contract.validate_bound_tool_results(validated)
 
+    def test_已计算派生指标允许空值并裁剪到请求指标(self):
+        body = request()
+        for result in body["toolResults"]:
+            for index, row in enumerate(result["result"]["data"]["months"]):
+                row["metrics"].update({"revenueMoM": None if index == 0 else .5,
+                                       "clicksMoM": None if index == 0 else 0,
+                                       "ordersDelta": None if index == 0 else 2})
+        body["reuse"]["scope"]["metrics"] = ["revenueMoM", "clicksMoM", "ordersDelta"]
+        _, (results, error) = self.validate(body)
+        self.assertIsNone(error)
+        self.assertEqual(results[0]["result"]["data"]["months"][0]["metrics"],
+                         {"revenueMoM": None, "clicksMoM": None, "ordersDelta": None})
+        self.assertEqual(results[0]["result"]["data"]["months"][1]["metrics"],
+                         {"revenueMoM": .5, "clicksMoM": 0, "ordersDelta": 2})
+
+    def test_未计算派生指标缺少字段时拒绝复用(self):
+        body = request()
+        body["reuse"]["scope"]["metrics"] = ["revenueMoM"]
+        _, (_, error) = self.validate(body)
+        self.assertEqual(error["errorCode"], "agent_reuse_scope_unavailable")
+
+    def test_缩小月份保留原环比计算并标明原基期(self):
+        body = request()
+        for result in body["toolResults"]:
+            for index, row in enumerate(result["result"]["data"]["months"]):
+                row["metrics"]["revenueMoM"] = None if index == 0 else .5
+        body["reuse"]["scope"] = {"targets": ["Shokz"], "months": ["2026-09"], "metrics": ["revenue", "revenueMoM"]}
+        validated, (results, error) = self.validate(body)
+        self.assertIsNone(error)
+        data = results[0]["result"]["data"]
+        self.assertEqual(data["months"], [{"month": "2026-09", "metrics": {"revenue": 100, "revenueMoM": .5}}])
+        self.assertEqual(data["derivedMetricsBasis"]["excludedBaselineMonths"], ["2026-08"])
+        self.assertEqual(data["derivedMetricsBasis"]["kind"], "source_monthly_computation")
+        self.assertEqual(body["toolResults"][0]["result"]["data"]["months"][1]["metrics"]["revenueMoM"], .5)
+        self.assertEqual(validated["reuse"]["originalQuestion"], body["reuse"]["originalQuestion"])
+
     def test_current_question_and_trace_keep_original_binding(self):
         body = request()
         validated, (results, error) = self.validate(body)

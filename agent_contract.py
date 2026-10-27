@@ -43,7 +43,8 @@ AGENT_RETRY_ERROR_CODES = {"tool_error", "tool_timeout", "llm_timeout"}
 _ALLOWED_TRACE_KEYS = {"runId", "questionEventId", "tracePhase"}
 _ALLOWED_PLANNING_KEYS = {"contractVersion", "question", "language", "enabledTools", "trace", "retry", "promotionContext", "asinContext", "context", "planningRound"}
 _ALLOWED_SYNTHESIS_KEYS = {"contractVersion", "agentRunId", "planProofs", "question", "language", "context", "toolResults", "trace", "reuse"}
-_REUSE_METRICS = {"revenue", "orders", "clicks", "commission", "payout", "epc", "aov", "conversionRate", "commissionRate", "roas"}
+_REUSE_DERIVED_METRICS = {"revenueMoM", "clicksMoM", "ordersDelta"}
+_REUSE_METRICS = {"revenue", "orders", "clicks", "commission", "payout", "epc", "aov", "conversionRate", "commissionRate", "roas"} | _REUSE_DERIVED_METRICS
 _REUSE_METRIC_ALIASES = {"affiliatePayout": "payout", "cvr": "conversionRate"}
 _SIGNING_PURPOSE = "agent-tools-v2:"
 
@@ -283,6 +284,10 @@ def normalize_planning_tool_calls(tool_calls: object, question: str, round_numbe
         if not isinstance(name, str) or not isinstance(arguments, dict):
             normalized.append({"name": name, "arguments": arguments})
             continue
+        explicit_categories = list(dict.fromkeys(re.findall(r"家居|厨具|家装|家具", question)))
+        if explicit_categories and not comparison_requested and not re.search(r"(?:排除|不要|不含|除了|不是).{0,4}(?:家居|厨具|家装|家具)", question) and (name == "category_analysis" or (name == "trend" and arguments.get("entityType") == "category")):
+            # 当前明确对象优先于历史上下文；在签名前规范参数，执行时不改写已签名范围。
+            arguments = {**arguments, ("category" if name == "category_analysis" else "target"): "、".join(explicit_categories)}
         if trend_requested and name == "merchant_analysis" and isinstance(arguments.get("merchant"), str):
             trend_args = {"entityType": "merchant", "target": arguments["merchant"].strip(), "months": 12}
             metric = _requested_trend_metric(question)
@@ -717,7 +722,8 @@ def _provided_metrics(row: dict) -> set[str]:
     values = row.get("metrics") if isinstance(row.get("metrics"), dict) else row
     return {_REUSE_METRIC_ALIASES.get(key, key) for key, value in values.items()
             if _REUSE_METRIC_ALIASES.get(key, key) in _REUSE_METRICS
-            and isinstance(value, (int, float)) and not isinstance(value, bool)}
+            and ((isinstance(value, (int, float)) and not isinstance(value, bool))
+                 or (key in _REUSE_DERIVED_METRICS and value is None))}
 
 
 def _select_reuse_results(results: list[dict], scope: dict) -> tuple[list[dict] | None, dict | None]:
@@ -767,6 +773,25 @@ def _select_reuse_results(results: list[dict], scope: dict) -> tuple[list[dict] 
             if max(row["month"] for row in original_rows) not in months:
                 summary["latestMonthComplete"] = True
         item["result"]["data"] = project(item["result"]["data"])
+        if months:
+            projected_rows = _scope_rows(item["result"]["data"])
+            excluded_baselines = set()
+            for row in projected_rows:
+                values = row.get("metrics") if isinstance(row.get("metrics"), dict) else row
+                if not any(isinstance(values.get(key), (int, float)) and not isinstance(values.get(key), bool)
+                           for key in _REUSE_DERIVED_METRICS):
+                    continue
+                year, month = map(int, row["month"].split("-"))
+                baseline = f"{year if month > 1 else year - 1:04d}-{month - 1 if month > 1 else 12:02d}"
+                if baseline not in months:
+                    excluded_baselines.add(baseline)
+            if excluded_baselines:
+                # 缩范围只保留来源已计算事实，不按裁剪后的首月重算环比或补造基期值。
+                item["result"]["data"]["derivedMetricsBasis"] = {
+                    "kind": "source_monthly_computation",
+                    "excludedBaselineMonths": sorted(excluded_baselines),
+                    "note": "派生指标保留原结果的月度计算；部分基期月份不在本次展示范围，未重新计算或推断。",
+                }
     return projected, None
 
 

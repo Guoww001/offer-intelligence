@@ -47,6 +47,8 @@ const chart = computed(() => {
 });
 
 function formatValue(value: number): string { return formatAgentMetric(metric.value, value, props.language); }
+const monthlyColumns = computed(() => [...new Set(["revenue", "revenueMoM", "clicks", "clicksMoM", "orders", "ordersDelta", "conversionRate", metric.value])]);
+function monthlyLabel(key: string): string { return key === "revenue" ? "GMV" : agentMetricLabel(key, props.language); }
 
 function selectMetric(event: MouseEvent): void {
   const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-agent-trend-metric]") : null;
@@ -100,8 +102,8 @@ function selectMetric(event: MouseEvent): void {
       <summary>{{ language === 'zh' ? '月度明细' : 'Monthly details' }}</summary>
       <div class="agent-modern-result-table-wrap">
         <table class="agent-modern-result-table">
-          <thead><tr><th scope="col">{{ language === 'zh' ? '月份' : 'Month' }}</th><th scope="col">{{ metricLabel }}</th></tr></thead>
-          <tbody><tr v-for="row in trend.months" :key="String(row.month)"><th scope="row">{{ row.month }}</th><td>{{ typeof row[metric] === 'number' ? formatValue(row[metric] as number) : (language === 'zh' ? '未提供' : 'Not provided') }}</td></tr></tbody>
+          <thead><tr><th scope="col">{{ language === 'zh' ? '月份' : 'Month' }}</th><th v-for="key in monthlyColumns" :key="key" scope="col">{{ monthlyLabel(key) }}</th></tr></thead>
+          <tbody><tr v-for="row in trend.months" :key="String(row.month)"><th scope="row">{{ row.month }}</th><td v-for="key in monthlyColumns" :key="key">{{ formatAgentMetric(key, typeof row[key] === 'number' ? row[key] as number : null, language) }}</td></tr></tbody>
         </table>
       </div>
     </details>

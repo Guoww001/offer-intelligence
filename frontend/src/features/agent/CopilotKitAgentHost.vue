@@ -9,6 +9,7 @@ import { isKeywordDataQuestion, keywordMissingDataResponse, type AgentSession, t
 import type { ReusableAgentResult } from "./agentResultReuse";
 import type { AgentAttachmentStore } from "./agentAttachment";
 import { readMerchantWorkbook } from "../../shared/import/merchantWorkbook";
+import type { AgentNativeToolStep } from "./agentNativeTrace";
 
 interface AgentToolRunSession {
   readonly language: UiLanguage;
@@ -59,7 +60,7 @@ const toolNames = [
 ] as const;
 
 let toolSession: AgentToolRunSession | undefined;
-function beginRun(request: AgentRunRequest): AgentToolRunSession {
+function beginRun(request: AgentRunRequest & { readonly onNativeToolStep?: (step: AgentNativeToolStep) => void }): AgentToolRunSession {
   toolSession?.dispose();
   const memoryEvents: NonNullable<Awaited<ReturnType<AgentRunner>>["memoryEvents"]>[number][] = [];
   const resultViews: NonNullable<Awaited<ReturnType<AgentRunner>>["resultViews"]>[number][] = [];
@@ -81,7 +82,13 @@ function beginRun(request: AgentRunRequest): AgentToolRunSession {
     promotionAttachment: request.promotionAttachment,
     direct: () => props.fallbackRun(request),
     async execute(toolRequest) {
-      const result = await props.toolExecutor({
+      const report = (status: AgentNativeToolStep["status"], errorCode?: string) => {
+        try { request.onNativeToolStep?.({ callId: toolRequest.callId, toolName: toolRequest.toolName, status, ...(errorCode ? { errorCode } : {}) }); }
+        catch { /* 诊断回调不能改变工具执行。 */ }
+      };
+      report("running");
+      let result: AgentToolExecutionResponse;
+      try { result = await props.toolExecutor({
         callId: toolRequest.callId,
         toolName: toolRequest.toolName as AgentToolName,
         arguments: toolRequest.arguments,
@@ -89,8 +96,14 @@ function beginRun(request: AgentRunRequest): AgentToolRunSession {
         signal: toolRequest.signal || request.signal,
         language: request.language,
         promotionAttachment: request.promotionAttachment
-      });
+      }); }
+      catch (error) {
+        report(request.signal.aborted || toolRequest.signal?.aborted ? "stopped" : "error", "tool_error");
+        throw error;
+      }
       if (disposed || request.signal.aborted || toolRequest.signal?.aborted) throw new DOMException("执行已停止", "AbortError");
+      const payload = result.toolResult.result as Record<string, unknown> | undefined;
+      report(payload?.ok === true ? "done" : "error", payload?.ok === true ? undefined : payload?.errorCode === "tool_timeout" ? "tool_timeout" : "tool_error");
       if (result.memoryEvent) memoryEvents.push(result.memoryEvent);
       if (result.resultView) {
         resultViews.push(result.resultView);

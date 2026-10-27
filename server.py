@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import sys
+from agent_category_monthly import category_monthly_payload, merchant_monthly_payload
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -48,6 +49,7 @@ from auth import (
 from chatbot_answer_feedback_http import handle_chatbot_answer_feedback
 from chatbot_question_log_http import handle_chatbot_question_logs
 from agent_trace_http import handle_agent_trace
+from agent_monthly_answer import verified_monthly_answer
 from agent_debug_http import handle_agent_debug
 from agent_agui import handle_agui_request
 from agent_contract import (
@@ -122,6 +124,7 @@ STATIC_DIR = ROOT / "public"
 UI_DB_PAGE_BY_PATH = {
     "/api/ui/db/status": "dashboard",
     "/api/ui/db/merchant": "dashboard",
+    "/api/ui/db/category-monthly": "dashboard",
     "/api/ui/db/asin": "dashboard",
     "/api/ui/db/search": "dashboard",
     "/api/ui/db/offers": "dashboard",
@@ -420,6 +423,7 @@ class Handler(BaseHTTPRequestHandler):
                 request_bytes=length,
                 trace_context=trace_context,
                 agent_synthesis=True,
+                verified_answer=verified_monthly_answer(request, validated_results),
             )
             return
 
@@ -532,6 +536,7 @@ class Handler(BaseHTTPRequestHandler):
         request_bytes=None,
         trace_context=None,
         agent_synthesis=False,
+        verified_answer=None,
     ):
         """SSE streaming for agent synthesis: full message list passthrough."""
         system_prompt = agent_synthesis_system_prompt(language)
@@ -549,14 +554,14 @@ class Handler(BaseHTTPRequestHandler):
                 usage_metadata.update(metadata or {})
 
             token_count = 0
-            for token in stream_chat(
+            for token in ((verified_answer,) if verified_answer is not None else stream_chat(
                 "",
                 system_prompt,
                 max_tokens=AGENT_SYNTHESIS_MAX_TOKENS,
                 temperature=0.2,
                 messages=messages,
                 on_complete=on_complete,
-            ):
+            )):
                 if token:
                     self.wfile.write(f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()
@@ -598,6 +603,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, status_payload(month=first_query_value(query, "month")))
                 return
 
+            if parsed.path == "/api/ui/db/category-monthly":
+                self.send_json(200, category_monthly_payload(query))
+                return
+
             if parsed.path == "/api/ui/db/merchant":
                 merchant_id = first_query_value(query, "merchantId")
                 if not merchant_id:
@@ -608,6 +617,9 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if merchant_id not in set(read_static_merchant_ids()):
                     self.send_json(404, {"ok": False, "error": "merchantId is not in the public snapshot"})
+                    return
+                if "startMonth" in query or "endMonth" in query:
+                    self.send_json(200, merchant_monthly_payload(query))
                     return
                 limit = int_query_value(query, "limit", 20, 1, 50)
                 months = int_query_value(query, "months", 12, 1, 24)

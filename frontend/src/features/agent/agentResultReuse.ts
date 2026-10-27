@@ -12,7 +12,16 @@ export interface ReusableAgentResult {
 export type AgentReuseDecision = { kind: "query" } | { kind: "unavailable" } | { kind: "reuse"; source: ReusableAgentResult; scope: { targets: string[]; months: string[]; metrics: string[] } };
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-const metricNames: readonly [string, RegExp][] = [["revenue", /收入|营收|revenue/i], ["orders", /订单|orders/i], ["clicks", /点击|clicks/i], ["conversionRate", /CVR|转化率/i], ["epc", /EPC/i], ["commission", /佣金|commission/i], ["aov", /AOV|客单价/i]];
+const metricNames: readonly [string, RegExp][] = [["revenue", /GMV|收入|营收|revenue/i], ["orders", /订单|orders/i], ["clicks", /点击|clicks/i], ["conversionRate", /CVR|转化率/i], ["epc", /EPC/i], ["commission", /佣金|commission/i], ["aov", /AOV|客单价/i],
+  ["revenueMoM", /(?:GMV|收入|营收|revenue)\s*(?:的)?\s*(?:环比|MoM)|(?:环比|MoM)\s*(?:GMV|收入|营收|revenue)/i],
+  ["clicksMoM", /(?:点击|clicks)\s*(?:的)?\s*(?:环比|MoM)|(?:环比|MoM)\s*(?:点击|clicks)/i],
+  ["ordersDelta", /订单\s*(?:新增|增量|变化)|orders\s*(?:delta|increase|change)/i]];
+const derivedMetrics = new Set(["revenueMoM", "clicksMoM", "ordersDelta"]);
+function providesMetric(row: Record<string, unknown>, key: string): boolean {
+  const values = row.metrics && typeof row.metrics === "object" && !Array.isArray(row.metrics) ? record(row.metrics) : row;
+  if (!(key in values)) return false;
+  return (derivedMetrics.has(key) && values[key] === null) || (typeof values[key] === "number" && Number.isFinite(values[key]));
+}
 // 只保存当前会话最近一组成功结果，不写入浏览器存储或日志。
 export function createAgentResultReuse(now: () => number = Date.now) {
   let source: ReusableAgentResult | null = null;
@@ -56,13 +65,14 @@ export function createAgentResultReuse(now: () => number = Date.now) {
       const requestedTargets = knownTargets.filter(name => normalized(name) && normalized(prompt).includes(normalized(name)));
       const outsideTarget = requestedTargets.some(name => !sourceNames.some(source => source === normalized(name) || source.includes(normalized(name))));
       // 未识别的新英文名称也不能悄悄套用原对象结果。
-      const allowedWords = new Set("continue existing previous these table compare comparison explain explanation why summarize summary conclusion data results result use using the a an of for and to with in only no do not query querying requery revenue orders clicks cvr epc aov commission official amazon merchant months month complete common last through original queried incomplete parts without again from".split(" "));
+      const allowedWords = new Set("continue existing previous these table compare comparison explain explanation why summarize summary conclusion data results result use using the a an of for and to with in only no do not query querying requery revenue gmv mom delta increase change orders clicks cvr epc aov commission official amazon merchant months month complete common last through original queried incomplete parts without again from".split(" "));
       const unknownName = (prompt.match(/[a-zA-Z][a-zA-Z0-9_-]{2,}/g) || []).some(word => !allowedWords.has(word.toLowerCase()) && !sourceNames.some(source => source.includes(normalized(word))));
       const rows = data.flatMap(item => [item.months, item.monthly].filter(Array.isArray).flat() as unknown[]).map(record);
+      const checkedRows = rows.length ? rows.filter(row => !months.length || months.includes(String(row.month))) : data;
       const scopeOutside = invalidRange || outsideTarget || unknownName || months.some(month => !rows.some(row => row.month === month))
-        || metrics.some(key => rows.length ? !rows.some(row => key in record(row.metrics) || key in row) : !data.some(item => key in record(item.metrics) || key in item))
+        || metrics.some(key => !checkedRows.length || !checkedRows.every(row => providesMetric(row, key)))
         || /最近\s*\d+\s*(?:个)?月|近\s*\d+\s*(?:个)?月|去年|今年|最近两个完整月|last\s+\d+\s+months/i.test(prompt)
-        || /(?:另外|新增|换成|改查|新商户|instead|another)/i.test(prompt);
+        || /(?:另外|新增|换成|改查|新商户|instead|another)/i.test(prompt.replace(/订单\s*新增/g, ""));
       if (scopeOutside) return { kind: explicit || noQuery ? "unavailable" : "query" };
       const targets = [...new Set(requestedTargets.map(name => data.find(value => normalized(value.target) === normalized(name) || normalized(value.target).includes(normalized(name)))?.target).filter((value): value is string => typeof value === "string"))];
       return { kind: "reuse", source: current, scope: { targets, months, metrics } };

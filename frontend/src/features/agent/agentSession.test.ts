@@ -339,7 +339,7 @@ describe("createAgentSession", () => {
     const data = (result.toolResult.result as { data: { monthly: Array<{ month: string; metrics: Record<string, number> }> } }).data;
     expect(data.monthly.map(row => row.month)).toEqual(["2026-01", "2025-12", "2025-11"]);
     expect(data.monthly[0]?.metrics.revenue).toBe(20);
-    expect(data.monthly[1]?.metrics).toEqual({});
+    expect(data.monthly[1]?.metrics).toEqual({ epc: null, allEpc: null, aov: null, conversionRate: null });
     expect(result.resultView?.kind).toBe("table");
     expect(result.resultView?.rows.map(row => row.label)).toEqual(["2026-01", "2025-12", "2025-11"]);
     expect(result.resultView?.rows[1]?.values.every(value => value === "未提供")).toBe(true);
